@@ -88,25 +88,54 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
     with col_btn:
         if st.button("🚀 INICIAR LECTURA DE DATOS", type="primary", use_container_width=True):
             if archivo_sap and archivos_pista:
-                with st.spinner("Decodificando información táctica..."):
+                with st.spinner("Ejecutando Extracción Quirúrgica..."):
                     try:
-                        # 1. Masticar datos de SAP
+                        # 1. Procesar SAP
                         if archivo_sap.name.endswith('.csv'):
                             df_sap = pd.read_csv(archivo_sap)
                         else:
                             df_sap = pd.read_excel(archivo_sap)
-                        
                         st.session_state['df_sap'] = df_sap
                         
-                        # 2. Consolidar Informes de Pista
-                        lista_pistas = []
+                        # 2. Procesar Pistas con Escáner de "MEZCLA PREPARADA"
+                        lista_mezclas = []
+                        
                         for pista in archivos_pista:
-                            # Agregamos header=None para que no confunda el membrete con los títulos
                             if pista.name.endswith('.csv'):
-                                df_temp = pd.read_csv(pista, header=None, encoding='utf-8', on_bad_lines='skip')
+                                df_raw = pd.read_csv(pista, header=None)
                             else:
-                                df_temp = pd.read_excel(pista, header=None)
+                                df_raw = pd.read_excel(pista, header=None)
                             
+                            # BUSCAR EL PUNTO DE INICIO: "MEZCLA PREPARADA"
+                            # Buscamos en todo el archivo dónde aparece esa frase
+                            mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
+                            
+                            if mascara.any():
+                                indice_inicio = mascara.idxmax()
+                                # Tomamos desde ahí hasta el final
+                                df_mezcla = df_raw.iloc[indice_inicio:].copy()
+                                
+                                # Limpieza de filas y columnas vacías
+                                df_mezcla = df_mezcla.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                                
+                                # Etiquetamos el origen
+                                df_mezcla['ARCHIVO_ORIGEN'] = pista.name
+                                lista_mezclas.append(df_mezcla)
+                        
+                        if lista_mezclas:
+                            df_pistas_consol = pd.concat(lista_mezclas, ignore_index=True)
+                            # Normalizar nombres de columnas temporalmente
+                            df_pistas_consol.columns = [str(i) for i in range(len(df_pistas_consol.columns))]
+                            st.session_state['df_pistas'] = df_pistas_consol
+                            st.success(f"✅ ¡Extracción exitosa! Se detectaron {len(lista_mezclas)} bloques de Mezcla Preparada.")
+                        else:
+                            st.error("🚨 No se encontró la frase 'MEZCLA PREPARADA' en los archivos de pista.")
+                            
+                    except Exception as e:
+                        st.error(f"🚨 Error en la misión: {e}")
+            else:
+                st.error("🚨 Suministros incompletos. Cargue SAP y Pistas.")
+                
                             # LIMPIEZA TÁCTICA: Borrar filas y columnas que estén 100% vacías
                             df_temp = df_temp.dropna(axis=1, how='all').dropna(axis=0, how='all')
                             
