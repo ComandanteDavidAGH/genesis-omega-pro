@@ -4,7 +4,6 @@ from datetime import datetime
 import openpyxl
 import io
 
-
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
@@ -50,49 +49,69 @@ elif menu == "📥 1. Buzón de Carga":
     
     with c1:
         st.markdown("### 📁 Sábana SAP\n*(Lotes y Precios)*")
-        f_sabana = st.file_uploader("Subir Export SAP", type=["xlsx", "csv"], key="sab")
+        f_sabana = st.file_uploader("Subir Export SAP", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="sab")
     with c2:
         st.markdown("### 📝 Pedidos SAP\n*(La Planificación)*")
-        f_pedidos = st.file_uploader("Subir Pedidos Diarios", type=["xlsx", "csv"], key="ped")
+        f_pedidos = st.file_uploader("Subir Pedidos Diarios", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="ped")
     with c3:
         st.markdown("### 🚁 Informes Pista\n*(La Realidad)*")
-        f_pistas = st.file_uploader("Subir Reportes Pista", type=["xlsx", "csv"], accept_multiple_files=True, key="pis")
+        f_pistas = st.file_uploader("Subir Reportes Pista", type=["xlsx", "xls", "csv", "CSV", "XLSX"], accept_multiple_files=True, key="pis")
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Sincronizando los 3 frentes de batalla (Modo Blindado)..."):
+            with st.spinner("Sincronizando los 3 frentes de batalla (Blindaje Anti-Mayúsculas)..."):
                 try:
-                    # 1. Leer Sábana (Usando clones de memoria .getvalue())
+                    # 1. Leer Sábana
                     bytes_sabana = io.BytesIO(f_sabana.getvalue())
-                    st.session_state['df_sabana'] = pd.read_excel(bytes_sabana) if f_sabana.name.endswith('.xlsx') or f_sabana.name.endswith('.xls') else pd.read_csv(bytes_sabana)
+                    nom_sab = f_sabana.name.lower()
+                    if nom_sab.endswith('.xlsx') or nom_sab.endswith('.xls'):
+                        st.session_state['df_sabana'] = pd.read_excel(bytes_sabana)
+                    else:
+                        st.session_state['df_sabana'] = pd.read_csv(bytes_sabana, sep=None, engine='python')
                     
                     # 2. Leer Pedidos
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
-                    st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.endswith('.xlsx') or f_pedidos.name.endswith('.xls') else pd.read_csv(bytes_pedidos)
+                    nom_ped = f_pedidos.name.lower()
+                    if nom_ped.endswith('.xlsx') or nom_ped.endswith('.xls'):
+                        st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos)
+                    else:
+                        st.session_state['df_pedidos'] = pd.read_csv(bytes_pedidos, sep=None, engine='python')
                     
-                    # 3. Leer Pistas (Sin agotar el puntero)
+                    # 3. Leer Pistas
                     lista_pistas = []
+                    errores_pistas = []
+                    
                     for f in f_pistas:
-                        bytes_pista = io.BytesIO(f.getvalue()) # Clonamos el archivo
+                        bytes_pista = io.BytesIO(f.getvalue())
+                        nom_pis = f.name.lower()
                         
-                        if f.name.endswith('.csv'):
-                            df_raw = pd.read_csv(bytes_pista, header=None)
-                            m = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                            if m.any():
-                                df_m = df_raw.iloc[m.idxmax():].copy()
-                                df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                df_m['ORIGEN'] = f.name
-                                lista_pistas.append(df_m)
+                        try:
+                            if nom_pis.endswith('.csv'):
+                                df_raw = pd.read_csv(bytes_pista, header=None, sep=None, engine='python', on_bad_lines='skip')
+                                m = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
+                                if m.any():
+                                    df_m = df_raw.iloc[m.idxmax():].copy()
+                                    df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                                    df_m['ORIGEN'] = f.name
+                                    lista_pistas.append(df_m)
+                                    
+                            elif nom_pis.endswith('.xlsx'):
+                                wb = openpyxl.load_workbook(bytes_pista, read_only=True, data_only=True)
+                                visibles = [s.title for s in wb.worksheets if s.sheet_state == 'visible']
                                 
-                        elif f.name.endswith('.xlsx'):
-                            # Visor infrarrojo para Excel nuevo
-                            wb = openpyxl.load_workbook(bytes_pista, read_only=True, data_only=True)
-                            visibles = [s.title for s in wb.worksheets if s.sheet_state == 'visible']
-                            
-                            if visibles:
-                                # Hacemos un clon NUEVO para que Pandas lo lea desde cero
-                                bytes_pandas = io.BytesIO(f.getvalue())
-                                dict_p = pd.read_excel(bytes_pandas, sheet_name=visibles, header=None)
+                                if visibles:
+                                    bytes_pandas = io.BytesIO(f.getvalue())
+                                    dict_p = pd.read_excel(bytes_pandas, sheet_name=visibles, header=None)
+                                    for name, df in dict_p.items():
+                                        m = df.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
+                                        if m.any():
+                                            df_m = df.iloc[m.idxmax():].copy()
+                                            df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                                            df_m['ORIGEN'] = f"{f.name} ({name})"
+                                            lista_pistas.append(df_m)
+                                            
+                            else:
+                                dict_p = pd.read_excel(bytes_pista, sheet_name=None, header=None)
                                 for name, df in dict_p.items():
                                     m = df.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
                                     if m.any():
@@ -101,25 +120,20 @@ elif menu == "📥 1. Buzón de Carga":
                                         df_m['ORIGEN'] = f"{f.name} ({name})"
                                         lista_pistas.append(df_m)
                                         
-                        else:
-                            # Para archivos .xls antiguos (Sin filtro de ocultas por compatibilidad)
-                            dict_p = pd.read_excel(bytes_pista, sheet_name=None, header=None)
-                            for name, df in dict_p.items():
-                                m = df.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                                if m.any():
-                                    df_m = df.iloc[m.idxmax():].copy()
-                                    df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                    df_m['ORIGEN'] = f"{f.name} ({name})"
-                                    lista_pistas.append(df_m)
+                        except Exception as e_pista:
+                            errores_pistas.append(f"{f.name} ({str(e_pista)})")
                     
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.concat(lista_pistas, ignore_index=True)
                         st.success(f"✅ ¡Trinidad Sincronizada! SAP: {len(st.session_state['df_sabana'])} filas | Pedidos: {len(st.session_state['df_pedidos'])} filas | Pistas: {len(lista_pistas)} bloques.")
+                        
+                        if errores_pistas:
+                            st.warning(f"⚠️ Nota: Algunos archivos fueron saltados por formato ilegible: {', '.join(errores_pistas)}")
                     else:
                         st.error("🚨 No se encontró información válida de 'MEZCLA PREPARADA' en las pistas.")
                         
                 except Exception as e:
-                    st.error(f"🚨 Error crítico en el ensamblaje: {e}")
+                    st.error(f"🚨 Error crítico en el ensamblaje principal: {e}")
         else:
             st.error("🚨 Faltan suministros. Suba los 3 frentes.")
 
