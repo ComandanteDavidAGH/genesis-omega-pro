@@ -102,24 +102,41 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
                         
                         for pista in archivos_pista:
                             if pista.name.endswith('.csv'):
+                                # Los archivos CSV no tienen pestañas, se leen directo
                                 df_raw = pd.read_csv(pista, header=None)
+                                
+                                mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
+                                if mascara.any():
+                                    indice_inicio = mascara.idxmax()
+                                    df_mezcla = df_raw.iloc[indice_inicio:].copy()
+                                    df_mezcla = df_mezcla.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                                    df_mezcla['ARCHIVO_ORIGEN'] = pista.name
+                                    lista_mezclas.append(df_mezcla)
+                            
                             else:
-                                df_raw = pd.read_excel(pista, header=None)
-                            
-                            # BUSCAR EL PUNTO DE INICIO: "MEZCLA PREPARADA"
-                            mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                            
-                            if mascara.any():
-                                indice_inicio = mascara.idxmax()
-                                # Tomamos desde ahí hasta el final
-                                df_mezcla = df_raw.iloc[indice_inicio:].copy()
+                                # ¡MODO MULTI-PESTAÑA (SOLO VISIBLES)!
+                                import openpyxl
                                 
-                                # Limpieza de filas y columnas vacías
-                                df_mezcla = df_mezcla.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                                # Usamos openpyxl como visor infrarrojo para detectar pestañas ocultas
+                                wb = openpyxl.load_workbook(pista, read_only=True, data_only=True)
+                                pestañas_visibles = [sheet.title for sheet in wb.worksheets if sheet.sheet_state == 'visible']
                                 
-                                # Etiquetamos el origen
-                                df_mezcla['ARCHIVO_ORIGEN'] = pista.name
-                                lista_mezclas.append(df_mezcla)
+                                # Si hay pestañas visibles, le decimos a Pandas que solo lea esas
+                                if pestañas_visibles:
+                                    diccionario_pestañas = pd.read_excel(pista, sheet_name=pestañas_visibles, header=None)
+                                    
+                                    # Ahora revisamos cada pestaña visible una por una
+                                    for nombre_pestaña, df_raw in diccionario_pestañas.items():
+                                        mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
+                                        
+                                        if mascara.any():
+                                            indice_inicio = mascara.idxmax()
+                                            df_mezcla = df_raw.iloc[indice_inicio:].copy()
+                                            df_mezcla = df_mezcla.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                                            
+                                            # Etiquetamos el origen
+                                            df_mezcla['ARCHIVO_ORIGEN'] = f"{pista.name} (Pestaña: {nombre_pestaña})"
+                                            lista_mezclas.append(df_mezcla)
                         
                         if lista_mezclas:
                             df_pistas_consol = pd.concat(lista_mezclas, ignore_index=True)
