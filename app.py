@@ -1,237 +1,92 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import openpyxl
 
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
-# --- 2. ARTILLERÍA VISUAL Y BLINDAJE CSS ---
+# --- 2. ARTILLERÍA VISUAL ---
 arsenal_css = """
 <style>
-/* Ocultar marcas de agua de Streamlit */
 [data-testid="stToolbarActions"] { display: none !important; }
-.viewerBadge_container { display: none !important; }
-footer { display: none !important; }
-
-/* Colores y diseño corporativo */
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
-
-/* Títulos y Tarjetas */
-.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; font-size: 2.2rem; border-bottom: 3px solid #d4af37; padding-bottom: 10px; margin-bottom: 20px; text-transform: uppercase;}
-.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; border-left: 2px solid #e0e0e0; border-right: 2px solid #e0e0e0; border-bottom: 2px solid #e0e0e0; margin-bottom: 20px;}
-
-/* Botones */
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; font-weight: bold !important; border-radius: 8px !important;}
-button[kind="primary"]:hover { background-color: #d4af37 !important; color: #0d1b2a !important; border: 2px solid #0d1b2a !important; }
-
-/* Subida de archivos */
-[data-testid="stFileUploadDropzone"] { border: 2px dashed #0d1b2a !important; background-color: #ffffff !important; border-radius: 10px !important; }
+.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase;}
+.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px;}
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
 </style>
 """
 st.markdown(arsenal_css, unsafe_allow_html=True)
 
-# --- 3. MENÚ TÁCTICO LATERAL ---
+# --- 3. MENÚ TÁCTICO ---
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; color: #d4af37; font-family: Arial Black;'>🚀 GÉNESIS OMEGA</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; margin-top: -15px; color: white;'>Panel de Control AgroAéreo</p>", unsafe_allow_html=True)
-    st.markdown("---")
-    
-    menu = st.radio("🛰️ NAVEGACIÓN:", [
-        "🏠 Centro de Mando", 
-        "📥 1. Buzón de Carga (SAP & Pista)", 
-        "⚙️ 2. Cruce y Validación Dosis", 
-        "📊 3. Arqueo y Reportes", 
-        "🛡️ Bóveda y Configuración"
-    ])
-    
-    st.markdown("---")
-    st.info(f"📅 Fecha Operativa:\n{datetime.now().strftime('%Y-%m-%d')}")
+    st.markdown("<h2 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h2>", unsafe_allow_html=True)
+    menu = st.radio("🛰️ NAVEGACIÓN:", ["🏠 Centro de Mando", "📥 1. Buzón de Carga", "⚙️ 2. Validación de Misión", "📊 3. Arqueo y Reportes", "🛡️ Configuración"])
+    st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
 
-# --- 4. RUTAS DEL SISTEMA ---
+# --- 4. LÓGICA DE CARGA ---
 
 if menu == "🏠 Centro de Mando":
-    st.markdown("<h1 class='titulo-principal'>Centro de Mando | Operaciones</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Centro de Mando</h1>", unsafe_allow_html=True)
     st.markdown("""
     <div class='tarjeta-info'>
-        <h3 style='color: #0d1b2a; margin-top:0;'>Bienvenido, Comandante.</h3>
-        <p style='color: #333;'>El sistema <b>Génesis Omega Pro</b> está en línea y asegurado. Seleccione una operación en el menú lateral para iniciar el procesamiento de datos.</p>
-        <ul>
-            <li><b>Paso 1:</b> Cargue sus archivos de SAP y Pistas en el <i>Buzón de Carga</i>.</li>
-            <li><b>Paso 2:</b> Ejecute el <i>Cruce y Validación</i> para asegurar dosis y precios.</li>
-            <li><b>Paso 3:</b> Descargue sus <i>Arqueos y Reportes</i> listos para enviar.</li>
-        </ul>
+        <h3>Estrategia de Validación (La Trinidad):</h3>
+        <ol>
+            <li><b>Sábana SAP:</b> Validamos Lotes y Precios oficiales.</li>
+            <li><b>Pedidos SAP:</b> Validamos lo que se DEBÍA hacer (Fincas/Hectáreas).</li>
+            <li><b>Informes Pista:</b> Validamos lo que REALMENTE se hizo.</li>
+        </ol>
     </div>
     """, unsafe_allow_html=True)
 
-elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
-    st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje de Datos</h1>", unsafe_allow_html=True)
-    st.write("Arrastre aquí la **Sábana de SAP** y los **Informes Diarios de Pista** para iniciar la sincronización.")
+elif menu == "📥 1. Buzón de Carga":
+    st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Tripartita</h1>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     
-    with col1:
-        st.markdown("<h3 style='color:#0d1b2a;'>📁 1. Sábana Maestra SAP</h3>", unsafe_allow_html=True)
-        archivo_sap = st.file_uploader("Suba el archivo EXPORT (Sábana de Inventario/Precios)", type=["xlsx", "xls", "csv"], key="sap_upload")
-        if archivo_sap:
-            st.success(f"✅ Sábana SAP lista: {archivo_sap.name}")
+    with c1:
+        st.markdown("### 📁 Sábana SAP\n*(Lotes y Precios)*")
+        f_sabana = st.file_uploader("Subir Export SAP", type=["xlsx", "csv"], key="sab")
+    with c2:
+        st.markdown("### 📝 Pedidos SAP\n*(La Planificación)*")
+        f_pedidos = st.file_uploader("Subir Pedidos Diarios", type=["xlsx", "csv"], key="ped")
+    with c3:
+        st.markdown("### 🚁 Informes Pista\n*(La Realidad)*")
+        f_pistas = st.file_uploader("Subir Reportes Pista", type=["xlsx", "csv"], accept_multiple_files=True, key="pis")
 
-    with col2:
-        st.markdown("<h3 style='color:#0d1b2a;'>🚁 2. Informes de Pista</h3>", unsafe_allow_html=True)
-        archivos_pista = st.file_uploader("Suba los reportes diarios de las pistas", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pista_upload")
-        if archivos_pista:
-            st.success(f"✅ {len(archivos_pista)} reportes listos para consolidar.")
-            
-    st.markdown("---")
-    col_btn, _ = st.columns([1, 2])
-    with col_btn:
-        if st.button("🚀 INICIAR LECTURA DE DATOS", type="primary", use_container_width=True):
-            if archivo_sap and archivos_pista:
-                with st.spinner("Ejecutando Extracción Quirúrgica..."):
-                    try:
-                        # 1. Procesar SAP
-                        if archivo_sap.name.endswith('.csv'):
-                            df_sap = pd.read_csv(archivo_sap)
-                        else:
-                            df_sap = pd.read_excel(archivo_sap)
-                        st.session_state['df_sap'] = df_sap
-                        
-                        # 2. Procesar Pistas con Escáner de "MEZCLA PREPARADA"
-                        lista_mezclas = []
-                        
-                        for pista in archivos_pista:
-                            if pista.name.endswith('.csv'):
-                                # Los archivos CSV no tienen pestañas, se leen directo
-                                df_raw = pd.read_csv(pista, header=None)
-                                
-                                mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                                if mascara.any():
-                                    indice_inicio = mascara.idxmax()
-                                    df_mezcla = df_raw.iloc[indice_inicio:].copy()
-                                    df_mezcla = df_mezcla.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                    df_mezcla['ARCHIVO_ORIGEN'] = pista.name
-                                    lista_mezclas.append(df_mezcla)
-                            
-                            else:
-                                # ¡MODO MULTI-PESTAÑA (SOLO VISIBLES)!
-                                import openpyxl
-                                
-                                # Usamos openpyxl como visor infrarrojo para detectar pestañas ocultas
-                                wb = openpyxl.load_workbook(pista, read_only=True, data_only=True)
-                                pestañas_visibles = [sheet.title for sheet in wb.worksheets if sheet.sheet_state == 'visible']
-                                
-                                # Si hay pestañas visibles, le decimos a Pandas que solo lea esas
-                                if pestañas_visibles:
-                                    diccionario_pestañas = pd.read_excel(pista, sheet_name=pestañas_visibles, header=None)
-                                    
-                                    # Ahora revisamos cada pestaña visible una por una
-                                    for nombre_pestaña, df_raw in diccionario_pestañas.items():
-                                        mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                                        
-                                        if mascara.any():
-                                            indice_inicio = mascara.idxmax()
-                                            df_mezcla = df_raw.iloc[indice_inicio:].copy()
-                                            df_mezcla = df_mezcla.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                            
-                                            # Etiquetamos el origen
-                                            df_mezcla['ARCHIVO_ORIGEN'] = f"{pista.name} (Pestaña: {nombre_pestaña})"
-                                            lista_mezclas.append(df_mezcla)
-                        
-                        if lista_mezclas:
-                            df_pistas_consol = pd.concat(lista_mezclas, ignore_index=True)
-                            # Normalizar nombres de columnas temporalmente
-                            df_pistas_consol.columns = [str(i) for i in range(len(df_pistas_consol.columns))]
-                            st.session_state['df_pistas'] = df_pistas_consol
-                            st.success(f"✅ ¡Extracción exitosa! Se detectaron {len(lista_mezclas)} bloques de Mezcla Preparada.")
-                        else:
-                            st.error("🚨 No se encontró la frase 'MEZCLA PREPARADA' en los archivos de pista.")
-                            
-                    except Exception as e:
-                        st.error(f"🚨 Error en la misión: {e}")
-            else:
-                st.error("🚨 Suministros incompletos. Cargue SAP y Pistas.")
-
-    # --- RADAR DE PREVISUALIZACIÓN ---
-    if 'df_sap' in st.session_state and 'df_pistas' in st.session_state:
-        st.markdown("### 👁️ Radar de Datos (Memoria RAM)")
-        
-        # Agregamos contadores para su tranquilidad, Comandante
-        filas_sap = len(st.session_state['df_sap'])
-        filas_pistas = len(st.session_state['df_pistas'])
-        
-        col_c1, col_c2 = st.columns(2)
-        col_c1.metric("Total Filas SAP", f"{filas_sap:,}")
-        col_c2.metric("Total Filas Pistas", f"{filas_pistas:,}")
-
-        tab1, tab2 = st.tabs(["📁 Visión SAP", "🚁 Visión Pistas (Consolidado)"])
-        
-        with tab1:
-            st.write("Muestra de las primeras 50 filas (de la base completa):")
-            st.dataframe(st.session_state['df_sap'].head(50), use_container_width=True)
-        with tab2:
-            st.write("Muestra de los bloques detectados:")
-            st.dataframe(st.session_state['df_pistas'].head(50), use_container_width=True)
-
-elif menu == "⚙️ 2. Cruce y Validación Dosis":
-    st.markdown("<h1 class='titulo-principal'>Validador Hiperespacial</h1>", unsafe_allow_html=True)
-    
-    if 'df_sap' not in st.session_state or 'df_pistas' not in st.session_state:
-        st.warning("⚠️ Radares apagados. Vaya al 'Buzón de Carga' y suba los suministros primero.")
-    else:
-        st.success("🟢 Suministros detectados en memoria. Motores de cruce listos.")
-        
-        if st.button("⚡ EJECUTAR EXTRACCIÓN DE DOSIS", type="primary", use_container_width=True):
-            with st.spinner("Procesando matriz de productos..."):
+    if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
+        if f_sabana and f_pedidos and f_pistas:
+            with st.spinner("Sincronizando los 3 frentes de batalla..."):
                 try:
-                    df_raw = st.session_state['df_pistas']
-                    datos_limpios = []
+                    # 1. Leer Sábana
+                    st.session_state['df_sabana'] = pd.read_excel(f_sabana) if f_sabana.name.endswith('xlsx') else pd.read_csv(f_sabana)
                     
-                    # Buscamos la fila donde dice "PRODUCTO" para saber dónde empieza la lista
-                    filas_producto = df_raw[df_raw.iloc[:, 1] == 'PRODUCTO'].index.tolist()
+                    # 2. Leer Pedidos
+                    st.session_state['df_pedidos'] = pd.read_excel(f_pedidos) if f_pedidos.name.endswith('xlsx') else pd.read_csv(f_pedidos)
                     
-                    for idx in filas_producto:
-                        origen = df_raw.iloc[idx]['ARCHIVO_ORIGEN']
-                        
-                        # Recorremos desde la palabra "PRODUCTO" hacia abajo
-                        fila_actual = idx + 1
-                        while fila_actual < len(df_raw):
-                            producto = str(df_raw.iloc[fila_actual, 1]).strip()
-                            
-                            # Si está vacío, terminamos este bloque
-                            if producto.lower() == 'nan' or producto == '':
-                                break
-                                
-                            cantidad = df_raw.iloc[fila_actual, 3] # Columna de cantidad
-                            lote = df_raw.iloc[fila_actual, 4]     # Columna de Lote
-                            
-                            datos_limpios.append({
-                                "PISTA_ORIGEN": origen,
-                                "PRODUCTO": producto,
-                                "CANTIDAD_PISTA": cantidad,
-                                "LOTE_PISTA": lote
-                            })
-                            fila_actual += 1
+                    # 3. Leer Pistas (Multipestaña y Visibles)
+                    lista_pistas = []
+                    for f in f_pistas:
+                        if f.name.endswith('xlsx'):
+                            wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
+                            visibles = [s.title for s in wb.worksheets if s.sheet_state == 'visible']
+                            dict_p = pd.read_excel(f, sheet_name=visibles, header=None)
+                            for name, df in dict_p.items():
+                                m = df.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
+                                if m.any():
+                                    df_m = df.iloc[m.idxmax():].copy()
+                                    df_m['ORIGEN'] = f"{f.name} ({name})"
+                                    lista_pistas.append(df_m)
                     
-                    # Convertimos la lista limpia en un DataFrame
-                    df_dosis_limpias = pd.DataFrame(datos_limpios)
-                    st.session_state['df_dosis_limpias'] = df_dosis_limpias
-                    
-                    st.success("✅ ¡Extracción de Dosis completada!")
-                    
+                    st.session_state['df_pistas'] = pd.concat(lista_pistas, ignore_index=True)
+                    st.success(f"✅ ¡Trinidad Sincronizada! SAP: {len(st.session_state['df_sabana'])} filas | Pedidos: {len(st.session_state['df_pedidos'])} filas.")
                 except Exception as e:
-                    st.error(f"🚨 Falla en el escáner de dosis: {e}")
+                    st.error(f"🚨 Error en el lanzamiento: {e}")
 
-        # Mostrar el resultado de la limpieza
-        if 'df_dosis_limpias' in st.session_state:
-            st.markdown("### 📋 Tabla Oficial de Consumos (Lista para cruzar con SAP)")
-            st.dataframe(st.session_state['df_dosis_limpias'], use_container_width=True)
-
-elif menu == "📊 3. Arqueo y Reportes":
-    st.markdown("<h1 class='titulo-principal'>Central de Inteligencia</h1>", unsafe_allow_html=True)
-    st.info("📊 Aquí se generarán los cuadros de diferencias, Excel de arqueos de fin de semana y reportes de sobrecostos dominicales listos para descargar.")
-
-elif menu == "🛡️ Bóveda y Configuración":
-    st.markdown("<h1 class='titulo-principal'>Bóveda Satelital</h1>", unsafe_allow_html=True)
-    st.success("🔗 Estado de conexión con Google Sheets: Pendiente de enlace.")
-    st.write("Desde aquí controlará los márgenes por tipo de productor, las marcas 'X' y los históricos de 3 años.")
+elif menu == "⚙️ 2. Validación de Misión":
+    st.markdown("<h1 class='titulo-principal'>Validación Cruzada</h1>")
+    if 'df_pedidos' in st.session_state:
+        st.info("Aquí compararemos: **Informe Pista vs Pedidos SAP** (Hectáreas) y luego **Informe Pista vs Sábana** (Lotes/Precios).")
+        # Próximo paso: Lógica de cruce triple
