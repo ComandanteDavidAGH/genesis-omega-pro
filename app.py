@@ -61,6 +61,22 @@ elif menu == "📥 1. Buzón de Carga":
         if f_sabana and f_pedidos and f_pistas:
             with st.spinner("Sincronizando los 3 frentes de batalla (Blindaje Anti-Mayúsculas)..."):
                 try:
+# NUEVO: LECTURA DE TABLA 2 / CONFIGURACIÓN
+                    bytes_config = io.BytesIO(f_config.getvalue())
+                    nom_conf = f_config.name.lower()
+                    if nom_conf.endswith('.xlsx') or nom_conf.endswith('.xls'):
+                        st.session_state['df_config'] = pd.read_excel(bytes_config)
+                    else:
+                        st.session_state['df_config'] = pd.read_csv(bytes_config, sep=None, engine='python')
+                        
+                    # Mensaje de éxito
+                    st.success("✅ ¡Cuartel Sincronizado! Sábana, Pedidos, Pistas y Base de Operaciones cargados en memoria.")
+                    
+                except Exception as e:
+                    st.error(f"🚨 Error crítico en el ensamblaje: {e}")
+        else:
+            st.error("🚨 Faltan suministros. Suba los 4 frentes.")                   
+                    
                     # 1. Leer Sábana
                     bytes_sabana = io.BytesIO(f_sabana.getvalue())
                     nom_sab = f_sabana.name.lower()
@@ -236,3 +252,80 @@ elif menu == "⚙️ 2. Validación de Misión":
                 elif '❌' in str(val) or '🚨' in str(val): return 'background-color: #ffcccc; color: red; font-weight: bold;'
                 return ''
             st.dataframe(st.session_state['df_validacion'].style.map(color_estado, subset=['ESTADO LOTE']), use_container_width=True)
+            # --- MOTOR DE LIQUIDACIÓN AUTOMÁTICA (BASADO EN TABLA 2) ---
+            st.markdown("---")
+            st.markdown("<h2 class='titulo-principal'>🧮 Motor de Liquidación de Combate</h2>", unsafe_allow_html=True)
+            
+            if 'df_config' in st.session_state:
+                df_config = st.session_state['df_config']
+                # Normalizar columnas de Config
+                df_config.columns = [str(c).upper().strip() for c in df_config.columns]
+                col_finca_conf = next((c for c in df_config.columns if 'FINCA' in c), None)
+                col_tope_conf = next((c for c in df_config.columns if 'TOPE' in c), None)
+                col_prod_conf = next((c for c in df_config.columns if 'PRODUCTOR' in c or 'TIPO' in c), None)
+                
+                # Buscar datos de la Finca Actual (Asumiendo que 'finca_pista' se detectó arriba)
+                # NOTA: Para este ejemplo, usamos la última finca procesada o se puede hacer una selección
+                
+                with st.form("form_liquidacion_auto"):
+                    st.info("El sistema cruzará la finca detectada con TABLA 2 para aplicar topes automáticamente.")
+                    
+                    c_auto1, c_auto2 = st.columns(2)
+                    with c_auto1:
+                        finca_seleccionada = st.text_input("Finca Detectada", value="Ej: SACRAMENTO") # Aquí inyectaremos 'finca_pista' real
+                        hectareas_liq = st.number_input("Hectáreas Voladas", min_value=0.1, value=120.0, step=1.0)
+                        
+                        col_hor1, col_hor2 = st.columns(2)
+                        hor_ini = col_hor1.number_input("Horómetro Inicial", value=0.0)
+                        hor_fin = col_hor2.number_input("Horómetro Final", value=1.5)
+                        valor_hora = st.number_input("Valor Hora Avión ($)", value=2500000)
+                        
+                    with c_auto2:
+                        dias_ciclo = st.number_input("Días Ciclo / Intervalo", value=10)
+                        tarifa_base_tecnico = st.number_input("Tarifa Base Serv. Técnico ($)", value=8000)
+                        st.markdown("---")
+                        recargo_activo = st.checkbox("⚠️ Aplica Recargo (Dom/Festivo)")
+                        valor_recargo = st.number_input("Valor Recargo ($/ha)", value=5000) if recargo_activo else 0
+                        
+                    btn_liq_auto = st.form_submit_button("🚀 EJECUTAR CÁLCULO INTELIGENTE", type="primary", use_container_width=True)
+
+                if btn_liq_auto:
+                    # 1. BÚSQUEDA AUTOMÁTICA EN TABLA 2 (BUSCARV en Python)
+                    tope_asignado = 45000 # Valor por defecto
+                    tipo_productor = "ESTANDAR"
+                    es_pdiv = False
+                    
+                    if col_finca_conf:
+                        match_finca = df_config[df_config[col_finca_conf].astype(str).str.contains(finca_seleccionada.split()[0], case=False, na=False)]
+                        if not match_finca.empty:
+                            if col_tope_conf: tope_asignado = float(match_finca.iloc[0][col_tope_conf])
+                            if col_prod_conf: tipo_productor = str(match_finca.iloc[0][col_prod_conf]).upper()
+                            # Detectar si es Pista Divas por el nombre o la configuración
+                            if 'PDIV' in str(match_finca.values).upper(): es_pdiv = True
+
+                    # 2. CÁLCULOS MATEMÁTICOS DE SUS FÓRMULAS
+                    tiempo_vuelo = max(0.0, hor_fin - hor_ini)
+                    costo_real = (tiempo_vuelo * valor_hora) / hectareas_liq if hectareas_liq > 0 else 0
+                    
+                    # La Condición y la Excepción PDIV
+                    if es_pdiv:
+                        precio_aplicacion = costo_real + valor_recargo
+                        alerta = "🟢 PDIV - Tope Ignorado"
+                    else:
+                        precio_aplicacion = min(costo_real, tope_asignado) + valor_recargo
+                        alerta = "🔴 Tope Aplicado" if costo_real > tope_asignado else "✅ Precio Real"
+
+                    # 3. Asistencia Técnica (Fórmula 5)
+                    # Aquí puede agregar el multiplicador si un Productor A paga distinto a un Productor B
+                    factor_productor = 1.0 # Si el tipo es A, 1.0, si es B, 1.2, etc. (ajustable)
+                    costo_tecnico = dias_ciclo * tarifa_base_tecnico * factor_productor
+
+                    # RESULTADOS
+                    st.success(f"**Inteligencia Aplicada:** Productor: `{tipo_productor}` | Tope Detectado: `${tope_asignado:,.0f}` | Estado: `{alerta}`")
+                    
+                    c_res1, c_res2, c_res3 = st.columns(3)
+                    c_res1.metric("⏱️ Tiempo Vuelo", f"{tiempo_vuelo:.2f} hrs")
+                    c_res2.metric("🚁 TOTAL APLICACIÓN /ha", f"${precio_aplicacion:,.0f}")
+                    c_res3.metric("👨‍🔧 TOTAL SERV. TÉCNICO", f"${costo_tecnico:,.0f}")
+            else:
+                st.info("💡 Suba la 'TABLA 2 / Configuración' en el Buzón de Carga para activar el Motor Automático.")
