@@ -101,17 +101,26 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
                         # 2. Consolidar Informes de Pista
                         lista_pistas = []
                         for pista in archivos_pista:
+                            # Agregamos header=None para que no confunda el membrete con los títulos
                             if pista.name.endswith('.csv'):
-                                df_temp = pd.read_csv(pista)
+                                df_temp = pd.read_csv(pista, header=None, encoding='utf-8', on_bad_lines='skip')
                             else:
-                                df_temp = pd.read_excel(pista)
+                                df_temp = pd.read_excel(pista, header=None)
+                            
+                            # LIMPIEZA TÁCTICA: Borrar filas y columnas que estén 100% vacías
+                            df_temp = df_temp.dropna(axis=1, how='all').dropna(axis=0, how='all')
+                            
                             df_temp['ARCHIVO_ORIGEN'] = pista.name # Etiquetamos de qué pista viene
                             lista_pistas.append(df_temp)
                             
                         df_pistas_consol = pd.concat(lista_pistas, ignore_index=True)
+                        
+                        # Limpiamos los nombres de las columnas para que sean números genéricos temporalmente
+                        df_pistas_consol.columns = [str(i) for i in range(len(df_pistas_consol.columns))]
+                        
                         st.session_state['df_pistas'] = df_pistas_consol
                         
-                        st.success("✅ ¡Datos devorados con éxito! Motores en línea.")
+                        st.success("✅ ¡Datos devorados y pre-limpiados con éxito! Motores en línea.")
                         
                     except Exception as e:
                         st.error(f"🚨 Falla en los motores de lectura: {e}")
