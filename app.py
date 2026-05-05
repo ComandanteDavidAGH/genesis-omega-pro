@@ -75,15 +75,13 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
         st.markdown("<h3 style='color:#0d1b2a;'>📁 1. Sábana Maestra SAP</h3>", unsafe_allow_html=True)
         archivo_sap = st.file_uploader("Suba el archivo EXPORT (Sábana de Inventario/Precios)", type=["xlsx", "xls", "csv"], key="sap_upload")
         if archivo_sap:
-            st.success(f"✅ Sábana SAP detectada: {archivo_sap.name}")
-            # Aquí irá la lógica para leer y guardar en memoria
+            st.success(f"✅ Sábana SAP lista: {archivo_sap.name}")
 
     with col2:
         st.markdown("<h3 style='color:#0d1b2a;'>🚁 2. Informes de Pista</h3>", unsafe_allow_html=True)
-        archivos_pista = st.file_uploader("Suba los reportes diarios de las pistas (KRMN, OPMN, etc.)", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pista_upload")
+        archivos_pista = st.file_uploader("Suba los reportes diarios de las pistas", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pista_upload")
         if archivos_pista:
-            st.success(f"✅ {len(archivos_pista)} reportes de pista detectados.")
-            # Aquí irá la lógica para unir todos los reportes de pista
+            st.success(f"✅ {len(archivos_pista)} reportes listos para consolidar.")
             
     st.markdown("---")
     col_btn, _ = st.columns([1, 2])
@@ -91,12 +89,45 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
         if st.button("🚀 INICIAR LECTURA DE DATOS", type="primary", use_container_width=True):
             if archivo_sap and archivos_pista:
                 with st.spinner("Decodificando información táctica..."):
-                    import time
-                    time.sleep(1.5) # Simulador de carga por ahora
-                    st.success("¡Datos extraídos con éxito! Diríjase a 'Cruce y Validación'.")
+                    try:
+                        # 1. Masticar datos de SAP
+                        if archivo_sap.name.endswith('.csv'):
+                            df_sap = pd.read_csv(archivo_sap)
+                        else:
+                            df_sap = pd.read_excel(archivo_sap)
+                        
+                        st.session_state['df_sap'] = df_sap
+                        
+                        # 2. Consolidar Informes de Pista
+                        lista_pistas = []
+                        for pista in archivos_pista:
+                            if pista.name.endswith('.csv'):
+                                df_temp = pd.read_csv(pista)
+                            else:
+                                df_temp = pd.read_excel(pista)
+                            df_temp['ARCHIVO_ORIGEN'] = pista.name # Etiquetamos de qué pista viene
+                            lista_pistas.append(df_temp)
+                            
+                        df_pistas_consol = pd.concat(lista_pistas, ignore_index=True)
+                        st.session_state['df_pistas'] = df_pistas_consol
+                        
+                        st.success("✅ ¡Datos devorados con éxito! Motores en línea.")
+                        
+                    except Exception as e:
+                        st.error(f"🚨 Falla en los motores de lectura: {e}")
             else:
-                st.error("🚨 Faltan suministros. Debe cargar tanto SAP como Pistas.")
+                st.error("🚨 Faltan suministros. Suba ambos frentes de datos.")
 
+    # --- RADAR DE PREVISUALIZACIÓN ---
+    if 'df_sap' in st.session_state and 'df_pistas' in st.session_state:
+        st.markdown("### 👁️ Radar de Datos (Memoria RAM)")
+        tab1, tab2 = st.tabs(["📁 Visión SAP", "🚁 Visión Pistas (Consolidado)"])
+        
+        with tab1:
+            st.dataframe(st.session_state['df_sap'].head(10), use_container_width=True)
+        with tab2:
+            st.dataframe(st.session_state['df_pistas'].head(10), use_container_width=True)
+            
 elif menu == "⚙️ 2. Cruce y Validación Dosis":
     st.markdown("<h1 class='titulo-principal'>Validador Hiperespacial</h1>", unsafe_allow_html=True)
     st.warning("⚠️ Módulo en construcción. Aquí el sistema cruzará SAP con la Pista y aplicará las reglas de margen y precios de la matriz de Configuración.")
