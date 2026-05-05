@@ -138,12 +138,23 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
     # --- RADAR DE PREVISUALIZACIÓN ---
     if 'df_sap' in st.session_state and 'df_pistas' in st.session_state:
         st.markdown("### 👁️ Radar de Datos (Memoria RAM)")
+        
+        # Agregamos contadores para su tranquilidad, Comandante
+        filas_sap = len(st.session_state['df_sap'])
+        filas_pistas = len(st.session_state['df_pistas'])
+        
+        col_c1, col_c2 = st.columns(2)
+        col_c1.metric("Total Filas SAP", f"{filas_sap:,}")
+        col_c2.metric("Total Filas Pistas", f"{filas_pistas:,}")
+
         tab1, tab2 = st.tabs(["📁 Visión SAP", "🚁 Visión Pistas (Consolidado)"])
         
         with tab1:
-            st.dataframe(st.session_state['df_sap'].head(10), use_container_width=True)
+            st.write("Muestra de las primeras 50 filas (de la base completa):")
+            st.dataframe(st.session_state['df_sap'].head(50), use_container_width=True)
         with tab2:
-            st.dataframe(st.session_state['df_pistas'].head(10), use_container_width=True)
+            st.write("Muestra de los bloques detectados:")
+            st.dataframe(st.session_state['df_pistas'].head(50), use_container_width=True)
 
 elif menu == "⚙️ 2. Cruce y Validación Dosis":
     st.markdown("<h1 class='titulo-principal'>Validador Hiperespacial</h1>", unsafe_allow_html=True)
