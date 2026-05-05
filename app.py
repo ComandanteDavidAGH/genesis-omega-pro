@@ -107,7 +107,6 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
                                 df_raw = pd.read_excel(pista, header=None)
                             
                             # BUSCAR EL PUNTO DE INICIO: "MEZCLA PREPARADA"
-                            # Buscamos en todo el archivo dónde aparece esa frase
                             mascara = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
                             
                             if mascara.any():
@@ -135,26 +134,6 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
                         st.error(f"🚨 Error en la misión: {e}")
             else:
                 st.error("🚨 Suministros incompletos. Cargue SAP y Pistas.")
-                
-                            # LIMPIEZA TÁCTICA: Borrar filas y columnas que estén 100% vacías
-                            df_temp = df_temp.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                            
-                            df_temp['ARCHIVO_ORIGEN'] = pista.name # Etiquetamos de qué pista viene
-                            lista_pistas.append(df_temp)
-                            
-                        df_pistas_consol = pd.concat(lista_pistas, ignore_index=True)
-                        
-                        # Limpiamos los nombres de las columnas para que sean números genéricos temporalmente
-                        df_pistas_consol.columns = [str(i) for i in range(len(df_pistas_consol.columns))]
-                        
-                        st.session_state['df_pistas'] = df_pistas_consol
-                        
-                        st.success("✅ ¡Datos devorados y pre-limpiados con éxito! Motores en línea.")
-                        
-                    except Exception as e:
-                        st.error(f"🚨 Falla en los motores de lectura: {e}")
-            else:
-                st.error("🚨 Faltan suministros. Suba ambos frentes de datos.")
 
     # --- RADAR DE PREVISUALIZACIÓN ---
     if 'df_sap' in st.session_state and 'df_pistas' in st.session_state:
@@ -165,10 +144,60 @@ elif menu == "📥 1. Buzón de Carga (SAP & Pista)":
             st.dataframe(st.session_state['df_sap'].head(10), use_container_width=True)
         with tab2:
             st.dataframe(st.session_state['df_pistas'].head(10), use_container_width=True)
-            
+
 elif menu == "⚙️ 2. Cruce y Validación Dosis":
     st.markdown("<h1 class='titulo-principal'>Validador Hiperespacial</h1>", unsafe_allow_html=True)
-    st.warning("⚠️ Módulo en construcción. Aquí el sistema cruzará SAP con la Pista y aplicará las reglas de margen y precios de la matriz de Configuración.")
+    
+    if 'df_sap' not in st.session_state or 'df_pistas' not in st.session_state:
+        st.warning("⚠️ Radares apagados. Vaya al 'Buzón de Carga' y suba los suministros primero.")
+    else:
+        st.success("🟢 Suministros detectados en memoria. Motores de cruce listos.")
+        
+        if st.button("⚡ EJECUTAR EXTRACCIÓN DE DOSIS", type="primary", use_container_width=True):
+            with st.spinner("Procesando matriz de productos..."):
+                try:
+                    df_raw = st.session_state['df_pistas']
+                    datos_limpios = []
+                    
+                    # Buscamos la fila donde dice "PRODUCTO" para saber dónde empieza la lista
+                    filas_producto = df_raw[df_raw.iloc[:, 1] == 'PRODUCTO'].index.tolist()
+                    
+                    for idx in filas_producto:
+                        origen = df_raw.iloc[idx]['ARCHIVO_ORIGEN']
+                        
+                        # Recorremos desde la palabra "PRODUCTO" hacia abajo
+                        fila_actual = idx + 1
+                        while fila_actual < len(df_raw):
+                            producto = str(df_raw.iloc[fila_actual, 1]).strip()
+                            
+                            # Si está vacío, terminamos este bloque
+                            if producto.lower() == 'nan' or producto == '':
+                                break
+                                
+                            cantidad = df_raw.iloc[fila_actual, 3] # Columna de cantidad
+                            lote = df_raw.iloc[fila_actual, 4]     # Columna de Lote
+                            
+                            datos_limpios.append({
+                                "PISTA_ORIGEN": origen,
+                                "PRODUCTO": producto,
+                                "CANTIDAD_PISTA": cantidad,
+                                "LOTE_PISTA": lote
+                            })
+                            fila_actual += 1
+                    
+                    # Convertimos la lista limpia en un DataFrame
+                    df_dosis_limpias = pd.DataFrame(datos_limpios)
+                    st.session_state['df_dosis_limpias'] = df_dosis_limpias
+                    
+                    st.success("✅ ¡Extracción de Dosis completada!")
+                    
+                except Exception as e:
+                    st.error(f"🚨 Falla en el escáner de dosis: {e}")
+
+        # Mostrar el resultado de la limpieza
+        if 'df_dosis_limpias' in st.session_state:
+            st.markdown("### 📋 Tabla Oficial de Consumos (Lista para cruzar con SAP)")
+            st.dataframe(st.session_state['df_dosis_limpias'], use_container_width=True)
 
 elif menu == "📊 3. Arqueo y Reportes":
     st.markdown("<h1 class='titulo-principal'>Central de Inteligencia</h1>", unsafe_allow_html=True)
