@@ -223,10 +223,10 @@ elif menu == "⚙️ 2. Validación de Misión":
                 m2.metric("Tope de Pista", tope_msj)
                 m3.metric("Recargo Terrestre (DIVAS)", f"${recargo_terrestre:,.0f}")
 
-            # --- 4. GRAN MATRIZ DE PRODUCTOS (SINCRONIZACIÓN TRIPLE) ---
+# --- 4. GRAN MATRIZ DE PRODUCTOS (SINCRONIZACIÓN TRIPLE) ---
             st.markdown("#### 🧪 Matriz de Validación: Pedidos SAP vs. Real Pista")
 
-            # 1. Limpieza del número de Pedido (Evita el error del ".0")
+            # 1. Limpieza del número de Pedido
             raw_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).strip()
             num_pedido = raw_pedido.split('.')[0] 
             
@@ -278,7 +278,8 @@ elif menu == "⚙️ 2. Validación de Misión":
                             col_nombre_sab = [c for c in fila_sabana.index if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: nombre_p = str(fila_sabana[col_nombre_sab[0]])
                                 
-                            col_precio_sab = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper() or 'VALOR' in str(c).upper() or 'COSTO' in str(c).upper()]
+                            # 💰 EXTRACCIÓN DEL COSTO UNITARIO EXACTO (Evitamos el valor total del inventario)
+                            col_precio_sab = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper() or 'UNIT' in str(c).upper()]
                             if col_precio_sab:
                                 try: costo_unit = float(str(fila_sabana[col_precio_sab[0]]).replace(',', '.'))
                                 except: costo_unit = 0.0
@@ -295,36 +296,46 @@ elif menu == "⚙️ 2. Validación de Misión":
                     matriz_datos.append({
                         "A: Producto": nombre_p,
                         "B: Dosis/Ha": round(dosis_ha, 3),
-                        "C: X (Ajuste %)": None, # <- AQUÍ LA CASILLA NACE VACÍA
-                        "D: Dosis Total": round(dosis_ha * ha_real, 3),
-                        "E: Costo (Unit x Margen)": round(costo_unit * (1 + (margen_val if 'margen_val' in locals() else 0.12)), 3),
+                        "C: X (Ajuste %)": None, # <- NACE VACÍA
+                        "D: Dosis Total": 0.0,   # <- SE CALCULA REACTIVAMENTE ABAJO
+                        "E: Costo Unit (+Margen)": round(costo_unit * (1 + (margen_val if 'margen_val' in locals() else 0.12)), 3),
                         "G: Lotes (SAP)": lote_sap,
                         "H: Saldo Real SAP": round(saldo_sap, 3),
-                        "I: Consumo Supervisor": round(cant_total_pedido, 3) # <- AQUÍ LA CANTIDAD REAL DE SAP
+                        "I: Consumo Supervisor": round(cant_total_pedido, 3) 
                     })
 
-            # 4. Mostrar y Editar la Matriz
+            # 4. Mostrar y Editar la Matriz (EFECTO EXCEL EN TIEMPO REAL)
             if matriz_datos:
                 df_matriz = pd.DataFrame(matriz_datos)
                 
+                # --- ⚡ MAGIA REACTIVA STREAMLIT ⚡ ---
+                # 1. Leer la memoria de la tabla antes de dibujarla para ver qué número escribió usted en la Columna C
+                if 'editor_matriz' in st.session_state:
+                    ediciones = st.session_state['editor_matriz'].get('edited_rows', {})
+                    for row_idx, edit_dict in ediciones.items():
+                        if "C: X (Ajuste %)" in edit_dict:
+                            df_matriz.at[row_idx, "C: X (Ajuste %)"] = edit_dict["C: X (Ajuste %)"]
+
+                # 2. Recálculo matemático instantáneo (Dosis/Ha * Ajuste X * Hectáreas Reales)
+                df_matriz["C_Val"] = df_matriz["C: X (Ajuste %)"].fillna(1.0) # Si está vacío, asume 1 (sin incremento)
+                df_matriz["D: Dosis Total"] = (df_matriz["B: Dosis/Ha"] * df_matriz["C_Val"] * ha_real).round(3)
+                df_matriz = df_matriz.drop(columns=["C_Val"]) # Ocultamos la columna invisible
+                
+                # 3. Dibujar la tabla interactiva
                 edited_df = st.data_editor(
                     df_matriz,
+                    key='editor_matriz', # 👈 ESTA LLAVE ES LA QUE PERMITE LA REACTIVIDAD EN SEGUNDOS
                     column_config={
                         "C: X (Ajuste %)": st.column_config.NumberColumn("Ajuste X", help="Ingrese el factor (Ej: 1.10)", min_value=0.000, max_value=10.000, step=0.001, format="%.3f"),
                         "D: Dosis Total": st.column_config.NumberColumn("Dosis Total", format="%.3f"),
-                        "E: Costo (Unit x Margen)": st.column_config.NumberColumn("Costo (Margen)", format="$ %.0f"),
+                        "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (+Margen)", format="$ %.0f"),
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
                         "I: Consumo Supervisor": st.column_config.NumberColumn("Consumo Sup.", format="%.3f"),
                     },
-                    disabled=["A: Producto", "B: Dosis/Ha", "D: Dosis Total", "E: Costo (Unit x Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Consumo Supervisor"],
+                    disabled=["A: Producto", "B: Dosis/Ha", "D: Dosis Total", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Consumo Supervisor"],
                     use_container_width=True,
                     hide_index=True
                 )
-                
-                # Recálculo dinámico: Si C está vacío, usa 1.0 para no alterar la Dosis Total
-                edited_df["C_Val"] = edited_df["C: X (Ajuste %)"].fillna(1.0)
-                edited_df["D: Dosis Total"] = (edited_df["B: Dosis/Ha"] * edited_df["C_Val"] * ha_real).round(3)
-                edited_df = edited_df.drop(columns=["C_Val"])
                 
             else:
                 st.warning(f"🚨 No se encontraron productos en Pedidos SAP para la Orden: {num_pedido}. Verifique SAP.")
