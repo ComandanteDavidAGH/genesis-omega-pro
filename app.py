@@ -167,23 +167,34 @@ elif menu == "⚙️ 2. Validación de Misión":
             finca_nombre = datos_vuelo['FINCA_INFORME']
             coctel_nombre = datos_vuelo['COCTEL']
             
-            # Buscador Inteligente de Productor y Margen
+            # --- BUSCADOR INTELIGENTE BLINDADO (Productor y Margen) ---
             tipo_productor = "ESTANDAR"
-            margen_val = 0.10 # 10% base
+            margen_val = 0.10 # 10% base por defecto
             
-            if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
-                info_finca = st.session_state['df_apoyo'][st.session_state['df_apoyo']['FINCA'].astype(str).str.contains(finca_nombre, case=False, na=False)]
-                if not info_finca.empty:
-                    tipo_productor = info_finca['TIPO_PRODUCTOR'].values[0]
+            try:
+                # 1. Buscar en Tabla de Apoyo (Escáner Dinámico de Columnas)
+                if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
+                    col_finca = [c for c in st.session_state['df_apoyo'].columns if 'FINCA' in str(c).upper()]
+                    if col_finca:
+                        info_finca = st.session_state['df_apoyo'][st.session_state['df_apoyo'][col_finca[0]].astype(str).str.contains(finca_nombre, case=False, na=False)]
+                        if not info_finca.empty:
+                            col_tipo = [c for c in st.session_state['df_apoyo'].columns if 'TIPO' in str(c).upper() and 'PROD' in str(c).upper()]
+                            if col_tipo:
+                                tipo_productor = info_finca[col_tipo[0]].values[0]
 
-            if 'df_config' in st.session_state and not st.session_state['df_config'].empty:
-                margen_row = st.session_state['df_config'][st.session_state['df_config']['PRODUCTOR'].astype(str).str.contains(tipo_productor, case=False, na=False)]
-                if not margen_row.empty:
-                    try:
-                        margen_val = float(str(margen_row['MARGEN'].values[0]).replace('%', '')) / 100
-                    except:
-                        margen_val = 0.12 # Margen de respaldo
-
+                # 2. Buscar Margen en Configuración (Evita KeyError)
+                if 'df_config' in st.session_state and not st.session_state['df_config'].empty:
+                    col_prod_conf = [c for c in st.session_state['df_config'].columns if 'PRODUCTOR' in str(c).upper()]
+                    col_margen_conf = [c for c in st.session_state['df_config'].columns if 'MARGEN' in str(c).upper()]
+                    
+                    if col_prod_conf and col_margen_conf:
+                        margen_row = st.session_state['df_config'][st.session_state['df_config'][col_prod_conf[0]].astype(str).str.contains(tipo_productor, case=False, na=False)]
+                        if not margen_row.empty:
+                            valor_bruto = str(margen_row[col_margen_conf[0]].values[0]).replace('%', '').strip()
+                            margen_val = float(valor_bruto) / 100 if float(valor_bruto) > 1 else float(valor_bruto)
+            except Exception as e_margen:
+                st.warning("⚠️ No se detectó la columna exacta de márgenes. Usando 10% de base táctica.")
+            # -----------------------------------------------------------
             with st.container(border=True):
                 c1, c2, c3, c4 = st.columns(4)
                 f_edit = c1.text_input("📍 Finca (Editable para SAP):", value=finca_nombre)
