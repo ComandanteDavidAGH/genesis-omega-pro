@@ -228,7 +228,7 @@ elif menu == "⚙️ 2. Validación de Misión":
 
             # 1. Limpieza del número de Pedido (Evita el error del ".0")
             raw_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).strip()
-            num_pedido = raw_pedido.split('.')[0] # Convierte 170035970.0 en 170035970
+            num_pedido = raw_pedido.split('.')[0] 
             
             # 2. Filtrar Pedidos SAP y Sábana SAP
             df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
@@ -239,7 +239,6 @@ elif menu == "⚙️ 2. Validación de Misión":
             # Buscar el Pedido en TODO el archivo de Pedidos SAP
             productos_pedido = pd.DataFrame()
             if not df_ped.empty and num_pedido != "S/N":
-                # Escáner universal: busca el número de pedido en cualquier columna
                 filas_con_pedido = df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido, case=False, na=False)).any(axis=1)
                 productos_pedido = df_ped[filas_con_pedido]
 
@@ -247,70 +246,67 @@ elif menu == "⚙️ 2. Validación de Misión":
             if not productos_pedido.empty:
                 for _, fila_sap in productos_pedido.iterrows():
                     
-                    # A) Capturar el CÓDIGO ITEM desde Pedido SAP
+                    # A) Capturar el CÓDIGO ITEM
                     col_material_ped = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper()]
                     cod_item = str(fila_sap[col_material_ped[0]]).split('.')[0] if col_material_ped else str(fila_sap.iloc[1]).split('.')[0]
                     
-                    # B) Capturar DOSIS sugerida
-                    col_dosis_ped = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
-                    dosis_ha = 0.0
-                    if col_dosis_ped:
-                        try: dosis_ha = float(str(fila_sap[col_dosis_ped[0]]).replace(',', '.'))
-                        except: dosis_ha = 0.0
+                    # 🛡️ FILTRO ANTI-SERVICIOS FINANCIEROS (Ignoramos 459 y 429)
+                    if "459" in cod_item or "429" in cod_item:
+                        continue 
+                    
+                    # B) Capturar CANTIDAD TOTAL del Pedido SAP 
+                    col_cant_ped = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
+                    cant_total_pedido = 0.0
+                    if col_cant_ped:
+                        try: cant_total_pedido = float(str(fila_sap[col_cant_ped[0]]).replace(',', '.'))
+                        except: cant_total_pedido = 0.0
 
-                    # C) VIAJAR A LA SÁBANA SAP (Con el Código) para buscar Nombre, Precio, Lote y Saldo
+                    # 🧮 CÁLCULO DE DOSIS REAL (Total / Hectáreas)
+                    dosis_ha = cant_total_pedido / ha_real if ha_real > 0 else 0.0
+
+                    # C) VIAJAR A LA SÁBANA SAP
                     nombre_p = f"Item {cod_item} (No en Sábana)"
                     costo_unit = 0.0
                     lote_sap = "S/L"
                     saldo_sap = 0.0
                     
                     if not df_sab.empty:
-                        # Buscamos el cod_item en toda la Sábana SAP
                         match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
-                        
                         if not match_sabana.empty:
                             fila_sabana = match_sabana.iloc[0]
                             
-                            # Extraer Nombre Real (Texto breve, Descripcion)
                             col_nombre_sab = [c for c in fila_sabana.index if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: nombre_p = str(fila_sabana[col_nombre_sab[0]])
                                 
-                            # Extraer Costo/Precio
                             col_precio_sab = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper() or 'VALOR' in str(c).upper() or 'COSTO' in str(c).upper()]
                             if col_precio_sab:
                                 try: costo_unit = float(str(fila_sabana[col_precio_sab[0]]).replace(',', '.'))
                                 except: costo_unit = 0.0
                                 
-                            # Extraer Lote
                             col_lote_sab = [c for c in fila_sabana.index if 'LOTE' in str(c).upper()]
                             if col_lote_sab: lote_sap = str(fila_sabana[col_lote_sab[0]])
                                 
-                            # Extraer Saldo
                             col_saldo_sab = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper() or 'CANTIDAD' in str(c).upper()]
                             if col_saldo_sab:
                                 try: saldo_sap = float(str(fila_sabana[col_saldo_sab[0]]).replace(',', '.'))
                                 except: saldo_sap = 0.0
 
-                    # D) Consumo Supervisor (Mantenemos la extracción base de Pista)
-                    consumo_supervisor = float(datos_raw.get(10, 0)) # Puede ajustarse si se requiere
-
                     # Consolidar la fila
                     matriz_datos.append({
                         "A: Producto": nombre_p,
                         "B: Dosis/Ha": round(dosis_ha, 3),
-                        "C: X (Ajuste %)": 1.000,
+                        "C: X (Ajuste %)": None, # <- AQUÍ LA CASILLA NACE VACÍA
                         "D: Dosis Total": round(dosis_ha * ha_real, 3),
                         "E: Costo (Unit x Margen)": round(costo_unit * (1 + (margen_val if 'margen_val' in locals() else 0.12)), 3),
                         "G: Lotes (SAP)": lote_sap,
                         "H: Saldo Real SAP": round(saldo_sap, 3),
-                        "I: Consumo Supervisor": round(consumo_supervisor, 3)
+                        "I: Consumo Supervisor": round(cant_total_pedido, 3) # <- AQUÍ LA CANTIDAD REAL DE SAP
                     })
 
             # 4. Mostrar y Editar la Matriz
             if matriz_datos:
                 df_matriz = pd.DataFrame(matriz_datos)
                 
-                # Editor Interactivo para la Columna C
                 edited_df = st.data_editor(
                     df_matriz,
                     column_config={
@@ -320,13 +316,15 @@ elif menu == "⚙️ 2. Validación de Misión":
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
                         "I: Consumo Supervisor": st.column_config.NumberColumn("Consumo Sup.", format="%.3f"),
                     },
-                    disabled=["A: Producto", "B: Dosis/Ha", "D: Dosis Total", "E: Costo (Unit x Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"],
+                    disabled=["A: Producto", "B: Dosis/Ha", "D: Dosis Total", "E: Costo (Unit x Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Consumo Supervisor"],
                     use_container_width=True,
                     hide_index=True
                 )
                 
-                # Recálculo dinámico de la Dosis Total según el valor de X editado
-                edited_df["D: Dosis Total"] = (edited_df["B: Dosis/Ha"] * edited_df["C: X (Ajuste %)"] * ha_real).round(3)
+                # Recálculo dinámico: Si C está vacío, usa 1.0 para no alterar la Dosis Total
+                edited_df["C_Val"] = edited_df["C: X (Ajuste %)"].fillna(1.0)
+                edited_df["D: Dosis Total"] = (edited_df["B: Dosis/Ha"] * edited_df["C_Val"] * ha_real).round(3)
+                edited_df = edited_df.drop(columns=["C_Val"])
                 
             else:
                 st.warning(f"🚨 No se encontraron productos en Pedidos SAP para la Orden: {num_pedido}. Verifique SAP.")
