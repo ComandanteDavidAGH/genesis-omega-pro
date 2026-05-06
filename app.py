@@ -173,7 +173,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             c1, c2 = st.columns(2)
             
             # LISTA DEPLEGABLE DE FINCAS (Desde TABLA DE APOYO2023 / TABLA DE APOYO2023)
-            lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 0].unique().tolist() # Asumiendo columna 0 es Finca
+            lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 1].unique().tolist() # Asumiendo columna 0 es Finca
             finca_sel = c1.selectbox("📍 Seleccione Finca (Base de Datos):", ["---"] + lista_fincas_apoyo)
             
             # Lista de vuelos detectados en informes para cruzar pedido
