@@ -92,7 +92,7 @@ elif menu == "📥 1. Buzón de Carga":
                             gc = gspread.service_account(filename='credenciales.json')
                         
                         # ABRIR LA BÓVEDA POR URL (Asegúrese de tener su link real aquí)
-                        url_boveda = "https://docs.google.com/spreadsheets/d/1qoacRkKBAwcxrG2EjyrUIvxVP0lYIWORse4pZUAVvxY/edit?gid=2040307191#gid=2040307191"
+                        url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit?gid=1995619804#gid=1995619804"
                         boveda = gc.open_by_url(url_boveda)
                         
                         # Entrar a la pestaña "TABLA 2"
