@@ -94,7 +94,7 @@ elif menu == "📥 1. Buzón de Carga":
                         st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
                         
                         # Cargar Tabla de Apoyo
-                        hoja_apoyo = boveda.worksheet("TablaNegraDatos") 
+                        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                         datos_apoyo = hoja_apoyo.get_all_values()
                         st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
                         
@@ -161,7 +161,7 @@ elif menu == "⚙️ 2. Validación de Misión":
         st.error("🚨 ALERTA: No se encontró el Informe de Pistas en la memoria. ¿Presionó el botón de procesar en el Módulo 1?")
         faltan_datos = True
     if 'df_apoyo' not in st.session_state:
-        st.error("🚨 ALERTA: No se encontró la 'TablaNegraDatos' de Google Drive. Revise la conexión satelital en el Módulo 1.")
+        st.error("🚨 ALERTA: No se encontró la 'TABLA DE APOYO2023' de Google Drive. Revise la conexión satelital en el Módulo 1.")
         faltan_datos = True
         
     if faltan_datos:
@@ -172,7 +172,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
             c1, c2 = st.columns(2)
             
-            # LISTA DEPLEGABLE DE FINCAS (Desde TablaNegraDatos / TABLA DE APOYO 2023)
+            # LISTA DEPLEGABLE DE FINCAS (Desde TABLA DE APOYO2023 / TABLA DE APOYO2023)
             lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 0].unique().tolist() # Asumiendo columna 0 es Finca
             finca_sel = c1.selectbox("📍 Seleccione Finca (Base de Datos):", ["---"] + lista_fincas_apoyo)
             
