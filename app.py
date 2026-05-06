@@ -63,7 +63,8 @@ elif menu == "📥 1. Buzón de Carga":
                 try:
 # NUEVO: LECTURA DE TABLA 2 / CONFIGURACIÓN
                     bytes_config = io.BytesIO(f_config.getvalue())
-                    nom_conf = f_config.name.lower()
+                    nom_conf = f_config.name.lower()  # <--- FALTABA EL .name AQUÍ
+                    
                     if nom_conf.endswith('.xlsx') or nom_conf.endswith('.xls'):
                         st.session_state['df_config'] = pd.read_excel(bytes_config)
                     else:
