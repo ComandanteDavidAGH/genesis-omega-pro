@@ -109,65 +109,82 @@ elif menu == "📥 1. Buzón de Carga":
                         conexion_exitosa = False
                     # ==========================================
                     
-                    # 4. 🛰️ ESCÁNER PROFUNDO (Solo Pestañas Visibles / Multifinca)
+# 4. 🛰️ ESCÁNER DE BARRIDO TOTAL (Multi-Pestaña / Multi-Cóctel / Multi-Finca)
                     lista_pistas = []
                     
                     for f in f_pistas:
-                        # --- PASO 0: Detectar cuáles pestañas son visibles ---
                         bytes_data = f.getvalue()
-                        wb = openpyxl.load_workbook(io.BytesIO(bytes_data), read_only=True)
-                        pestañas_visibles = [sheet.title for sheet in wb.worksheets if sheet.sheet_state == 'visible']
-                        wb.close()
+                        ext = f.name.split('.')[-1].lower()
                         
-                        # --- PASO 1: Leer solo las visibles con Pandas ---
-                        dict_pestañas = pd.read_excel(io.BytesIO(bytes_data), sheet_name=pestañas_visibles, header=None)
-                        
-                        for nombre_pestaña, df in dict_pestañas.items():
-                            # Limpieza inicial de filas/columnas vacías que confunden al radar
-                            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
-                            
-                            # Paso A: Localizar el Cóctel
-                            idx_coctel = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index
-                            
-                            if not idx_coctel.empty:
-                                fila_coctel = idx_coctel[0]
-                                # Buscamos el nombre del cóctel en esa fila (suele ser el siguiente valor no nulo)
-                                valores_fila = df.iloc[fila_coctel].dropna().tolist()
-                                nombre_coctel = valores_fila[1] if len(valores_fila) > 1 else "DESCONOCIDO"
+                        try:
+                            # --- PASO 0: Carga Diferencial según el Suministro ---
+                            if ext == 'xlsx':
+                                wb = openpyxl.load_workbook(io.BytesIO(bytes_data), read_only=True)
+                                visibles = [s.title for s in wb.worksheets if s.sheet_state == 'visible']
+                                wb.close()
+                                dict_pestañas = pd.read_excel(io.BytesIO(bytes_data), sheet_name=visibles, header=None)
+                            elif ext in ['xls', 'xlsm']:
+                                # Para archivos antiguos, leemos todas las pestañas
+                                dict_pestañas = pd.read_excel(io.BytesIO(bytes_data), sheet_name=None, header=None)
+                            else:
+                                # Es un CSV (solo tiene una "pestaña")
+                                df_csv = pd.read_csv(io.BytesIO(bytes_data), sep=None, engine='python', header=None)
+                                dict_pestañas = {"Hoja_Unica": df_csv}
+
+                            # --- PASO 1: Barrido de cada Pestaña Detectada ---
+                            for nombre_pestaña, df in dict_pestañas.items():
+                                # Limpieza de ruido (filas/columnas totalmente vacías)
+                                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
                                 
-                                # Paso B: Localizar la tabla de Fincas
-                                idx_fincas_header = df[df.astype(str).apply(lambda x: x.str.contains('FINCAS', case=False, na=False)).any(axis=1)].index
+                                # A. Localizar TODOS los Cócteles en esta pestaña
+                                filas_coctel = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index.tolist()
                                 
-                                if not idx_fincas_header.empty:
-                                    fila_header = idx_fincas_header[0]
-                                    col_fincas_idx = (df.iloc[fila_header].astype(str).str.contains('FINCAS', case=False)).values.argmax()
+                                for i_c, fila_c_idx in enumerate(filas_coctel):
+                                    # Obtener Nombre del Cóctel (valor a la derecha de la palabra COCTEL)
+                                    fila_data = df.iloc[fila_c_idx].dropna().tolist()
+                                    nombre_coctel = fila_data[1] if len(fila_data) > 1 else "DESCONOCIDO"
                                     
-                                    # Extraemos datos desde la fila de abajo
-                                    df_datos = df.iloc[fila_header + 1:].copy()
+                                    # B. Buscar la cabecera "FINCAS" debajo de este cóctel específico
+                                    # Definimos el límite: hasta el siguiente cóctel o el final de la hoja
+                                    limite_inferior = filas_coctel[i_c + 1] if i_c + 1 < len(filas_coctel) else len(df)
+                                    df_segmento = df.iloc[fila_c_idx:limite_inferior]
                                     
-                                    # Recorremos cada fila hasta el final de la tabla de esa pestaña
-                                    for i in range(len(df_datos)):
-                                        finca_nombre = str(df_datos.iloc[i, col_fincas_idx]).strip()
+                                    idx_fincas = df_segmento[df_segmento.astype(str).apply(lambda x: x.str.contains('FINCAS', case=False, na=False)).any(axis=1)].index
+                                    
+                                    if not idx_fincas.empty:
+                                        fila_h_fincas = idx_fincas[0]
+                                        # Identificamos en qué columna está la palabra "FINCAS"
+                                        col_fincas_idx = (df.iloc[fila_h_fincas].astype(str).str.contains('FINCAS', case=False)).values.argmax()
                                         
-                                        # Si la celda está vacía o dice TOTAL, cerramos esta pestaña
-                                        if finca_nombre.lower() in ['nan', '', 'none'] or "TOTAL" in finca_nombre.upper():
-                                            break
-                                        
-                                        # Capturamos toda la fila de datos para el cruce del Módulo 2
-                                        # (Hectáreas, Pedido, Productos, etc.)
-                                        registro = {
-                                            "ORIGEN": f"{f.name} | {nombre_pestaña}",
-                                            "COCTEL": nombre_coctel,
-                                            "FINCA_INFORME": finca_nombre,
-                                            "DATOS_COMPLETOS": df_datos.iloc[i].to_dict() 
-                                        }
-                                        lista_pistas.append(registro)
-                    
+                                        # C. Extraer todas las fincas de este bloque (hasta el TOTAL)
+                                        for r in range(fila_h_fincas + 1, limite_inferior):
+                                            finca_v = str(df.iloc[r, col_fincas_idx]).strip()
+                                            
+                                            # Si llegamos al final del bloque o a un total, saltamos al siguiente cóctel
+                                            if finca_v.lower() in ['nan', '', 'none'] or "TOTAL" in finca_v.upper():
+                                                break
+                                            
+                                            # Guardamos el registro de combate con toda su telemetría
+                                            registro = {
+                                                "ORIGEN": f"{f.name} | {nombre_pestaña}",
+                                                "COCTEL": nombre_coctel,
+                                                "FINCA_INFORME": finca_v,
+                                                "DATOS_FILA": df.iloc[r].to_dict() # Aquí va hectáreas, pedido, etc.
+                                            }
+                                            lista_pistas.append(registro)
+                                            
+                        except Exception as e_file:
+                            st.error(f"🚨 Error procesando {f.name}: {e_file}")
+
+                    # --- REPORTE FINAL DEL ESCUADRÓN ---
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                        st.success(f"✅ ¡Barrido Exitoso! {len(lista_pistas)} vuelos detectados en pestañas visibles.")
+                        st.success(f"✅ ¡Barrido de Nivel 10! Detectados {len(lista_pistas)} vuelos en total.")
+                        with st.expander("🔍 Ver Radar de Vuelos"):
+                            st.dataframe(st.session_state['df_pistas'][["ORIGEN", "COCTEL", "FINCA_INFORME"]])
                     else:
-                        st.error("🚨 No se encontró la estructura 'FINCAS' en ninguna pestaña visible.")            
+                        st.error("🚨 El escáner no encontró la estructura de 'FINCAS' en los archivos visibles.")
+
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>🚀 Centro de Mando Génesis 2.0</h1>", unsafe_allow_html=True)
     
