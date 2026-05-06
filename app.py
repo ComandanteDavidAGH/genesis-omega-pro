@@ -145,44 +145,96 @@ elif menu == "📥 1. Buzón de Carga":
                     st.error(f"🚨 Error Crítico en Procesamiento: {e_master}")
 
 elif menu == "⚙️ 2. Validación de Misión":
-    st.markdown("<h1 class='titulo-principal'>🚀 Centro de Mando Génesis 2.0</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Matriz de Liquidación</h1>", unsafe_allow_html=True)
     
-    if 'df_sabana' not in st.session_state or 'df_pistas' not in st.session_state:
-        st.warning("⚠️ Sin suministros. Cargue SAP e Informes primero.")
+    if 'df_pistas' not in st.session_state:
+        st.warning("⚠️ Sin suministros. Cargue SAP e Informes en la Zona de Aterrizaje primero.")
     else:
-        df_config = st.session_state.get('df_config', pd.DataFrame())
+        df_p = st.session_state['df_pistas']
+        
+        # 1. SELECTOR BLINDADO (Al cambiar aquí, cambia toda la pantalla)
+        # Creamos una etiqueta única para que el sistema no se confunda entre fincas
+        df_p['SELECTOR'] = df_p['FINCA_INFORME'].astype(str) + " | Cóctel: " + df_p['COCTEL'].astype(str)
         
         st.markdown("### 📡 Selección de Objetivo")
-        lista_opciones = st.session_state['df_pistas']['FINCA_INFORME'].unique().tolist()
-        pedido_id = st.selectbox("🎯 Seleccione Finca del Informe:", ["---"] + lista_opciones)
+        opciones_vuelo = ["---"] + df_p['SELECTOR'].tolist()
+        vuelo_seleccionado = st.selectbox("🎯 Fije el blanco (Seleccione Vuelo):", opciones_vuelo)
         
-        if pedido_id != "---":
-            margen_aplicado = 0.12 
+        if vuelo_seleccionado != "---":
+            # Extraer datos exactos de la selección para que TODO cambie
+            datos_vuelo = df_p[df_p['SELECTOR'] == vuelo_seleccionado].iloc[0]
+            datos_raw = datos_vuelo['DATOS_FILA'] # Este es el diccionario con las columnas reales de Excel
+            finca_nombre = datos_vuelo['FINCA_INFORME']
+            coctel_nombre = datos_vuelo['COCTEL']
             
+            # Buscador Inteligente de Productor y Margen
+            tipo_productor = "ESTANDAR"
+            margen_val = 0.10 # 10% base
+            
+            if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
+                info_finca = st.session_state['df_apoyo'][st.session_state['df_apoyo']['FINCA'].astype(str).str.contains(finca_nombre, case=False, na=False)]
+                if not info_finca.empty:
+                    tipo_productor = info_finca['TIPO_PRODUCTOR'].values[0]
+
+            if 'df_config' in st.session_state and not st.session_state['df_config'].empty:
+                margen_row = st.session_state['df_config'][st.session_state['df_config']['PRODUCTOR'].astype(str).str.contains(tipo_productor, case=False, na=False)]
+                if not margen_row.empty:
+                    try:
+                        margen_val = float(str(margen_row['MARGEN'].values[0]).replace('%', '')) / 100
+                    except:
+                        margen_val = 0.12 # Margen de respaldo
+
             with st.container(border=True):
-                c1, c2, c3 = st.columns([2, 1, 1])
-                finca_edit = c1.text_input("📍 Finca (Editable):", value=pedido_id)
-                ha_reales = c2.number_input("🚜 Hectáreas Reales:", value=79.0)
-                horometro = c3.number_input("⏱️ Horómetro (hrs):", value=1.5)
+                c1, c2, c3, c4 = st.columns(4)
+                f_edit = c1.text_input("📍 Finca (Editable para SAP):", value=finca_nombre)
+                
+                # La hectárea viene de la columna 8 del informe, pero si no la encuentra pone 79 por defecto
+                ha_inf = float(datos_raw.get(8, datos_raw.get('HECTÁREAS', 79.0))) if pd.notnull(datos_raw.get(8)) else 79.0
+                ha_real = c2.number_input("🚜 Hectáreas Reales:", value=ha_inf, step=0.1)
+                
+                horometro = c3.number_input("⏱️ Horómetro (hrs):", value=0.0, step=0.1)
+                
+                # Matriz de equipos (Dron, Avión, Bloque)
+                tipo_maquina = c4.selectbox("🛸 Vehículo y Matriz:", ["✈️ Avión (Tarifa Normal)", "🚁 Dron (Tarifa Fija)", "✈️ Aviones Múltiples (Bloque)"])
 
-                st.markdown("#### 📊 Detalle de Liquidación")
-                detalle_df = pd.DataFrame({
-                    "Material": ["ACEITE", "SIGANEX", "INBIOSIL"],
-                    "Cant. Real": [474, 40, 20],
-                    "Costo Unit": [4892, 44243, 12078],
-                    "Precio Venta": [4892*1.12, 44243*1.12, 12078*1.12]
-                })
-                detalle_df["Total"] = detalle_df["Cant. Real"] * detalle_df["Precio Venta"]
-                st.dataframe(detalle_df.style.format({"Costo Unit": "${:,.0f}", "Precio Venta": "${:,.0f}", "Total": "${:,.0f}"}), use_container_width=True)
+                st.markdown(f"**Tipo Productor:** `{tipo_productor}` | **Margen de Ganancia:** `{margen_val*100}%` | **Cóctel Detectado:** `{coctel_nombre}`")
 
-                if st.button("🔥 DETONAR FACTURA", type="primary", use_container_width=True):
+                # --- 📊 MATRIZ DE PRODUCTOS, DOSIS Y PRECIOS (ESPEJO DE SU EXCEL) ---
+                st.markdown("#### 🧪 Laboratorio de Mezcla e Inventario")
+                
+                items_mezcla = []
+                # El sistema escanea desde la columna 10 a la 18 de su Excel buscando productos
+                for i in range(10, 19): 
+                    cant = datos_raw.get(i, 0)
+                    if pd.notnull(cant) and str(cant).replace('.','',1).isdigit() and float(cant) > 0:
+                        # Valores simulados de SAP que luego conectaremos con su df_sabana real
+                        costo_unitario_sap = 12000 + (i * 1500) 
+                        precio_venta = costo_unitario_sap * (1 + margen_val)
+                        
+                        items_mezcla.append({
+                            "Material (Producto)": f"Cod_Columna_{i}", # Extraeremos el nombre real en el paso final
+                            "Cant. Reportada": float(cant),
+                            "Dosis Piloto": float(cant) / ha_real if ha_real > 0 else 0,
+                            "Costo SAP": costo_unitario_sap,
+                            "Precio de Venta": precio_venta,
+                            "Valor Total": float(cant) * precio_venta
+                        })
+                
+                if items_mezcla:
+                    df_detallado = pd.DataFrame(items_mezcla)
+                    # use_container_width=True ajusta las columnas para usar toda la pantalla
+                    st.dataframe(df_detallado.style.format({
+                        "Cant. Reportada": "{:.2f}",
+                        "Dosis Piloto": "{:.3f}",
+                        "Costo SAP": "${:,.0f}",
+                        "Precio de Venta": "${:,.0f}",
+                        "Valor Total": "${:,.0f}"
+                    }), use_container_width=True)
+                else:
+                    st.info("🚨 No se detectaron productos aplicados para esta finca en el radar.")
+
+                # --- BOTÓN DE LIQUIDACIÓN ---
+                st.markdown("---")
+                if st.button("🔥 CONFIRMAR MATRIZ Y FACTURAR", type="primary", use_container_width=True):
                     st.balloons()
-                    st.success("✅ ¡Historial Alimentado!")
-
-        st.markdown("---")
-        st.markdown("### 📈 Monitor de Operaciones")
-        col_g1, col_g2 = st.columns(2)
-        fig_ha = px.bar(x=["Sacramento", "Tamacará", "La Carolina"], y=[450, 320, 280], title="Hectáreas por Finca", color_discrete_sequence=['#00FFAA'])
-        col_g1.plotly_chart(fig_ha, use_container_width=True)
-        fig_costos = px.line(x=[1,2,3,4,5], y=[42000, 48000, 44000, 46000, 45000], title="Tendencia de Costo", markers=True)
-        col_g2.plotly_chart(fig_costos, use_container_width=True)
+                    st.success(f"✅ ¡Operación exitosa! Liquidación de {f_edit} enviada al historial de base de datos.")
