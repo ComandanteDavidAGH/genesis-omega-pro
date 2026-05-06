@@ -43,41 +43,28 @@ if menu == "🏠 Centro de Mando":
     """, unsafe_allow_html=True)
 
 elif menu == "📥 1. Buzón de Carga":
-    st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Tripartita</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Cuartel General</h1>", unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
+    c3, c4 = st.columns(2)
     
     with c1:
-        st.markdown("### 📁 Sábana SAP\n*(Lotes y Precios)*")
-        f_sabana = st.file_uploader("Subir Export SAP", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="sab")
+        st.markdown("### 📁 1. Sábana SAP")
+        f_sabana = st.file_uploader("Inventario, Precios y Lotes", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="sab")
     with c2:
-        st.markdown("### 📝 Pedidos SAP\n*(La Planificación)*")
-        f_pedidos = st.file_uploader("Subir Pedidos Diarios", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="ped")
+        st.markdown("### 📝 2. Pedidos SAP")
+        f_pedidos = st.file_uploader("Planificación (Finca/Cantidades)", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="ped")
     with c3:
-        st.markdown("### 🚁 Informes Pista\n*(La Realidad)*")
-        f_pistas = st.file_uploader("Subir Reportes Pista", type=["xlsx", "xls", "csv", "CSV", "XLSX"], accept_multiple_files=True, key="pis")
+        st.markdown("### 🚁 3. Informes Pista")
+        f_pistas = st.file_uploader("Reportes Reales", type=["xlsx", "xls", "csv", "CSV", "XLSX"], accept_multiple_files=True, key="pis")
+    with c4:
+        st.markdown("### ⚙️ 4. Base TABLA 2 / Config")
+        f_config = st.file_uploader("Fincas, Topes y Productores", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="conf")
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
-        if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Sincronizando los 3 frentes de batalla (Blindaje Anti-Mayúsculas)..."):
+        if f_sabana and f_pedidos and f_pistas and f_config:
+            with st.spinner("Sincronizando los 4 frentes de batalla..."):
                 try:
-# NUEVO: LECTURA DE TABLA 2 / CONFIGURACIÓN
-                    bytes_config = io.BytesIO(f_config.getvalue())
-                    nom_conf = f_config.name.lower()  # <--- FALTABA EL .name AQUÍ
-                    
-                    if nom_conf.endswith('.xlsx') or nom_conf.endswith('.xls'):
-                        st.session_state['df_config'] = pd.read_excel(bytes_config)
-                    else:
-                        st.session_state['df_config'] = pd.read_csv(bytes_config, sep=None, engine='python')
-                        
-                    # Mensaje de éxito
-                    st.success("✅ ¡Cuartel Sincronizado! Sábana, Pedidos, Pistas y Base de Operaciones cargados en memoria.")
-                    
-                except Exception as e:
-                    st.error(f"🚨 Error crítico en el ensamblaje: {e}")
-        else:
-            st.error("🚨 Faltan suministros. Suba los 4 frentes.")                   
-                    
                     # 1. Leer Sábana
                     bytes_sabana = io.BytesIO(f_sabana.getvalue())
                     nom_sab = f_sabana.name.lower()
@@ -93,8 +80,16 @@ elif menu == "📥 1. Buzón de Carga":
                         st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos)
                     else:
                         st.session_state['df_pedidos'] = pd.read_csv(bytes_pedidos, sep=None, engine='python')
+                        
+                    # 3. LECTURA DE TABLA 2 / CONFIGURACIÓN (Reubicado al lugar correcto)
+                    bytes_config = io.BytesIO(f_config.getvalue())
+                    nom_conf = f_config.name.lower()
+                    if nom_conf.endswith('.xlsx') or nom_conf.endswith('.xls'):
+                        st.session_state['df_config'] = pd.read_excel(bytes_config)
+                    else:
+                        st.session_state['df_config'] = pd.read_csv(bytes_config, sep=None, engine='python')
                     
-                    # 3. Leer Pistas
+                    # 4. Leer Pistas
                     lista_pistas = []
                     errores_pistas = []
                     
@@ -142,7 +137,7 @@ elif menu == "📥 1. Buzón de Carga":
                     
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.concat(lista_pistas, ignore_index=True)
-                        st.success(f"✅ ¡Trinidad Sincronizada! SAP: {len(st.session_state['df_sabana'])} filas | Pedidos: {len(st.session_state['df_pedidos'])} filas | Pistas: {len(lista_pistas)} bloques.")
+                        st.success(f"✅ ¡Cuartel Sincronizado! SAP: {len(st.session_state['df_sabana'])} | Pedidos: {len(st.session_state['df_pedidos'])} | Pistas: {len(lista_pistas)} | Config: {len(st.session_state['df_config'])} filas.")
                         
                         if errores_pistas:
                             st.warning(f"⚠️ Nota: Algunos archivos fueron saltados por formato ilegible: {', '.join(errores_pistas)}")
@@ -152,8 +147,8 @@ elif menu == "📥 1. Buzón de Carga":
                 except Exception as e:
                     st.error(f"🚨 Error crítico en el ensamblaje principal: {e}")
         else:
-            st.error("🚨 Faltan suministros. Suba los 3 frentes.")
-
+            st.error("🚨 Faltan suministros. Suba los 4 frentes.")
+            
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Validación Cruzada (La Trinidad)</h1>", unsafe_allow_html=True)
     
