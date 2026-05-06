@@ -83,10 +83,15 @@ elif menu == "📥 1. Buzón de Carga":
                     # 🛰️ 3. CONEXIÓN SATELITAL (BÓVEDA GOOGLE DRIVE)
                     # ==========================================
                     try:
-                        # La llave maestra (Debe estar en la misma carpeta que app.py)
-                        gc = gspread.service_account(filename='credenciales.json')
+                        # Motor Nativo: Lee el diccionario directamente de Streamlit
+                        if "gcp_credentials" in st.secrets:
+                            # Convertimos el secreto nativo directamente a diccionario
+                            cred_dict = dict(st.secrets["gcp_credentials"])
+                            gc = gspread.service_account_from_dict(cred_dict)
+                        else:
+                            gc = gspread.service_account(filename='credenciales.json')
                         
-                        # ABRIR LA BÓVEDA POR URL (Pegue su link real aquí adentro, conservando las comillas)
+                        # ABRIR LA BÓVEDA POR URL (Asegúrese de tener su link real aquí)
                         url_boveda = "https://docs.google.com/spreadsheets/d/1qoacRkKBAwcxrG2EjyrUIvxVP0lYIWORse4pZUAVvxY/edit?gid=2040307191#gid=2040307191"
                         boveda = gc.open_by_url(url_boveda)
                         
