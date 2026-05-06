@@ -173,8 +173,8 @@ elif menu == "📥 1. Buzón de Carga":
                                             }
                                             lista_pistas.append(registro)
                                             
-                        except Exception as e_file:
-                            st.error(f"🚨 Error procesando {f.name}: {e_file}")
+                    except Exception as e_file:
+                        st.error(f"🚨 Error procesando {f.name}: {e_file}")
 
                     # --- REPORTE FINAL DEL ESCUADRÓN ---
                     if lista_pistas:
