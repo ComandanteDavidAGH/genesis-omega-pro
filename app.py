@@ -223,36 +223,97 @@ elif menu == "⚙️ 2. Validación de Misión":
                 m2.metric("Tope de Pista", tope_msj)
                 m3.metric("Recargo Terrestre (DIVAS)", f"${recargo_terrestre:,.0f}")
 
-            # --- 4. GRAN MATRIZ DE PRODUCTOS (COLUMNAS A A I) ---
-            st.markdown("#### 🧪 Matriz de Validación de Productos y Dosis")
+            # --- 4. GRAN MATRIZ DE PRODUCTOS (SINCRONIZACIÓN TRIPLE) ---
+            st.markdown("#### 🧪 Matriz de Validación: Pedidos SAP vs. Real Pista")
+
+            # 1. Obtener el número de Pedido de las columnas U (20) o V (21)
+            num_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N")))
             
-            # Aquí el sistema cruza Pedidos SAP, Informe Pista y Sábana SAP
+            # 2. Filtrar Pedidos SAP y Sábana SAP
+            df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
+            df_sab = st.session_state.get('df_sabana', pd.DataFrame())
+            
             matriz_datos = []
-            
-            # Escaneamos los productos que reportó el supervisor en el informe
-            for i in range(10, 18):
-                consumo_sup = datos_raw.get(i, 0)
-                if pd.notnull(consumo_sup) and float(consumo_sup) > 0:
-                    nombre_prod = f"Producto_{i}" # Aquí buscaremos el nombre real en Pedidos SAP
-                    dosis_base = 0.5 # Aquí traemos dosis de SAP
-                    porcentaje_x = 1.0 # Columna C (La X)
+
+            # Intentamos buscar los productos asignados a este pedido en SAP
+            # Buscamos en el archivo de pedidos la columna que contenga el número de pedido
+            productos_pedido = pd.DataFrame()
+            if not df_ped.empty:
+                # Buscamos en todas las columnas por si acaso el nombre varía
+                col_pedido_sap = [c for c in df_ped.columns if 'PEDIDO' in str(c).upper()]
+                if col_pedido_sap:
+                    productos_pedido = df_ped[df_ped[col_pedido_sap[0]].astype(str).str.contains(num_pedido, na=False)]
+
+            # 3. Construcción de la Matriz A-I
+            if not productos_pedido.empty:
+                for _, fila_sap in productos_pedido.iterrows():
+                    # Identificar producto y dosis desde Pedido SAP
+                    nombre_p = str(fila_sap.get('Texto breve material', fila_sap.iloc[0])) # Ajustar según columna real
+                    dosis_ha = float(fila_sap.get('Dosis', 0)) 
                     
+                    # Cruzar con Sábana SAP para obtener Costo, Lote y Saldo
+                    costo_unit = 0
+                    lote_sap = "No encontrado"
+                    saldo_sap = 0
+                    
+                    if not df_sab.empty:
+                        # Buscamos el producto en la sábana por nombre
+                        match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_p, case=False, na=False)).any(axis=1)]
+                        if not match_sabana.empty:
+                            costo_unit = float(match_sabana.iloc[0].get('Precio', 0))
+                            lote_sap = str(match_sabana.iloc[0].get('Lote', 'S/L'))
+                            saldo_sap = float(match_sabana.iloc[0].get('Libre utilización', 0))
+
+                    # Buscar consumo del supervisor en el informe (Columnas 10-18)
+                    consumo_supervisor = 0
+                    # Mapeo simple: si el producto está en el pedido, buscamos su consumo reportado
+                    # (Esto se puede ajustar si el informe tiene nombres de columnas específicos)
+                    consumo_supervisor = float(datos_raw.get(10, 0)) # Ejemplo columna 10
+
                     matriz_datos.append({
-                        "A: Producto": nombre_prod,
-                        "B: Dosis SAP": dosis_base,
-                        "C: X (%)": porcentaje_x,
-                        "D: Dosis/Ha": dosis_base * porcentaje_x,
-                        "E: Costo (Margen)": 15000, # Cruzado con Tipo Productor
-                        "G: Lotes": "L-2024-X", # Desde Sábana SAP
-                        "H: Saldo Real SAP": 500, # Desde Sábana SAP
-                        "I: Consumo Supervisor": float(consumo_sup)
+                        "A: Producto": nombre_p,
+                        "B: Dosis/Ha": round(dosis_ha, 3),
+                        "C: X (Ajuste %)": 1.000, # Valor inicial neutral
+                        "D: Dosis Total": round(dosis_ha * ha_real, 3),
+                        "E: Costo (Unit x Margen)": round(costo_unit * (1 + (margen_val if 'margen_val' in locals() else 0.12)), 3),
+                        "G: Lotes (SAP)": lote_sap,
+                        "H: Saldo Real SAP": round(saldo_sap, 3),
+                        "I: Consumo Supervisor": round(consumo_supervisor, 3)
                     })
-            
+
+            # 4. Mostrar y Editar la Matriz
             if matriz_datos:
-                df_final = pd.DataFrame(matriz_datos)
-                st.dataframe(df_final, use_container_width=True)
-            
-            # --- BOTÓN DE CIERRE ---
-            if st.button("🔥 PROCESAR LIQUIDACIÓN FINAL", type="primary", use_container_width=True):
+                df_matriz = pd.DataFrame(matriz_datos)
+                
+                # Usamos data_editor para que la Columna C sea editable
+                edited_df = st.data_editor(
+                    df_matriz,
+                    column_config={
+                        "C: X (Ajuste %)": st.column_config.NumberColumn(
+                            "Ajuste X",
+                            help="Ingrese el factor de ajuste (Ej: 1.10 para +10%)",
+                            min_value=0.000,
+                            max_value=10.000,
+                            step=0.001,
+                            format="%.3f"
+                        ),
+                        "D: Dosis Total": st.column_config.NumberColumn("Dosis Total", format="%.3f"),
+                        "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
+                        "I: Consumo Supervisor": st.column_config.NumberColumn("Consumo Sup.", format="%.3f"),
+                    },
+                    disabled=["A: Producto", "B: Dosis/Ha", "D: Dosis Total", "E: Costo (Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Recálculo dinámico de la Columna D basado en el ajuste de la Columna C
+                edited_df["D: Dosis Total"] = (edited_df["B: Dosis/Ha"] * edited_df["C: X (Ajuste %)"] * ha_real).round(3)
+                
+            else:
+                st.info(f"🚨 No se encontraron productos en el Pedido SAP {num_pedido}. Verifique los archivos.")
+
+            # --- BOTÓN DE CIERRE Y FACTURACIÓN ---
+            st.markdown("---")
+            if st.button("🔥 DETONAR FACTURA Y GUARDAR HISTORIAL", type="primary", use_container_width=True):
                 st.balloons()
-                st.success(f"Liquidación de {finca_sel} procesada exitosamente.")
+                st.success(f"✅ ¡Operación Exitosa! Liquidación de la finca {finca_sel} procesada con {num_pedido}.")
