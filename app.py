@@ -145,107 +145,99 @@ elif menu == "📥 1. Buzón de Carga":
                     st.error(f"🚨 Error Crítico en Procesamiento: {e_master}")
 
 elif menu == "⚙️ 2. Validación de Misión":
-    st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Matriz de Liquidación</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    if 'df_pistas' not in st.session_state:
-        st.warning("⚠️ Sin suministros. Cargue SAP e Informes en la Zona de Aterrizaje primero.")
+    # Verificación de Suministros
+    if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
+        st.warning("⚠️ Sin suministros. Cargue SAP e Informes en el Módulo 1 primero.")
     else:
-        df_p = st.session_state['df_pistas']
-        
-        # 1. SELECTOR BLINDADO (Al cambiar aquí, cambia toda la pantalla)
-        # Creamos una etiqueta única para que el sistema no se confunda entre fincas
-        df_p['SELECTOR'] = df_p['FINCA_INFORME'].astype(str) + " | Cóctel: " + df_p['COCTEL'].astype(str)
-        
-        st.markdown("### 📡 Selección de Objetivo")
-        opciones_vuelo = ["---"] + df_p['SELECTOR'].tolist()
-        vuelo_seleccionado = st.selectbox("🎯 Fije el blanco (Seleccione Vuelo):", opciones_vuelo)
-        
-        if vuelo_seleccionado != "---":
-            # Extraer datos exactos de la selección para que TODO cambie
-            datos_vuelo = df_p[df_p['SELECTOR'] == vuelo_seleccionado].iloc[0]
-            datos_raw = datos_vuelo['DATOS_FILA'] # Este es el diccionario con las columnas reales de Excel
-            finca_nombre = datos_vuelo['FINCA_INFORME']
-            coctel_nombre = datos_vuelo['COCTEL']
+        # --- 1. UBICACIÓN ESTRATÉGICA DE DATOS GENERALES ---
+        with st.container(border=True):
+            st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
+            c1, c2 = st.columns(2)
             
-            # --- BUSCADOR INTELIGENTE BLINDADO (Productor y Margen) ---
-            tipo_productor = "ESTANDAR"
-            margen_val = 0.10 # 10% base por defecto
+            # LISTA DEPLEGABLE DE FINCAS (Desde TablaNegraDatos / TABLA DE APOYO 2023)
+            lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 0].unique().tolist() # Asumiendo columna 0 es Finca
+            finca_sel = c1.selectbox("📍 Seleccione Finca (Base de Datos):", ["---"] + lista_fincas_apoyo)
             
-            try:
-                # 1. Buscar en Tabla de Apoyo (Escáner Dinámico de Columnas)
-                if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
-                    col_finca = [c for c in st.session_state['df_apoyo'].columns if 'FINCA' in str(c).upper()]
-                    if col_finca:
-                        info_finca = st.session_state['df_apoyo'][st.session_state['df_apoyo'][col_finca[0]].astype(str).str.contains(finca_nombre, case=False, na=False)]
-                        if not info_finca.empty:
-                            col_tipo = [c for c in st.session_state['df_apoyo'].columns if 'TIPO' in str(c).upper() and 'PROD' in str(c).upper()]
-                            if col_tipo:
-                                tipo_productor = info_finca[col_tipo[0]].values[0]
+            # Lista de vuelos detectados en informes para cruzar pedido
+            vuelos_informe = st.session_state['df_pistas']
+            vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + vuelos_informe['ORIGEN'].unique().tolist())
 
-                # 2. Buscar Margen en Configuración (Evita KeyError)
-                if 'df_config' in st.session_state and not st.session_state['df_config'].empty:
-                    col_prod_conf = [c for c in st.session_state['df_config'].columns if 'PRODUCTOR' in str(c).upper()]
-                    col_margen_conf = [c for c in st.session_state['df_config'].columns if 'MARGEN' in str(c).upper()]
-                    
-                    if col_prod_conf and col_margen_conf:
-                        margen_row = st.session_state['df_config'][st.session_state['df_config'][col_prod_conf[0]].astype(str).str.contains(tipo_productor, case=False, na=False)]
-                        if not margen_row.empty:
-                            valor_bruto = str(margen_row[col_margen_conf[0]].values[0]).replace('%', '').strip()
-                            margen_val = float(valor_bruto) / 100 if float(valor_bruto) > 1 else float(valor_bruto)
-            except Exception as e_margen:
-                st.warning("⚠️ No se detectó la columna exacta de márgenes. Usando 10% de base táctica.")
-            # -----------------------------------------------------------
+        if finca_sel != "---" and vuelo_ref != "---":
+            # Extraer datos de los informes cargados
+            datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
+            datos_raw = datos_vuelo['DATOS_FILA'] # Diccionario de la fila de Excel
+            
+            # --- 2. CONFIGURACIÓN DE AERONAVE Y PISTA ---
             with st.container(border=True):
                 c1, c2, c3, c4 = st.columns(4)
-                f_edit = c1.text_input("📍 Finca (Editable para SAP):", value=finca_nombre)
                 
-                # La hectárea viene de la columna 8 del informe, pero si no la encuentra pone 79 por defecto
-                ha_inf = float(datos_raw.get(8, datos_raw.get('HECTÁREAS', 79.0))) if pd.notnull(datos_raw.get(8)) else 79.0
-                ha_real = c2.number_input("🚜 Hectáreas Reales:", value=ha_inf, step=0.1)
+                # Aeronave (Manual)
+                lista_aviones = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA", "AIR TRACTOR", "CESSNA ASA", "DRONE DATAROT", "DRONE GENESYS", "DRONE AVIL"]
+                avion_sel = c1.selectbox("✈️ Tipo de Avión:", lista_aviones)
                 
-                horometro = c3.number_input("⏱️ Horómetro (hrs):", value=0.0, step=0.1)
+                # Pista (Dual: Lista + Valor automático de Pedido)
+                pista_pedido = str(datos_raw.get(2, "PLUC")) # Intenta traer pista del pedido
+                lista_pistas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+                idx_pista = lista_pistas.index(pista_pedido) if pista_pedido in lista_pistas else 0
+                pista_sel = c2.selectbox("🛣️ Pista Operativa:", lista_pistas, index=idx_pista)
                 
-                # Matriz de equipos (Dron, Avión, Bloque)
-                tipo_maquina = c4.selectbox("🛸 Vehículo y Matriz:", ["✈️ Avión (Tarifa Normal)", "🚁 Dron (Tarifa Fija)", "✈️ Aviones Múltiples (Bloque)"])
+                # Horómetro y Hectáreas
+                ha_inf = float(datos_raw.get(8, 0)) # Columna Hectáreas del informe
+                horo = c3.number_input("⏱️ Horómetro:", value=1.00, step=0.01)
+                ha_real = c4.number_input("🚜 Hectáreas Reales:", value=ha_inf, step=0.1)
 
-                st.markdown(f"**Tipo Productor:** `{tipo_productor}` | **Margen de Ganancia:** `{margen_val*100}%` | **Cóctel Detectado:** `{coctel_nombre}`")
+            # --- 3. CÁLCULOS AUTOMÁTICOS DE TARIFA (ESPEJO EXCEL) ---
+            dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
+            dict_topes = {"PLUC": "TOPE MAX GENERAL", "PORI": "TOPE SUR", "PDIV": "TOPE PARCELA INTER < 20ha", "TEHO": "TOPE MAX GENERAL", "LUCI": "TOPE SUR"}
+            
+            valor_base = dict_precios.get(avion_sel, 0)
+            tope_msj = dict_topes.get(pista_sel, "SIN TOPE")
+            
+            # Lógica Recargo DIVAS/PDIV (Dual)
+            recargo_terrestre = 0
+            if (pista_sel == "PDIV" or pista_sel == "LUCI") and ("DRONE" not in avion_sel):
+                recargo_terrestre = 45000 # Valor porción terrestre para aviones
+            
+            with st.container(border=True):
+                st.markdown("#### 💰 Liquidación de Vuelo")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Precio Base (Hora/Ha)", f"${valor_base:,.0f}")
+                m2.metric("Tope de Pista", tope_msj)
+                m3.metric("Recargo Terrestre (DIVAS)", f"${recargo_terrestre:,.0f}")
 
-                # --- 📊 MATRIZ DE PRODUCTOS, DOSIS Y PRECIOS (ESPEJO DE SU EXCEL) ---
-                st.markdown("#### 🧪 Laboratorio de Mezcla e Inventario")
-                
-                items_mezcla = []
-                # El sistema escanea desde la columna 10 a la 18 de su Excel buscando productos
-                for i in range(10, 19): 
-                    cant = datos_raw.get(i, 0)
-                    if pd.notnull(cant) and str(cant).replace('.','',1).isdigit() and float(cant) > 0:
-                        # Valores simulados de SAP que luego conectaremos con su df_sabana real
-                        costo_unitario_sap = 12000 + (i * 1500) 
-                        precio_venta = costo_unitario_sap * (1 + margen_val)
-                        
-                        items_mezcla.append({
-                            "Material (Producto)": f"Cod_Columna_{i}", # Extraeremos el nombre real en el paso final
-                            "Cant. Reportada": float(cant),
-                            "Dosis Piloto": float(cant) / ha_real if ha_real > 0 else 0,
-                            "Costo SAP": costo_unitario_sap,
-                            "Precio de Venta": precio_venta,
-                            "Valor Total": float(cant) * precio_venta
-                        })
-                
-                if items_mezcla:
-                    df_detallado = pd.DataFrame(items_mezcla)
-                    # use_container_width=True ajusta las columnas para usar toda la pantalla
-                    st.dataframe(df_detallado.style.format({
-                        "Cant. Reportada": "{:.2f}",
-                        "Dosis Piloto": "{:.3f}",
-                        "Costo SAP": "${:,.0f}",
-                        "Precio de Venta": "${:,.0f}",
-                        "Valor Total": "${:,.0f}"
-                    }), use_container_width=True)
-                else:
-                    st.info("🚨 No se detectaron productos aplicados para esta finca en el radar.")
-
-                # --- BOTÓN DE LIQUIDACIÓN ---
-                st.markdown("---")
-                if st.button("🔥 CONFIRMAR MATRIZ Y FACTURAR", type="primary", use_container_width=True):
-                    st.balloons()
-                    st.success(f"✅ ¡Operación exitosa! Liquidación de {f_edit} enviada al historial de base de datos.")
+            # --- 4. GRAN MATRIZ DE PRODUCTOS (COLUMNAS A A I) ---
+            st.markdown("#### 🧪 Matriz de Validación de Productos y Dosis")
+            
+            # Aquí el sistema cruza Pedidos SAP, Informe Pista y Sábana SAP
+            # Simulamos el cruce para mostrar la estructura A-I
+            matriz_datos = []
+            
+            # Escaneamos los productos que reportó el supervisor en el informe
+            for i in range(10, 18):
+                consumo_sup = datos_raw.get(i, 0)
+                if pd.notnull(consumo_sup) and float(consumo_sup) > 0:
+                    nombre_prod = f"Producto_{i}" # Aquí buscaremos el nombre real en Pedidos SAP
+                    dosis_base = 0.5 # Aquí traemos dosis de SAP
+                    porcentaje_x = 1.0 # Columna C (La X)
+                    
+                    matriz_datos.append({
+                        "A: Producto": nombre_prod,
+                        "B: Dosis SAP": dosis_base,
+                        "C: X (%)": porcentaje_x,
+                        "D: Dosis/Ha": dosis_base * porcentaje_x,
+                        "E: Costo (Margen)": 15000, # Cruzado con Tipo Productor
+                        "G: Lotes": "L-2024-X", # Desde Sábana SAP
+                        "H: Saldo Real SAP": 500, # Desde Sábana SAP
+                        "I: Consumo Supervisor": float(consumo_sup)
+                    })
+            
+            if matriz_datos:
+                df_final = pd.DataFrame(matriz_datos)
+                st.dataframe(df_final, use_container_width=True)
+            
+            # --- BOTÓN DE CIERRE ---
+            if st.button("🔥 PROCESAR LIQUIDACIÓN FINAL", type="primary", use_container_width=True):
+                st.balloons()
+                st.success(f"Liquidación de {finca_sel} procesada exitosamente.")
