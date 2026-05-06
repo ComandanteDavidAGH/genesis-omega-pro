@@ -90,6 +90,13 @@ elif menu == "📥 1. Buzón de Carga":
                         hoja_tabla2 = boveda.worksheet("TABLA 2")
                         datos_tabla2 = hoja_tabla2.get_all_values()
                         st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
+                        # Usamos el nombre que usted me dio: TablaNegraDatos
+                        hoja_apoyo = boveda.worksheet("TablaNegraDatos") 
+                        datos_apoyo = hoja_apoyo.get_all_values()
+                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
+                        
+                        # ----------------------------------------
+                    
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
                     
@@ -147,10 +154,21 @@ elif menu == "📥 1. Buzón de Carga":
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    # Verificación de Suministros
-    if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
-        st.warning("⚠️ Sin suministros. Cargue SAP e Informes en el Módulo 1 primero.")
+    # --- RADAR DE DIAGNÓSTICO (NUEVO BLINDAJE) ---
+    faltan_datos = False
+    if 'df_pistas' not in st.session_state:
+        st.error("🚨 ALERTA: No se encontró el Informe de Pistas en la memoria. ¿Presionó el botón de procesar en el Módulo 1?")
+        faltan_datos = True
+    if 'df_apoyo' not in st.session_state:
+        st.error("🚨 ALERTA: No se encontró la 'TablaNegraDatos' de Google Drive. Revise la conexión satelital en el Módulo 1.")
+        faltan_datos = True
+        
+    if faltan_datos:
+        st.warning("⚠️ Vuelva al Módulo 1, cargue los archivos, presione INICIAR PROCESAMIENTO y espere el mensaje verde de éxito antes de volver aquí.")
     else:
+        # --- 1. UBICACIÓN ESTRATÉGICA DE DATOS GENERALES ---
+        with st.container(border=True):
+            # ... (AQUÍ CONTINÚA TODO SU CÓDIGO DEL MÓDULO 2 QUE YA PEGAMOS) ...        
         # --- 1. UBICACIÓN ESTRATÉGICA DE DATOS GENERALES ---
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
