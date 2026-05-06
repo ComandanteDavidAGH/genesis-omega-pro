@@ -109,66 +109,65 @@ elif menu == "📥 1. Buzón de Carga":
                         conexion_exitosa = False
                     # ==========================================
                     
-                    # 4. Leer Pistas
+                    # 4. 🛰️ ESCÁNER PROFUNDO (Solo Pestañas Visibles / Multifinca)
                     lista_pistas = []
-                    errores_pistas = []
                     
                     for f in f_pistas:
-                        bytes_pista = io.BytesIO(f.getvalue())
-                        nom_pis = f.name.lower()
+                        # --- PASO 0: Detectar cuáles pestañas son visibles ---
+                        bytes_data = f.getvalue()
+                        wb = openpyxl.load_workbook(io.BytesIO(bytes_data), read_only=True)
+                        pestañas_visibles = [sheet.title for sheet in wb.worksheets if sheet.sheet_state == 'visible']
+                        wb.close()
                         
-                        try:
-                            if nom_pis.endswith('.csv'):
-                                df_raw = pd.read_csv(bytes_pista, header=None, sep=None, engine='python', on_bad_lines='skip')
-                                m = df_raw.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                                if m.any():
-                                    df_m = df_raw.iloc[m.idxmax():].copy()
-                                    df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                    df_m['ORIGEN'] = f.name
-                                    lista_pistas.append(df_m)
-                                    
-                            elif nom_pis.endswith('.xlsx'):
-                                wb = openpyxl.load_workbook(bytes_pista, read_only=True, data_only=True)
-                                visibles = [s.title for s in wb.worksheets if s.sheet_state == 'visible']
+                        # --- PASO 1: Leer solo las visibles con Pandas ---
+                        dict_pestañas = pd.read_excel(io.BytesIO(bytes_data), sheet_name=pestañas_visibles, header=None)
+                        
+                        for nombre_pestaña, df in dict_pestañas.items():
+                            # Limpieza inicial de filas/columnas vacías que confunden al radar
+                            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
+                            
+                            # Paso A: Localizar el Cóctel
+                            idx_coctel = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index
+                            
+                            if not idx_coctel.empty:
+                                fila_coctel = idx_coctel[0]
+                                # Buscamos el nombre del cóctel en esa fila (suele ser el siguiente valor no nulo)
+                                valores_fila = df.iloc[fila_coctel].dropna().tolist()
+                                nombre_coctel = valores_fila[1] if len(valores_fila) > 1 else "DESCONOCIDO"
                                 
-                                if visibles:
-                                    bytes_pandas = io.BytesIO(f.getvalue())
-                                    dict_p = pd.read_excel(bytes_pandas, sheet_name=visibles, header=None)
-                                    for name, df in dict_p.items():
-                                        m = df.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                                        if m.any():
-                                            df_m = df.iloc[m.idxmax():].copy()
-                                            df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                            df_m['ORIGEN'] = f"{f.name} ({name})"
-                                            lista_pistas.append(df_m)
-                                            
-                            else:
-                                dict_p = pd.read_excel(bytes_pista, sheet_name=None, header=None)
-                                for name, df in dict_p.items():
-                                    m = df.astype(str).apply(lambda x: x.str.contains('MEZCLA PREPARADA', case=False, na=False)).any(axis=1)
-                                    if m.any():
-                                        df_m = df.iloc[m.idxmax():].copy()
-                                        df_m = df_m.dropna(axis=1, how='all').dropna(axis=0, how='all')
-                                        df_m['ORIGEN'] = f"{f.name} ({name})"
-                                        lista_pistas.append(df_m)
+                                # Paso B: Localizar la tabla de Fincas
+                                idx_fincas_header = df[df.astype(str).apply(lambda x: x.str.contains('FINCAS', case=False, na=False)).any(axis=1)].index
+                                
+                                if not idx_fincas_header.empty:
+                                    fila_header = idx_fincas_header[0]
+                                    col_fincas_idx = (df.iloc[fila_header].astype(str).str.contains('FINCAS', case=False)).values.argmax()
+                                    
+                                    # Extraemos datos desde la fila de abajo
+                                    df_datos = df.iloc[fila_header + 1:].copy()
+                                    
+                                    # Recorremos cada fila hasta el final de la tabla de esa pestaña
+                                    for i in range(len(df_datos)):
+                                        finca_nombre = str(df_datos.iloc[i, col_fincas_idx]).strip()
                                         
-                        except Exception as e_pista:
-                            errores_pistas.append(f"{f.name} ({str(e_pista)})")
+                                        # Si la celda está vacía o dice TOTAL, cerramos esta pestaña
+                                        if finca_nombre.lower() in ['nan', '', 'none'] or "TOTAL" in finca_nombre.upper():
+                                            break
+                                        
+                                        # Capturamos toda la fila de datos para el cruce del Módulo 2
+                                        # (Hectáreas, Pedido, Productos, etc.)
+                                        registro = {
+                                            "ORIGEN": f"{f.name} | {nombre_pestaña}",
+                                            "COCTEL": nombre_coctel,
+                                            "FINCA_INFORME": finca_nombre,
+                                            "DATOS_COMPLETOS": df_datos.iloc[i].to_dict() 
+                                        }
+                                        lista_pistas.append(registro)
                     
-                    if lista_pistas and conexion_exitosa:
-                        st.session_state['df_pistas'] = pd.concat(lista_pistas, ignore_index=True)
-                        st.success(f"✅ ¡Operación Exitosa! SAP: {len(st.session_state['df_sabana'])} filas | Pedidos: {len(st.session_state['df_pedidos'])} filas | Pistas: {len(lista_pistas)} bloques | 📡 Satélite TABLA 2: Conectado ({len(st.session_state['df_config'])} registros).")
-                        
-                        if errores_pistas:
-                            st.warning(f"⚠️ Algunos archivos de pista fueron saltados por formato ilegible: {', '.join(errores_pistas)}")
-                    elif not lista_pistas:
-                        st.error("🚨 No se encontró información válida de 'MEZCLA PREPARADA' en las pistas.")
-                        
-                except Exception as e:
-                    st.error(f"🚨 Error crítico en el ensamblaje principal: {e}")
-        else:
-            st.error("🚨 Faltan suministros locales. Suba los 3 frentes requeridos.")
-            
+                    if lista_pistas:
+                        st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                        st.success(f"✅ ¡Barrido Exitoso! {len(lista_pistas)} vuelos detectados en pestañas visibles.")
+                    else:
+                        st.error("🚨 No se encontró la estructura 'FINCAS' en ninguna pestaña visible.")            
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>🚀 Centro de Mando Génesis 2.0</h1>", unsafe_allow_html=True)
     
