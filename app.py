@@ -224,25 +224,26 @@ elif menu == "⚙️ 2. Validación de Misión":
                 m3.metric("Recargo Terrestre (DIVAS)", f"${recargo_terrestre:,.0f}")
 
 # --- 4. GRAN MATRIZ DE PRODUCTOS (SINCRONIZACIÓN TRIPLE) ---
-            st.markdown("#### 🧪 Matriz de Validación: Pedidos SAP vs. Real Pista")
+            st.markdown("#### 🧪 Matriz de Validación y Dosis")
 
-            # 1. Limpieza del número de Pedido
+            # 1. Preparación de Motores (Evitar KeyErrors)
             raw_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).strip()
             num_pedido = raw_pedido.split('.')[0] 
             
-            # 2. Filtrar Pedidos SAP y Sábana SAP
             df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
             df_sab = st.session_state.get('df_sabana', pd.DataFrame())
+            df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
+            df_cnf = st.session_state.get('df_config', pd.DataFrame()) # Tabla Configuración Margen
             
             matriz_datos = []
 
-            # Buscar el Pedido en TODO el archivo de Pedidos SAP
+            # Buscar el Pedido
             productos_pedido = pd.DataFrame()
             if not df_ped.empty and num_pedido != "S/N":
                 filas_con_pedido = df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido, case=False, na=False)).any(axis=1)
                 productos_pedido = df_ped[filas_con_pedido]
 
-            # 3. Construcción de la Matriz A-I (El Cruce por Item)
+            # 3. Construcción de la Matriz A-I (El Cruce Táctico)
             if not productos_pedido.empty:
                 for _, fila_sap in productos_pedido.iterrows():
                     
@@ -250,21 +251,18 @@ elif menu == "⚙️ 2. Validación de Misión":
                     col_material_ped = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper()]
                     cod_item = str(fila_sap[col_material_ped[0]]).split('.')[0] if col_material_ped else str(fila_sap.iloc[1]).split('.')[0]
                     
-                    # 🛡️ FILTRO ANTI-SERVICIOS FINANCIEROS (Ignoramos 459 y 429)
+                    # 🛡️ FILTRO ANTI-SERVICIOS (Ignoramos 459 y 429)
                     if "459" in cod_item or "429" in cod_item:
                         continue 
                     
-                    # B) Capturar CANTIDAD TOTAL del Pedido SAP 
+                    # B) Capturar CANTIDAD TOTAL Planificada SAP
                     col_cant_ped = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
                     cant_total_pedido = 0.0
                     if col_cant_ped:
                         try: cant_total_pedido = float(str(fila_sap[col_cant_ped[0]]).replace(',', '.'))
                         except: cant_total_pedido = 0.0
 
-                    # 🧮 CÁLCULO DE DOSIS REAL (Total / Hectáreas)
-                    dosis_ha = cant_total_pedido / ha_real if ha_real > 0 else 0.0
-
-                    # C) VIAJAR A LA SÁBANA SAP
+                    # C) VIAJAR A LA SÁBANA SAP (Para Nombre, Costo, Lote y Saldo)
                     nombre_p = f"Item {cod_item} (No en Sábana)"
                     costo_unit = 0.0
                     lote_sap = "S/L"
@@ -278,8 +276,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                             col_nombre_sab = [c for c in fila_sabana.index if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: nombre_p = str(fila_sabana[col_nombre_sab[0]])
                                 
-                            # 💰 EXTRACCIÓN DEL COSTO UNITARIO EXACTO (Evitamos el valor total del inventario)
-                            col_precio_sab = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper() or 'UNIT' in str(c).upper()]
+                            col_precio_sab = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper() or 'VALOR' in str(c).upper()]
                             if col_precio_sab:
                                 try: costo_unit = float(str(fila_sabana[col_precio_sab[0]]).replace(',', '.'))
                                 except: costo_unit = 0.0
@@ -292,47 +289,70 @@ elif menu == "⚙️ 2. Validación de Misión":
                                 try: saldo_sap = float(str(fila_sabana[col_saldo_sab[0]]).replace(',', '.'))
                                 except: saldo_sap = 0.0
 
+                    # D) BUSCAR DOSIS TEÓRICA EXACTA EN `DD_Mesclas`
+                    dosis_teorica = 0.0
+                    if not df_mez.empty:
+                        # Buscamos por código de item si está en Col F (PRODUCTO2)
+                        col_cod_mez = df_mez.columns[5] # Col F
+                        col_dos_mez = df_mez.columns[6] # Col G
+                        match_mezcla = df_mez[df_mez[col_cod_mez].astype(str).str.contains(cod_item, na=False)]
+                        if not match_mezcla.empty:
+                            try: dosis_teorica = float(str(match_mezcla.iloc[0][col_dos_mez]).replace(',', '.'))
+                            except: dosis_teorica = 0.0
+                    else:
+                        dosis_teorica = None # Para mensaje de alerta
+
+                    # E) CÁLCULO DEL COSTO (+MARGEN REAL)
+                    # Tomamos el margen_val que calculamos arriba en "Busqueda de Margen Blindado"
+                    margen_activo = 0.12 # Back up
+                    if 'margen_val' in locals():
+                        margen_activo = margen_val
+                    
+                    costo_margen = round(costo_unit * (1 + margen_activo), 3)
+
                     # Consolidar la fila
                     matriz_datos.append({
                         "A: Producto": nombre_p,
-                        "B: Dosis/Ha": round(dosis_ha, 3),
-                        "C: X (Ajuste %)": None, # <- NACE VACÍA
-                        "D: Dosis Total": 0.0,   # <- SE CALCULA REACTIVAMENTE ABAJO
-                        "E: Costo Unit (+Margen)": round(costo_unit * (1 + (margen_val if 'margen_val' in locals() else 0.12)), 3),
+                        "B: Dosis/Ha (SAP)": round(dosis_teorica, 3) if dosis_teorica is not None else "⚠️ Sin Dosis",
+                        "C: X (Extra %)": None, # <- CASILLA VACÍA
+                        "D: Dosis Total (Sistema)": 0.0, # SE CALCULA ABAJO
+                        "E: Costo Unit (+Margen)": round(costo_margen, 3),
                         "G: Lotes (SAP)": lote_sap,
                         "H: Saldo Real SAP": round(saldo_sap, 3),
-                        "I: Consumo Supervisor": round(cant_total_pedido, 3) 
+                        "I: Pedido Sugerido (Total SAP)": round(cant_total_pedido, 3) 
                     })
 
             # 4. Mostrar y Editar la Matriz (EFECTO EXCEL EN TIEMPO REAL)
             if matriz_datos:
                 df_matriz = pd.DataFrame(matriz_datos)
                 
-                # --- ⚡ MAGIA REACTIVA STREAMLIT ⚡ ---
-                # 1. Leer la memoria de la tabla antes de dibujarla para ver qué número escribió usted en la Columna C
-                if 'editor_matriz' in st.session_state:
-                    ediciones = st.session_state['editor_matriz'].get('edited_rows', {})
+                # --- ⚡ MAGIA REACTIVA INTERACTIVA ⚡ ---
+                # 1. Leer la memoria del editor para Col C
+                if 'editor_valid' in st.session_state:
+                    ediciones = st.session_state['editor_valid'].get('edited_rows', {})
                     for row_idx, edit_dict in ediciones.items():
-                        if "C: X (Ajuste %)" in edit_dict:
-                            df_matriz.at[row_idx, "C: X (Ajuste %)"] = edit_dict["C: X (Ajuste %)"]
+                        if "C: X (Extra %)" in edit_dict:
+                            df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
 
-                # 2. Recálculo matemático instantáneo (Dosis/Ha * Ajuste X * Hectáreas Reales)
-                df_matriz["C_Val"] = df_matriz["C: X (Ajuste %)"].fillna(1.0) # Si está vacío, asume 1 (sin incremento)
-                df_matriz["D: Dosis Total"] = (df_matriz["B: Dosis/Ha"] * df_matriz["C_Val"] * ha_real).round(3)
-                df_matriz = df_matriz.drop(columns=["C_Val"]) # Ocultamos la columna invisible
+                # 2. Recálculo dinámico (Dosis Teórica * (1 + Extra/100) * Hectáreas Reales)
+                df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) # Si está vacío, asume 0% de incremento
+                # Convierte "⚠️ Sin Dosis" a 0 para que no dé error en el cálculo
+                temp_dosis = df_matriz["B: Dosis/Ha (SAP)"].apply(lambda x: float(x) if isinstance(x, (int, float)) else 0.0)
                 
-                # 3. Dibujar la tabla interactiva
+                df_matriz["D: Dosis Total (Sistema)"] = (temp_dosis * (1 + df_matriz["C_Val"]/100) * ha_real).round(3)
+                df_matriz = df_matriz.drop(columns=["C_Val"]) # Ocultamos columna auxiliar
+
                 edited_df = st.data_editor(
                     df_matriz,
-                    key='editor_matriz', # 👈 ESTA LLAVE ES LA QUE PERMITE LA REACTIVIDAD EN SEGUNDOS
+                    key='editor_valid', # 👈 LLAVE DE REACTIVIDAD
                     column_config={
-                        "C: X (Ajuste %)": st.column_config.NumberColumn("Ajuste X", help="Ingrese el factor (Ej: 1.10)", min_value=0.000, max_value=10.000, step=0.001, format="%.3f"),
-                        "D: Dosis Total": st.column_config.NumberColumn("Dosis Total", format="%.3f"),
+                        "C: X (Extra %)": st.column_config.NumberColumn("Extra %", help="Ingrese % extra autorizado (Ej: 1 para +1%)", min_value=0.000, max_value=100.000, step=0.001, format="%.3f"),
+                        "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                         "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (+Margen)", format="$ %.0f"),
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
-                        "I: Consumo Supervisor": st.column_config.NumberColumn("Consumo Sup.", format="%.3f"),
+                        "I: Pedido Sugerido (Total SAP)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
                     },
-                    disabled=["A: Producto", "B: Dosis/Ha", "D: Dosis Total", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Consumo Supervisor"],
+                    disabled=["A: Producto", "B: Dosis/Ha (SAP)", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Pedido Sugerido (Total SAP)"],
                     use_container_width=True,
                     hide_index=True
                 )
@@ -344,4 +364,4 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.markdown("---")
             if st.button("🔥 DETONAR FACTURA Y GUARDAR HISTORIAL", type="primary", use_container_width=True):
                 st.balloons()
-                st.success(f"✅ ¡Operación Exitosa! Liquidación de la finca {finca_sel} procesada con Pedido {num_pedido}.")
+                st.success(f"✅ ¡Operación Exitosa! Liquidación de la finca {finca_sel} procesada con Pedido {num_pedido}. Datos enviados al historial de facturación.")
