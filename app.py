@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import openpyxl
 import io
+import gspread
 
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
@@ -45,8 +46,8 @@ if menu == "🏠 Centro de Mando":
 elif menu == "📥 1. Buzón de Carga":
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Cuartel General</h1>", unsafe_allow_html=True)
     
-    c1, c2 = st.columns(2)
-    c3, c4 = st.columns(2)
+    # Volvemos a 3 cuadrantes, el 4to ahora es invisible (Satelital)
+    c1, c2, c3 = st.columns(3)
     
     with c1:
         st.markdown("### 📁 1. Sábana SAP")
@@ -57,13 +58,10 @@ elif menu == "📥 1. Buzón de Carga":
     with c3:
         st.markdown("### 🚁 3. Informes Pista")
         f_pistas = st.file_uploader("Reportes Reales", type=["xlsx", "xls", "csv", "CSV", "XLSX"], accept_multiple_files=True, key="pis")
-    with c4:
-        st.markdown("### ⚙️ 4. Base TABLA 2 / Config")
-        f_config = st.file_uploader("Fincas, Topes y Productores", type=["xlsx", "xls", "csv", "CSV", "XLSX"], key="conf")
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
-        if f_sabana and f_pedidos and f_pistas and f_config:
-            with st.spinner("Sincronizando los 4 frentes de batalla..."):
+        if f_sabana and f_pedidos and f_pistas:
+            with st.spinner("Sincronizando los 3 frentes y conectando con Satélite en Google Drive..."):
                 try:
                     # 1. Leer Sábana
                     bytes_sabana = io.BytesIO(f_sabana.getvalue())
@@ -81,13 +79,30 @@ elif menu == "📥 1. Buzón de Carga":
                     else:
                         st.session_state['df_pedidos'] = pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # 3. LECTURA DE TABLA 2 / CONFIGURACIÓN (Reubicado al lugar correcto)
-                    bytes_config = io.BytesIO(f_config.getvalue())
-                    nom_conf = f_config.name.lower()
-                    if nom_conf.endswith('.xlsx') or nom_conf.endswith('.xls'):
-                        st.session_state['df_config'] = pd.read_excel(bytes_config)
-                    else:
-                        st.session_state['df_config'] = pd.read_csv(bytes_config, sep=None, engine='python')
+                    # ==========================================
+                    # 🛰️ 3. CONEXIÓN SATELITAL (BÓVEDA GOOGLE DRIVE)
+                    # ==========================================
+                    try:
+                        # La llave maestra (Debe estar en la misma carpeta que app.py)
+                        gc = gspread.service_account(filename='credenciales.json')
+                        
+                        # ABRIR LA BÓVEDA POR URL (Pegue su link real aquí adentro, conservando las comillas)
+                        url_boveda = "https://docs.google.com/spreadsheets/d/1qoacRkKBAwcxrG2EjyrUIvxVP0lYIWORse4pZUAVvxY/edit?gid=2040307191#gid=2040307191"
+                        boveda = gc.open_by_url(url_boveda)
+                        
+                        # Entrar a la pestaña "TABLA 2"
+                        hoja_tabla2 = boveda.worksheet("TABLA 2")
+                        datos_tabla2 = hoja_tabla2.get_all_values() # Trae todo como texto puro
+                        
+                        # Convertimos a Pandas DataFrame (La primera fila son los títulos)
+                        df_config_nube = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
+                        st.session_state['df_config'] = df_config_nube
+                        
+                        conexion_exitosa = True
+                    except Exception as error_nube:
+                        st.error(f"🚨 Falla en el Enlace Satelital con Drive: {error_nube}")
+                        conexion_exitosa = False
+                    # ==========================================
                     
                     # 4. Leer Pistas
                     lista_pistas = []
@@ -135,19 +150,19 @@ elif menu == "📥 1. Buzón de Carga":
                         except Exception as e_pista:
                             errores_pistas.append(f"{f.name} ({str(e_pista)})")
                     
-                    if lista_pistas:
+                    if lista_pistas and conexion_exitosa:
                         st.session_state['df_pistas'] = pd.concat(lista_pistas, ignore_index=True)
-                        st.success(f"✅ ¡Cuartel Sincronizado! SAP: {len(st.session_state['df_sabana'])} | Pedidos: {len(st.session_state['df_pedidos'])} | Pistas: {len(lista_pistas)} | Config: {len(st.session_state['df_config'])} filas.")
+                        st.success(f"✅ ¡Operación Exitosa! SAP: {len(st.session_state['df_sabana'])} filas | Pedidos: {len(st.session_state['df_pedidos'])} filas | Pistas: {len(lista_pistas)} bloques | 📡 Satélite TABLA 2: Conectado ({len(st.session_state['df_config'])} registros).")
                         
                         if errores_pistas:
-                            st.warning(f"⚠️ Nota: Algunos archivos fueron saltados por formato ilegible: {', '.join(errores_pistas)}")
-                    else:
+                            st.warning(f"⚠️ Algunos archivos de pista fueron saltados por formato ilegible: {', '.join(errores_pistas)}")
+                    elif not lista_pistas:
                         st.error("🚨 No se encontró información válida de 'MEZCLA PREPARADA' en las pistas.")
                         
                 except Exception as e:
                     st.error(f"🚨 Error crítico en el ensamblaje principal: {e}")
         else:
-            st.error("🚨 Faltan suministros. Suba los 4 frentes.")
+            st.error("🚨 Faltan suministros locales. Suba los 3 frentes requeridos.")
             
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Validación Cruzada (La Trinidad)</h1>", unsafe_allow_html=True)
