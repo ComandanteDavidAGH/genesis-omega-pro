@@ -97,6 +97,13 @@ elif menu == "📥 1. Buzón de Carga":
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                         datos_apoyo = hoja_apoyo.get_all_values()
                         st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
+                        hoja_mezclas = boveda.worksheet("DD_Mesclas")
+                        st.session_state['df_mezclas'] = pd.DataFrame(hoja_mezclas.get_all_values())
+                        
+                        hoja_conf = boveda.worksheet("Configuración")
+                        st.session_state['df_config_base'] = pd.DataFrame(hoja_conf.get_all_values())
+                        # ------------------------------------------------------
+                    
                         
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
@@ -226,15 +233,25 @@ elif menu == "⚙️ 2. Validación de Misión":
 # --- 4. GRAN MATRIZ DE PRODUCTOS (SINCRONIZACIÓN TRIPLE) ---
             st.markdown("#### 🧪 Matriz de Validación y Dosis")
 
-            # 1. Preparación de Motores (Evitar KeyErrors)
+            # 1. Preparación de Motores
             raw_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).strip()
             num_pedido = raw_pedido.split('.')[0] 
             
             df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
             df_sab = st.session_state.get('df_sabana', pd.DataFrame())
             df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
-            df_cnf = st.session_state.get('df_config', pd.DataFrame()) # Tabla Configuración Margen
+            df_cfg = st.session_state.get('df_config_base', pd.DataFrame()) # La nueva tabla
             
+            # Identificar Tipo de Productor de la Finca Seleccionada (Para el Margen)
+            tipo_productor = "SOCIO" # Valor por defecto
+            if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
+                df_apoyo = st.session_state['df_apoyo']
+                match_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.contains(str(finca_sel), case=False, na=False)]
+                if not match_finca.empty:
+                    # Busca columna de Tipo de Productor o Grupo
+                    col_tipo = [c for c in df_apoyo.columns if 'TIPO' in str(c).upper() or 'GRUPO' in str(c).upper()]
+                    if col_tipo: tipo_productor = str(match_finca.iloc[0][col_tipo[0]])
+
             matriz_datos = []
 
             # Buscar el Pedido
@@ -262,7 +279,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                         try: cant_total_pedido = float(str(fila_sap[col_cant_ped[0]]).replace(',', '.'))
                         except: cant_total_pedido = 0.0
 
-                    # C) VIAJAR A LA SÁBANA SAP (Para Nombre, Costo, Lote y Saldo)
+                    # C) VIAJAR A LA SÁBANA SAP (Para Nombre, Costo Unitario real, Lote y Saldo)
                     nombre_p = f"Item {cod_item} (No en Sábana)"
                     costo_unit = 0.0
                     lote_sap = "S/L"
@@ -276,7 +293,8 @@ elif menu == "⚙️ 2. Validación de Misión":
                             col_nombre_sab = [c for c in fila_sabana.index if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: nombre_p = str(fila_sabana[col_nombre_sab[0]])
                                 
-                            col_precio_sab = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper() or 'VALOR' in str(c).upper()]
+                            # 🎯 EXTRACCIÓN EXACTA DEL PRECIO (Ignora "Valor libre")
+                            col_precio_sab = [c for c in fila_sabana.index if str(c).strip().upper() == 'PRECIOS' or str(c).strip().upper() == 'PRECIO']
                             if col_precio_sab:
                                 try: costo_unit = float(str(fila_sabana[col_precio_sab[0]]).replace(',', '.'))
                                 except: costo_unit = 0.0
@@ -289,26 +307,31 @@ elif menu == "⚙️ 2. Validación de Misión":
                                 try: saldo_sap = float(str(fila_sabana[col_saldo_sab[0]]).replace(',', '.'))
                                 except: saldo_sap = 0.0
 
-                    # D) BUSCAR DOSIS TEÓRICA EXACTA EN `DD_Mesclas`
-                    dosis_teorica = 0.0
+                    # D) BUSCAR DOSIS TEÓRICA EXACTA EN `DD_Mesclas` (Búsqueda por Nombre)
+                    dosis_teorica = None
                     if not df_mez.empty:
-                        # Buscamos por código de item si está en Col F (PRODUCTO2)
-                        col_cod_mez = df_mez.columns[5] # Col F
-                        col_dos_mez = df_mez.columns[6] # Col G
-                        match_mezcla = df_mez[df_mez[col_cod_mez].astype(str).str.contains(cod_item, na=False)]
+                        # Limpiamos el nombre (ej: "BANANO Y PLATANO * LT" -> "BANANO Y PLATANO")
+                        nombre_limpio = nombre_p.split('*')[0].strip()
+                        # Columna F (Índice 5) es PRODUCTO2. Columna G (Índice 6) es DOSIS2.
+                        match_mezcla = df_mez[df_mez[5].astype(str).str.contains(nombre_limpio, case=False, regex=False, na=False)]
                         if not match_mezcla.empty:
-                            try: dosis_teorica = float(str(match_mezcla.iloc[0][col_dos_mez]).replace(',', '.'))
-                            except: dosis_teorica = 0.0
-                    else:
-                        dosis_teorica = None # Para mensaje de alerta
+                            try: dosis_teorica = float(str(match_mezcla.iloc[0][6]).replace(',', '.'))
+                            except: dosis_teorica = None
 
-                    # E) CÁLCULO DEL COSTO (+MARGEN REAL)
-                    # Tomamos el margen_val que calculamos arriba en "Busqueda de Margen Blindado"
-                    margen_activo = 0.12 # Back up
-                    if 'margen_val' in locals():
-                        margen_activo = margen_val
+                    # E) CÁLCULO DEL COSTO CON EL MARGEN DE LA COLUMNA D
+                    multiplicador_margen = 1.112 # Default (Socio)
+                    if not df_cfg.empty:
+                        # Buscar el grupo (ej: SOCIO) en Columna A (Índice 0)
+                        match_prod = df_cfg[df_cfg[0].astype(str).str.contains(tipo_productor, case=False, na=False)]
+                        if not match_prod.empty:
+                            try:
+                                # Extraer el multiplicador de la Columna D (Índice 3)
+                                val_mult = str(match_prod.iloc[0][3]).replace(',', '.')
+                                multiplicador_margen = float(val_mult)
+                            except: pass
                     
-                    costo_margen = round(costo_unit * (1 + margen_activo), 3)
+                    # Multiplicación final del Costo
+                    costo_margen = round(costo_unit * multiplicador_margen, 3)
 
                     # Consolidar la fila
                     matriz_datos.append({
@@ -322,31 +345,29 @@ elif menu == "⚙️ 2. Validación de Misión":
                         "I: Pedido Sugerido (Total SAP)": round(cant_total_pedido, 3) 
                     })
 
-            # 4. Mostrar y Editar la Matriz (EFECTO EXCEL EN TIEMPO REAL)
+            # 4. Mostrar y Editar la Matriz (EFECTO EXCEL)
             if matriz_datos:
                 df_matriz = pd.DataFrame(matriz_datos)
                 
                 # --- ⚡ MAGIA REACTIVA INTERACTIVA ⚡ ---
-                # 1. Leer la memoria del editor para Col C
                 if 'editor_valid' in st.session_state:
                     ediciones = st.session_state['editor_valid'].get('edited_rows', {})
                     for row_idx, edit_dict in ediciones.items():
                         if "C: X (Extra %)" in edit_dict:
                             df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
 
-                # 2. Recálculo dinámico (Dosis Teórica * (1 + Extra/100) * Hectáreas Reales)
-                df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) # Si está vacío, asume 0% de incremento
-                # Convierte "⚠️ Sin Dosis" a 0 para que no dé error en el cálculo
+                df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) 
                 temp_dosis = df_matriz["B: Dosis/Ha (SAP)"].apply(lambda x: float(x) if isinstance(x, (int, float)) else 0.0)
                 
+                # Fórmula matemática exacta de dosis
                 df_matriz["D: Dosis Total (Sistema)"] = (temp_dosis * (1 + df_matriz["C_Val"]/100) * ha_real).round(3)
-                df_matriz = df_matriz.drop(columns=["C_Val"]) # Ocultamos columna auxiliar
+                df_matriz = df_matriz.drop(columns=["C_Val"])
 
                 edited_df = st.data_editor(
                     df_matriz,
-                    key='editor_valid', # 👈 LLAVE DE REACTIVIDAD
+                    key='editor_valid', 
                     column_config={
-                        "C: X (Extra %)": st.column_config.NumberColumn("Extra %", help="Ingrese % extra autorizado (Ej: 1 para +1%)", min_value=0.000, max_value=100.000, step=0.001, format="%.3f"),
+                        "C: X (Extra %)": st.column_config.NumberColumn("Extra %", help="Ingrese % extra (Ej: 1 para +1%)", min_value=0.000, max_value=100.000, step=0.001, format="%.3f"),
                         "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                         "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (+Margen)", format="$ %.0f"),
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
