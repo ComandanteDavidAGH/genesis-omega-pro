@@ -181,77 +181,81 @@ elif menu == "⚙️ 2. Validación de Misión":
         # --- ESCUADRÓN ALFA: RADAR DE MISIONES ---
         st.markdown("### 📡 Radar de Vuelos Detectados")
         
-        # Simulamos la extracción de Pedidos del Informe de Pista (Última columna del CSV)
-        # Aquí recolectamos todos los vuelos únicos detectados
         lista_pedidos_detectados = ["Seleccione un Pedido..."]
         if 'ORIGEN' in df_pistas.columns:
             lista_pedidos_detectados.extend(df_pistas['ORIGEN'].unique().tolist())
         else:
-            lista_pedidos_detectados.extend(["170035970 - SACRAMENTO 1 (Demo)", "170035971 - TAMACARA (Demo)"]) # Respaldo si no detecta la columna
+            lista_pedidos_detectados.extend(["170035970 - SACRAMENTO 1", "170035971 - TAMACARA"]) 
             
         pedido_seleccionado = st.selectbox("🎯 Fije el blanco (Seleccione el Pedido a Facturar):", lista_pedidos_detectados)
         
         if pedido_seleccionado != "Seleccione un Pedido...":
-            st.success(f"🟢 Blanco fijado: {pedido_seleccionado}. Desplegando telemetría...")
             
             # --- ESCUADRÓN BRAVO: DATOS TÁCTICOS Y LABORATORIO ---
             with st.form("form_laboratorio"):
-                st.markdown("#### 1️⃣ Coordenadas de Vuelo (Modificables)")
+                st.markdown("#### 1️⃣ Coordenadas de Vuelo")
                 c1, c2, c3, c4 = st.columns(4)
                 
-                # Libertad táctica: Sobrescribir Finca
-                finca_sugerida = "SACRAMENTO" # Esto vendrá del BUSCARV satelital
-                finca_final = c1.text_input("Finca (Editable vs SAP):", value=finca_sugerida)
-                
-                hectareas_reales = c2.number_input("Hectáreas Reales:", value=79.0, step=0.1)
-                coctel = c3.text_input("Cóctel (BD_MEZCLAS):", value="SGMN63+FE", disabled=True)
-                dias_ciclo = c4.number_input("Días Ciclo (Auto):", value=10) # Se autocompleta con Tabla de Apoyo
+                finca_final = c1.text_input("Finca (Editable vs SAP):", value="SACRAMENTO 1")
+                hectareas_finca = c2.number_input("Hectáreas Finca (SAP):", value=79.0, step=0.1)
+                coctel = c3.text_input("Cóctel (BD_MEZCLAS):", value="SGMN63FE", disabled=True) # Sin el '+'
+                dias_ciclo = c4.number_input("Días Ciclo (Auto):", value=10)
                 
                 st.markdown("---")
-                st.markdown("#### 2️⃣ Laboratorio de Dosis (Piloto vs SAP vs Teórica)")
+                st.markdown("#### 2️⃣ Laboratorio de Dosis y Lotes (Piloto vs SAP vs Teórica)")
                 
-                # Aquí se programa la lógica de sus Macros (Inbiosil, Acondicionador, "X")
-                st.info("💡 **Reglas Activas:** Aplicando multiplicador 'X' | Evaluando Acondicionador vs Fertilizantes | Validando Inbiosil.")
+                st.info("💡 **Reglas Activas:** Acondicionador (0.06kg con Zintrac/Banatrel/Zitron, sino 0.02kg) | Inbiosil (1.5 lt solo / 1.0 lt mezcla).")
                 
-                # Simulador visual de su cuadro de cruce
+                # Tabla actualizada con Lotes y reglas exactas
                 datos_cruce = pd.DataFrame({
-                    "PRODUCTO": ["ACEITE", "ADHERENTE", "ACONDICIONADOR", "SIGANEX", "INBIOSIL"],
-                    "CANT. PILOTO": [474, 10.3, 1.6, 40, 20],
-                    "PENDIENTE SAP": [474, 10.3, 1.6, 40, 20],
-                    "DOSIS TEÓRICA (BD)": ["6.0 x ha", "0.13 x ha", "0.02 x ha", "0.5 x ha", "Varía por rol"],
-                    "ESTADO MACRO": ["✅ Exacto", "✅ Exacto", "⚠️ Cambio x Fertilizante", "✅ Exacto", "🟢 Rol: Activo (X aplicada)"]
+                    "PRODUCTO": ["ACEITE", "ADHERENTE", "ACONDICIONADOR", "BANATREL", "INBIOSIL"],
+                    "LOTE SAP": ["26-428", "2026021902", "2026021608", "1260202322", "885544"],
+                    "CANT. PILOTO": [474, 10.3, 4.74, 40, 79],
+                    "PENDIENTE SAP": [474, 10.3, 4.74, 40, 79],
+                    "DOSIS TEÓRICA (BD)": ["6.0 x ha", "0.13 x ha", "0.06 x ha (Banatrel)", "0.5 x ha", "1.0 lt (Mezcla)"],
+                    "ESTADO MACRO": ["✅ Exacto", "✅ Exacto", "⚠️ Dosis 0.06kg aplicada", "✅ Exacto", "✅ Exacto"]
                 })
                 st.dataframe(datos_cruce, use_container_width=True)
                 
                 # --- ESCUADRÓN CHARLIE: MOTOR DE LIQUIDACIÓN ---
                 st.markdown("---")
-                st.markdown("#### 3️⃣ Motor de Liquidación (Horómetro y Tarifas)")
+                st.markdown("#### 3️⃣ Parámetros de Pista y Aeronave")
                 
-                col_maq1, col_maq2, col_maq3 = st.columns(3)
-                tipo_maquina = col_maq1.radio("Vehículo de Asalto:", ["✈️ Avión", "🚁 Dron"])
+                # Visibilidad de la Pista y Topes
+                cp1, cp2, cp3 = st.columns(3)
+                pista_asignada = cp1.text_input("Pista de Operación:", value="ORIHUECA")
+                tope_pista = cp2.number_input("Tarifa / Tope Pista ($):", value=45000)
+                cp3.info(f"📍 Pista: {pista_asignada} | Límite: ${tope_pista:,.0f}")
+
+                st.markdown("#### 4️⃣ Liquidación del Vuelo (Horómetro y Tarifas)")
+                col_maq1, col_maq2, col_maq3, col_maq4 = st.columns(4)
                 
-                # HORÓMETRO MANUAL (Un solo campo, como usted ordenó)
-                horometro = col_maq2.number_input("Horómetro Reportado (hrs):", value=1.5, step=0.1, min_value=0.0) if tipo_maquina == "✈️ Avión" else 0.0
+                tipo_maquina = col_maq1.selectbox("Tipo de Aeronave:", ["Avión - Thrush ($2.8M)", "Avión - AirTractor ($2.5M)", "🚁 Dron ($60k/ha)"])
                 
-                # MATRIZ DE MÚLTIPLES AVIONES
-                multi_avion = col_maq3.checkbox("Aplicar Matriz (Múltiples Aviones)")
-                porcentaje_prorrateo = col_maq3.number_input("Participación del Avión (%)", value=100.0, step=1.0) / 100.0 if multi_avion else 1.0
+                # Hectáreas de la Orden de Servicio (Puede diferir de las hectáreas de la finca)
+                hectareas_os = col_maq2.number_input("Hectáreas Totales O.S.:", value=hectareas_finca, step=0.1, help="Total de la O.S. si vuelan múltiples aviones en bloque.")
+                
+                horometro = col_maq3.number_input("Horómetro Reportado (hrs):", value=1.5, step=0.1, min_value=0.0)
+                
+                multi_avion = col_maq4.checkbox("Vuelo Compartido (Múltiples Aviones)")
+                porcentaje_prorrateo = col_maq4.number_input("Participación del Avión (%)", value=100.0, step=1.0) / 100.0 if multi_avion else 1.0
                 
                 btn_facturar = st.form_submit_button("🔥 CALCULAR Y FACTURAR", type="primary", use_container_width=True)
                 
             # --- DETONACIÓN MATEMÁTICA ---
             if btn_facturar:
-                with st.spinner("Procesando ecuaciones, macros y topes..."):
-                    # Simulamos la lectura de la TABLA DE APOYO y Configuración
-                    valor_hora_avion = 2500000
-                    tarifa_dron_ha = 60000
-                    tope_pista = 45000
+                with st.spinner("Procesando ecuaciones de pista y aeronave..."):
+                    # Determinar tarifa por hora según el avión
+                    if "Thrush" in tipo_maquina: valor_hora = 2800000
+                    elif "AirTractor" in tipo_maquina: valor_hora = 2500000
+                    else: valor_hora = 0 # Es Dron
+                    
                     es_pdiv = True if "PDIV" in finca_final.upper() else False
                     
-                    if tipo_maquina == "✈️ Avión":
-                        # CÁLCULO DE AVIÓN CON MATRIZ ((D19*B19)/A19)
-                        costo_total_vuelo = (horometro * valor_hora_avion) * porcentaje_prorrateo
-                        costo_por_ha = costo_total_vuelo / hectareas_reales if hectareas_reales > 0 else 0
+                    if "Avión" in tipo_maquina:
+                        # CÁLCULO DE AVIÓN CON MATRIZ Y HECTÁREAS O.S.
+                        costo_total_vuelo = (horometro * valor_hora) * porcentaje_prorrateo
+                        costo_por_ha = costo_total_vuelo / hectareas_os if hectareas_os > 0 else 0
                         
                         if es_pdiv:
                             precio_aplicacion = costo_por_ha
@@ -259,22 +263,18 @@ elif menu == "⚙️ 2. Validación de Misión":
                         else:
                             precio_aplicacion = min(costo_por_ha, tope_pista)
                             alerta_tope = "🔴 Tope de Pista Aplicado." if costo_por_ha > tope_pista else "✅ Precio Real dentro del Tope."
-                            
-                        metrica_tiempo = f"{horometro} hrs"
-                        
                     else:
-                        # CÁLCULO DE DRON (Directo por Hectárea)
-                        precio_aplicacion = tarifa_dron_ha
+                        # DRON
+                        precio_aplicacion = 60000
                         alerta_tope = "🚁 Tarifa Dron Fija."
-                        metrica_tiempo = "N/A (Dron)"
-                        costo_total_vuelo = precio_aplicacion * hectareas_reales
+                        costo_total_vuelo = precio_aplicacion * hectareas_finca
 
-                    # RESULTADOS TÁCTICOS
+                    # RESULTADOS
                     st.markdown("### 🏆 RECIBO DE COMBATE")
-                    st.info(f"**Finca Oficial:** {finca_final} | **Reglas:** {alerta_tope}")
+                    st.info(f"**Finca:** {finca_final} | **Base Cálculo:** {hectareas_os} ha (O.S.) | **Reglas:** {alerta_tope}")
                     
                     r1, r2, r3, r4 = st.columns(4)
-                    r1.metric("🚜 Hectáreas Facturadas", f"{hectareas_reales:.1f} ha")
-                    r2.metric("⏱️ Horómetro / Tiempo", metrica_tiempo)
+                    r1.metric("🚜 Hectáreas Finca", f"{hectareas_finca:.1f} ha")
+                    r2.metric("⏱️ Horómetro / Tiempo", f"{horometro} hrs" if "Avión" in tipo_maquina else "N/A")
                     r3.metric("💲 Tarifa Final (por ha)", f"${precio_aplicacion:,.0f}")
-                    r4.metric("💰 TOTAL VUELO", f"${(precio_aplicacion * hectareas_reales):,.0f}")
+                    r4.metric("💰 TOTAL LIQUIDADO", f"${(precio_aplicacion * hectareas_finca):,.0f}")
