@@ -62,7 +62,7 @@ elif menu == "📥 1. Buzón de Carga":
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
             with st.spinner("Sincronizando los 3 frentes y conectando con Satélite en Google Drive..."):
-                try: # <--- INICIO DEL BLOQUE DE SEGURIDAD MAESTRO
+                try: 
                     # 1. Leer Sábana
                     bytes_sabana = io.BytesIO(f_sabana.getvalue())
                     if f_sabana.name.lower().endswith(('.xlsx', '.xls')):
@@ -87,16 +87,17 @@ elif menu == "📥 1. Buzón de Carga":
                         
                         url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                         boveda = gc.open_by_url(url_boveda)
+                        
+                        # Cargar Configuración
                         hoja_tabla2 = boveda.worksheet("TABLA 2")
                         datos_tabla2 = hoja_tabla2.get_all_values()
                         st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
-                        # Usamos el nombre que usted me dio: TablaNegraDatos
+                        
+                        # Cargar Tabla de Apoyo
                         hoja_apoyo = boveda.worksheet("TablaNegraDatos") 
                         datos_apoyo = hoja_apoyo.get_all_values()
                         st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
                         
-                        # ----------------------------------------
-                    
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
                     
@@ -148,7 +149,7 @@ elif menu == "📥 1. Buzón de Carga":
                     else:
                         st.error("🚨 No se encontró la estructura de 'FINCAS'.")
 
-                except Exception as e_master: # <--- CIERRE DEL BLOQUE DE SEGURIDAD QUE FALTABA
+                except Exception as e_master: 
                     st.error(f"🚨 Error Crítico en Procesamiento: {e_master}")
 
 elif menu == "⚙️ 2. Validación de Misión":
@@ -166,9 +167,6 @@ elif menu == "⚙️ 2. Validación de Misión":
     if faltan_datos:
         st.warning("⚠️ Vuelva al Módulo 1, cargue los archivos, presione INICIAR PROCESAMIENTO y espere el mensaje verde de éxito antes de volver aquí.")
     else:
-        # --- 1. UBICACIÓN ESTRATÉGICA DE DATOS GENERALES ---
-        with st.container(border=True):
-            # ... (AQUÍ CONTINÚA TODO SU CÓDIGO DEL MÓDULO 2 QUE YA PEGAMOS) ...        
         # --- 1. UBICACIÓN ESTRATÉGICA DE DATOS GENERALES ---
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
@@ -229,7 +227,6 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.markdown("#### 🧪 Matriz de Validación de Productos y Dosis")
             
             # Aquí el sistema cruza Pedidos SAP, Informe Pista y Sábana SAP
-            # Simulamos el cruce para mostrar la estructura A-I
             matriz_datos = []
             
             # Escaneamos los productos que reportó el supervisor en el informe
