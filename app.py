@@ -87,10 +87,24 @@ elif menu == "📥 1. Buzón de Carga":
                         datos_tabla2 = hoja_tabla2.get_all_values()
                         st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
                         
-                        # 🔥 Cargar Tabla de Apoyo (CORRECCIÓN VITAL) 🔥
+                        # 🔥 CARGA CRÍTICA Y ESCUDO ANTI-DUPLICADOS (TABLA DE APOYO) 🔥
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                         datos_apoyo = hoja_apoyo.get_all_values()
-                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
+                        
+                        # Escudo: Renombrar columnas repetidas o vacías
+                        encabezados = datos_apoyo[0]
+                        encabezados_limpios = []
+                        vistos = {}
+                        for col in encabezados:
+                            if col in vistos:
+                                vistos[col] += 1
+                                encabezados_limpios.append(f"{col}_{vistos[col]}")
+                            else:
+                                vistos[col] = 0
+                                encabezados_limpios.append(col)
+                                
+                        # Crear la tabla con los encabezados blindados
+                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=encabezados_limpios)
                         
                         # Cargar Mezclas
                         hoja_mezclas = boveda.worksheet("DD_Mesclas")
@@ -101,8 +115,6 @@ elif menu == "📥 1. Buzón de Carga":
                         hoja_conf = boveda.worksheet("Configuración")
                         datos_conf = hoja_conf.get_all_values()
                         st.session_state['df_config_base'] = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
-                        
-                        st.success("🛰️ Bases de datos de Google Drive sincronizadas perfectamente.")
                         
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
@@ -134,7 +146,7 @@ elif menu == "📥 1. Buzón de Carga":
 
 
 elif menu == "⚙️ 2. Validación de Misión":
-    st.write("RAYOS X DE LA TABLA DE APOYO:", st.session_state.get('df_apoyo', 'No cargó'))
+    
     st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
