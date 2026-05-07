@@ -241,10 +241,12 @@ elif menu == "⚙️ 2. Validación de Misión":
             df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
             df_cfg = st.session_state.get('df_config_base', pd.DataFrame()) 
             
+            import re
             def extraer_numero(valor):
                 if pd.isna(valor) or valor == "": return 0.0
                 if isinstance(valor, (int, float)): return float(valor)
-                v = str(valor).strip().upper()
+                v = str(valor).strip()
+                v = re.sub(r'[^\d.,-]', '', v) 
                 if '.' in v and ',' in v: v = v.replace('.', '').replace(',', '.')
                 elif ',' in v: v = v.replace(',', '.') 
                 try: return float(v)
@@ -264,6 +266,14 @@ elif menu == "⚙️ 2. Validación de Misión":
                 productos_pedido = df_ped[filas_con_pedido]
 
             if not productos_pedido.empty:
+                idx_precio = -1; idx_lote = -1; idx_saldo = -1
+                if not df_sab.empty:
+                    for j, col in enumerate(df_sab.columns):
+                        col_str = str(col).upper()
+                        if 'MAYOR' in col_str or 'PRECIO' in col_str: idx_precio = j
+                        if 'LOTE' in col_str: idx_lote = j
+                        if 'LIBRE' in col_str or 'SALDO' in col_str: idx_saldo = j
+
                 # ====================================================================
                 # 🧠 FASE 1: PRE-ESCANEO
                 # ====================================================================
@@ -283,9 +293,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                     nombre_p = f"Item {cod_item}"
                     if not df_sab.empty:
                         match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
-                        if match_sabana.empty:
-                            match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
-                        
+                        if match_sabana.empty: match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
                         if not match_sabana.empty:
                             col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
@@ -308,22 +316,18 @@ elif menu == "⚙️ 2. Validación de Misión":
                 if not df_mez.empty:
                     dict_recetas = {}
                     dict_lideres = {}
-                    
                     for _, row in df_mez.iterrows():
                         if len(row) > 3:
                             cid = str(row.iloc[0]).strip().upper() 
                             p_tabla_clean = str(row.iloc[1]).strip().upper().replace(" ", "") 
                             d_tabla = extraer_numero(row.iloc[2]) 
                             es_lider = str(row.iloc[3]).strip().upper() == "X" 
-                            
                             if cid and cid != 'NAN':
                                 if cid not in dict_recetas: dict_recetas[cid] = {}
                                 dict_recetas[cid][p_tabla_clean] = d_tabla
                                 if es_lider: dict_lideres[cid] = p_tabla_clean
 
                     max_p = -999
-                    import re
-                    
                     for iter_id, receta in dict_recetas.items():
                         es_valido = True
                         puntaje = 0
@@ -333,8 +337,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                         if lider_db:
                             for k_sap in sap_dict_pista.keys():
                                 if lider_db == k_sap or (len(k_sap)>=4 and lider_db in k_sap) or (len(lider_db)>=4 and k_sap in lider_db):
-                                    match_lider = True
-                                    break
+                                    match_lider = True; break
                         if match_lider: puntaje += 1000
                         else: es_valido = False
                             
@@ -355,9 +358,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                                         break
                                 
                                 if match_receta: puntaje += 50 if dose_matched else 10
-                                else:
-                                    es_valido = False
-                                    break
+                                else: es_valido = False; break
                         
                         if es_valido and puntaje > max_p:
                             max_p = puntaje
@@ -370,13 +371,11 @@ elif menu == "⚙️ 2. Validación de Misión":
                                     if nums: dosis_oficiales_coctel[pr] = float(nums[0])
                                 elif pr == "IMBIOSILO": dosis_oficiales_coctel[pr] = 1.5 if iter_id.startswith("IN") else 1.0
 
-                if coctel_ganador != "SIN COINCIDENCIA":
-                    st.success(f"🤖 **MOTOR IA:** Cóctel Ganador Detectado: **{coctel_ganador}**")
-                else:
-                    st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Buscando dosis estándar...")
+                if coctel_ganador != "SIN COINCIDENCIA": st.success(f"🤖 **MOTOR IA:** Cóctel Ganador Detectado: **{coctel_ganador}**")
+                else: st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Buscando dosis estándar...")
 
                 # ====================================================================
-                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ FINAL (REGLA FOSFO ESTRES)
+                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ (CON AUTO-CÁLCULO FINANCIERO)
                 # ====================================================================
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
@@ -391,36 +390,44 @@ elif menu == "⚙️ 2. Validación de Misión":
                     
                     if not df_sab.empty:
                         match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
-                        if match_sabana.empty:
-                            match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
-                            
+                        if match_sabana.empty: match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        
                         if not match_sabana.empty:
+                            # 🚀 REPLICA DE SU "MAX.SI.CONJUNTO": Ordena para buscar el lote con más inventario
+                            try:
+                                col_ordenar = [c for c in match_sabana.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()]
+                                if col_ordenar:
+                                    # Convertir a numérico para ordenar bien
+                                    match_sabana['Temp_Sort'] = match_sabana[col_ordenar[0]].apply(extraer_numero)
+                                    match_sabana = match_sabana.sort_values(by='Temp_Sort', ascending=False)
+                            except: pass
+
                             fila_sabana = match_sabana.iloc[0]
-                            col_precio_mayor = [c for c in fila_sabana.index if 'MAYOR' in str(c).upper()]
-                            if col_precio_mayor: 
-                                costo_unit = extraer_numero(fila_sabana[col_precio_mayor[0]])
-                            else:
-                                col_precio_gen = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper()]
-                                if col_precio_gen: costo_unit = extraer_numero(fila_sabana[col_precio_gen[0]])
                             
-                            col_lote = [c for c in fila_sabana.index if 'LOTE' in str(c).upper()]
-                            if col_lote: lote_sap = str(fila_sabana[col_lote[0]])
-                            col_saldo = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()]
-                            if col_saldo: saldo_sap = extraer_numero(fila_sabana[col_saldo[0]])
+                            # Intento 1: Leer el Precio Directo
+                            if idx_precio != -1: costo_unit = extraer_numero(fila_sabana.iloc[idx_precio])
+                            
+                            # Intento 2 (EL BLINDAJE): Si dio 0 por culpa de la fórmula, Python lo calcula solo
+                            if costo_unit == 0.0:
+                                col_valor_tot = [c for c in fila_sabana.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
+                                col_cant_tot = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() and ('UTIL' in str(c).upper() or 'SALDO' in str(c).upper())]
+                                
+                                if col_valor_tot and col_cant_tot:
+                                    v_total = extraer_numero(fila_sabana[col_valor_tot[0]])
+                                    c_total = extraer_numero(fila_sabana[col_cant_tot[0]])
+                                    if c_total > 0: costo_unit = v_total / c_total
+
+                            if idx_lote != -1: lote_sap = str(fila_sabana.iloc[idx_lote])
+                            if idx_saldo != -1: saldo_sap = extraer_numero(fila_sabana.iloc[idx_saldo])
 
                     dosis_teorica = None
-                    
-                    # 🚀 REGLA DE ORO DE COMANDANTE: FOSFO ESTRES SIEMPRE ES 1
                     if "FOSFO" in nombre_limpio and "ESTRES" in nombre_limpio:
                         dosis_teorica = 1.0
                     else:
-                        # 1. BUSCAR EN EL CÓCTEL GANADOR
                         for p_receta, d_oficial in dosis_oficiales_coctel.items():
                             if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
-                                dosis_teorica = d_oficial
-                                break
+                                dosis_teorica = d_oficial; break
                         
-                        # 2. PLAN B: TABLA GENERAL (Columnas F=5 y G=6)
                         if dosis_teorica is None and not df_mez.empty:
                             for _, row_m in df_mez.iterrows():
                                 if len(row_m) > 6:
@@ -428,16 +435,20 @@ elif menu == "⚙️ 2. Validación de Misión":
                                     if prod_gral and prod_gral not in ['NAN', 'PRODUCTO2', '']:
                                         if prod_gral == nombre_limpio or (len(nombre_limpio)>=4 and prod_gral in nombre_limpio) or (len(prod_gral)>=4 and nombre_limpio in prod_gral):
                                             d_val = extraer_numero(row_m.iloc[6])
-                                            if d_val > 0:
-                                                dosis_teorica = d_val
-                                                break
+                                            if d_val > 0: dosis_teorica = d_val; break
 
+                    # Búsqueda del Margen
                     multiplicador_margen = 1.112
                     if not df_cfg.empty:
-                        match_prod = df_cfg[df_cfg[0].astype(str).str.contains(tipo_productor, case=False, na=False)]
+                        match_prod = df_cfg[df_cfg.astype(str).apply(lambda x: x.str.contains(tipo_productor, case=False, na=False)).any(axis=1)]
                         if not match_prod.empty:
-                            multiplicador_margen = extraer_numero(match_prod.iloc[0][3])
-                            if multiplicador_margen == 0.0: multiplicador_margen = 1.112
+                            fila_cfg = match_prod.iloc[0]
+                            for val in fila_cfg:
+                                num = extraer_numero(val)
+                                if 1.0 < num < 2.0:
+                                    multiplicador_margen = num
+                                    break
+                                    
                     costo_margen = round(costo_unit * multiplicador_margen, 3)
 
                     matriz_datos.append({
@@ -461,7 +472,6 @@ elif menu == "⚙️ 2. Validación de Misión":
 
                 df_matriz["B_Val"] = df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) 
                 df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) 
-                
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B_Val"] * (1 + df_matriz["C_Val"]/100) * ha_real).round(3)
                 df_matriz = df_matriz.drop(columns=["B_Val", "C_Val"])
 
