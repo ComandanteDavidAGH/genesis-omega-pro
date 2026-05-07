@@ -170,7 +170,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.markdown("### 📡 Panel de Operaciones")
             c0, c1, c2 = st.columns([1, 2, 2])
             
-            # FORMATO DE FECHA COLOMBIANO
+            # FORMATO COLOMBIANO
             fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
             
             df_t2 = st.session_state.get('df_config', pd.DataFrame())
@@ -205,15 +205,14 @@ elif menu == "⚙️ 2. Validación de Misión":
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
         df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
         df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
-        df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
+        df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame()) # ESTA ES LA TABLA DE APOYO 2023
         match_ped = pd.DataFrame() 
 
-        # --- A. BUSCAR PRODUCTOR Y TOPE ---
+        # --- A. BUSCAR PRODUCTOR Y TOPE (TABLA 2) ---
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
 
         finca_busqueda = str(finca_sel).strip().upper()
-        # Búsqueda flexible en TABLA 2
         match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().apply(lambda x: finca_busqueda in x or x in finca_busqueda)]
         if not match_t2.empty:
             fila_t2 = match_t2.iloc[0]
@@ -230,36 +229,42 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. 🚀 CAZADOR ULTRA-AGRESIVO DE DÍAS CICLO ---
+        # --- C. 🚀 CAZADOR EXACTO EN TABLA DE APOYO 2023 (DÍAS CICLO) ---
         dias_ciclo_calc = 0
-        col_fecha_h = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
-        if col_fecha_h:
-            # Búsqueda de Finca en el historial (flexible contra espacios en blanco)
-            mask_finca = df_apoyo.iloc[:, 1].astype(str).str.upper().apply(lambda x: finca_busqueda in x or x in finca_busqueda)
-            hist_finca = df_apoyo[mask_finca].copy()
+        if not df_apoyo.empty:
+            # Buscamos exactamente las columnas FINCA y FECHA en la Tabla de Apoyo 2023
+            col_finca_h = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
+            col_fecha_h = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
             
-            if not hist_finca.empty:
-                # Función que detecta si la fecha viene en texto (DD/MM/YYYY) o número Excel (45419)
-                def parse_fecha(val):
-                    if pd.isna(val) or str(val).strip() == "": return pd.NaT
-                    v_str = str(val).strip()
-                    if v_str.isnumeric(): # Caso: Número de Excel
-                        return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
-                    try:
-                        return pd.to_datetime(v_str, dayfirst=True) # Caso: Texto colombiano
-                    except:
-                        return pd.NaT
-                        
-                hist_finca['FECHA_DT'] = hist_finca[col_fecha_h[0]].apply(parse_fecha)
-                hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
+            if col_finca_h and col_fecha_h:
+                nombre_col_finca = col_finca_h[0]
+                nombre_col_fecha = col_fecha_h[0]
+                
+                # Filtramos la Tabla de Apoyo 2023 por la finca seleccionada
+                mask_finca = df_apoyo[nombre_col_finca].astype(str).str.upper().apply(lambda x: finca_busqueda in x or x in finca_busqueda)
+                hist_finca = df_apoyo[mask_finca].copy()
                 
                 if not hist_finca.empty:
-                    fecha_ref = pd.to_datetime(fecha_operacion)
-                    vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
-                    if not vuelos_anteriores.empty:
-                        dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
+                    def parse_fecha(val):
+                        if pd.isna(val) or str(val).strip() == "": return pd.NaT
+                        v_str = str(val).strip()
+                        if v_str.isnumeric(): 
+                            return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
+                        try:
+                            return pd.to_datetime(v_str, dayfirst=True)
+                        except:
+                            return pd.NaT
+                            
+                    hist_finca['FECHA_DT'] = hist_finca[nombre_col_fecha].apply(parse_fecha)
+                    hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
+                    
+                    if not hist_finca.empty:
+                        fecha_ref = pd.to_datetime(fecha_operacion)
+                        vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
+                        if not vuelos_anteriores.empty:
+                            dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
 
-        # --- D. EXTRACCIÓN PEDIDO SAP (459 Y PISTA) ---
+        # --- D. EXTRACCIÓN PEDIDO SAP (FRANCOTIRADOR 459 Y PISTA) ---
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo['DATOS_FILA']
         num_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).split('.')[0]
@@ -314,13 +319,12 @@ elif menu == "⚙️ 2. Validación de Misión":
             opciones_rec = ["0 (Sin Recargo)", "8504 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
             
             recargo_lista = rec_col1.selectbox("Seleccione Valor:", opciones_rec, index=idx_recargo, key=f"rec_list_{finca_sel}_{pista_sel}")
-            
             if recargo_lista == "Otro Valor Manual...":
                 recargo_final = rec_col2.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rec_man_{finca_sel}")
             else:
                 recargo_final = float(recargo_lista.split(" ")[0])
 
-        # --- 3. MATRIZ Y CÓCTEL IA ---
+        # --- 3. MATRIZ DE MEZCLA ---
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         costo_mezcla_total = 0.0
 
@@ -513,7 +517,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
             costo_mezcla_total = 0.0
 
-        # --- 4. TOPES Y LIQUIDACIÓN FINANCIERA ---
+        # --- 4. TOPES Y LIQUIDACIÓN FINANCIERA (CON MÉTRICAS RESTAURADAS) ---
         dict_topes_pista = {
             "TOPE MAX GENERAL": {"PLUC": 98335, "PORI": 98335, "TEHO": 98335, "PDIV": 98335, "LUCI": 98335},
             "TOPE SUR": {"PLUC": 71517, "PORI": 71517, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
@@ -523,9 +527,20 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
+        
+        # 🔥 EL PANEL FINANCIERO QUE NO DEBIÓ DESAPARECER
         dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
         p_hora = dict_precios.get(avion_sel, 0)
 
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("⏱️ Precio Base Avión (Hora)", f"$ {fmt_sap(p_hora)}")
+        limite_display = f"Límite: $ {fmt_sap(val_tope)}" if val_tope != 999999 else "Sin Límite"
+        r2.metric("🛣️ Condición Pista", tipo_de_tope_finca, limite_display)
+        r3.metric("🚛 Recargo Terrestre (DIVAS)", f"$ {fmt_sap(recargo_final)}")
+        r4.metric("👨‍🔬 Tarifa Serv. Tec (Base)", f"$ {fmt_sap(tarifa_serv_tec_base)}")
+        st.markdown("<br>", unsafe_allow_html=True) # Espacio visual
+
+        # CÁLCULOS FINALES
         tarifa_vuelo_ha = (p_hora * horometro) / ha_cobro_final if ha_cobro_final > 0 else 0
 
         if pista_sel == "PDIV":
