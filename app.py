@@ -87,24 +87,35 @@ elif menu == "📥 1. Buzón de Carga":
                         datos_tabla2 = hoja_tabla2.get_all_values()
                         st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
                         
-                        # 🔥 CARGA CRÍTICA Y ESCUDO ANTI-DUPLICADOS (TABLA DE APOYO) 🔥
+                        # 🔥 ESCÁNER INTELIGENTE DE TÍTULOS (TABLA DE APOYO) 🔥
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                         datos_apoyo = hoja_apoyo.get_all_values()
                         
-                        # Escudo: Renombrar columnas repetidas o vacías
-                        encabezados = datos_apoyo[0]
+                        # 1. Buscar en qué fila están realmente los títulos
+                        fila_titulos = 0
+                        for i, fila in enumerate(datos_apoyo[:20]): # Escanea las primeras 20 filas
+                            if any('FINCA' in str(celda).upper() for celda in fila):
+                                fila_titulos = i
+                                break
+                                
+                        encabezados_crudos = datos_apoyo[fila_titulos]
+                        
+                        # 2. Escudo Anti-Duplicados y Columnas Vacías
                         encabezados_limpios = []
                         vistos = {}
-                        for col in encabezados:
-                            if col in vistos:
-                                vistos[col] += 1
-                                encabezados_limpios.append(f"{col}_{vistos[col]}")
+                        for col in encabezados_crudos:
+                            col_str = str(col).strip()
+                            if col_str == "": col_str = "Vacio"
+                            
+                            if col_str in vistos:
+                                vistos[col_str] += 1
+                                encabezados_limpios.append(f"{col_str}_{vistos[col_str]}")
                             else:
-                                vistos[col] = 0
-                                encabezados_limpios.append(col)
+                                vistos[col_str] = 0
+                                encabezados_limpios.append(col_str)
                                 
-                        # Crear la tabla con los encabezados blindados
-                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=encabezados_limpios)
+                        # 3. Crear la tabla cortando la basura de arriba
+                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
                         
                         # Cargar Mezclas
                         hoja_mezclas = boveda.worksheet("DD_Mesclas")
@@ -115,6 +126,8 @@ elif menu == "📥 1. Buzón de Carga":
                         hoja_conf = boveda.worksheet("Configuración")
                         datos_conf = hoja_conf.get_all_values()
                         st.session_state['df_config_base'] = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
+                        
+                        st.success("🛰️ Enlace Satelital Establecido con Escáner de Títulos.")
                         
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
