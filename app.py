@@ -174,10 +174,13 @@ elif menu == "⚙️ 2. Validación de Misión":
     if faltan_datos:
         st.warning("⚠️ Vuelva al Módulo 1, cargue los archivos y presione INICIAR PROCESAMIENTO.")
     else:
-        # --- 1. UBICACIÓN ESTRATÉGICA ---
+        # --- 1. UBICACIÓN ESTRATÉGICA Y FECHA ---
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
-            c1, c2 = st.columns(2)
+            c0, c1, c2 = st.columns([1, 2, 2])
+            
+            # 📅 NUEVO: Fecha de Operación (Para Días Ciclo e Historial)
+            fecha_operacion = c0.date_input("📅 Fecha Vuelo")
             
             lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 1].dropna().unique().tolist() if 'df_apoyo' in st.session_state else []
             lista_fincas_limpia = sorted([str(f).strip() for f in lista_fincas_apoyo if str(f).strip() != ""])
@@ -222,16 +225,19 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         finca_exacta = str(finca_sel).strip().upper()
 
-        # --- A. EXTRACCIÓN DINÁMICA DE IDENTIDAD (Búsqueda estricta) ---
-        tipo_productor = "SOCIO"
-        match_finca = pd.DataFrame()
-        if not df_apoyo.empty:
-            match_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.strip().str.upper() == finca_exacta]
-            if not match_finca.empty:
-                col_tipo = [c for c in df_apoyo.columns if 'TIPO' in str(c).upper() or 'GRUPO' in str(c).upper()]
-                if col_tipo: tipo_productor = str(match_finca.iloc[0][col_tipo[0]]).upper().strip()
+        # --- A. EXTRACCIÓN DINÁMICA DE TABLA 2 (BUSCARV Finca -> Productor y Tope) ---
+        tipo_productor = "REVISAR FINCA"
+        condicion_pista_finca = "SIN TOPE"
+        
+        if not df_config_tabla2.empty:
+            # Buscamos la finca en la Columna A (índice 0)
+            match_t2 = df_config_tabla2[df_config_tabla2.iloc[:, 0].astype(str).str.strip().str.upper() == finca_exacta]
+            if not match_t2.empty:
+                fila_t2 = match_t2.iloc[0]
+                if len(fila_t2) >= 6: tipo_productor = str(fila_t2.iloc[5]).upper().strip() # Columna F
+                if len(fila_t2) >= 7: condicion_pista_finca = str(fila_t2.iloc[6]).upper().strip() # Columna G
 
-        # --- B. MULTIPLICADORES FINANCIEROS (Por Productor) ---
+        # --- B. MULTIPLICADORES FINANCIEROS (Tabla Configuración) ---
         mult_material = 1.112; tarifa_serv_tec = 1337.0; mult_avion = 1.112
         if not df_cfg.empty:
             match_prod = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
@@ -242,20 +248,20 @@ elif menu == "⚙️ 2. Validación de Misión":
                     tarifa_serv_tec = extraer_numero(fila_cfg.iloc[4]) 
                     mult_avion = extraer_numero(fila_cfg.iloc[6]) 
 
-        # --- C. MOTOR DINÁMICO DÍAS CICLO ---
+        # --- C. MOTOR DINÁMICO DÍAS CICLO (Usando fecha_operacion) ---
         dias_ciclo_calc = 0
-        if not match_finca.empty:
+        if not df_apoyo.empty:
             col_fecha_hist = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
             if col_fecha_hist:
-                hist_finca = match_finca.copy()
-                hist_finca['FECHA_DT'] = pd.to_datetime(hist_finca[col_fecha_hist[0]], errors='coerce')
-                hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
+                hist_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.strip().str.upper() == finca_exacta].copy()
                 if not hist_finca.empty:
-                    fecha_vuelo_actual = pd.to_datetime('today') 
-                    vuelos_pasados = hist_finca[hist_finca['FECHA_DT'] < fecha_vuelo_actual]
+                    hist_finca['FECHA_DT'] = pd.to_datetime(hist_finca[col_fecha_hist[0]], errors='coerce')
+                    hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
+                    fecha_ref_dt = pd.to_datetime(fecha_operacion)
+                    vuelos_pasados = hist_finca[hist_finca['FECHA_DT'] < fecha_ref_dt]
                     if not vuelos_pasados.empty:
                         ultima_fecha = vuelos_pasados['FECHA_DT'].max()
-                        dias_ciclo_calc = max(0, (fecha_vuelo_actual - ultima_fecha).days)
+                        dias_ciclo_calc = max(0, (fecha_ref_dt - ultima_fecha).days)
 
         # --- D. EXTRACCIÓN DE HECTÁREAS Y PISTA ---
         raw_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).strip()
@@ -292,21 +298,30 @@ elif menu == "⚙️ 2. Validación de Misión":
         with st.container(border=True):
             st.markdown("#### ⚙️ Controles de Vuelo y Parámetros")
             
-            c_info1, c_info2, c_info3, c_info4 = st.columns(4)
-            c_info1.info(f"🧑‍🌾 Productor: **{tipo_productor}**")
+            # Fila 1: Datos Fijos / Automáticos (No editables, pero visibles)
+            c_fijo1, c_fijo2, c_fijo3 = st.columns(3)
+            c_fijo1.info(f"🧑‍🌾 Productor: **{tipo_productor}**")
+            c_fijo2.warning(f"🛣️ Condición Tope: **{condicion_pista_finca}**")
+            c_fijo3.success(f"📈 Mult. Avión: **{mult_avion}x**")
             
-            # KEY dinámico: Al cambiar Finca, se regeneran los valores automáticamente
-            dias_ciclo = c_info2.number_input("⏳ Días Ciclo:", value=int(dias_ciclo_calc), step=1, key=f"dias_{finca_sel}")
-            ha_dosis = c_info3.number_input("🧪 Ha (DOSIS/FACTURA):", value=float(ha_dosis_detectada), step=0.1, key=f"hd_{finca_sel}")
-            ha_cobro = c_info4.number_input("💰 Ha (COBRO/INFORME):", value=float(ha_cobro_detectada), step=0.1, key=f"hc_{finca_sel}")
+            # Fila 2: Datos Editables (Hectáreas y Ciclos)
+            c_edit1, c_edit2, c_edit3 = st.columns(3)
+            dias_ciclo = c_edit1.number_input("⏳ Días Ciclo:", value=int(dias_ciclo_calc), step=1, key=f"dias_{finca_sel}_{vuelo_ref}")
+            ha_dosis = c_edit2.number_input("🧪 Ha (DOSIS/FACTURA):", value=float(ha_dosis_detectada), step=0.1, key=f"hd_{finca_sel}_{vuelo_ref}")
+            ha_cobro = c_edit3.number_input("💰 Ha (COBRO/INFORME):", value=float(ha_cobro_detectada), step=0.1, key=f"hc_{finca_sel}_{vuelo_ref}")
             
-            c_ctrl1, c_ctrl2, c_ctrl3 = st.columns(3)
+            # Fila 3: Avión, Pista y Recargos
+            c_ctrl1, c_ctrl2, c_ctrl3, c_ctrl4 = st.columns(4)
             lista_aviones = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA", "AIR TRACTOR", "CESSNA ASA", "DRONE DATAROT", "DRONE GENESYS", "DRONE AVIL"]
             avion_sel = c_ctrl1.selectbox("✈️ Tipo de Avión:", lista_aviones, key=f"av_{finca_sel}")
             
             pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
             pista_sel = c_ctrl2.selectbox("🛣️ Pista Operativa:", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{finca_sel}")
             horometro = c_ctrl3.number_input("⏱️ Horómetro:", value=1.00, step=0.01, key=f"ho_{finca_sel}")
+            
+            # RECARGO EDITABLE (Auto-detecta si es PDIV/LUCI)
+            recargo_sugerido = 45000 if pista_sel in ["PDIV", "LUCI"] and "DRONE" not in avion_sel else 0
+            recargo_terrestre = c_ctrl4.number_input("🚛 Recargo (Porción Terrestre):", value=int(recargo_sugerido), step=1000, key=f"rec_{finca_sel}_{pista_sel}")
 
         # --- 4. GRAN MATRIZ DE PRODUCTOS ---
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Dosis")
@@ -499,7 +514,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             )
             
             # ====================================================================
-            # 💰 PANEL FINANCIERO: LÓGICA DE TOPES (Límites de Pista)
+            # 💰 PANEL FINANCIERO: LÓGICA DE TOPES Y EXTRACCIÓN A SAP
             # ====================================================================
             st.markdown("---")
             st.markdown("#### 💳 Resumen Financiero de la Misión (COP)")
@@ -507,44 +522,28 @@ elif menu == "⚙️ 2. Validación de Misión":
             dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
             precio_hora_base = dict_precios.get(avion_sel, 0)
             
-            # 🎯 BÚSQUEDA DINÁMICA DE TOPES EN TABLA 2 (df_config_tabla2)
-            tope_nombre = "SIN TOPE"
+            # Búsqueda dinámica de Tope en Configuración
             tope_limite = float('inf') 
+            if not df_cfg.empty:
+                try:
+                    col_topes = [c for c in df_cfg.columns if 'TOPE' in str(c).upper() or 'VALOR' in str(c).upper()]
+                    if col_topes:
+                        match_tope = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == condicion_pista_finca]
+                        if not match_tope.empty:
+                            val_tope = extraer_numero(match_tope.iloc[0][col_topes[0]])
+                            if val_tope > 0: tope_limite = val_tope
+                except: pass
             
-            if not df_config_tabla2.empty:
-                idx_pista_col = -1
-                for j, col in enumerate(df_config_tabla2.columns):
-                    if 'PISTA' in str(col).upper() or 'PISTA' in str(df_config_tabla2.iloc[0, j]).upper():
-                        idx_pista_col = j; break
-
-                if idx_pista_col != -1:
-                    for r in range(len(df_config_tabla2)):
-                        val_pista_bd = str(df_config_tabla2.iloc[r, idx_pista_col]).strip().upper()
-                        if pista_sel in val_pista_bd:
-                            try:
-                                # Precios es la siguiente columna, Tope es la que le sigue
-                                val_precio = extraer_numero(df_config_tabla2.iloc[r, idx_pista_col + 1])
-                                val_nombre = str(df_config_tabla2.iloc[r, idx_pista_col + 2]).strip().upper()
-                                if val_precio > 0: tope_limite = val_precio
-                                if val_nombre and val_nombre != 'NAN': tope_nombre = val_nombre
-                            except: pass
-                            break
-            
-            recargo_terrestre = 45000 if pista_sel in ["PDIV", "LUCI"] and "DRONE" not in avion_sel else 0
-            
-            # Panel de Referencia (Avión y Topes Exactos)
-            r1, r2, r3, r4 = st.columns(4)
-            r1.metric("⏱️ Precio Base Avión (Hora)", f"$ {fmt_cop(precio_hora_base)}")
-            limite_display = f"Límite: $ {fmt_cop(tope_limite)}" if tope_limite != float('inf') else "Sin Límite"
-            r2.metric("🛣️ Condición Pista", tope_nombre, limite_display)
-            r3.metric("🚛 Recargo Terrestre (DIVAS)", f"$ {fmt_cop(recargo_terrestre)}")
-            r4.metric("👨‍🔬 Tarifa Serv. Tec (Base)", f"$ {fmt_cop(tarifa_serv_tec)}")
-            
-            # 🎯 FÓRMULA DE COSTO: MIN( (Precio_Hora*Horometro)/Ha_Cobro , Tope ) + Recargo
+            # FÓRMULAS DE COBRO EXACTAS
             tarifa_vuelo_bruta_ha = (precio_hora_base * horometro) / ha_cobro if ha_cobro > 0 else 0
-            tarifa_limitada_ha = min(tarifa_vuelo_bruta_ha, tope_limite)
             
-            costo_vuelo_ha = (tarifa_limitada_ha + recargo_terrestre) * mult_avion
+            # Si es PDIV ignora el tope (MIN). Si es otra, aplica tope.
+            if pista_sel == "PDIV":
+                tarifa_base_aplicada = tarifa_vuelo_bruta_ha + recargo_terrestre
+            else:
+                tarifa_base_aplicada = min(tarifa_vuelo_bruta_ha, tope_limite) + recargo_terrestre
+                
+            costo_vuelo_ha = tarifa_base_aplicada * mult_avion
             costo_vuelo_total = costo_vuelo_ha * ha_dosis
             
             costo_serv_tec_ha = dias_ciclo * tarifa_serv_tec
@@ -552,12 +551,26 @@ elif menu == "⚙️ 2. Validación de Misión":
             
             total_factura = costo_mezcla_total + costo_vuelo_total + costo_serv_tec_total
             
-            st.markdown("##### 🧾 Totalización Factura (Valores de Cobro Final)")
+            # Panel Visual (Métricas)
+            st.markdown("##### 🧾 Totalización Factura (Visualización)")
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("🧪 Costo Total Mezcla", f"{fmt_cop(costo_mezcla_total)}")
-            m2.metric("✈️ Costo Vuelo / Ha", f"{fmt_cop(costo_vuelo_ha)}", f"Base Limitada: {fmt_cop(tarifa_limitada_ha)}")
-            m3.metric("👨‍🔬 Serv. Técnico / Ha", f"{fmt_cop(costo_serv_tec_ha)}", f"{dias_ciclo} Días")
-            m4.metric("🔥 TOTAL FACTURA", f"{fmt_cop(total_factura)}", f"Multiplicado por Ha DOSIS: {ha_dosis}")
+            m1.metric("🧪 Costo Total Mezcla", f"$ {fmt_cop(costo_mezcla_total)}")
+            m2.metric("✈️ Costo Vuelo / Ha", f"$ {fmt_cop(costo_vuelo_ha)}", f"Tope Eval: {fmt_cop(tope_limite) if tope_limite != float('inf') else 'N/A'}")
+            m3.metric("👨‍🔬 Serv. Técnico / Ha", f"$ {fmt_cop(costo_serv_tec_ha)}", f"{dias_ciclo} Días")
+            m4.metric("🔥 TOTAL FACTURA", f"$ {fmt_cop(total_factura)}")
+
+            # 📋 BÓVEDA DE EXTRACCIÓN A SAP (1 Clic)
+            st.markdown("##### 📋 Valores Crudos para SAP (Clic en los cuadros para copiar)")
+            sap1, sap2, sap3 = st.columns(3)
+            with sap1:
+                st.caption("Costo Mezcla (Total)")
+                st.code(f"{round(costo_mezcla_total, 0):.0f}", language=None)
+            with sap2:
+                st.caption("Costo Vuelo (Orden de Servicio x Ha)")
+                st.code(f"{round(costo_vuelo_ha, 0):.0f}", language=None)
+            with sap3:
+                st.caption("Servicio Técnico (x Ha)")
+                st.code(f"{round(costo_serv_tec_ha, 0):.0f}", language=None)
 
         else:
             st.warning(f"🚨 No se encontraron productos en SAP para: {num_pedido}")
