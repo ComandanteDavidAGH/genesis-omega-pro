@@ -253,12 +253,16 @@ elif menu == "⚙️ 2. Validación de Misión":
                 except: return 0.0
 
             tipo_productor = "SOCIO"
+            identificador_pista = "DESCONOCIDA"
             if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
                 df_apoyo = st.session_state['df_apoyo']
                 match_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.contains(str(finca_sel), case=False, na=False)]
                 if not match_finca.empty:
                     col_tipo = [c for c in df_apoyo.columns if 'TIPO' in str(c).upper() or 'GRUPO' in str(c).upper()]
                     if col_tipo: tipo_productor = str(match_finca.iloc[0][col_tipo[0]])
+            
+            # Usamos la variable de pista seleccionada o finca para filtrar el inventario
+            identificador_pista = str(locals().get('pista_sel', globals().get('pista_sel', finca_sel))).strip().upper()
 
             productos_pedido = pd.DataFrame()
             if not df_ped.empty and num_pedido != "S/N":
@@ -272,7 +276,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                         col_str = str(col).upper()
                         if 'MAYOR' in col_str or 'PRECIO' in col_str: idx_precio = j
                         if 'LOTE' in col_str: idx_lote = j
-                        if 'LIBRE' in col_str or 'SALDO' in col_str: idx_saldo = j
+                        if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
 
                 # ====================================================================
                 # 🧠 FASE 1: PRE-ESCANEO
@@ -375,7 +379,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                 else: st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Buscando dosis estándar...")
 
                 # ====================================================================
-                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ (CON AUTO-CÁLCULO FINANCIERO)
+                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ (RADAR LOCAL DE SALDOS)
                 # ====================================================================
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
@@ -385,40 +389,41 @@ elif menu == "⚙️ 2. Validación de Misión":
                     cant_total_pedido = item_data['cant_total']
                     
                     costo_unit = 0.0
-                    lote_sap = "S/L"
-                    saldo_sap = 0.0
+                    lote_sap = "SIN LOTE EN PISTA" # Por defecto
+                    saldo_sap = 0.0 # Por defecto
                     
                     if not df_sab.empty:
-                        match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
-                        if match_sabana.empty: match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        # 1. BÚSQUEDA GLOBAL (Para sacar el precio)
+                        match_sabana_global = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
+                        if match_sabana_global.empty: match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
                         
-                        if not match_sabana.empty:
-                            # 🚀 REPLICA DE SU "MAX.SI.CONJUNTO": Ordena para buscar el lote con más inventario
-                            try:
-                                col_ordenar = [c for c in match_sabana.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()]
-                                if col_ordenar:
-                                    # Convertir a numérico para ordenar bien
-                                    match_sabana['Temp_Sort'] = match_sabana[col_ordenar[0]].apply(extraer_numero)
-                                    match_sabana = match_sabana.sort_values(by='Temp_Sort', ascending=False)
-                            except: pass
-
-                            fila_sabana = match_sabana.iloc[0]
+                        if not match_sabana_global.empty:
+                            fila_precio = match_sabana_global.iloc[0]
+                            if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
                             
-                            # Intento 1: Leer el Precio Directo
-                            if idx_precio != -1: costo_unit = extraer_numero(fila_sabana.iloc[idx_precio])
-                            
-                            # Intento 2 (EL BLINDAJE): Si dio 0 por culpa de la fórmula, Python lo calcula solo
                             if costo_unit == 0.0:
-                                col_valor_tot = [c for c in fila_sabana.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
-                                col_cant_tot = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() and ('UTIL' in str(c).upper() or 'SALDO' in str(c).upper())]
-                                
+                                col_valor_tot = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
+                                col_cant_tot = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
                                 if col_valor_tot and col_cant_tot:
-                                    v_total = extraer_numero(fila_sabana[col_valor_tot[0]])
-                                    c_total = extraer_numero(fila_sabana[col_cant_tot[0]])
+                                    v_total = extraer_numero(fila_precio[col_valor_tot[0]])
+                                    c_total = extraer_numero(fila_precio[col_cant_tot[0]])
                                     if c_total > 0: costo_unit = v_total / c_total
 
-                            if idx_lote != -1: lote_sap = str(fila_sabana.iloc[idx_lote])
-                            if idx_saldo != -1: saldo_sap = extraer_numero(fila_sabana.iloc[idx_saldo])
+                            # 2. BÚSQUEDA LOCAL (Filtro por Pista para sacar Saldo y Lote)
+                            match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.contains(identificador_pista, case=False, na=False)).any(axis=1)]
+                            
+                            if not match_pista.empty:
+                                try:
+                                    col_ordenar = [c for c in match_pista.columns if ('LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()) and 'VALOR' not in str(c).upper()]
+                                    if col_ordenar:
+                                        match_pista['Temp_Sort'] = match_pista[col_ordenar[0]].apply(extraer_numero)
+                                        match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
+                                except: pass
+                                
+                                fila_pista = match_pista.iloc[0]
+                                if idx_lote != -1: lote_sap = str(fila_pista.iloc[idx_lote])
+                                if idx_saldo != -1: saldo_sap = extraer_numero(fila_pista.iloc[idx_saldo])
+                            # Si `match_pista` está vacío, se queda con 0.0 y "SIN LOTE EN PISTA"
 
                     dosis_teorica = None
                     if "FOSFO" in nombre_limpio and "ESTRES" in nombre_limpio:
@@ -437,7 +442,6 @@ elif menu == "⚙️ 2. Validación de Misión":
                                             d_val = extraer_numero(row_m.iloc[6])
                                             if d_val > 0: dosis_teorica = d_val; break
 
-                    # Búsqueda del Margen
                     multiplicador_margen = 1.112
                     if not df_cfg.empty:
                         match_prod = df_cfg[df_cfg.astype(str).apply(lambda x: x.str.contains(tipo_productor, case=False, na=False)).any(axis=1)]
