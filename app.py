@@ -71,36 +71,42 @@ elif menu == "📥 1. Buzón de Carga":
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # 3. CONEXIÓN SATELITAL (CORREGIDA - ARTILLERÍA PESADA)
+                    # 3. CONEXIÓN SATELITAL
                     try:
                         if "gcp_credentials" in st.secrets:
-                            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                            cred_dict = dict(st.secrets["gcp_credentials"])
+                            gc = gspread.service_account_from_dict(cred_dict)
                         else:
                             gc = gspread.service_account(filename='credenciales.json')
                         
                         url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                         boveda = gc.open_by_url(url_boveda)
                         
-                        # Carga de TABLA 2
-                        h2 = boveda.worksheet("TABLA 2").get_all_values()
-                        st.session_state['df_config'] = pd.DataFrame(h2[1:], columns=h2[0])
+                        # Cargar Configuración (TABLA 2)
+                        hoja_tabla2 = boveda.worksheet("TABLA 2")
+                        datos_tabla2 = hoja_tabla2.get_all_values()
+                        st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
                         
-                        # 🔥 CARGA CRÍTICA: TABLA DE APOYO 2023 🔥
-                        ha = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
-                        st.session_state['df_apoyo'] = pd.DataFrame(ha[1:], columns=ha[0])
+                        # 🔥 Cargar Tabla de Apoyo (CORRECCIÓN VITAL) 🔥
+                        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
+                        datos_apoyo = hoja_apoyo.get_all_values()
+                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
                         
-                        # Carga de Mezclas y Config Base
-                        hm = boveda.worksheet("DD_Mesclas").get_all_values()
-                        st.session_state['df_mezclas'] = pd.DataFrame(hm[1:], columns=hm[0])
+                        # Cargar Mezclas
+                        hoja_mezclas = boveda.worksheet("DD_Mesclas")
+                        datos_mezclas = hoja_mezclas.get_all_values()
+                        st.session_state['df_mezclas'] = pd.DataFrame(datos_mezclas[1:], columns=datos_mezclas[0])
                         
-                        hc = boveda.worksheet("Configuración").get_all_values()
-                        st.session_state['df_config_base'] = pd.DataFrame(hc[1:], columns=hc[0])
+                        # Cargar Configuración Base
+                        hoja_conf = boveda.worksheet("Configuración")
+                        datos_conf = hoja_conf.get_all_values()
+                        st.session_state['df_config_base'] = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
                         
-                        st.success("🛰️ Enlace Satelital Establecido: Datos de Apoyo Sincronizados.")
-                            
+                        st.success("🛰️ Bases de datos de Google Drive sincronizadas perfectamente.")
+                        
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
-                    
+                        
                     # 4. ESCÁNER DE PISTAS (Sigue igual porque funciona)
                     lista_pistas = []
                     for f in f_pistas:
