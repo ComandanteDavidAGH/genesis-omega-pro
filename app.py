@@ -96,7 +96,7 @@ elif menu == "📥 1. Buzón de Carga":
                         # Cargar Tabla de Apoyo
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                         datos_apoyo = hoja_apoyo.get_all_values()
-                        st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
+                        st.session_state['df_apoyo'] = pd.read_excel(archivo_apoyo, sheet_name='TABLA DE APOYO2023')
                         hoja_mezclas = boveda.worksheet("DD_Mesclas")
                         st.session_state['df_mezclas'] = pd.DataFrame(hoja_mezclas.get_all_values())
                         
