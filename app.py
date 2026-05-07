@@ -187,6 +187,8 @@ elif menu == "⚙️ 2. Validación de Misión":
         # 🟢 MOTOR DE INTELIGENCIA DINÁMICA
         # =========================================================================
         import re
+        from datetime import datetime
+        
         def extraer_numero(valor):
             if pd.isna(valor) or valor == "": return 0.0
             if isinstance(valor, (int, float)): return float(valor)
@@ -199,26 +201,6 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         def fmt_sap(val): 
             return f"{int(round(val, 0)):,}".replace(",", ".")
-
-        # 🇪🇸 TRADUCTOR DE FECHAS "MARTES, 3 DE ENERO DE 2023"
-        def parse_fecha_espanol(val):
-            if pd.isna(val) or str(val).strip() == "": return pd.NaT
-            v_str = str(val).strip().lower()
-            if v_str.isnumeric(): 
-                return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
-            
-            meses = {'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04', 'mayo': '05', 'junio': '06', 
-                     'julio': '07', 'agosto': '08', 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'}
-            
-            match = re.search(r'(\d{1,2})\s*de\s*([a-z]+)\s*de\s*(\d{4})', v_str)
-            if match:
-                dia = match.group(1).zfill(2)
-                mes = meses.get(match.group(2), '01')
-                anio = match.group(3)
-                return pd.to_datetime(f"{anio}-{mes}-{dia}")
-                
-            try: return pd.to_datetime(v_str, dayfirst=True)
-            except: return pd.NaT
 
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
@@ -248,24 +230,45 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. DÍAS CICLO (CON TRADUCTOR ESPAÑOL) ---
+        # --- C. 🚀 CAZADOR DEFINITIVO DE DÍAS CICLO ---
         dias_ciclo_calc = 0
         if not df_apoyo.empty:
             col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
             col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
+            
             if col_finca and col_fecha:
-                hist_finca = df_apoyo[df_apoyo[col_finca[0]].astype(str).str.strip().str.upper() == finca_limpia].copy()
+                # 1. Filtro Elástico (Ignora espacios en blanco)
+                mask_finca = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: finca_limpia in x or x in finca_limpia)
+                hist_finca = df_apoyo[mask_finca].copy()
+                
                 if not hist_finca.empty:
-                    # Inyectamos el traductor de español aquí
-                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_espanol)
+                    # 2. Procesador Seguro de Fechas
+                    def parse_fecha_segura(val):
+                        if pd.isna(val) or val == "": return pd.NaT
+                        if isinstance(val, (pd.Timestamp, datetime)): return pd.to_datetime(val)
+                        v_str = str(val).strip().lower()
+                        if v_str.isnumeric(): 
+                            return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
+                        meses = {'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04', 'mayo': '05', 'junio': '06', 
+                                 'julio': '07', 'agosto': '08', 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'}
+                        if ',' in v_str: v_str = v_str.split(',')[1].strip()
+                        match = re.search(r'(\d{1,2})\s*de\s*([a-z]+)\s*de\s*(\d{4})', v_str)
+                        if match:
+                            return pd.to_datetime(f"{match.group(3)}-{meses.get(match.group(2), '01')}-{match.group(1).zfill(2)}")
+                        try: return pd.to_datetime(v_str, dayfirst=True)
+                        except: return pd.NaT
+
+                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_segura)
                     hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
+                    
                     if not hist_finca.empty:
                         fecha_ref = pd.to_datetime(fecha_operacion)
+                        # Busca todos los vuelos antes de la fecha actual de operación
                         vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
                         if not vuelos_anteriores.empty:
                             dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
 
-        # --- D. HECTÁREAS 459 Y PISTA (PEDIDOS SAP - ÉXITO CONFIRMADO) ---
+        # --- D. HECTÁREAS 459 Y PISTA (PEDIDOS SAP) ---
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo['DATOS_FILA']
         num_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).split('.')[0]
@@ -282,7 +285,6 @@ elif menu == "⚙️ 2. Validación de Misión":
                 for p_val in lista_pistas_validas:
                     if p_val in texto_pedido: pista_detectada = p_val; break
                 
-                # Búsqueda en Columnas F (5) y G (6)
                 for _, r_p in match_ped.iterrows():
                     if len(r_p) >= 7:
                         val_material = str(r_p.iloc[5]).strip()
@@ -326,7 +328,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             else:
                 recargo_final = float(recargo_lista.split(" ")[0])
 
-        # --- 3. MATRIZ DE MEZCLA (¡RESTAURADA TOTALMENTE!) ---
+        # --- 3. MATRIZ DE MEZCLA ---
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         costo_mezcla_total = 0.0
 
@@ -521,7 +523,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
             costo_mezcla_total = 0.0
 
-        # --- 4. TOPES (REGLA DE ORO: PRECIOS EXACTOS) ---
+        # --- 4. TOPES (REGLA DE ORO) ---
         dict_topes_pista = {
             "TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325},
             "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
@@ -561,7 +563,3 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         gran_total = costo_mezcla_total + (tarifa_final_vuelo * ha_dosis_final) + (tarifa_st_final * ha_dosis_final)
         st.metric("🔥 TOTAL A FACTURAR FINCA", f"$ {fmt_sap(gran_total)}", f"Calculado sobre {ha_dosis_final} Ha")
-
-        if st.button("💾 DETONAR FACTURA Y GUARDAR", type="primary", use_container_width=True):
-            st.balloons()
-            st.success(f"Operación de {finca_sel} guardada con éxito.")
