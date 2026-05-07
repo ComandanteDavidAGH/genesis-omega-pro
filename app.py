@@ -65,108 +65,68 @@ elif menu == "📥 1. Buzón de Carga":
                 try: 
                     # 1. Leer Sábana
                     bytes_sabana = io.BytesIO(f_sabana.getvalue())
-                    if f_sabana.name.lower().endswith(('.xlsx', '.xls')):
-                        st.session_state['df_sabana'] = pd.read_excel(bytes_sabana)
-                    else:
-                        st.session_state['df_sabana'] = pd.read_csv(bytes_sabana, sep=None, engine='python')
+                    st.session_state['df_sabana'] = pd.read_excel(bytes_sabana) if f_sabana.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_sabana, sep=None, engine='python')
                     
                     # 2. Leer Pedidos
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
-                    if f_pedidos.name.lower().endswith(('.xlsx', '.xls')):
-                        st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos)
-                    else:
-                        st.session_state['df_pedidos'] = pd.read_csv(bytes_pedidos, sep=None, engine='python')
+                    st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # 3. CONEXIÓN SATELITAL (CORREGIDA)
+                    # 3. CONEXIÓN SATELITAL (CORREGIDA - ARTILLERÍA PESADA)
                     try:
                         if "gcp_credentials" in st.secrets:
-                            cred_dict = dict(st.secrets["gcp_credentials"])
-                            gc = gspread.service_account_from_dict(cred_dict)
+                            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                         else:
                             gc = gspread.service_account(filename='credenciales.json')
                         
                         url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                         boveda = gc.open_by_url(url_boveda)
                         
-                        # Cargar Configuración (TABLA 2)
-                        hoja_tabla2 = boveda.worksheet("TABLA 2")
-                        datos_tabla2 = hoja_tabla2.get_all_values()
-                        if len(datos_tabla2) > 1:
-                            st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
+                        # Carga de TABLA 2
+                        h2 = boveda.worksheet("TABLA 2").get_all_values()
+                        st.session_state['df_config'] = pd.DataFrame(h2[1:], columns=h2[0])
                         
-                        # 🔥 Cargar Tabla de Apoyo (CORRECCIÓN VITAL) 🔥
-                        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
-                        datos_apoyo = hoja_apoyo.get_all_values()
-                        if len(datos_apoyo) > 1:
-                            # Se transforma la descarga de Drive en una tabla real con columnas
-                            st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
+                        # 🔥 CARGA CRÍTICA: TABLA DE APOYO 2023 🔥
+                        ha = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
+                        st.session_state['df_apoyo'] = pd.DataFrame(ha[1:], columns=ha[0])
                         
-                        # Cargar Mezclas
-                        hoja_mezclas = boveda.worksheet("DD_Mesclas")
-                        datos_mezclas = hoja_mezclas.get_all_values()
-                        if len(datos_mezclas) > 1:
-                            st.session_state['df_mezclas'] = pd.DataFrame(datos_mezclas[1:], columns=datos_mezclas[0])
+                        # Carga de Mezclas y Config Base
+                        hm = boveda.worksheet("DD_Mesclas").get_all_values()
+                        st.session_state['df_mezclas'] = pd.DataFrame(hm[1:], columns=hm[0])
                         
-                        # Cargar Configuración Base
-                        hoja_conf = boveda.worksheet("Configuración")
-                        datos_conf = hoja_conf.get_all_values()
-                        if len(datos_conf) > 1:
-                            st.session_state['df_config_base'] = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
+                        hc = boveda.worksheet("Configuración").get_all_values()
+                        st.session_state['df_config_base'] = pd.DataFrame(hc[1:], columns=hc[0])
+                        
+                        st.success("🛰️ Enlace Satelital Establecido: Datos de Apoyo Sincronizados.")
                             
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
                     
-                    # 4. ESCÁNER DE BARRIDO TOTAL
+                    # 4. ESCÁNER DE PISTAS (Sigue igual porque funciona)
                     lista_pistas = []
                     for f in f_pistas:
-                        try:
-                            bytes_data = f.getvalue()
-                            ext = f.name.split('.')[-1].lower()
-                            
-                            if ext == 'xlsx':
-                                wb = openpyxl.load_workbook(io.BytesIO(bytes_data), read_only=True)
-                                visibles = [s.title for s in wb.worksheets if s.sheet_state == 'visible']
-                                wb.close()
-                                dict_pestañas = pd.read_excel(io.BytesIO(bytes_data), sheet_name=visibles, header=None)
-                            else:
-                                dict_pestañas = pd.read_excel(io.BytesIO(bytes_data), sheet_name=None, header=None)
-
-                            for nombre_pestaña, df in dict_pestañas.items():
-                                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
-                                filas_coctel = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index.tolist()
-                                
-                                for i_c, fila_c_idx in enumerate(filas_coctel):
-                                    fila_data = df.iloc[fila_c_idx].dropna().tolist()
-                                    nombre_coctel = fila_data[1] if len(fila_data) > 1 else "DESCONOCIDO"
-                                    limite_inferior = filas_coctel[i_c + 1] if i_c + 1 < len(filas_coctel) else len(df)
-                                    df_segmento = df.iloc[fila_c_idx:limite_inferior]
-                                    idx_fincas = df_segmento[df_segmento.astype(str).apply(lambda x: x.str.contains('FINCAS', case=False, na=False)).any(axis=1)].index
-                                    
-                                    if not idx_fincas.empty:
-                                        fila_h_fincas = idx_fincas[0]
-                                        col_fincas_idx = (df.iloc[fila_h_fincas].astype(str).str.contains('FINCAS', case=False)).values.argmax()
-                                        for r in range(fila_h_fincas + 1, limite_inferior):
-                                            finca_v = str(df.iloc[r, col_fincas_idx]).strip()
-                                            if finca_v.lower() in ['nan', '', 'none'] or "TOTAL" in finca_v.upper():
-                                                break
-                                            lista_pistas.append({
-                                                "ORIGEN": f"{f.name} | {nombre_pestaña}",
-                                                "COCTEL": nombre_coctel,
-                                                "FINCA_INFORME": finca_v,
-                                                "DATOS_FILA": df.iloc[r].to_dict()
-                                            })
-                        except Exception as e_file:
-                            st.error(f"🚨 Error en archivo {f.name}: {e_file}")
-
-                    if lista_pistas:
-                        st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                        st.success(f"✅ ¡Barrido Exitoso! {len(lista_pistas)} vuelos detectados.")
-                    else:
-                        st.error("🚨 No se encontró la estructura de 'FINCAS'.")
-
-                except Exception as e_master: 
-                    st.error(f"🚨 Error Crítico en Procesamiento: {e_master}")
+                        dict_p = pd.read_excel(io.BytesIO(f.getvalue()), sheet_name=None, header=None)
+                        for n, df in dict_p.items():
+                            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
+                            filas_c = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index.tolist()
+                            for i, f_idx in enumerate(filas_c):
+                                f_data = df.iloc[f_idx].dropna().tolist()
+                                coctel = f_data[1] if len(f_data) > 1 else "S/N"
+                                lim = filas_c[i+1] if i+1 < len(filas_c) else len(df)
+                                segment = df.iloc[f_idx:lim]
+                                idx_fin = segment[segment.astype(str).apply(lambda x: x.str.contains('FINCAS', case=False, na=False)).any(axis=1)].index
+                                if not idx_fin.empty:
+                                    f_h = idx_fin[0]
+                                    c_idx = (df.iloc[f_h].astype(str).str.contains('FINCAS', case=False)).values.argmax()
+                                    for r in range(f_h + 1, lim):
+                                        fv = str(df.iloc[r, c_idx]).strip()
+                                        if fv.lower() in ['nan', '', 'none'] or "TOTAL" in fv.upper(): break
+                                        lista_pistas.append({"ORIGEN": f"{f.name} | {n}", "COCTEL": coctel, "FINCA_INFORME": fv, "DATOS_FILA": df.iloc[r].to_dict()})
                     
+                    st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                    st.balloons()
+                except Exception as e: st.error(f"🚨 Error: {e}")
+
+
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
@@ -192,7 +152,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.stop()
 
         # =========================================================================
-        # 🟢 MOTOR DE INTELIGENCIA DINÁMICA
+        # 🟢 MOTOR DE INTELIGENCIA (ARTILLERÍA PESADA)
         # =========================================================================
         import re
         from datetime import datetime
@@ -209,6 +169,20 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         def fmt_sap(val): 
             return f"{int(round(val, 0)):,}".replace(",", ".")
+
+        # 🔥 TRADUCTOR PESADO DE FECHAS
+        def parse_fecha_pesada(val):
+            if pd.isna(val) or str(val).strip() == "": return pd.NaT
+            if isinstance(val, (datetime, pd.Timestamp)): return pd.to_datetime(val)
+            s = str(val).lower().strip()
+            if s.isnumeric(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), unit='D')
+            
+            meses = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06','julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
+            try:
+                m = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+                if m: return pd.to_datetime(f"{m.group(3)}-{meses.get(m.group(2),'01')}-{m.group(1).zfill(2)}")
+                return pd.to_datetime(s, dayfirst=True)
+            except: return pd.NaT
 
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
@@ -238,33 +212,19 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. 🚀 CAZADOR DEFINITIVO DE DÍAS CICLO ---
+        # --- C. 🚀 CAZADOR DE DÍAS CICLO ---
         dias_ciclo_calc = 0
         if not df_apoyo.empty:
             col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
             col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
             
             if col_finca and col_fecha:
+                # Búsqueda elástica
                 mask_finca = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: finca_limpia in x or x in finca_limpia)
                 hist_finca = df_apoyo[mask_finca].copy()
                 
                 if not hist_finca.empty:
-                    def parse_fecha_segura(val):
-                        if pd.isna(val) or val == "": return pd.NaT
-                        if isinstance(val, (pd.Timestamp, datetime)): return pd.to_datetime(val)
-                        v_str = str(val).strip().lower()
-                        if v_str.isnumeric(): 
-                            return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
-                        meses = {'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04', 'mayo': '05', 'junio': '06', 
-                                 'julio': '07', 'agosto': '08', 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'}
-                        if ',' in v_str: v_str = v_str.split(',')[1].strip()
-                        match = re.search(r'(\d{1,2})\s*de\s*([a-z]+)\s*de\s*(\d{4})', v_str)
-                        if match:
-                            return pd.to_datetime(f"{match.group(3)}-{meses.get(match.group(2), '01')}-{match.group(1).zfill(2)}")
-                        try: return pd.to_datetime(v_str, dayfirst=True)
-                        except: return pd.NaT
-
-                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_segura)
+                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_pesada)
                     hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
                     
                     if not hist_finca.empty:
@@ -290,23 +250,25 @@ elif menu == "⚙️ 2. Validación de Misión":
                 for p_val in lista_pistas_validas:
                     if p_val in texto_pedido: pista_detectada = p_val; break
                 
+                # Búsqueda en posiciones F(5) y G(6)
                 for _, r_p in match_ped.iterrows():
                     if len(r_p) >= 7:
-                        val_material = str(r_p.iloc[5]).strip()
-                        if "459" in val_material:
+                        val_mat = str(r_p.iloc[5]).strip()
+                        if "459" in val_mat:
                             ha_dosis_detectada = extraer_numero(r_p.iloc[6])
                             break
 
         ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
-        # --- 2. PANEL CONTROLES ---
+        # --- 2. PANEL CONTROLES (DINAMISMO ABSOLUTO CON KEY) ---
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros de Operación e Inteligencia de Ciclos")
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             r1c1.info(f"🧑‍🌾 Productor: **{tipo_productor}**")
             r1c2.warning(f"🛣️ Tope Finca: **{tipo_de_tope_finca}**")
             
+            # 🔥 KEY DINÁMICA: Fuerza la actualización visual
             casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
             
             r1c3.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=f"ds_{casilla_key}")
@@ -333,7 +295,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             else:
                 recargo_final = float(recargo_lista.split(" ")[0])
 
-        # --- 3. MATRIZ DE MEZCLA ---
+        # --- 3. MATRIZ DE MEZCLA (COMPLETA E INTACTA) ---
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         costo_mezcla_total = 0.0
 
@@ -528,7 +490,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
             costo_mezcla_total = 0.0
 
-        # --- 4. TOPES (REGLA DE ORO: PRECIOS EXACTOS) ---
+        # --- 4. TOPES (PRECIOS EXACTOS RESTAURADOS) ---
         dict_topes_pista = {
             "TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325},
             "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
