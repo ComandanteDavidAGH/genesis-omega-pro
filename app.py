@@ -230,57 +230,160 @@ elif menu == "⚙️ 2. Validación de Misión":
                 m2.metric("Tope de Pista", tope_msj)
                 m3.metric("Recargo Terrestre (DIVAS)", f"${recargo_terrestre:,.0f}")
 
-# --- 4. GRAN MATRIZ DE PRODUCTOS (SINCRONIZACIÓN TRIPLE) ---
-            st.markdown("#### 🧪 Matriz de Validación y Dosis")
+# --- 4. GRAN MATRIZ DE PRODUCTOS (MOTOR MACRO HIJO) ---
+            st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Dosis")
 
-            # 1. Preparación de Motores
             raw_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).strip()
             num_pedido = raw_pedido.split('.')[0] 
             
             df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
             df_sab = st.session_state.get('df_sabana', pd.DataFrame())
             df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
-            df_cfg = st.session_state.get('df_config_base', pd.DataFrame()) # La nueva tabla
+            df_cfg = st.session_state.get('df_config_base', pd.DataFrame()) 
             
-            # Identificar Tipo de Productor de la Finca Seleccionada (Para el Margen)
-            tipo_productor = "SOCIO" # Valor por defecto
+            def extraer_numero(valor):
+                if pd.isna(valor) or valor == "": return 0.0
+                if isinstance(valor, (int, float)): return float(valor)
+                v = str(valor).strip().upper()
+                if '.' in v and ',' in v: v = v.replace('.', '').replace(',', '.')
+                elif ',' in v: v = v.replace(',', '.') 
+                try: return float(v)
+                except: return 0.0
+
+            tipo_productor = "SOCIO"
             if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
                 df_apoyo = st.session_state['df_apoyo']
                 match_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.contains(str(finca_sel), case=False, na=False)]
                 if not match_finca.empty:
-                    # Busca columna de Tipo de Productor o Grupo
                     col_tipo = [c for c in df_apoyo.columns if 'TIPO' in str(c).upper() or 'GRUPO' in str(c).upper()]
                     if col_tipo: tipo_productor = str(match_finca.iloc[0][col_tipo[0]])
 
-            matriz_datos = []
-
-            # Buscar el Pedido
             productos_pedido = pd.DataFrame()
             if not df_ped.empty and num_pedido != "S/N":
                 filas_con_pedido = df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido, case=False, na=False)).any(axis=1)
                 productos_pedido = df_ped[filas_con_pedido]
 
-            # 3. Construcción de la Matriz A-I (El Cruce Táctico)
             if not productos_pedido.empty:
+                # ====================================================================
+                # 🧠 FASE 1: PRE-ESCANEO
+                # ====================================================================
+                sap_dict_pista = {}
+                datos_extraidos_sap = []
+                
                 for _, fila_sap in productos_pedido.iterrows():
+                    col_material = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper()]
+                    cod_item = str(fila_sap[col_material[0]]).split('.')[0] if col_material else str(fila_sap.iloc[1]).split('.')[0]
                     
-                    # A) Capturar el CÓDIGO ITEM
-                    col_material_ped = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper()]
-                    cod_item = str(fila_sap[col_material_ped[0]]).split('.')[0] if col_material_ped else str(fila_sap.iloc[1]).split('.')[0]
+                    if "459" in cod_item or "429" in cod_item: continue 
                     
-                    # 🛡️ FILTRO ANTI-SERVICIOS (Ignoramos 459 y 429)
-                    if "459" in cod_item or "429" in cod_item:
-                        continue 
+                    col_cant = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
+                    cant_total = extraer_numero(fila_sap[col_cant[0]]) if col_cant else 0.0
+                    dosis_pista = cant_total / ha_real if ha_real > 0 else 0.0
                     
-                    # B) Capturar CANTIDAD TOTAL Planificada SAP
-                    col_cant_ped = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
-                    cant_total_pedido = 0.0
-                    if col_cant_ped:
-                        try: cant_total_pedido = float(str(fila_sap[col_cant_ped[0]]).replace(',', '.'))
-                        except: cant_total_pedido = 0.0
+                    nombre_p = f"Item {cod_item}"
+                    if not df_sab.empty:
+                        match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        if not match_sabana.empty:
+                            col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
+                            if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
+                    
+                    nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
+                    sap_dict_pista[nombre_limpio] = dosis_pista
+                    
+                    datos_extraidos_sap.append({
+                        "cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total
+                    })
 
-                    # C) VIAJAR A LA SÁBANA SAP (Para Nombre, Costo Unitario real, Lote y Saldo)
-                    nombre_p = f"Item {cod_item} (No en Sábana)"
+                # ====================================================================
+                # ⚔️ FASE 2: LA GRAN BATALLA (Scoring System)
+                # ====================================================================
+                coctel_ganador = "SIN COINCIDENCIA"
+                dosis_oficiales_coctel = {}
+                
+                # 🚨 NUEVA REGLA DE ORO EXTENDIDA (BT, ZN, ZINTRAC, ZITRON, BANATREL)
+                claves_boro_zinc = ["BT", "BANATREL", "ZN", "ZINTRAC", "ZITRON"]
+                tiene_acond_alto = any(any(clave in p for clave in claves_boro_zinc) for p in sap_dict_pista.keys())
+                
+                if not df_mez.empty:
+                    dict_recetas = {}
+                    dict_lideres = {}
+                    
+                    for _, row in df_mez.iterrows():
+                        cid = str(row.iloc[0]).strip().upper() 
+                        if not cid or cid == 'NAN': continue
+                        p_tabla_clean = str(row.iloc[5]).strip().upper().replace(" ", "") 
+                        d_tabla = extraer_numero(row.iloc[6]) 
+                        es_lider = str(row.iloc[3]).strip().upper() == "X" 
+                        
+                        if cid not in dict_recetas: dict_recetas[cid] = {}
+                        dict_recetas[cid][p_tabla_clean] = d_tabla
+                        if es_lider: dict_lideres[cid] = p_tabla_clean
+
+                    max_p = -999
+                    import re
+                    
+                    for iter_id, receta in dict_recetas.items():
+                        es_valido = True
+                        puntaje = 0
+                        lider_db = dict_lideres.get(iter_id, "")
+                        
+                        match_lider = False
+                        if lider_db:
+                            for k_sap in sap_dict_pista.keys():
+                                if lider_db == k_sap or (len(k_sap)>=4 and lider_db in k_sap) or (len(lider_db)>=4 and k_sap in lider_db):
+                                    match_lider = True
+                                    break
+                        if match_lider: puntaje += 1000
+                        else: es_valido = False
+                            
+                        if es_valido:
+                            for p_receta, d_esperada in receta.items():
+                                # APLICACIÓN DE REGLAS DE ORO
+                                if p_receta == "ACONDICIONADORSV": d_esperada = 0.06 if tiene_acond_alto else 0.02
+                                elif p_receta == "ACEITEDICAM":
+                                    nums = re.findall(r'\d+', iter_id)
+                                    if nums: d_esperada = float(nums[0])
+                                elif p_receta == "IMBIOSILO": d_esperada = 1.5 if iter_id.startswith("IN") else 1.0
+                                
+                                match_receta = False
+                                dose_matched = False
+                                for k_sap, d_sap in sap_dict_pista.items():
+                                    if p_receta == k_sap or (len(k_sap)>=4 and p_receta in k_sap) or (len(p_receta)>=4 and k_sap in p_receta):
+                                        match_receta = True
+                                        if abs(d_sap - d_esperada) <= 0.2: dose_matched = True
+                                        break
+                                
+                                if match_receta: puntaje += 50 if dose_matched else 10
+                                else:
+                                    es_valido = False
+                                    break
+                        
+                        if es_valido and puntaje > max_p:
+                            max_p = puntaje
+                            coctel_ganador = iter_id
+                            dosis_oficiales_coctel = receta.copy()
+                            for pr in dosis_oficiales_coctel:
+                                if pr == "ACONDICIONADORSV": dosis_oficiales_coctel[pr] = 0.06 if tiene_acond_alto else 0.02
+                                elif pr == "ACEITEDICAM":
+                                    nums = re.findall(r'\d+', iter_id)
+                                    if nums: dosis_oficiales_coctel[pr] = float(nums[0])
+                                elif pr == "IMBIOSILO": dosis_oficiales_coctel[pr] = 1.5 if iter_id.startswith("IN") else 1.0
+
+                if coctel_ganador != "SIN COINCIDENCIA":
+                    st.success(f"🤖 **MOTOR IA:** Cóctel Ganador Detectado: **{coctel_ganador}**")
+                else:
+                    st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Se usarán dosis referenciales.")
+
+                # ====================================================================
+                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ FINAL
+                # ====================================================================
+                matriz_datos = []
+                for item_data in datos_extraidos_sap:
+                    cod_item = item_data['cod']
+                    nombre_p = item_data['nombre']
+                    nombre_limpio = item_data['nombre_limpio']
+                    cant_total_pedido = item_data['cant_total']
+                    
                     costo_unit = 0.0
                     lote_sap = "S/L"
                     saldo_sap = 0.0
@@ -289,100 +392,70 @@ elif menu == "⚙️ 2. Validación de Misión":
                         match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
                         if not match_sabana.empty:
                             fila_sabana = match_sabana.iloc[0]
-                            
-                            col_nombre_sab = [c for c in fila_sabana.index if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
-                            if col_nombre_sab: nombre_p = str(fila_sabana[col_nombre_sab[0]])
-                                
-                            # 🎯 EXTRACCIÓN EXACTA DEL PRECIO (Ignora "Valor libre")
-                            col_precio_sab = [c for c in fila_sabana.index if str(c).strip().upper() == 'PRECIOS' or str(c).strip().upper() == 'PRECIO']
-                            if col_precio_sab:
-                                try: costo_unit = float(str(fila_sabana[col_precio_sab[0]]).replace(',', '.'))
-                                except: costo_unit = 0.0
-                                
-                            col_lote_sab = [c for c in fila_sabana.index if 'LOTE' in str(c).upper()]
-                            if col_lote_sab: lote_sap = str(fila_sabana[col_lote_sab[0]])
-                                
-                            col_saldo_sab = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper() or 'CANTIDAD' in str(c).upper()]
-                            if col_saldo_sab:
-                                try: saldo_sap = float(str(fila_sabana[col_saldo_sab[0]]).replace(',', '.'))
-                                except: saldo_sap = 0.0
+                            col_precio = [c for c in fila_sabana.index if str(c).strip().upper() in ['PRECIOS', 'PRECIO']]
+                            if col_precio: costo_unit = extraer_numero(fila_sabana[col_precio[0]])
+                            col_lote = [c for c in fila_sabana.index if 'LOTE' in str(c).upper()]
+                            if col_lote: lote_sap = str(fila_sabana[col_lote[0]])
+                            col_saldo = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()]
+                            if col_saldo: saldo_sap = extraer_numero(fila_sabana[col_saldo[0]])
 
-                    # D) BUSCAR DOSIS TEÓRICA EXACTA EN `DD_Mesclas` (Búsqueda por Nombre)
                     dosis_teorica = None
-                    if not df_mez.empty:
-                        # Limpiamos el nombre (ej: "BANANO Y PLATANO * LT" -> "BANANO Y PLATANO")
-                        nombre_limpio = nombre_p.split('*')[0].strip()
-                        # Columna F (Índice 5) es PRODUCTO2. Columna G (Índice 6) es DOSIS2.
-                        match_mezcla = df_mez[df_mez[5].astype(str).str.contains(nombre_limpio, case=False, regex=False, na=False)]
-                        if not match_mezcla.empty:
-                            try: dosis_teorica = float(str(match_mezcla.iloc[0][6]).replace(',', '.'))
-                            except: dosis_teorica = None
-
-                    # E) CÁLCULO DEL COSTO CON EL MARGEN DE LA COLUMNA D
-                    multiplicador_margen = 1.112 # Default (Socio)
+                    for p_receta, d_oficial in dosis_oficiales_coctel.items():
+                        if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
+                            dosis_teorica = d_oficial
+                            break
+                    
+                    multiplicador_margen = 1.112
                     if not df_cfg.empty:
-                        # Buscar el grupo (ej: SOCIO) en Columna A (Índice 0)
                         match_prod = df_cfg[df_cfg[0].astype(str).str.contains(tipo_productor, case=False, na=False)]
                         if not match_prod.empty:
-                            try:
-                                # Extraer el multiplicador de la Columna D (Índice 3)
-                                val_mult = str(match_prod.iloc[0][3]).replace(',', '.')
-                                multiplicador_margen = float(val_mult)
-                            except: pass
-                    
-                    # Multiplicación final del Costo
+                            multiplicador_margen = extraer_numero(match_prod.iloc[0][3])
+                            if multiplicador_margen == 0.0: multiplicador_margen = 1.112
                     costo_margen = round(costo_unit * multiplicador_margen, 3)
 
-                    # Consolidar la fila
                     matriz_datos.append({
                         "A: Producto": nombre_p,
-                        "B: Dosis/Ha (SAP)": round(dosis_teorica, 3) if dosis_teorica is not None else "⚠️ Sin Dosis",
-                        "C: X (Extra %)": None, # <- CASILLA VACÍA
-                        "D: Dosis Total (Sistema)": 0.0, # SE CALCULA ABAJO
+                        "B: Dosis/Ha (SAP)": round(dosis_teorica, 3) if dosis_teorica is not None else None,
+                        "C: X (Extra %)": None,
+                        "D: Dosis Total (Sistema)": 0.0, 
                         "E: Costo Unit (+Margen)": round(costo_margen, 3),
                         "G: Lotes (SAP)": lote_sap,
                         "H: Saldo Real SAP": round(saldo_sap, 3),
-                        "I: Pedido Sugerido (Total SAP)": round(cant_total_pedido, 3) 
+                        "I: Sugerido SAP (Total)": round(cant_total_pedido, 3) 
                     })
 
-            # 4. Mostrar y Editar la Matriz (EFECTO EXCEL)
-            if matriz_datos:
                 df_matriz = pd.DataFrame(matriz_datos)
                 
-                # --- ⚡ MAGIA REACTIVA INTERACTIVA ⚡ ---
                 if 'editor_valid' in st.session_state:
                     ediciones = st.session_state['editor_valid'].get('edited_rows', {})
                     for row_idx, edit_dict in ediciones.items():
-                        if "C: X (Extra %)" in edit_dict:
-                            df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
+                        if "B: Dosis/Ha (SAP)" in edit_dict: df_matriz.at[row_idx, "B: Dosis/Ha (SAP)"] = edit_dict["B: Dosis/Ha (SAP)"]
+                        if "C: X (Extra %)" in edit_dict: df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
 
+                df_matriz["B_Val"] = df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) 
                 df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) 
-                temp_dosis = df_matriz["B: Dosis/Ha (SAP)"].apply(lambda x: float(x) if isinstance(x, (int, float)) else 0.0)
                 
-                # Fórmula matemática exacta de dosis
-                df_matriz["D: Dosis Total (Sistema)"] = (temp_dosis * (1 + df_matriz["C_Val"]/100) * ha_real).round(3)
-                df_matriz = df_matriz.drop(columns=["C_Val"])
+                df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B_Val"] * (1 + df_matriz["C_Val"]/100) * ha_real).round(3)
+                df_matriz = df_matriz.drop(columns=["B_Val", "C_Val"])
 
                 edited_df = st.data_editor(
                     df_matriz,
                     key='editor_valid', 
                     column_config={
-                        "C: X (Extra %)": st.column_config.NumberColumn("Extra %", help="Ingrese % extra (Ej: 1 para +1%)", min_value=0.000, max_value=100.000, step=0.001, format="%.3f"),
+                        "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
+                        "C: X (Extra %)": st.column_config.NumberColumn("Extra %", min_value=0.000, max_value=100.000, step=0.001, format="%.3f"),
                         "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                         "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (+Margen)", format="$ %.0f"),
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
-                        "I: Pedido Sugerido (Total SAP)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
+                        "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
                     },
-                    disabled=["A: Producto", "B: Dosis/Ha (SAP)", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Pedido Sugerido (Total SAP)"],
-                    use_container_width=True,
-                    hide_index=True
+                    disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)"],
+                    use_container_width=True, hide_index=True
                 )
-                
             else:
-                st.warning(f"🚨 No se encontraron productos en Pedidos SAP para la Orden: {num_pedido}. Verifique SAP.")
+                st.warning(f"🚨 No se encontraron productos en SAP para: {num_pedido}")
 
-            # --- BOTÓN DE CIERRE Y FACTURACIÓN ---
             st.markdown("---")
             if st.button("🔥 DETONAR FACTURA Y GUARDAR HISTORIAL", type="primary", use_container_width=True):
                 st.balloons()
-                st.success(f"✅ ¡Operación Exitosa! Liquidación de la finca {finca_sel} procesada con Pedido {num_pedido}. Datos enviados al historial de facturación.")
+                st.success(f"✅ ¡Operación Exitosa! Liquidación de {finca_sel} procesada.")
