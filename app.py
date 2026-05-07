@@ -301,7 +301,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                 coctel_ganador = "SIN COINCIDENCIA"
                 dosis_oficiales_coctel = {}
                 claves_boro_zinc = ["BT", "BANATREL", "ZN", "ZINTRAC", "ZITRON"]
-                tiene_acond_alto = any(any(clave in p for clave in sap_dict_pista.keys()) for clave in claves_boro_zinc)
+                tiene_acond_alto = any(any(clave in p for p in sap_dict_pista.keys()) for clave in claves_boro_zinc)
                 
                 if not df_mez.empty:
                     dict_recetas = {}
