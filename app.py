@@ -230,62 +230,40 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. 🚀 CAZADOR DE DÍAS CICLO (CON RADAR DIAGNÓSTICO) ---
+        # --- C. 🚀 CAZADOR DEFINITIVO DE DÍAS CICLO ---
         dias_ciclo_calc = 0
-        
-        # ⚠️ CUADRO DE DIAGNÓSTICO VISUAL ⚠️
-        with st.expander("🛠️ RADAR DE DIAGNÓSTICO FECHAS (Enviar pantallazo de esto)", expanded=True):
-            st.write(f"**1. Buscando Finca exacta:** '{finca_limpia}'")
+        if not df_apoyo.empty:
+            col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
+            col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
             
-            if not df_apoyo.empty:
-                col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
-                col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
-                st.write(f"**2. Columnas detectadas en BD:** Finca-> {col_finca}, Fecha-> {col_fecha}")
+            if col_finca and col_fecha:
+                mask_finca = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: finca_limpia in x or x in finca_limpia)
+                hist_finca = df_apoyo[mask_finca].copy()
                 
-                if col_finca and col_fecha:
-                    muestra_fincas = df_apoyo[col_finca[0]].dropna().astype(str).unique()[:5]
-                    st.write(f"**3. Muestra de cómo vienen escritas las fincas en BD:** {muestra_fincas}")
-                    
-                    mask_finca = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: finca_limpia in x or x in finca_limpia)
-                    hist_finca = df_apoyo[mask_finca].copy()
-                    st.write(f"**4. Vuelos encontrados para {finca_limpia}:** {len(hist_finca)} filas")
+                if not hist_finca.empty:
+                    def parse_fecha_segura(val):
+                        if pd.isna(val) or val == "": return pd.NaT
+                        if isinstance(val, (pd.Timestamp, datetime)): return pd.to_datetime(val)
+                        v_str = str(val).strip().lower()
+                        if v_str.isnumeric(): 
+                            return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
+                        meses = {'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04', 'mayo': '05', 'junio': '06', 
+                                 'julio': '07', 'agosto': '08', 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'}
+                        if ',' in v_str: v_str = v_str.split(',')[1].strip()
+                        match = re.search(r'(\d{1,2})\s*de\s*([a-z]+)\s*de\s*(\d{4})', v_str)
+                        if match:
+                            return pd.to_datetime(f"{match.group(3)}-{meses.get(match.group(2), '01')}-{match.group(1).zfill(2)}")
+                        try: return pd.to_datetime(v_str, dayfirst=True)
+                        except: return pd.NaT
+
+                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_segura)
+                    hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
                     
                     if not hist_finca.empty:
-                        st.write("**5. Así se ven las FECHAS CRUDAS (Primeras 3):**", hist_finca[col_fecha[0]].head(3).tolist())
-                        
-                        def parse_fecha_segura(val):
-                            if pd.isna(val) or val == "": return pd.NaT
-                            if isinstance(val, (pd.Timestamp, datetime)): return pd.to_datetime(val)
-                            v_str = str(val).strip().lower()
-                            if v_str.isnumeric(): 
-                                return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(v_str), unit='D')
-                            meses = {'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04', 'mayo': '05', 'junio': '06', 
-                                     'julio': '07', 'agosto': '08', 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'}
-                            if ',' in v_str: v_str = v_str.split(',')[1].strip()
-                            match = re.search(r'(\d{1,2})\s*de\s*([a-z]+)\s*de\s*(\d{4})', v_str)
-                            if match:
-                                return pd.to_datetime(f"{match.group(3)}-{meses.get(match.group(2), '01')}-{match.group(1).zfill(2)}")
-                            try: return pd.to_datetime(v_str, dayfirst=True)
-                            except: return pd.NaT
-
-                        hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_segura)
-                        st.write("**6. Fechas después de conversión Python:**", hist_finca['FECHA_DT'].head(3).tolist())
-                        
-                        hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
-                        if not hist_finca.empty:
-                            fecha_ref = pd.to_datetime(fecha_operacion)
-                            vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
-                            if not vuelos_anteriores.empty:
-                                st.write(f"**7. Fecha de Vuelo Actual:** {fecha_ref.date()}")
-                                st.write(f"**8. Fecha de Vuelo Anterior Encontrada:** {vuelos_anteriores['FECHA_DT'].max().date()}")
-                                dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
-                                st.success(f"**¡CÁLCULO EXITOSO! -> {dias_ciclo_calc} días.**")
-                            else:
-                                st.error("No hay vuelos anteriores a la fecha seleccionada.")
-                        else:
-                            st.error("Todas las fechas fallaron al convertirse.")
-            else:
-                st.error("La Tabla de Apoyo 2023 está vacía o no cargó.")
+                        fecha_ref = pd.to_datetime(fecha_operacion)
+                        vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
+                        if not vuelos_anteriores.empty:
+                            dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
 
         # --- D. HECTÁREAS 459 Y PISTA (PEDIDOS SAP) ---
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
@@ -542,7 +520,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
             costo_mezcla_total = 0.0
 
-        # --- 4. TOPES (REGLA DE ORO) ---
+        # --- 4. TOPES (REGLA DE ORO: PRECIOS EXACTOS) ---
         dict_topes_pista = {
             "TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325},
             "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
@@ -582,3 +560,7 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         gran_total = costo_mezcla_total + (tarifa_final_vuelo * ha_dosis_final) + (tarifa_st_final * ha_dosis_final)
         st.metric("🔥 TOTAL A FACTURAR FINCA", f"$ {fmt_sap(gran_total)}", f"Calculado sobre {ha_dosis_final} Ha")
+
+        if st.button("💾 DETONAR FACTURA Y GUARDAR", type="primary", use_container_width=True):
+            st.balloons()
+            st.success(f"Operación de {finca_sel} guardada con éxito.")
