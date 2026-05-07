@@ -183,7 +183,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.stop()
 
         # =========================================================================
-        # 🟢 MOTOR DE INTELIGENCIA Y REPORTE
+        # 🟢 MOTOR DE INTELIGENCIA (EXTRACTOR BLINDADO)
         # =========================================================================
         import re
         from datetime import datetime
@@ -201,22 +201,35 @@ elif menu == "⚙️ 2. Validación de Misión":
         def fmt_sap(val): 
             return f"{int(round(val, 0)):,}".replace(",", ".")
 
-        # 🔥 TRADUCTOR PESADO DE FECHAS MEJORADO
+        # 🔥 TRADUCTOR DEFINITIVO (Fuerza Bruta para cualquier formato)
         def parse_fecha_pesada(val):
             if pd.isna(val) or str(val).strip() == "": return pd.NaT
             if isinstance(val, (datetime, pd.Timestamp)): return pd.to_datetime(val)
             s = str(val).lower().strip()
             
-            # Quitar dias de la semana ej: "martes, 3 de enero..."
-            if "," in s: s = s.split(",", 1)[-1].strip()
-            
             if s.isnumeric(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), unit='D')
             
-            meses = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06','julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
-            try:
-                m = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
-                if m: return pd.to_datetime(f"{m.group(3)}-{meses.get(m.group(2),'01')}-{m.group(1).zfill(2)}")
-                return pd.to_datetime(s, dayfirst=True)
+            meses = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06',
+                     'julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
+            
+            # Limpiar basura textual
+            s_clean = s.replace(',', '').replace('del', '').replace('de', '')
+            
+            mes_encontrado = None
+            for mes, num in meses.items():
+                if mes in s_clean:
+                    mes_encontrado = num
+                    break
+                    
+            if mes_encontrado:
+                nums = re.findall(r'\d+', s_clean)
+                if len(nums) >= 2:
+                    anio = next((n for n in nums if len(n) == 4), None)
+                    dia = next((n for n in nums if len(n) <= 2), None)
+                    if anio and dia:
+                        return pd.to_datetime(f"{anio}-{mes_encontrado}-{dia.zfill(2)}")
+                        
+            try: return pd.to_datetime(s, dayfirst=True)
             except: return pd.NaT
 
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
@@ -225,13 +238,14 @@ elif menu == "⚙️ 2. Validación de Misión":
         df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
         df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
 
-        finca_limpia = str(finca_sel).strip().upper()
+        # Limpieza estricta de Finca para evitar clones
+        finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
 
         # --- A. PRODUCTOR Y TOPE ---
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
         if not df_t2.empty:
-            match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).str.strip().str.upper() == finca_limpia]
+            match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
             if not match_t2.empty:
                 fila_t2 = match_t2.iloc[0]
                 tipo_productor = str(fila_t2.iloc[5]).strip().upper()
@@ -247,30 +261,20 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. 🚀 CAZADOR DE DÍAS CICLO E INTERROGADOR ---
+        # --- C. 🚀 CAZADOR DE DÍAS CICLO (FILTRO LÁSER) ---
         dias_ciclo_calc = 0
-        reporte_ciclos = []
         
-        if df_apoyo.empty:
-            reporte_ciclos.append("❌ La TABLA DE APOYO2023 está vacía.")
-        else:
+        if not df_apoyo.empty:
             col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
             col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
-            reporte_ciclos.append(f"🔍 Columnas detectadas: Finca -> {col_finca}, Fecha -> {col_fecha}")
             
             if col_finca and col_fecha:
-                mask_finca = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: finca_limpia in x or x in finca_limpia)
+                # FILTRO ESTRICTO: SACRAMENTO 1 != SACRAMENTO 10
+                mask_finca = df_apoyo[col_finca[0]].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia
                 hist_finca = df_apoyo[mask_finca].copy()
-                reporte_ciclos.append(f"🎯 Búsqueda de Finca '{finca_limpia}': {len(hist_finca)} registros encontrados.")
                 
                 if not hist_finca.empty:
-                    muestras_crudas = hist_finca[col_fecha[0]].head(3).tolist()
-                    reporte_ciclos.append(f"📅 Muestra de fechas crudas en Drive: {muestras_crudas}")
-                    
                     hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_pesada)
-                    muestras_convertidas = hist_finca['FECHA_DT'].head(3).tolist()
-                    reporte_ciclos.append(f"⚙️ Fechas tras conversión: {muestras_convertidas}")
-                    
                     hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
                     
                     if not hist_finca.empty:
@@ -278,18 +282,6 @@ elif menu == "⚙️ 2. Validación de Misión":
                         vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
                         if not vuelos_anteriores.empty:
                             dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
-                            reporte_ciclos.append(f"✅ ¡ÉXITO! Fecha Vuelo: {fecha_ref.date()} - Último Vuelo BD: {vuelos_anteriores['FECHA_DT'].max().date()} = {dias_ciclo_calc} días.")
-                        else:
-                            reporte_ciclos.append("⚠️ No hay vuelos en el historial anteriores a la fecha de operación.")
-                    else:
-                        reporte_ciclos.append("❌ Todas las fechas fallaron al intentar convertirse a calendario.")
-            else:
-                reporte_ciclos.append("❌ No se encontraron las columnas 'FINCA' o 'FECHA' en la tabla.")
-
-        # --- MOSTRAR REPORTE EN PANTALLA ---
-        with st.expander("🛠️ VER REPORTE DE CICLOS (Despliega esto y mándame foto)", expanded=True):
-            for linea in reporte_ciclos:
-                st.write(linea)
 
         # --- D. HECTÁREAS 459 Y PISTA (PEDIDOS SAP) ---
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
