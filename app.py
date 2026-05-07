@@ -240,6 +240,8 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         else:
             st.info("⚠️ Seleccione una Finca y un Informe/Pedido para iniciar la liquidación.")
+            st.stop() # 🛑 FRENO DE EMERGENCIA: Detiene el código hasta que se seleccione algo
+            
             
             # --- 3. CÁLCULOS AUTOMÁTICOS DE TARIFA (ESPEJO EXCEL) ---
             dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
