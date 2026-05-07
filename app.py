@@ -263,7 +263,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             
             if not productos_pedido.empty:
                 # 📡 Radar Pista (Busca las siglas en el pedido por si acaso)
-                texto_total_pedido = " ".join(productos_pedido.astype(str).values.flatten()).upper()
+                texto_total_pedido = productos_pedido.to_string().upper()
                 for p_val in lista_pistas_validas:
                     if p_val in texto_total_pedido: pista_detectada = p_val; break
                         
