@@ -175,74 +175,72 @@ elif menu == "⚙️ 2. Validación de Misión":
         st.warning("⚠️ Vuelva al Módulo 1, cargue los archivos, presione INICIAR PROCESAMIENTO y espere el mensaje verde de éxito antes de volver aquí.")
     else:
         # --- 1. UBICACIÓN ESTRATÉGICA DE DATOS GENERALES ---
-with st.container(border=True):
-    st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
-    c1, c2 = st.columns(2)
-    
-    # LISTA DEPLEGABLE DE FINCAS
-    lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 1].unique().tolist()
-    finca_sel = c1.selectbox("📍 Seleccione Finca (Base de Datos):", ["---"] + lista_fincas_apoyo)
-    
-    # Lista de vuelos detectados
-    vuelos_informe = st.session_state['df_pistas']
-    vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + vuelos_informe['ORIGEN'].unique().tolist())
-
-if finca_sel != "---" and vuelo_ref != "---":
-    # Extraer datos de los informes cargados
-    datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
-    datos_raw = datos_vuelo['DATOS_FILA'] 
-    
-    # --- 🧠 MOTOR DE CÁLCULO DÍAS CICLO (REEMPLAZO MAX.SI.CONJUNTO) ---
-    dias_ciclo_calc = 0
-    df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
-    
-    if not df_apoyo.empty:
-        # Identificamos columnas de Finca (col 1) y Fecha (buscamos por nombre)
-        col_fecha_hist = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
-        if col_fecha_hist:
-            # Filtramos historial por la finca seleccionada
-            hist_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.contains(str(finca_sel), case=False, na=False)].copy()
+        with st.container(border=True):
+            st.markdown("### 📡 Panel de Operaciones (Datos de Vuelo)")
+            c1, c2 = st.columns(2)
             
-            if not hist_finca.empty:
-                # Convertimos a formato fecha para poder restar
-                hist_finca['FECHA_DT'] = pd.to_datetime(hist_finca[col_fecha_hist[0]], errors='coerce')
-                # Obtenemos la fecha de hoy o la del pedido actual
-                fecha_vuelo_actual = pd.to_datetime('today') 
+            # LISTA DEPLEGABLE DE FINCAS
+            if 'df_apoyo' in st.session_state and not st.session_state['df_apoyo'].empty:
+                lista_fincas_apoyo = st.session_state['df_apoyo'].iloc[:, 1].unique().tolist()
+            else:
+                lista_fincas_apoyo = []
+            finca_sel = c1.selectbox("📍 Seleccione Finca (Base de Datos):", ["---"] + lista_fincas_apoyo)
+            
+            # Lista de vuelos detectados
+            if 'df_pistas' in st.session_state and not st.session_state['df_pistas'].empty:
+                vuelos_informe = st.session_state['df_pistas']
+                lista_vuelos = vuelos_informe['ORIGEN'].unique().tolist()
+            else:
+                vuelos_informe = pd.DataFrame()
+                lista_vuelos = []
+            vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_vuelos)
+
+        if finca_sel != "---" and vuelo_ref != "---":
+            # Extraer datos de los informes cargados
+            datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
+            datos_raw = datos_vuelo['DATOS_FILA'] 
+            
+            # --- 🧠 MOTOR DE CÁLCULO DÍAS CICLO (REEMPLAZO MAX.SI.CONJUNTO) ---
+            dias_ciclo_calc = 0
+            df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
+            
+            if not df_apoyo.empty:
+                col_fecha_hist = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
+                if col_fecha_hist:
+                    hist_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.contains(str(finca_sel), case=False, na=False)].copy()
+                    if not hist_finca.empty:
+                        hist_finca['FECHA_DT'] = pd.to_datetime(hist_finca[col_fecha_hist[0]], errors='coerce')
+                        fecha_vuelo_actual = pd.to_datetime('today') 
+                        vuelos_pasados = hist_finca[hist_finca['FECHA_DT'] < fecha_vuelo_actual]
+                        if not vuelos_pasados.empty:
+                            ultima_fecha = vuelos_pasados['FECHA_DT'].max()
+                            dias_ciclo_calc = (fecha_vuelo_actual - ultima_fecha).days
+
+            # --- 2. CONFIGURACIÓN DE AERONAVE, CICLOS Y HECTÁREAS ---
+            with st.container(border=True):
+                col_a, col_b, col_c, col_d, col_e = st.columns(5)
                 
-                # Buscamos el vuelo anterior (MAX) que sea menor a la fecha de hoy
-                vuelos_pasados = hist_finca[hist_finca['FECHA_DT'] < fecha_vuelo_actual]
-                if not vuelos_pasados.empty:
-                    ultima_fecha = vuelos_pasados['FECHA_DT'].max()
-                    dias_ciclo_calc = (fecha_vuelo_actual - ultima_fecha).days
+                lista_aviones = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA", "AIR TRACTOR", "CESSNA ASA", "DRONE DATAROT", "DRONE GENESYS", "DRONE AVIL"]
+                avion_sel = col_a.selectbox("✈️ Tipo de Avión:", lista_aviones)
+                
+                pista_pedido = str(datos_raw.get(2, "PLUC"))
+                lista_pistas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+                idx_pista = lista_pistas.index(pista_pedido) if pista_pedido in lista_pistas else 0
+                pista_sel = col_b.selectbox("🛣️ Pista Operativa:", lista_pistas, index=idx_pista)
+                
+                dias_ciclo = col_c.number_input("⏳ Días Ciclo:", value=int(dias_ciclo_calc), step=1)
+                
+                ha_inf = float(datos_raw.get(8, 0)) 
+                ha_real = col_d.number_input("🧪 Ha (DOSIS):", value=ha_inf, step=0.1)
+                
+                ha_cobro = col_e.number_input("💰 Ha (COBRO):", value=ha_inf, step=0.1)
 
-    # --- 2. CONFIGURACIÓN DE AERONAVE, CICLOS Y HECTÁREAS ---
-    with st.container(border=True):
-        # Ampliamos a 5 columnas para dar espacio a la Doble Hectárea y Días Ciclo
-        col_a, col_b, col_c, col_d, col_e = st.columns(5)
-        
-        # A) Aeronave
-        lista_aviones = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA", "AIR TRACTOR", "CESSNA ASA", "DRONE DATAROT", "DRONE GENESYS", "DRONE AVIL"]
-        avion_sel = col_a.selectbox("✈️ Tipo de Avión:", lista_aviones)
-        
-        # B) Pista
-        pista_pedido = str(datos_raw.get(2, "PLUC"))
-        lista_pistas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
-        idx_pista = lista_pistas.index(pista_pedido) if pista_pedido in lista_pistas else 0
-        pista_sel = col_b.selectbox("🛣️ Pista Operativa:", lista_pistas, index=idx_pista)
-        
-        # C) ⏳ DÍAS CICLO (Auto-calculado pero editable)
-        dias_ciclo = col_c.number_input("⏳ Días Ciclo:", value=int(dias_ciclo_calc), step=1)
-        
-        # D) 🧪 HECTÁREAS DOSIS (Usa el valor del informe original)
-        ha_inf = float(datos_raw.get(8, 0)) 
-        ha_real = col_d.number_input("🧪 Ha (DOSIS):", value=ha_inf, step=0.1, help="Área real para cálculo de agroquímicos")
-        
-        # E) 💰 HECTÁREAS COBRO (Para la liquidación de dinero)
-        ha_cobro = col_e.number_input("💰 Ha (COBRO):", value=ha_inf, step=0.1, help="Área para facturación por hectárea")
+            st.session_state['ha_cobro_final'] = ha_cobro
+            st.session_state['dias_ciclo_final'] = dias_ciclo
 
-    # Guardamos ha_cobro en el estado para usarlo luego en la liquidación final
-    st.session_state['ha_cobro_final'] = ha_cobro
-    
+        else:
+            st.info("⚠️ Seleccione una Finca y un Informe/Pedido para iniciar la liquidación.")
+            
             # --- 3. CÁLCULOS AUTOMÁTICOS DE TARIFA (ESPEJO EXCEL) ---
             dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
             dict_topes = {"PLUC": "TOPE MAX GENERAL", "PORI": "TOPE SUR", "PDIV": "TOPE PARCELA INTER < 20ha", "TEHO": "TOPE MAX GENERAL", "LUCI": "TOPE SUR"}
