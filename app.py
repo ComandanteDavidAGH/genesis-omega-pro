@@ -282,7 +282,6 @@ elif menu == "⚙️ 2. Validación de Misión":
                     
                     nombre_p = f"Item {cod_item}"
                     if not df_sab.empty:
-                        # Busca el nombre usando el Código Material (Columna 0 de Sábana SAP)
                         match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
                         if match_sabana.empty:
                             match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
@@ -343,7 +342,6 @@ elif menu == "⚙️ 2. Validación de Misión":
                             for p_receta, d_esperada in receta.items():
                                 if p_receta == "ACONDICIONADORSV": d_esperada = 0.06 if tiene_acond_alto else 0.02
                                 elif p_receta == "ACEITEDICAM":
-                                    # 🎯 EL SECRETO: Extraer SOLO el primer dígito del código (Ej: SGMN03 -> 0)
                                     nums = re.findall(r'\d', iter_id)
                                     if nums: d_esperada = float(nums[0])
                                 elif p_receta == "IMBIOSILO": d_esperada = 1.5 if iter_id.startswith("IN") else 1.0
@@ -375,10 +373,10 @@ elif menu == "⚙️ 2. Validación de Misión":
                 if coctel_ganador != "SIN COINCIDENCIA":
                     st.success(f"🤖 **MOTOR IA:** Cóctel Ganador Detectado: **{coctel_ganador}**")
                 else:
-                    st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Buscando en tabla general...")
+                    st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Buscando dosis estándar...")
 
                 # ====================================================================
-                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ FINAL CON PRECIOS REALES
+                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ FINAL (REGLA FOSFO ESTRES)
                 # ====================================================================
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
@@ -392,16 +390,12 @@ elif menu == "⚙️ 2. Validación de Misión":
                     saldo_sap = 0.0
                     
                     if not df_sab.empty:
-                        # 🎯 Búsqueda blindada por Código Material en la Columna A (índice 0)
                         match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
-                        
                         if match_sabana.empty:
                             match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
                             
                         if not match_sabana.empty:
                             fila_sabana = match_sabana.iloc[0]
-                            
-                            # 💰 EXTRACCIÓN MILIMÉTRICA DE "PRECIO MAYOR"
                             col_precio_mayor = [c for c in fila_sabana.index if 'MAYOR' in str(c).upper()]
                             if col_precio_mayor: 
                                 costo_unit = extraer_numero(fila_sabana[col_precio_mayor[0]])
@@ -416,24 +410,28 @@ elif menu == "⚙️ 2. Validación de Misión":
 
                     dosis_teorica = None
                     
-                    # 1. BUSCAR EN EL CÓCTEL GANADOR
-                    for p_receta, d_oficial in dosis_oficiales_coctel.items():
-                        if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
-                            dosis_teorica = d_oficial
-                            break
-                    
-                    # 2. PLAN B: TABLA GENERAL (Para Fungicidas y Fertilizantes)
-                    if dosis_teorica is None and not df_mez.empty:
-                        for _, row_m in df_mez.iterrows():
-                            if len(row_m) > 2:
-                                prod_gral = str(row_m.iloc[1]).strip().upper().replace(" ", "")
-                                if prod_gral and (prod_gral in nombre_limpio or nombre_limpio in prod_gral):
-                                    d_val = extraer_numero(row_m.iloc[2])
-                                    if d_val > 0:
-                                        dosis_teorica = d_val
-                                        break
+                    # 🚀 REGLA DE ORO DE COMANDANTE: FOSFO ESTRES SIEMPRE ES 1
+                    if "FOSFO" in nombre_limpio and "ESTRES" in nombre_limpio:
+                        dosis_teorica = 1.0
+                    else:
+                        # 1. BUSCAR EN EL CÓCTEL GANADOR
+                        for p_receta, d_oficial in dosis_oficiales_coctel.items():
+                            if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
+                                dosis_teorica = d_oficial
+                                break
+                        
+                        # 2. PLAN B: TABLA GENERAL (Columnas F=5 y G=6)
+                        if dosis_teorica is None and not df_mez.empty:
+                            for _, row_m in df_mez.iterrows():
+                                if len(row_m) > 6:
+                                    prod_gral = str(row_m.iloc[5]).strip().upper().replace(" ", "")
+                                    if prod_gral and prod_gral not in ['NAN', 'PRODUCTO2', '']:
+                                        if prod_gral == nombre_limpio or (len(nombre_limpio)>=4 and prod_gral in nombre_limpio) or (len(prod_gral)>=4 and nombre_limpio in prod_gral):
+                                            d_val = extraer_numero(row_m.iloc[6])
+                                            if d_val > 0:
+                                                dosis_teorica = d_val
+                                                break
 
-                    # APLICAR MARGEN DE GANANCIA
                     multiplicador_margen = 1.112
                     if not df_cfg.empty:
                         match_prod = df_cfg[df_cfg[0].astype(str).str.contains(tipo_productor, case=False, na=False)]
