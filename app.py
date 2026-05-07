@@ -134,6 +134,7 @@ elif menu == "📥 1. Buzón de Carga":
 
 
 elif menu == "⚙️ 2. Validación de Misión":
+    st.write("RAYOS X DE LA TABLA DE APOYO:", st.session_state.get('df_apoyo', 'No cargó'))
     st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
