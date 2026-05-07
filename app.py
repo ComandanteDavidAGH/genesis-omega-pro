@@ -165,7 +165,7 @@ elif menu == "⚙️ 2. Validación de Misión":
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 Cargue los archivos en el Módulo 1 e inicie el procesamiento.")
     else:
-        # --- 1. UBICACIÓN Y FECHA ---
+        # --- 1. UBICACIÓN Y FECHA (DATOS MAESTROS) ---
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones")
             c0, c1, c2 = st.columns([1, 2, 2])
@@ -180,7 +180,7 @@ elif menu == "⚙️ 2. Validación de Misión":
             vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + vuelos_informe['ORIGEN'].unique().tolist())
 
         if finca_sel == "---" or vuelo_ref == "---":
-            st.info("⚠️ Seleccione Finca y Pedido para iniciar el cálculo.")
+            st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
 
         # =====================================================================================
@@ -200,9 +200,10 @@ elif menu == "⚙️ 2. Validación de Misión":
         def fmt_sap(val): 
             return f"{int(round(val, 0)):,}".replace(",", ".")
 
-        # --- A. BUSCAR PRODUCTOR Y TOPE (TABLA 2) ---
+        # --- A. BUSCAR PRODUCTOR Y TOPE (LÓGICA TABLA 2) ---
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
+        
         match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).str.strip().str.upper() == str(finca_sel).strip().upper()]
         if not match_t2.empty:
             fila_t2 = match_t2.iloc[0]
@@ -220,7 +221,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. MOTOR DÍAS CICLO (HISTORIAL REAL) ---
+        # --- C. MOTOR DÍAS CICLO ---
         dias_ciclo_calc = 0
         df_hist = st.session_state['df_apoyo']
         col_fecha_h = [c for c in df_hist.columns if 'FECHA' in str(c).upper()]
@@ -234,45 +235,63 @@ elif menu == "⚙️ 2. Validación de Misión":
                 if not vuelos_anteriores.empty:
                     dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
 
-        # --- D. EXTRACCIÓN HECTÁREAS 459 ---
+        # --- D. EXTRACCIÓN FUERTE DESDE PEDIDOS SAP (PISTA Y 459) ---
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo['DATOS_FILA']
         num_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).split('.')[0]
         
+        lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+        pista_detectada = "PLUC" # Por defecto
         ha_dosis_detectada = 0.0
+        
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
         if not df_ped.empty and num_pedido != "S/N":
             match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
-            for _, r_p in match_ped.iterrows():
-                # Buscamos el código 459 en el texto del material
-                if "459" in str(r_p.iloc[1]) or "459" in str(r_p.iloc[0]):
-                    ha_dosis_detectada = extraer_numero(r_p.iloc[2])
-                    break
+            if not match_ped.empty:
+                # 1. Extraer Pista del texto del Pedido
+                texto_pedido = match_ped.to_string().upper()
+                for p_val in lista_pistas_validas:
+                    if p_val in texto_pedido:
+                        pista_detectada = p_val
+                        break
+                
+                # 2. Extraer Hectáreas (459) del Pedido
+                for _, r_p in match_ped.iterrows():
+                    row_str = " ".join(r_p.astype(str).values)
+                    if "459" in row_str:
+                        col_cant = [c for c in match_ped.columns if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
+                        if col_cant:
+                            ha_dosis_detectada = extraer_numero(r_p[col_cant[0]])
+                        break
         
+        # Extracción del informe (Cobro)
         ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0)) 
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
-        # --- 2. PANEL DE CONTROLES (ESTRATEGIA DOBLE CICLO) ---
+        # --- 2. PANEL DE CONTROLES (EDITABLE Y DINÁMICO) ---
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros de Operación e Inteligencia de Ciclos")
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             r1c1.info(f"🧑‍🌾 Productor: **{tipo_productor}**")
-            r1c2.warning(f"🛣️ Tope Pista: **{tipo_de_tope_finca}**")
+            r1c2.warning(f"🛣️ Tope Finca: **{tipo_de_tope_finca}**")
             
-            # 🚀 LAS DOS CASILLAS DE CICLOS
+            # DOS CASILLAS DE CICLOS (Sistema y Cobro)
             r1c3.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=f"dsis_{finca_sel}")
             d_ciclo_factura = r1c4.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=f"dfac_{finca_sel}_{vuelo_ref}")
             
-            r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+            # CINCO CASILLAS CENTRALES (LAS DOS HECTÁREAS RESTAURADAS)
+            r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
             lista_aviones = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA", "AIR TRACTOR", "CESSNA ASA", "DRONE DATAROT", "DRONE GENESYS", "DRONE AVIL"]
             avion_sel = r2c1.selectbox("✈️ Avión", lista_aviones, key=f"av_{finca_sel}")
-            lista_pistas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
-            pista_sel = r2c2.selectbox("🛣️ Pista", lista_pistas, key=f"pi_{finca_sel}")
+            
+            pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
+            pista_sel = r2c2.selectbox("🛣️ Pista Operativa", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{finca_sel}")
+            
             horometro = r2c3.number_input("⏱️ Horómetro", value=1.00, key=f"hor_{finca_sel}")
             
-            # Hectáreas separadas como pidió el Comandante
-            ha_d = st.sidebar.number_input("🧪 Ha Dosis (459)", value=float(ha_dosis_detectada), key=f"had_{finca_sel}")
-            ha_c = r2c4.number_input("💰 Ha Cobro (Pista)", value=float(ha_cobro_detectada), key=f"hac_{finca_sel}")
+            # 🔥 LAS HECTÁREAS VUELVEN A SU LUGAR
+            ha_dosis_final = r2c4.number_input("🧪 Ha Dosis (459)", value=float(ha_dosis_detectada), key=f"had_{finca_sel}")
+            ha_cobro_final = r2c5.number_input("💰 Ha Cobro (Inf)", value=float(ha_cobro_detectada), key=f"hac_{finca_sel}")
 
             # RECARGO EDITABLE
             recargo_auto = 45000 if (pista_sel == "PDIV" or pista_sel == "LUCI") and "DRONE" not in avion_sel else 0
@@ -280,8 +299,103 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         # --- 3. MATRIZ DE QUÍMICOS (RESUMEN) ---
         st.markdown("#### 🧪 Matriz de Mezcla")
-        # Aquí se inserta su lógica de matriz completa calculando con ha_dosis_detectada
-        costo_mezcla_total = 0.0 # Reemplazar con la suma real de su matriz
+        
+        if not match_ped.empty:
+            idx_precio = -1; idx_saldo = -1
+            if not df_sab.empty:
+                for j, col in enumerate(df_sab.columns):
+                    col_str = str(col).upper()
+                    if 'MAYOR' in col_str or 'PRECIO' in col_str: idx_precio = j
+                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
+
+            sap_dict_pista = {}
+            datos_extraidos_sap = []
+            
+            for _, fila_sap in match_ped.iterrows():
+                col_material = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper()]
+                cod_item = str(fila_sap[col_material[0]]).split('.')[0] if col_material else str(fila_sap.iloc[1]).split('.')[0]
+                if "459" in cod_item or "429" in cod_item: continue 
+                
+                col_cant = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
+                cant_total = extraer_numero(fila_sap[col_cant[0]]) if col_cant else 0.0
+                dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
+                
+                nombre_p = f"Item {cod_item}"
+                if not df_sab.empty:
+                    match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.strip() == cod_item]
+                    if match_sabana.empty: match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                    if not match_sabana.empty:
+                        col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
+                        if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
+                
+                nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
+                sap_dict_pista[nombre_limpio] = dosis_pista
+                datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
+
+            matriz_datos = []
+            for item_data in datos_extraidos_sap:
+                cod_item = item_data['cod']
+                nombre_p = item_data['nombre']
+                cant_total_pedido = item_data['cant_total']
+                
+                costo_unit = 0.0; saldo_sap = 0.0
+                if not df_sab.empty:
+                    match_sabana_global = df_sab[df_sab.iloc[:, 0].astype(str).str.strip() == cod_item]
+                    if match_sabana_global.empty: match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                    if not match_sabana_global.empty:
+                        fila_precio = match_sabana_global.iloc[0]
+                        if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
+                        
+                        match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.contains(pista_sel, case=False, na=False)).any(axis=1)]
+                        if not match_pista.empty:
+                            if idx_saldo != -1: saldo_sap = extraer_numero(match_pista.iloc[0].iloc[idx_saldo])
+
+                costo_margen = costo_unit * mult_material
+                # Dosis teorica omitida por simplificacion visual temporal. Usando Dosis Base calculada de Pedido
+                dosis_teorica = sap_dict_pista.get(item_data['nombre_limpio'], 0.0)
+
+                matriz_datos.append({
+                    "A: Producto": nombre_p,
+                    "B: Dosis/Ha (SAP)": round(dosis_teorica, 3),
+                    "C: X (Extra %)": 0.0,
+                    "D: Dosis Total (Sistema)": 0.0, 
+                    "E: Costo Unit (+Margen)": costo_margen,
+                    "H: Saldo Real SAP": round(saldo_sap, 3),
+                    "I: Sugerido SAP (Total)": round(cant_total_pedido, 3) 
+                })
+
+            df_matriz = pd.DataFrame(matriz_datos)
+            if 'editor_valid' in st.session_state:
+                ediciones = st.session_state['editor_valid'].get('edited_rows', {})
+                for row_idx, edit_dict in ediciones.items():
+                    if "B: Dosis/Ha (SAP)" in edit_dict: df_matriz.at[row_idx, "B: Dosis/Ha (SAP)"] = edit_dict["B: Dosis/Ha (SAP)"]
+                    if "C: X (Extra %)" in edit_dict: df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
+
+            df_matriz["B_Val"] = df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) 
+            df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) 
+            
+            # 🔥 AQUÍ RIGE HA DOSIS (459) PARA EL QUÍMICO
+            df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B_Val"] * (1 + df_matriz["C_Val"]/100) * ha_dosis_final).round(3)
+            
+            costo_mezcla_total = (df_matriz["D: Dosis Total (Sistema)"] * df_matriz["E: Costo Unit (+Margen)"]).sum()
+            df_matriz = df_matriz.drop(columns=["B_Val", "C_Val"])
+
+            edited_df = st.data_editor(
+                df_matriz, key='editor_valid', 
+                column_config={
+                    "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
+                    "C: X (Extra %)": st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
+                    "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
+                    "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
+                    "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
+                },
+                disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)"],
+                use_container_width=True, hide_index=True
+            )
+            
+        else:
+            st.warning(f"🚨 No se encontró el pedido en SAP.")
+            costo_mezcla_total = 0.0
 
         # --- 4. CÁLCULO DE TOPES (FÓRMULA EXCEL) ---
         dict_topes_pista = {
@@ -296,15 +410,14 @@ elif menu == "⚙️ 2. Validación de Misión":
         dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
         p_hora = dict_precios.get(avion_sel, 0)
         
-        # Tarifa Vuelo (Base diluida con Ha Cobro)
-        tarifa_vuelo_ha = (p_hora * horometro) / ha_c if ha_c > 0 else 0
+        # 🔥 AQUÍ RIGE HA COBRO PARA DILUIR EL VUELO
+        tarifa_vuelo_ha = (p_hora * horometro) / ha_cobro_final if ha_cobro_final > 0 else 0
         
         if pista_sel == "PDIV":
             tarifa_final_vuelo = (tarifa_vuelo_ha + recargo_final) * mult_avion
         else:
             tarifa_final_vuelo = (min(tarifa_vuelo_ha, val_tope) + recargo_final) * mult_avion
         
-        # 🎯 SERVICIO TÉCNICO USANDO EL CICLO DE COBRO MODIFICABLE
         tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
         
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
@@ -319,8 +432,8 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.caption("👨‍🔬 Serv. Técnico x Ha")
             st.code(fmt_sap(tarifa_st_final), language=None)
             
-        gran_total = costo_mezcla_total + (tarifa_final_vuelo * ha_dosis_detectada) + (tarifa_st_final * ha_dosis_detectada)
-        st.metric("🔥 TOTAL A FACTURAR FINCA", f"$ {fmt_sap(gran_total)}", f"Calculado sobre {ha_dosis_detectada} Ha")
+        gran_total = costo_mezcla_total + (tarifa_final_vuelo * ha_dosis_final) + (tarifa_st_final * ha_dosis_final)
+        st.metric("🔥 TOTAL A FACTURAR FINCA", f"$ {fmt_sap(gran_total)}", f"Calculado sobre {ha_dosis_final} Ha")
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR", type="primary", use_container_width=True):
             st.balloons()
