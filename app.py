@@ -77,7 +77,7 @@ elif menu == "📥 1. Buzón de Carga":
                     else:
                         st.session_state['df_pedidos'] = pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # 3. CONEXIÓN SATELITAL
+                    # 3. CONEXIÓN SATELITAL (CORREGIDA)
                     try:
                         if "gcp_credentials" in st.secrets:
                             cred_dict = dict(st.secrets["gcp_credentials"])
@@ -88,23 +88,31 @@ elif menu == "📥 1. Buzón de Carga":
                         url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                         boveda = gc.open_by_url(url_boveda)
                         
-                        # Cargar Configuración
+                        # Cargar Configuración (TABLA 2)
                         hoja_tabla2 = boveda.worksheet("TABLA 2")
                         datos_tabla2 = hoja_tabla2.get_all_values()
-                        st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
+                        if len(datos_tabla2) > 1:
+                            st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
                         
-                        # Cargar Tabla de Apoyo
+                        # 🔥 Cargar Tabla de Apoyo (CORRECCIÓN VITAL) 🔥
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                         datos_apoyo = hoja_apoyo.get_all_values()
-                        st.session_state['df_apoyo'] = pd.read_excel(archivo_apoyo, sheet_name='TABLA DE APOYO2023')
+                        if len(datos_apoyo) > 1:
+                            # Se transforma la descarga de Drive en una tabla real con columnas
+                            st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[1:], columns=datos_apoyo[0])
+                        
+                        # Cargar Mezclas
                         hoja_mezclas = boveda.worksheet("DD_Mesclas")
-                        st.session_state['df_mezclas'] = pd.DataFrame(hoja_mezclas.get_all_values())
+                        datos_mezclas = hoja_mezclas.get_all_values()
+                        if len(datos_mezclas) > 1:
+                            st.session_state['df_mezclas'] = pd.DataFrame(datos_mezclas[1:], columns=datos_mezclas[0])
                         
+                        # Cargar Configuración Base
                         hoja_conf = boveda.worksheet("Configuración")
-                        st.session_state['df_config_base'] = pd.DataFrame(hoja_conf.get_all_values())
-                        # ------------------------------------------------------
-                    
-                        
+                        datos_conf = hoja_conf.get_all_values()
+                        if len(datos_conf) > 1:
+                            st.session_state['df_config_base'] = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
+                            
                     except Exception as error_nube:
                         st.error(f"🚨 Falla en el Enlace Satelital: {error_nube}")
                     
@@ -158,7 +166,7 @@ elif menu == "📥 1. Buzón de Carga":
 
                 except Exception as e_master: 
                     st.error(f"🚨 Error Crítico en Procesamiento: {e_master}")
-
+                    
 elif menu == "⚙️ 2. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>🚀 Módulo 2: Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
