@@ -282,8 +282,11 @@ elif menu == "⚙️ 2. Validación de Misión":
                     
                     nombre_p = f"Item {cod_item}"
                     if not df_sab.empty:
-                        # Buscamos en SAP general primero para el nombre
-                        match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        # Busca el nombre usando el Código Material (Columna 0 de Sábana SAP)
+                        match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
+                        if match_sabana.empty:
+                            match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        
                         if not match_sabana.empty:
                             col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
@@ -296,7 +299,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                     })
 
                 # ====================================================================
-                # ⚔️ FASE 2: LA GRAN BATALLA (Extracción de Columnas A, B, C y D)
+                # ⚔️ FASE 2: LA GRAN BATALLA (Scoring System IA)
                 # ====================================================================
                 coctel_ganador = "SIN COINCIDENCIA"
                 dosis_oficiales_coctel = {}
@@ -307,13 +310,12 @@ elif menu == "⚙️ 2. Validación de Misión":
                     dict_recetas = {}
                     dict_lideres = {}
                     
-                    # LEE LA TABLA DE CÓCTELES (Col A=0, B=1, C=2, D=3)
                     for _, row in df_mez.iterrows():
                         if len(row) > 3:
                             cid = str(row.iloc[0]).strip().upper() 
-                            p_tabla_clean = str(row.iloc[1]).strip().upper().replace(" ", "") # Columna B: Producto
-                            d_tabla = extraer_numero(row.iloc[2]) # Columna C: Dosis
-                            es_lider = str(row.iloc[3]).strip().upper() == "X" # Columna D: Lider (X)
+                            p_tabla_clean = str(row.iloc[1]).strip().upper().replace(" ", "") 
+                            d_tabla = extraer_numero(row.iloc[2]) 
+                            es_lider = str(row.iloc[3]).strip().upper() == "X" 
                             
                             if cid and cid != 'NAN':
                                 if cid not in dict_recetas: dict_recetas[cid] = {}
@@ -341,7 +343,8 @@ elif menu == "⚙️ 2. Validación de Misión":
                             for p_receta, d_esperada in receta.items():
                                 if p_receta == "ACONDICIONADORSV": d_esperada = 0.06 if tiene_acond_alto else 0.02
                                 elif p_receta == "ACEITEDICAM":
-                                    nums = re.findall(r'\d+', iter_id)
+                                    # 🎯 EL SECRETO: Extraer SOLO el primer dígito del código (Ej: SGMN03 -> 0)
+                                    nums = re.findall(r'\d', iter_id)
                                     if nums: d_esperada = float(nums[0])
                                 elif p_receta == "IMBIOSILO": d_esperada = 1.5 if iter_id.startswith("IN") else 1.0
                                 
@@ -365,7 +368,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                             for pr in dosis_oficiales_coctel:
                                 if pr == "ACONDICIONADORSV": dosis_oficiales_coctel[pr] = 0.06 if tiene_acond_alto else 0.02
                                 elif pr == "ACEITEDICAM":
-                                    nums = re.findall(r'\d+', iter_id)
+                                    nums = re.findall(r'\d', iter_id)
                                     if nums: dosis_oficiales_coctel[pr] = float(nums[0])
                                 elif pr == "IMBIOSILO": dosis_oficiales_coctel[pr] = 1.5 if iter_id.startswith("IN") else 1.0
 
@@ -375,7 +378,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                     st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Buscando en tabla general...")
 
                 # ====================================================================
-                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ (PRECIO MAYOR Y COLUMNA K)
+                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ FINAL CON PRECIOS REALES
                 # ====================================================================
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
@@ -389,24 +392,22 @@ elif menu == "⚙️ 2. Validación de Misión":
                     saldo_sap = 0.0
                     
                     if not df_sab.empty:
-                        # 🎯 Búsqueda Táctica en Columna K (Índice 10) para el producto único
-                        col_k_idx = 10
-                        match_sabana = pd.DataFrame()
+                        # 🎯 Búsqueda blindada por Código Material en la Columna A (índice 0)
+                        match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.contains(cod_item, case=False, na=False)]
                         
-                        if col_k_idx < len(df_sab.columns):
-                            match_sabana = df_sab[df_sab.iloc[:, col_k_idx].astype(str).str.contains(cod_item, case=False, na=False)]
-                        
-                        # Si no lo encuentra por código en la K, búsqueda general
                         if match_sabana.empty:
                             match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
                             
                         if not match_sabana.empty:
                             fila_sabana = match_sabana.iloc[0]
                             
-                            # 💰 EXTRACCIÓN ESTRICTA DE "PRECIO MAYOR"
-                            col_precio = [c for c in fila_sabana.index if 'PRECIO MAYOR' in str(c).upper()]
-                            if col_precio: 
-                                costo_unit = extraer_numero(fila_sabana[col_precio[0]])
+                            # 💰 EXTRACCIÓN MILIMÉTRICA DE "PRECIO MAYOR"
+                            col_precio_mayor = [c for c in fila_sabana.index if 'MAYOR' in str(c).upper()]
+                            if col_precio_mayor: 
+                                costo_unit = extraer_numero(fila_sabana[col_precio_mayor[0]])
+                            else:
+                                col_precio_gen = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper()]
+                                if col_precio_gen: costo_unit = extraer_numero(fila_sabana[col_precio_gen[0]])
                             
                             col_lote = [c for c in fila_sabana.index if 'LOTE' in str(c).upper()]
                             if col_lote: lote_sap = str(fila_sabana[col_lote[0]])
@@ -421,7 +422,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                             dosis_teorica = d_oficial
                             break
                     
-                    # 2. PLAN B: BUSCAR EN LA TABLA GENERAL (Columnas B=1 y C=2)
+                    # 2. PLAN B: TABLA GENERAL (Para Fungicidas y Fertilizantes)
                     if dosis_teorica is None and not df_mez.empty:
                         for _, row_m in df_mez.iterrows():
                             if len(row_m) > 2:
@@ -432,7 +433,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                                         dosis_teorica = d_val
                                         break
 
-                    # APLICAR MARGEN
+                    # APLICAR MARGEN DE GANANCIA
                     multiplicador_margen = 1.112
                     if not df_cfg.empty:
                         match_prod = df_cfg[df_cfg[0].astype(str).str.contains(tipo_productor, case=False, na=False)]
