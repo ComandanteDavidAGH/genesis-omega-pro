@@ -170,7 +170,8 @@ elif menu == "⚙️ 2. Validación de Misión":
             st.markdown("### 📡 Panel de Operaciones")
             c0, c1, c2 = st.columns([1, 2, 2])
             
-            fecha_operacion = c0.date_input("📅 Fecha de Vuelo", key="fecha_vuelo_master")
+            # 📅 FORMATO COLOMBIANO ESTRICTO
+            fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
             
             df_t2 = st.session_state.get('df_config', pd.DataFrame())
             lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist()) if not df_t2.empty else []
@@ -200,7 +201,6 @@ elif menu == "⚙️ 2. Validación de Misión":
         def fmt_sap(val):
             return f"{int(round(val, 0)):,}".replace(",", ".")
 
-        # 🛡️ Declaración estricta para evitar NameErrors
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
         df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
@@ -228,20 +228,21 @@ elif menu == "⚙️ 2. Validación de Misión":
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
                 mult_avion = extraer_numero(fila_c.iloc[6])
 
-        # --- C. DÍAS CICLO ---
+        # --- C. DÍAS CICLO (CON FORMATO COLOMBIANO DAYFIRST=TRUE) ---
         dias_ciclo_calc = 0
         col_fecha_h = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
         if col_fecha_h:
             hist_finca = df_apoyo[df_apoyo.iloc[:, 1].astype(str).str.strip().str.upper() == str(finca_sel).strip().upper()].copy()
             if not hist_finca.empty:
-                hist_finca['FECHA_DT'] = pd.to_datetime(hist_finca[col_fecha_h[0]], errors='coerce')
+                # 🔥 dayfirst=True obliga al sistema a leer el día antes que el mes
+                hist_finca['FECHA_DT'] = pd.to_datetime(hist_finca[col_fecha_h[0]], errors='coerce', dayfirst=True)
                 hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
                 fecha_ref = pd.to_datetime(fecha_operacion)
                 vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
                 if not vuelos_anteriores.empty:
                     dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
 
-        # --- D. EXTRACCIÓN PEDIDO SAP (459 y PISTA) ---
+        # --- D. EXTRACCIÓN PEDIDO SAP (FRANCOTIRADOR 459 Y PISTA) ---
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo['DATOS_FILA']
         num_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).split('.')[0]
@@ -257,12 +258,17 @@ elif menu == "⚙️ 2. Validación de Misión":
                 for p_val in lista_pistas_validas:
                     if p_val in texto_pedido: pista_detectada = p_val; break
 
+                # 🎯 FRANCOTIRADOR EXACTO PARA EL 459
                 for _, r_p in match_ped.iterrows():
-                    row_str = " ".join(r_p.astype(str).values)
-                    if "459" in row_str:
-                        col_cant = [c for c in match_ped.columns if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
-                        if col_cant: ha_dosis_detectada = extraer_numero(r_p[col_cant[0]])
-                        break
+                    col_mat = [c for c in match_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
+                    if col_mat:
+                        # Extrae el código y le quita ceros a la izquierda para comparar
+                        cod_exacto = str(r_p[col_mat[0]]).split('.')[0].strip().lstrip('0')
+                        if cod_exacto == "459":
+                            col_cant = [c for c in match_ped.columns if 'CANT' in str(c).upper() or 'DOSIS' in str(c).upper() or 'AREA' in str(c).upper() or 'HA' in str(c).upper()]
+                            if col_cant: 
+                                ha_dosis_detectada = extraer_numero(r_p[col_cant[0]])
+                            break
 
         ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
@@ -287,8 +293,20 @@ elif menu == "⚙️ 2. Validación de Misión":
             ha_dosis_final = r2c4.number_input("🧪 Ha Dosis (459)", value=float(ha_dosis_detectada), key=f"had_{finca_sel}")
             ha_cobro_final = r2c5.number_input("💰 Ha Cobro (Inf)", value=float(ha_cobro_detectada), key=f"hac_{finca_sel}")
 
-            recargo_auto = 45000 if (pista_sel == "PDIV" or pista_sel == "LUCI") and "DRONE" not in avion_sel else 0
-            recargo_final = st.number_input("🚛 Recargo / Porción Terrestre", value=int(recargo_auto), step=500, key=f"rec_{finca_sel}_{pista_sel}")
+            # 🔥 LISTA ÚNICA EDITABLE PARA PORCIÓN TERRESTRE (DIVAS)
+            st.markdown("##### 🚛 Porción Terrestre / Recargo")
+            rec_col1, rec_col2 = st.columns([1, 1])
+            
+            # Autoselección inteligente
+            idx_recargo = 1 if pista_sel == "PDIV" else 0 
+            opciones_rec = ["0 (Sin Recargo)", "8504 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
+            
+            recargo_lista = rec_col1.selectbox("Seleccione Valor:", opciones_rec, index=idx_recargo, key=f"rec_list_{finca_sel}_{pista_sel}")
+            
+            if recargo_lista == "Otro Valor Manual...":
+                recargo_final = rec_col2.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rec_man_{finca_sel}")
+            else:
+                recargo_final = float(recargo_lista.split(" ")[0])
 
         # --- 3. MATRIZ Y CÓCTEL IA COMPLETA ---
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
@@ -307,9 +325,9 @@ elif menu == "⚙️ 2. Validación de Misión":
             datos_extraidos_sap = []
 
             for _, fila_sap in match_ped.iterrows():
-                col_material = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper()]
-                cod_item = str(fila_sap[col_material[0]]).split('.')[0] if col_material else str(fila_sap.iloc[1]).split('.')[0]
-                if "459" in cod_item or "429" in cod_item: continue
+                col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
+                cod_item = str(fila_sap[col_mat[0]]).split('.')[0].strip().lstrip('0') if col_mat else str(fila_sap.iloc[1]).split('.')[0]
+                if cod_item == "459" or cod_item == "429": continue
 
                 col_cant = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
                 cant_total = extraer_numero(fila_sap[col_cant[0]]) if col_cant else 0.0
@@ -496,16 +514,13 @@ elif menu == "⚙️ 2. Validación de Misión":
         dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
         p_hora = dict_precios.get(avion_sel, 0)
 
-        # Tarifa Vuelo Base
         tarifa_vuelo_ha = (p_hora * horometro) / ha_cobro_final if ha_cobro_final > 0 else 0
 
-        # Aplicar Tope y Recargo
         if pista_sel == "PDIV":
             tarifa_final_vuelo = (tarifa_vuelo_ha + recargo_final) * mult_avion
         else:
             tarifa_final_vuelo = (min(tarifa_vuelo_ha, val_tope) + recargo_final) * mult_avion
 
-        # Tarifa ST
         tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
 
         c_sap1, c_sap2, c_sap3 = st.columns(3)
