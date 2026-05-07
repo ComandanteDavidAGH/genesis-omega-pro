@@ -295,12 +295,10 @@ elif menu == "⚙️ 2. Validación de Misión":
                     })
 
                 # ====================================================================
-                # ⚔️ FASE 2: LA GRAN BATALLA (Scoring System)
+                # ⚔️ FASE 2: LA GRAN BATALLA (Scoring System IA)
                 # ====================================================================
                 coctel_ganador = "SIN COINCIDENCIA"
                 dosis_oficiales_coctel = {}
-                
-                # 🚨 NUEVA REGLA DE ORO EXTENDIDA (BT, ZN, ZINTRAC, ZITRON, BANATREL)
                 claves_boro_zinc = ["BT", "BANATREL", "ZN", "ZINTRAC", "ZITRON"]
                 tiene_acond_alto = any(any(clave in p for clave in claves_boro_zinc) for p in sap_dict_pista.keys())
                 
@@ -313,7 +311,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                         if not cid or cid == 'NAN': continue
                         p_tabla_clean = str(row.iloc[5]).strip().upper().replace(" ", "") 
                         d_tabla = extraer_numero(row.iloc[6]) 
-                        es_lider = str(row.iloc[3]).strip().upper() == "X" 
+                        es_lider = str(row.iloc[3]).strip().upper() == "X" # 👈 LA X QUE MARCA AL LÍDER
                         
                         if cid not in dict_recetas: dict_recetas[cid] = {}
                         dict_recetas[cid][p_tabla_clean] = d_tabla
@@ -338,7 +336,6 @@ elif menu == "⚙️ 2. Validación de Misión":
                             
                         if es_valido:
                             for p_receta, d_esperada in receta.items():
-                                # APLICACIÓN DE REGLAS DE ORO
                                 if p_receta == "ACONDICIONADORSV": d_esperada = 0.06 if tiene_acond_alto else 0.02
                                 elif p_receta == "ACEITEDICAM":
                                     nums = re.findall(r'\d+', iter_id)
@@ -370,12 +367,12 @@ elif menu == "⚙️ 2. Validación de Misión":
                                 elif pr == "IMBIOSILO": dosis_oficiales_coctel[pr] = 1.5 if iter_id.startswith("IN") else 1.0
 
                 if coctel_ganador != "SIN COINCIDENCIA":
-                    st.success(f"🤖 **MOTOR IA:** Cóctel Ganador Detectado: **{coctel_ganador}**")
+                    st.success(f"🤖 **MOTOR IA:** Cóctel Ganador Detectado: **{coctel_ganador}** (Con Lógica de 'X' y Tolerancia)")
                 else:
-                    st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto. Se usarán dosis referenciales.")
+                    st.warning("⚠️ **MOTOR IA:** No se encontró un Cóctel exacto.")
 
                 # ====================================================================
-                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ FINAL
+                # 🏗️ FASE 3: CONSTRUCCIÓN DE MATRIZ CON PLAN B (FALLBACK)
                 # ====================================================================
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
@@ -392,19 +389,31 @@ elif menu == "⚙️ 2. Validación de Misión":
                         match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
                         if not match_sabana.empty:
                             fila_sabana = match_sabana.iloc[0]
-                            col_precio = [c for c in fila_sabana.index if str(c).strip().upper() in ['PRECIOS', 'PRECIO']]
+                            # Radar de precios ampliado
+                            col_precio = [c for c in fila_sabana.index if 'PRECIO' in str(c).upper()]
                             if col_precio: costo_unit = extraer_numero(fila_sabana[col_precio[0]])
+                            
                             col_lote = [c for c in fila_sabana.index if 'LOTE' in str(c).upper()]
                             if col_lote: lote_sap = str(fila_sabana[col_lote[0]])
                             col_saldo = [c for c in fila_sabana.index if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()]
                             if col_saldo: saldo_sap = extraer_numero(fila_sabana[col_saldo[0]])
 
                     dosis_teorica = None
+                    
+                    # 1. BUSCAR EN EL CÓCTEL GANADOR
                     for p_receta, d_oficial in dosis_oficiales_coctel.items():
                         if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
                             dosis_teorica = d_oficial
                             break
                     
+                    # 2. PLAN B (FALLBACK): SI NO ESTÁ EN EL CÓCTEL, BUSCAR EN TABLA GENERAL
+                    if dosis_teorica is None and not df_mez.empty:
+                        match_general = df_mez[df_mez.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, regex=False, na=False)).any(axis=1)]
+                        if not match_general.empty:
+                            fila_m = match_general.iloc[0]
+                            dosis_teorica = extraer_numero(fila_m[6]) if len(fila_m) > 6 else 0.0
+
+                    # APLICAR MARGEN
                     multiplicador_margen = 1.112
                     if not df_cfg.empty:
                         match_prod = df_cfg[df_cfg[0].astype(str).str.contains(tipo_productor, case=False, na=False)]
@@ -430,7 +439,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                     ediciones = st.session_state['editor_valid'].get('edited_rows', {})
                     for row_idx, edit_dict in ediciones.items():
                         if "B: Dosis/Ha (SAP)" in edit_dict: df_matriz.at[row_idx, "B: Dosis/Ha (SAP)"] = edit_dict["B: Dosis/Ha (SAP)"]
-                        if "C: X (Extra %)" in edit_dict: df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
+                        if "C: X (Extra %)": df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
 
                 df_matriz["B_Val"] = df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) 
                 df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0) 
