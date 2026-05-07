@@ -321,52 +321,86 @@ elif menu == "⚙️ 2. Validación de Misión":
         val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
         dict_precios = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
 
-        # --- 2.5 HANGAR DINÁMICO (ESCUADRÓN) ---
+        # --- DICCIONARIOS GLOBALES Y SEPARADOS ---
+        dict_topes_pista = {
+            "TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325},
+            "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
+            "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}
+        }
+        val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
+        
+        # Diccionarios divididos por naturaleza de cobro
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600}
+        dict_drones = {"DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
+
+        # --- 2.5 HANGAR DINÁMICO (DIVIDIDO) ---
         with st.container(border=True):
-            st.markdown("#### ✈️ Hangar de Escuadrón (Multiaviones)")
-            st.caption("Añada filas en la tabla para registrar múltiples aviones. El motor calculará el prorrateo exacto por topes para cada uno.")
+            st.markdown("#### ✈️ Hangar de Escuadrón (Multiaviones y Drones)")
+            st.caption("Añada filas según las aeronaves desplegadas. El motor aplicará reglas distintas para aviones (Horómetro/Topes) y Drones (Precio Fijo).")
             
-            df_escuadron_default = pd.DataFrame([{
-                "Avión": "THRUS SR2",
-                "Hectáreas (Cobro)": float(ha_cobro_detectada),
-                "Horómetro": 1.00
-            }])
+            c_av, c_dr = st.columns(2)
             
-            escuadron_edit = st.data_editor(
-                df_escuadron_default,
-                key=f"escuadron_{casilla_key}",
-                num_rows="dynamic",
-                column_config={
-                    "Avión": st.column_config.SelectboxColumn("Avión Desplegado", options=list(dict_precios.keys()), required=True),
-                    "Hectáreas (Cobro)": st.column_config.NumberColumn("Hectáreas Ejecutadas", min_value=0.00, format="%.2f", required=True),
-                    "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)
-                },
-                use_container_width=True, hide_index=True
-            )
+            # --- PANEL IZQUIERDO: AVIONES ---
+            with c_av:
+                st.markdown("##### 🛩️ Escuadrón de Aviones")
+                df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
+                escuadron_aviones = st.data_editor(
+                    df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic",
+                    column_config={
+                        "Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True),
+                        "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f"),
+                        "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f")
+                    }, use_container_width=True, hide_index=True
+                )
+
+            # --- PANEL DERECHO: DRONES ---
+            with c_dr:
+                st.markdown("##### 🚁 Escuadrón de Drones")
+                # Por defecto viene vacío para que el usuario añada solo si hay drones
+                df_drones_def = pd.DataFrame([{"Drone": None, "Hectáreas": 0.0}])
+                escuadron_drones = st.data_editor(
+                    df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic",
+                    column_config={
+                        "Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys())),
+                        "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")
+                    }, use_container_width=True, hide_index=True
+                )
             
-            # --- CÁLCULO LOGÍSTICO ESCUADRÓN (FÓRMULA EXCEL) ---
+            # --- CÁLCULO LOGÍSTICO ESCUADRÓN MIXTO ---
             costo_total_vuelos = 0.0
             total_ha_cobro_escuadron = 0.0
             
-            for _, row in escuadron_edit.iterrows():
+            # 1. Liquidar Aviones (Regla: Horómetro + Topes + Recargo PDIV)
+            for _, row in escuadron_aviones.iterrows():
                 av_sel = row["Avión"]
-                ha_av = float(row.get("Hectáreas (Cobro)", 0))
+                ha_av = float(row.get("Hectáreas", 0))
                 horo = float(row.get("Horómetro", 0))
                 
                 if pd.isna(av_sel) or ha_av <= 0: continue
                 
-                p_hora = dict_precios.get(av_sel, 0)
+                p_hora = dict_aviones.get(av_sel, 0)
                 total_ha_cobro_escuadron += ha_av
                 
-                # Fórmula de Excel replicada a la perfección:
                 tarifa_base_ha = (p_hora * horo) / ha_av
                 if pista_sel == "PDIV":
                     tarifa_aplicada = tarifa_base_ha + recargo_final
                 else:
                     tarifa_aplicada = min(tarifa_base_ha, val_tope) + recargo_final
                 
-                costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion
+                costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
 
+            # 2. Liquidar Drones (Regla: Precio Fijo por Hectárea)
+            for _, row in escuadron_drones.iterrows():
+                dr_sel = row["Drone"]
+                ha_dr = float(row.get("Hectáreas", 0))
+                
+                if pd.isna(dr_sel) or ha_dr <= 0: continue
+                
+                p_ha_drone = dict_drones.get(dr_sel, 0)
+                total_ha_cobro_escuadron += ha_dr
+                
+                # El dron multiplica directo: (Precio Dron * Hectareas) * Factor Multiplicador Avión
+                costo_total_vuelos += (p_ha_drone * ha_dr) * mult_avion_final
         # =========================================================================
         # 🟢 3. MATRIZ DE MEZCLA
         # =========================================================================
