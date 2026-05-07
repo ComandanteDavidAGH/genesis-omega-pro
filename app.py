@@ -533,6 +533,20 @@ elif menu == "⚙️ 2. Validación de Misión":
                 disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)"],
                 use_container_width=True, hide_index=True
             )
+
+        # --- RAMPA DE EXTRACCIÓN AL PORTAPAPELES (SIN DESCARGAS) ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
+            
+            # 1. Extraer y limpiar los números (forzar a enteros para aniquilar los decimales)
+            costos_limpios = df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()
+            
+            # 2. Unirlos en una lista vertical perfecta
+            texto_para_copiar = "\n".join(costos_limpios)
+            
+            # 3. Mostrar en un bloque oscuro con botón nativo de copiado
+            st.code(texto_para_copiar, language="text")
+            st.caption("☝️ Pase el mouse por la esquina superior derecha del cuadro oscuro arriba y haga clic en el icono de copiar (📋). Luego vaya a SAP y presione Ctrl+V.")
         else:
             st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
             costo_mezcla_total = 0.0
