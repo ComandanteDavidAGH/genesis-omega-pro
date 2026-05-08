@@ -681,12 +681,14 @@ import streamlit as st
 import google.generativeai as genai
 import json
 
+# ==========================================
 # --- INICIO DEL MÓDULO 3 ---
+# ==========================================
 st.divider()
 st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (Visión IA)")
 st.subheader("Buzón de Recepción y Puesto de Control")
 
-# 1. CARGA DE BASES DE DATOS (TABLA 1 y APOYO2023)
+# 1. CARGA DE BASES DE DATOS Y CONEXIÓN BLINDADA
 try:
     if "gcp_credentials" in st.secrets:
         cred_dict = dict(st.secrets["gcp_credentials"])
@@ -713,26 +715,19 @@ try:
     try:
         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
         datos_crudos = hoja_apoyo.get_all_values()
-        
-        # 🛡️ BLINDAJE TÁCTICO:
-        # 1. Rellenamos columnas vacías para que no haya errores de "Index out of bounds"
         datos_limpios = [fila + [""] * (15 - len(fila)) if len(fila) < 15 else fila for fila in datos_crudos]
         df_apoyo_completo = pd.DataFrame(datos_limpios)
-        
-        # 2. Cortamos el ruido: Eliminamos las primeras 9 filas de títulos
         if len(df_apoyo_completo) > 9:
             df_apoyo = df_apoyo_completo.iloc[9:] 
         else:
             df_apoyo = pd.DataFrame()
-            
     except Exception as e:
-        st.warning(f"⚠️ No se pudo cargar 'TABLA DE APOYO2023': {e}")
+        st.warning(f"⚠️ No se pudo cargar 'TABLA DE APOYO2023'.")
         df_apoyo = pd.DataFrame()
 
 except Exception as e:
-    st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
-    lista_os_existentes, lista_fincas_oficiales, lista_cocteles_oficiales = [], [], []
-    df_apoyo = pd.DataFrame()
+    st.error(f"🚨 Falla de conexión principal: {e}")
+    st.stop() # Si falla la conexión, detenemos todo para evitar errores más adelante.
 
 # 2. CONFIGURACIÓN DEL CEREBRO IA
 try:
@@ -748,32 +743,27 @@ archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de 
 
 if archivo_os is not None:
     st.success("✅ Documento recibido en la bahía de carga.")
-    
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
         with st.spinner("🤖 La IA está barriendo el documento..."):
             try:
                 documento_bytes = archivo_os.getvalue()
                 archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
-                
                 orden_militar = """
                 Eres un analista experto en extraer datos de planillas de FUMIGARAY.
                 La imagen contiene VARIAS Órdenes de Servicio (ej. 296 y 295). Extrae TODAS en una lista JSON.
-                
                 REGLAS ESTRICTAS DE EXTRACCIÓN:
                 1. "fecha": Copia literalmente el texto completo que está a la derecha de 'FECHA:'.
                 2. "numero_os": El número a la derecha de 'ORDEN DE SERVICIO No.:'
                 3. "piloto": Nombre a la derecha de 'PILOTO:'
                 4. "aeronave_hk": Matrícula a la derecha de 'AERONAVE ORGANICA:'
-                5. "horometro_total": En el cuadro de la sección 3, es el número de la diferencia de horas de vuelo (ej. 1,90 o 0,40).
-                6. "valor_hectarea": Busca la fila que comienza con 'Tacomt. Inicial:'. En esa misma fila, más a la derecha, hay un número con un signo de dólar. Extrae SOLO ESE NÚMERO (ignora el signo $).
-                7. "recargo": Busca la palabra 'Valor Recargo Festivo :'. Si a su derecha hay un guion (-) o está vacío, escribe "0". Si hay un número, extrae el número.
+                5. "horometro_total": En el cuadro de la sección 3, es la diferencia de horas de vuelo (ej. 1,90 o 0,40).
+                6. "valor_hectarea": Busca la fila 'Tacomt. Inicial:'. A la derecha hay un número con $. Extrae SOLO ESE NÚMERO (ignora el signo).
+                7. "recargo": Busca 'Valor Recargo Festivo :'. Si hay guion o vacío, escribe "0". Si hay número, extrae el número.
                 8. "fincas": Extrae la tabla de fincas completa (nombre_finca, hectareas). El coctel déjalo vacío.
                 """
-                
                 respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
                 st.session_state['datos_os_ia'] = json.loads(respuesta.text)
                 st.success("🎯 ¡Lectura completada!")
-                
             except Exception as e:
                 st.error(f"❌ La IA encontró interferencias: {e}")
 
@@ -783,135 +773,98 @@ if 'datos_os_ia' in st.session_state:
     if isinstance(lista_ordenes, dict): lista_ordenes = [lista_ordenes]
         
     st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
-    st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio.")
     
     for i, datos in enumerate(lista_ordenes):
-        with st.expander(f"📄 Orden de Servicio {datos.get('numero_os', 'Desconocida')} - CLIC PARA VER", expanded=True):
+        with st.expander(f"📄 Orden de Servicio {datos.get('numero_os', 'Desconocida')}", expanded=True):
             
-            # Fila 1
             col1, col2, col3 = st.columns(3)
             os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
             fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
             piloto_val = col3.text_input("Piloto", value=str(datos.get('piloto', '')), key=f"piloto_{i}")
             
-            # Fila 2
             col4, col5, col6 = st.columns(3)
             hk_val = col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
             horo_val = col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
             costo_val = col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
             
-            # Fila 3
             col7, col8, col9 = st.columns(3)
             recargo_val = col7.text_input("Recargo ($)", value=str(datos.get('recargo', '0')), key=f"recargo_{i}")
             
-            st.write(f"**Fincas de la OS {os_val}:** (Corrija el nombre oficial aquí antes de buscar)")
+            st.write(f"**Fincas:** (Corrija el nombre oficial aquí antes de buscar cócteles)")
             
-            # 1. MOSTRAR LA TABLA PRIMERO
             df_fincas = pd.DataFrame(datos.get('fincas', []))
-            if 'coctel' not in df_fincas.columns:
-                df_fincas['coctel'] = ""
+            if 'coctel' not in df_fincas.columns: df_fincas['coctel'] = ""
                 
             df_editado = st.data_editor(
-                df_fincas, 
-                use_container_width=True, 
-                num_rows="dynamic",
-                key=f"tabla_fincas_edit_{i}",
+                df_fincas, use_container_width=True, num_rows="dynamic", key=f"tabla_fincas_edit_{i}",
                 column_config={
                     "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
                     "coctel": st.column_config.SelectboxColumn("Cóctel Oficial", options=lista_cocteles_oficiales, required=True)
                 }
             )
             
-            # 2. GUARDAR EN MEMORIA LO QUE EL USUARIO CORRIGIÓ
             datos['fincas'] = df_editado.to_dict('records')
-            st.session_state['datos_os_ia'] = lista_ordenes
             
-            # 3. EL BOTÓN MÁGICO DEL SABUESO
-            if st.button(f"🔍 BUSCAR CÓCTELES EN APOYO2023 (OS {os_val})", key=f"btn_buscar_{i}"):
+            if st.button(f"🔍 BUSCAR CÓCTELES (OS {os_val})", key=f"btn_buscar_{i}"):
                 if df_apoyo.empty:
-                    st.error("🚨 La hoja de apoyo no tiene datos a partir de la fila 10.")
+                    st.error("🚨 La hoja de apoyo no tiene datos.")
                 else:
                     for finca_item in datos.get('fincas', []):
                         finca_nombre = str(finca_item.get('nombre_finca', '')).strip().upper()
-                        
                         filtro = df_apoyo.iloc[:, 1].astype(str).str.upper().str.strip() == finca_nombre
                         resultado = df_apoyo[filtro]
-                        
                         if not resultado.empty:
                             coctel_hallado = str(resultado.iloc[-1, 8]).strip()
                             if coctel_hallado != "":
                                 finca_item['coctel'] = coctel_hallado
                                 st.toast(f"✅ Cóctel hallado para {finca_nombre}")
-                            else:
-                                st.toast(f"⚠️ Finca hallada, pero el cóctel estaba en blanco en Excel.")
-                        else:
-                            st.toast(f"❓ No se halló la finca '{finca_nombre}' en APOYO2023.")
-                    
                     st.session_state['datos_os_ia'] = lista_ordenes
                     st.rerun()
 
             st.divider()
 
-            # --- 🚀 MOTOR DE PRORRATEO Y GUARDADO FINAL ---
+            # --- 🚀 MOTOR DE PRORRATEO Y GUARDADO (PLANTILLA EXACTA) ---
             if str(os_val).strip() in lista_os_existentes:
-                st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
+                st.error(f"🚨 La OS Nº '{str(os_val).strip()}' ya existe.")
             else:
                 if st.button(f"💾 GUARDAR Y PRORRATEAR OS {os_val} EN TABLA 1", key=f"btn_guardar_{i}", type="primary"):
                     try:
-                        with st.spinner("🚀 Ejecutando maniobra de guardado y cálculo..."):
-                            # 1. Preparar datos maestros y limpiar números (comas por puntos)
+                        with st.spinner("🚀 Ejecutando maniobra de guardado..."):
                             h_total = float(str(horo_val).replace(',', '.'))
                             precio_ha = float(str(costo_val).replace('.', '').replace(',', '.'))
-                            
-                            # Limpieza del recargo (por si viene vacío o con símbolos raros)
                             recargo_str = str(recargo_val).replace('.', '').replace(',', '.')
                             recargo_total = float(recargo_str) if recargo_str.strip() != "" else 0.0
                             
                             fincas_finales = df_editado.to_dict('records')
                             total_ha_orden = sum([float(str(f['hectareas']).replace(',', '.')) for f in fincas_finales])
-                            
                             filas_para_guardar = []
                             
                             for finca in fincas_finales:
                                 ha_finca = float(str(finca['hectareas']).replace(',', '.'))
-                                
-                                # --- 🧮 LA MATEMÁTICA DEL PRORRATEO ---
                                 horo_prorrateado = (ha_finca / total_ha_orden) * h_total
-                                recargo_finca = (ha_finca / total_ha_orden) * recargo_total # Repartimos el recargo según Hectáreas
+                                recargo_finca = (ha_finca / total_ha_orden) * recargo_total
                                 
-                                # --- 📝 CONSTRUCCIÓN MILIMÉTRICA DE LA FILA (A hasta V) ---
-                                nueva_fila = [
-                                    os_val,                  # Col A (0): Nº ORDEN
-                                    "",                      # Col B (1): FACTURA (Vacío)
-                                    fecha_val,               # Col C (2): FECHA
-                                    finca['nombre_finca'],   # Col D (3): FINCA
-                                    "",                      # Col E (4): BLOQUE O ZONA
-                                    "",                      # Col F (5): SECTOR
-                                    ha_finca,                # Col G (6): AREA FUMIGADA (Ha)
-                                    finca['coctel'],         # Col H (7): COCTEL
-                                    "",                      # Col I (8): VACÍO
-                                    "",                      # Col J (9): VACÍO
-                                    "",                      # Col K (10): VACÍO
-                                    "",                      # Col L (11): VACÍO
-                                    "",                      # Col M (12): VACÍO
-                                    round(horo_prorrateado, 2), # Col N (13): RENDIMIENTO HORAS
-                                    "",                      # Col O (14): VACÍO
-                                    piloto_val,              # Col P (15): PILOTO
-                                    hk_val,                  # Col Q (16): HK AERONAVE
-                                    "",                      # Col R (17): VACÍO
-                                    "",                      # Col S (18): VACÍO
-                                    precio_ha,               # Col T (19): VALOR HECTÁREA
-                                    round(recargo_finca, 2), # Col U (20): RECARGO (Prorrateado)
-                                    "IA_GENESIS"             # Col V (21): OBSERVACIONES
-                                ]
+                                # 🗺️ PLANTILLA DE 32 POSICIONES (A=0, B=1 ... AF=31)
+                                nueva_fila = [""] * 32
+                                nueva_fila[0]  = os_val                  # A: Nº ORDEN
+                                nueva_fila[2]  = finca['nombre_finca']   # C: FINCA
+                                nueva_fila[5]  = ha_finca                # F: ÀREA FUMIG. (ha)
+                                nueva_fila[6]  = finca['coctel']         # G: COCTEL
+                                nueva_fila[7]  = fecha_val               # H: FECHA
+                                nueva_fila[13] = round(horo_prorrateado, 2) # N: RENDIMIENTO (horas)
+                                nueva_fila[15] = piloto_val              # P: PILOTO
+                                nueva_fila[16] = hk_val                  # Q: HK
+                                nueva_fila[19] = precio_ha               # T: VALOR HECTÁREA ($/ha)
+                                nueva_fila[20] = round(recargo_finca, 2) # U: RECARGO ($/ha)
+                                nueva_fila[31] = "IA_GENESIS"            # AF: TIPO PRODUCTOR/OBSERVACIONES
+                                
                                 filas_para_guardar.append(nueva_fila)
                             
-                            # 2. DISPARO A LA BÓVEDA CON MODO USUARIO
-                            # 'USER_ENTERED' obliga a Sheets a activar sus propias fórmulas en los espacios que dejamos vacíos
+                            # Disparo final con USER_ENTERED para activar fórmulas
                             hoja_maestra.append_rows(filas_para_guardar, value_input_option='USER_ENTERED')
                             
                             st.balloons()
-                            st.success(f"✅ ¡MISIÓN CUMPLIDA! OS {os_val} guardada y prorrateada en TABLA 1.")
+                            st.success(f"✅ ¡MISIÓN CUMPLIDA! OS {os_val} guardada con éxito.")
                             
                     except Exception as e:
-                        st.error(f"❌ Error en el cálculo matemático o guardado: {e}")
+                        st.error(f"❌ Error en el guardado: {e}")
