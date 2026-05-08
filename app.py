@@ -721,7 +721,7 @@ except Exception as e:
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
+    modelo_ia = genai.GenerativeModel('gemini-2.5-pro')
 except Exception as e:
     st.error("🚨 Falla en el sistema de IA. Revise sus llaves de seguridad.")
     st.stop()
@@ -766,7 +766,12 @@ if archivo_os is not None:
                 datos_extraidos = json.loads(respuesta.text)
                 
                 st.session_state['datos_os_ia'] = datos_extraidos
-                st.success("🎯 ¡Lectura de Artillería Pesada completada con éxito!")
+                # 🛑 MODO CAJA NEGRA: Veamos qué diablos leyó la IA en crudo
+                st.info("📦 CAJA NEGRA (Datos Crudos):")
+                st.json(datos_extraidos)
+                
+                st.success("🎯 ¡Lectura completada con éxito!")
+                
                 
             except Exception as e:
                 st.error(f"❌ El misil de escaneo reportó un fallo: {e}")        
