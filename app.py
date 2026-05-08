@@ -717,7 +717,7 @@ except Exception as e:
     lista_os_existentes = []
     lista_cocteles_oficiales = []
 
-# 2. CONFIGURACIÓN DEL CEREBRO IA
+# 2. CONFIGURACIÓN DEL CEREBRO IA (Motor Rápido y Potente)
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
@@ -732,14 +732,14 @@ archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de 
 if archivo_os is not None:
     st.success("✅ Documento recibido en la bahía de carga.")
     
-    if st.button("🚀 LANZAR DRON DE RECONOCIMIENTO (Señuelo)", type="primary"):
-        with st.spinner("🤖 El Dron está sobrevolando el documento y tomando notas. Por favor espere..."):
+    if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
+        with st.spinner("🤖 La IA está barriendo el documento..."):
             try:
                 documento_bytes = archivo_os.getvalue()
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
-                # 📜 EL MISIL TELEDIRIGIDO (Calibrado con el mapa real)
+                # 📜 EL MISIL TELEDIRIGIDO (Mapa Cartográfico)
                 orden_militar = """
                 Eres un analista experto en extraer datos de planillas de FUMIGARAY.
                 La imagen contiene VARIAS Órdenes de Servicio (ej. 296 y 295). Extrae TODAS en una lista JSON.
@@ -753,20 +753,21 @@ if archivo_os is not None:
                 6. "valor_hectarea": ¡CLAVE! Busca la fila que comienza con 'Tacomt. Inicial:'. En esa misma fila, más a la derecha, hay un número con un signo de dólar (ej. 55.247 o 96.586). Extrae SOLO ESE NÚMERO (ignora el signo $).
                 7. "recargo": Busca la palabra 'Valor Recargo Festivo :'. Si a su derecha hay un guion (-) o está vacío, escribe "0". Si hay un número, extrae el número.
                 8. "fincas": Extrae la tabla de fincas completa (nombre_finca, hectareas, coctel).
-
-                Devuelve la respuesta en formato JSON puro.
                 """
                 
-                # Disparamos el señuelo sin formato JSON para que hable libremente
-                respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]])
+                respuesta = modelo_ia.generate_content(
+                    [orden_militar, archivo_ia[0]],
+                    generation_config={"response_mime_type": "application/json"}
+                )
                 
-                st.warning("🚨 REPORTE EN CRUDO DEL DRON (Lo que la IA ve realmente):")
-                st.info(respuesta.text)
+                datos_extraidos = json.loads(respuesta.text)
+                st.session_state['datos_os_ia'] = datos_extraidos
+                st.success("🎯 ¡Lectura completada con éxito!")
                 
             except Exception as e:
-                st.error(f"❌ El Dron fue derribado por la interferencia: {e}")
+                st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
 
-# 4. EL PUESTO DE CONTROL (Escaneo Múltiple con Recargo)
+# 4. EL PUESTO DE CONTROL (Pantallas Restauradas)
 if 'datos_os_ia' in st.session_state:
     datos_ia = st.session_state['datos_os_ia']
     
@@ -778,26 +779,26 @@ if 'datos_os_ia' in st.session_state:
         lista_ordenes = []
         
     st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
-    st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio en este documento.")
+    st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio.")
     
     for i, datos in enumerate(lista_ordenes):
-        st.markdown(f"#### 📄 Documento #{i+1}: Orden de Servicio {datos.get('numero_os', 'Desconocida')}")
+        st.markdown(f"#### 📄 Orden de Servicio {datos.get('numero_os', 'Desconocida')}")
         
         # Fila 1
         col1, col2, col3 = st.columns(3)
-        os_leida = col1.text_input("Nº Orden", value=datos.get('numero_os', ''), key=f"os_{i}")
-        fecha_leida = col2.text_input("Fecha", value=datos.get('fecha', ''), key=f"fecha_{i}")
-        col3.text_input("Piloto", value=datos.get('piloto', ''), key=f"piloto_{i}")
+        os_leida = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
+        fecha_leida = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
+        col3.text_input("Piloto", value=str(datos.get('piloto', '')), key=f"piloto_{i}")
         
         # Fila 2
         col4, col5, col6 = st.columns(3)
-        col4.text_input("HK Aeronave", value=datos.get('aeronave_hk', ''), key=f"hk_{i}")
-        col5.text_input("Horómetro TOTAL", value=datos.get('horometro_total', ''), help="Solo la diferencia", key=f"horo_{i}")
-        col6.text_input("Costo / Hectárea", value=datos.get('valor_hectarea', ''), key=f"costo_{i}")
+        col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
+        col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
+        col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
         
-        # Fila 3 (El Recargo)
+        # Fila 3
         col7, col8, col9 = st.columns(3)
-        col7.text_input("Recargo ($)", value=datos.get('recargo', ''), help="Dejar en 0 si no hay", key=f"recargo_{i}")
+        col7.text_input("Recargo ($)", value=str(datos.get('recargo', '')), key=f"recargo_{i}")
         
         st.write(f"**Fincas de la OS {os_leida}:**")
         df_fincas = pd.DataFrame(datos.get('fincas', []))
@@ -810,20 +811,18 @@ if 'datos_os_ia' in st.session_state:
             column_config={
                 "coctel": st.column_config.SelectboxColumn(
                     "Cóctel (Menú Oficial)",
-                    help="Elija el cóctel correcto",
                     options=lista_cocteles_oficiales,
                     required=True
                 )
             }
         )
         
-        # 🛡️ ESCUDO ANTI-DUPLICADOS
+        # Escudo Anti-Duplicados
         os_limpia = str(os_leida).strip()
         if os_limpia in lista_os_existentes:
-            st.error(f"🚨 ¡ALERTA! La OS Nº '{os_limpia}' ya existe en su Excel. No se puede duplicar.")
+            st.error(f"🚨 ¡ALERTA! La OS Nº '{os_limpia}' ya existe en su Excel.")
         else:
-            st.success("✅ OS autorizada.")
-            if st.button(f"🚀 APROBAR OS {os_limpia} Y PREPARAR PRORRATEO", type="primary", key=f"btn_aprobar_{i}"):
-                st.info("¡Motor listo para disparar los datos a la TABLA 1!")
+            st.success("✅ OS lista para Prorrateo.")
+            # Aquí irá el botón de guardar más adelante
                 
         st.divider()
