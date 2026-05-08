@@ -777,8 +777,16 @@ if archivo_os is not None:
 
 # 4. EL PUESTO DE CONTROL (Verificación Humana y Escudo Anti-Duplicados)
 if 'datos_os_ia' in st.session_state:
-    datos = st.session_state['datos_os_ia']
+    datos_ia = st.session_state['datos_os_ia']
     
+    # 🛡️ MANIOBRA DE DESEMPAQUE: Por si la IA devuelve una lista en vez de un diccionario
+    if isinstance(datos_ia, list) and len(datos_ia) > 0:
+        datos = datos_ia[0]
+    elif isinstance(datos_ia, dict):
+        datos = datos_ia
+    else:
+        datos = {}
+        
     st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
     
     col1, col2, col3 = st.columns(3)
@@ -807,7 +815,7 @@ if 'datos_os_ia' in st.session_state:
     os_limpia = str(os_leida).strip()
     
     if os_limpia in lista_os_existentes:
-        st.error(f"🚨 ¡ALERTA ROJA! La Orden de Servicio Nº '{os_limpia}' ya se encuentra registrada en la TABLA 1. Operación bloqueada para evitar duplicados.")
+        st.error(f"🚨 ¡ALERTA ROJA! La Orden de Servicio Nº '{os_limpia}' ya se encuentra registrada en la TABLA 1. Operación bloqueada.")
     else:
         st.success("✅ Orden de Servicio nueva y autorizada para ingreso.")
         st.warning("⚠️ Revise que los números sean correctos y corrija si es necesario.")
