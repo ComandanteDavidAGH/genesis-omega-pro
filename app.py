@@ -733,8 +733,13 @@ if archivo_os is not None:
     st.success("✅ Documento recibido en la bahía de carga.")
     
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
-        with st.spinner("🤖 La IA está barriendo el documento con las nuevas coordenadas. Por favor espere..."):
-            # 📜 EL ARSENAL PESADO: MODO ESCÁNER CIEGO
+        with st.spinner("🤖 Activando Escáner Óptico de Artillería Pesada. Por favor espere..."):
+            try:
+                documento_bytes = archivo_os.getvalue()
+                tipo_mime = archivo_os.type
+                archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
+                
+                # 📜 EL ARSENAL PESADO: MODO ESCÁNER CIEGO
                 orden_militar = """
                 Eres un escáner óptico estricto. NO intentes pensar, calcular, ni dar formato a nada. Tu única misión es encontrar el texto en la imagen y COPIARLO LITERALMENTE como está escrito en el papel.
                 El documento puede tener varias Órdenes de Servicio (ej. 295 y 296). Sepáralas en una lista.
@@ -756,15 +761,14 @@ if archivo_os is not None:
                     generation_config={"response_mime_type": "application/json"}
                 )
                 
-                # Como disparamos en JSON Nativo, ya no hay que limpiar el texto, entra directo
+                # Como disparamos en JSON Nativo, entra directo
                 datos_extraidos = json.loads(respuesta.text)
                 
                 st.session_state['datos_os_ia'] = datos_extraidos
                 st.success("🎯 ¡Lectura de Artillería Pesada completada con éxito!")
                 
             except Exception as e:
-                st.error(f"❌ El misil de escaneo reportó un fallo: {e}")
-        
+                st.error(f"❌ El misil de escaneo reportó un fallo: {e}")        
 # 4. EL PUESTO DE CONTROL (Escaneo Múltiple con Recargo)
 if 'datos_os_ia' in st.session_state:
     datos_ia = st.session_state['datos_os_ia']
