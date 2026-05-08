@@ -732,49 +732,31 @@ archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de 
 if archivo_os is not None:
     st.success("✅ Documento recibido en la bahía de carga.")
     
-    if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
-        with st.spinner("🤖 Activando Escáner Óptico de Artillería Pesada. Por favor espere..."):
+    if st.button("🚀 LANZAR DRON DE RECONOCIMIENTO (Señuelo)", type="primary"):
+        with st.spinner("🤖 El Dron está sobrevolando el documento y tomando notas. Por favor espere..."):
             try:
                 documento_bytes = archivo_os.getvalue()
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
-                # 📜 EL MISIL DE PRECISIÓN QUIRÚRGICA
+                # 📜 EL SEÑUELO: Sin reglas estrictas, solo que nos diga qué ve con sus propios ojos.
                 orden_militar = """
-                Actúa como un analista de datos experto en documentos agrícolas. Tu misión es extraer información de una Orden de Servicio de FUMIGARAY.
-                
-                REGLAS DE EXTRACCIÓN (MIRA EL DOCUMENTO COMO UN MAPA):
-                1. "fecha": Localiza el extremo superior izquierdo. Copia TODO el texto que aparezca después de 'FECHA:' (ej. 'Sábado 2 de mayo de 2026'). NO omitas palabras.
-                2. "numero_os": Busca en el extremo superior derecho, el número grande (ej. 295).
-                3. "piloto": Nombre de la persona después de 'PILOTO:'.
-                4. "aeronave_hk": El código alfanumérico después de 'AVION:'.
-                5. "horometro_total": Busca en la tabla de horómetros el valor que diga 'TOTAL' o la diferencia.
-                6. "valor_hectarea": ¡MUCHA ATENCIÓN! Ubica el bloque '3- INFORMACION FUMIGACION'. Busca el encabezado 'Rendimiento Hectareas/Hora'. El valor que necesito es el NÚMERO que está escrito en la celda inmediatamente DEBAJO de ese título. Copia ese número exactamente.
-                7. "recargo": Busca en la parte inferior, debajo de la tabla de fincas, la palabra 'RECARGO' o 'VALOR RECARGO'. Si no hay nada, escribe "0".
-                8. "fincas": Extrae la tabla de fincas completa con su nombre y hectáreas.
-                
-                IMPORTANTE: Devuelve la respuesta en formato JSON puro. Si hay varias órdenes en la imagen, haz una lista.
+                Analiza esta imagen como si fueras un humano leyendo el papel. Respóndeme SOLO estas 4 preguntas de forma clara y directa:
+                1. ¿Qué fecha exacta ves en la parte de arriba del todo? (Escribe la frase completa que leas, letra por letra).
+                2. Busca la sección '3- INFORMACION FUMIGACION'. ¿Qué número está escrito EXACTAMENTE DEBAJO del título 'Rendimiento Hectareas/Hora'?
+                3. ¿Ves algún número cerca de la palabra 'Recargo' en la parte de abajo?
+                4. ¿Cuál es el número del Horómetro Total?
                 """
                 
-                # DISPARO CON MODO JSON NATIVO (Obliga a Google a no equivocarse de formato)
-                respuesta = modelo_ia.generate_content(
-                    [orden_militar, archivo_ia[0]],
-                    generation_config={"response_mime_type": "application/json"}
-                )
+                # Disparamos el señuelo sin formato JSON para que hable libremente
+                respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]])
                 
-                # Como disparamos en JSON Nativo, entra directo
-                datos_extraidos = json.loads(respuesta.text)
-                
-                st.session_state['datos_os_ia'] = datos_extraidos
-                # 🛑 MODO CAJA NEGRA: Veamos qué diablos leyó la IA en crudo
-                st.info("📦 CAJA NEGRA (Datos Crudos):")
-                st.json(datos_extraidos)
-                
-                st.success("🎯 ¡Lectura completada con éxito!")
-                
+                st.warning("🚨 REPORTE EN CRUDO DEL DRON (Lo que la IA ve realmente):")
+                st.info(respuesta.text)
                 
             except Exception as e:
-                st.error(f"❌ El misil de escaneo reportó un fallo: {e}")        
+                st.error(f"❌ El Dron fue derribado por la interferencia: {e}")
+
 # 4. EL PUESTO DE CONTROL (Escaneo Múltiple con Recargo)
 if 'datos_os_ia' in st.session_state:
     datos_ia = st.session_state['datos_os_ia']
