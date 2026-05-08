@@ -724,7 +724,7 @@ try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
     # Volvemos a la versión estable sin etiquetas raras
-    modelo_ia = genai.GenerativeModel('gemini-1.5-flash')
+    modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     st.error("🚨 Falla en el sistema de IA. Revise que GEMINI_API_KEY esté en los secrets.")
     st.stop()
