@@ -686,7 +686,7 @@ st.divider()
 st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (Visión IA)")
 st.subheader("Buzón de Recepción y Puesto de Control")
 
-# 1. CARGA DE FINCAS OFICIALES Y ÓRDENES EXISTENTES (FRANCOTIRADOR DOBLE)
+# 1. CARGA DE BASE DE DATOS (FRANCOTIRADOR TRIPLE)
 try:
     if "gcp_credentials" in st.secrets:
         cred_dict = dict(st.secrets["gcp_credentials"])
@@ -700,33 +700,31 @@ try:
     boveda = gc.open_by_url(url_boveda)
     hoja_maestra = boveda.worksheet("TABLA 1")
     
-    # 🎯 MISIÓN DE FRANCOTIRADOR DOBLE: Extraemos Fincas (Col C) y OS Existentes (Col A)
-    columna_os = hoja_maestra.col_values(1)      # Columna A: Nº ORDEN
-    columna_fincas = hoja_maestra.col_values(3)  # Columna C: FINCA
+    # 🎯 Extraemos OS (Col 1), Fincas (Col 3) y Cócteles (Col 7)
+    columna_os = hoja_maestra.col_values(1)
+    columna_fincas = hoja_maestra.col_values(3)
+    columna_cocteles = hoja_maestra.col_values(7)
     
-    # Limpiamos la lista de Fincas
-    lista_fincas_oficiales = []
-    for f in columna_fincas:
-        f_limpia = str(f).strip()
-        if f_limpia != "" and f_limpia.upper() != "FINCA" and f_limpia not in lista_fincas_oficiales:
-            lista_fincas_oficiales.append(f_limpia)
-            
-    # Limpiamos la lista de OS ya registradas (para el escudo anti-duplicados)
     lista_os_existentes = [str(os).strip() for os in columna_os if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
+    
+    lista_cocteles_oficiales = []
+    for c in columna_cocteles:
+        c_limpio = str(c).strip()
+        if c_limpio != "" and c_limpio.upper() != "COCTEL" and c_limpio not in lista_cocteles_oficiales:
+            lista_cocteles_oficiales.append(c_limpio)
             
 except Exception as e:
     st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
-    lista_fincas_oficiales = []
     lista_os_existentes = []
+    lista_cocteles_oficiales = []
 
 # 2. CONFIGURACIÓN DEL CEREBRO IA
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    # Volvemos a la versión estable sin etiquetas raras
     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
-    st.error("🚨 Falla en el sistema de IA. Revise que GEMINI_API_KEY esté en los secrets.")
+    st.error("🚨 Falla en el sistema de IA. Revise sus llaves de seguridad.")
     st.stop()
 
 # 3. BUZÓN DE RECEPCIÓN (Dropzone)
@@ -736,88 +734,104 @@ if archivo_os is not None:
     st.success("✅ Documento recibido en la bahía de carga.")
     
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
-        with st.spinner("🤖 La IA está leyendo el documento. Por favor espere..."):
+        with st.spinner("🤖 La IA está barriendo el documento buscando TODAS las órdenes. Por favor espere..."):
             try:
                 documento_bytes = archivo_os.getvalue()
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
+                # 📜 LA NUEVA ORDEN PARA LA IA (Arreglo múltiple)
                 orden_militar = """
                 Eres un asistente experto en lectura de facturas agrícolas. 
-                Lee este documento de Orden de Servicio y extrae la siguiente información en formato JSON estricto.
+                El documento que vas a leer puede contener UNA O VARIAS Órdenes de Servicio en la misma imagen/página.
+                Extrae TODAS las órdenes que encuentres y preséntalas en un arreglo (lista) en formato JSON estricto.
                 No escribas nada más, solo el JSON puro.
+                
                 Estructura requerida:
-                {
-                  "numero_os": "Número de la orden",
-                  "piloto": "Nombre del piloto",
-                  "aeronave_hk": "Matrícula del avión",
-                  "horometro_inicial": "Número",
-                  "horometro_final": "Número",
-                  "horometro_total": "Número (si no está, calcúlalo restando el final menos el inicial)",
-                  "fincas": [
-                    {
-                      "nombre_finca": "Nombre de la finca",
-                      "hectareas": "Número de hectáreas aplicadas",
-                      "coctel": "Nombre de la mezcla o cóctel si aparece"
-                    }
-                  ]
-                }
+                [
+                  {
+                    "numero_os": "Número de la orden",
+                    "fecha": "Fecha de la orden (trata de ponerla en formato DD/MM/AAAA)",
+                    "piloto": "Nombre del piloto",
+                    "aeronave_hk": "Matrícula del avión",
+                    "horometro_total": "Solo el número total de horas de vuelo o diferencia final (ej. 1.90 o 0.70)",
+                    "valor_hectarea": "Costo por hectárea o Valor por ha (extrae solo el número si aparece, si no, déjalo vacío)",
+                    "fincas": [
+                      {
+                        "nombre_finca": "Nombre de la finca",
+                        "hectareas": "Número de hectáreas aplicadas",
+                        "coctel": "Nombre de la mezcla o producto"
+                      }
+                    ]
+                  }
+                ]
                 """
                 
                 respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]])
-                
                 texto_json = respuesta.text.replace("```json", "").replace("```", "").strip()
                 datos_extraidos = json.loads(texto_json)
                 
                 st.session_state['datos_os_ia'] = datos_extraidos
-                st.success("🎯 ¡Lectura completada con éxito!")
+                st.success("🎯 ¡Lectura múltiple completada con éxito!")
                 
             except Exception as e:
                 st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
 
-# 4. EL PUESTO DE CONTROL (Verificación Humana y Escudo Anti-Duplicados)
+# 4. EL PUESTO DE CONTROL (Escaneo Múltiple)
 if 'datos_os_ia' in st.session_state:
     datos_ia = st.session_state['datos_os_ia']
     
-    # 🛡️ MANIOBRA DE DESEMPAQUE: Por si la IA devuelve una lista en vez de un diccionario
-    if isinstance(datos_ia, list) and len(datos_ia) > 0:
-        datos = datos_ia[0]
-    elif isinstance(datos_ia, dict):
-        datos = datos_ia
+    # Asegurarnos de que siempre sea una lista, aunque la IA encuentre solo 1 orden
+    if isinstance(datos_ia, dict):
+        lista_ordenes = [datos_ia]
+    elif isinstance(datos_ia, list):
+        lista_ordenes = datos_ia
     else:
-        datos = {}
+        lista_ordenes = []
         
     st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
+    st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio en este documento.")
     
-    col1, col2, col3 = st.columns(3)
-    os_leida = col1.text_input("Nº Orden de Servicio", value=datos.get('numero_os', ''))
-    col2.text_input("Piloto", value=datos.get('piloto', ''))
-    col3.text_input("Aeronave (HK)", value=datos.get('aeronave_hk', ''))
-    
-    col4, col5, col6 = st.columns(3)
-    col4.text_input("Horómetro Inicial", value=datos.get('horometro_inicial', ''))
-    col5.text_input("Horómetro Final", value=datos.get('horometro_final', ''))
-    col6.text_input("Horómetro Total", value=datos.get('horometro_total', ''))
-    
-    st.write("**Detalle de Fincas y Hectáreas:**")
-    df_fincas = pd.DataFrame(datos.get('fincas', []))
-    
-    df_fincas_editado = st.data_editor(
-        df_fincas, 
-        use_container_width=True, 
-        num_rows="dynamic",
-        key="tabla_fincas_control"
-    )
-    
-    st.divider()
-    
-    # 🛡️ ESCUDO ANTI-DUPLICADOS EN ACCIÓN
-    os_limpia = str(os_leida).strip()
-    
-    if os_limpia in lista_os_existentes:
-        st.error(f"🚨 ¡ALERTA ROJA! La Orden de Servicio Nº '{os_limpia}' ya se encuentra registrada en la TABLA 1. Operación bloqueada.")
-    else:
-        st.success("✅ Orden de Servicio nueva y autorizada para ingreso.")
-        st.warning("⚠️ Revise que los números sean correctos y corrija si es necesario.")
-        if st.button("🚀 APROBAR Y PREPARAR PRORRATEO", type="primary"):
-            st.info("¡Motor de prorrateo listo para la siguiente fase!")
+    # Creamos un bloque de revisión por CADA orden encontrada
+    for i, datos in enumerate(lista_ordenes):
+        st.markdown(f"#### 📄 Documento #{i+1}: Orden de Servicio {datos.get('numero_os', 'Desconocida')}")
+        
+        col1, col2, col3 = st.columns(3)
+        os_leida = col1.text_input("Nº Orden", value=datos.get('numero_os', ''), key=f"os_{i}")
+        fecha_leida = col2.text_input("Fecha", value=datos.get('fecha', ''), key=f"fecha_{i}")
+        col3.text_input("Piloto", value=datos.get('piloto', ''), key=f"piloto_{i}")
+        
+        col4, col5, col6 = st.columns(3)
+        col4.text_input("HK Aeronave", value=datos.get('aeronave_hk', ''), key=f"hk_{i}")
+        col5.text_input("Horómetro TOTAL", value=datos.get('horometro_total', ''), help="Solo la diferencia", key=f"horo_{i}")
+        col6.text_input("Costo / Hectárea", value=datos.get('valor_hectarea', ''), key=f"costo_{i}")
+        
+        st.write(f"**Fincas de la OS {os_leida}:**")
+        df_fincas = pd.DataFrame(datos.get('fincas', []))
+        
+        # Tabla interactiva con menú desplegable para el Cóctel
+        df_fincas_editado = st.data_editor(
+            df_fincas, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            key=f"tabla_fincas_{i}",
+            column_config={
+                "coctel": st.column_config.SelectboxColumn(
+                    "Cóctel (Menú Oficial)",
+                    help="Elija el cóctel correcto",
+                    options=lista_cocteles_oficiales,
+                    required=True
+                )
+            }
+        )
+        
+        # 🛡️ ESCUDO ANTI-DUPLICADOS INDIVIDUAL
+        os_limpia = str(os_leida).strip()
+        if os_limpia in lista_os_existentes:
+            st.error(f"🚨 ¡ALERTA! La OS Nº '{os_limpia}' ya existe en su Excel. No se puede duplicar.")
+        else:
+            st.success("✅ OS autorizada.")
+            if st.button(f"🚀 APROBAR OS {os_limpia} Y PREPARAR PRORRATEO", type="primary", key=f"btn_aprobar_{i}"):
+                st.info("¡Motor listo!")
+                
+        st.divider() # Línea separadora entre órdenes
