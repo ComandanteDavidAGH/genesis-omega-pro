@@ -739,34 +739,33 @@ if archivo_os is not None:
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
-                # 📜 LA ORDEN MILITAR CALIBRADA (Con sus coordenadas exactas)
+                # 📜 LA ORDEN MILITAR DE ALTA PRECISIÓN
                 orden_militar = """
-                Eres un asistente experto en lectura de facturas agrícolas. 
-                El documento puede contener UNA O VARIAS Órdenes de Servicio en la misma imagen.
-                Extrae TODAS las órdenes que encuentres y preséntalas en un arreglo (lista) en formato JSON estricto.
-                No escribas nada más, solo el JSON puro.
+                Eres un asistente experto en lectura de facturas agrícolas de FUMIGARAY. 
+                El documento puede contener UNA O VARIAS Órdenes de Servicio. Extrae TODAS en un arreglo JSON.
                 
-                Estructura requerida:
+                INSTRUCCIONES DE COORDENADAS:
+                1. FECHA: Busca cualquier mención de fecha (ej: 'sábado 2 de mayo de 2026') y conviértela SIEMPRE al formato DD/MM/AAAA. No importa si tiene el nombre del día, extrae solo el número/mes/año.
+                2. NÚMERO OS: Es el número grande que suele estar en la parte superior derecha.
+                3. VALOR HECTÁREA: ¡IMPORTANTE! Ubica la tabla '3- INFORMACIÓN FUMIGACIÓN'. Busca la casilla 'Rendimiento Hectareas/Hora' y extrae el valor numérico que está JUSTO EN LA FILA DE ABAJO. Suele ser un número como 55.247 o similar.
+                4. RECARGO: Busca en la parte inferior, cerca de observaciones, cualquier valor que diga 'Recargo' o 'Festivo'. Si no hay número claro, pon "0".
+                5. HORÓMETRO TOTAL: Extrae el tiempo total de vuelo (la diferencia).
+                6. FINCAS: Extrae nombres de fincas, hectáreas y el producto/cóctel.
+
+                No escribas nada más, solo el JSON puro con esta estructura:
                 [
                   {
-                    "numero_os": "Número de la orden",
-                    "fecha": "Fecha de la orden. Búscala junto a la palabra 'FECHA:' en la cabecera. Formato DD/MM/AAAA",
-                    "piloto": "Nombre del piloto",
-                    "aeronave_hk": "Matrícula del avión",
-                    "horometro_total": "Solo la diferencia o total de horas (ej. 1.90 o 0.70)",
-                    "valor_hectarea": "Costo por hectárea. ¡COORDENADA EXACTA!: Se encuentra en la sección '3- INFORMACIÓN FUMIGACIÓN', en la casilla que está justo debajo de 'Rendimiento Hectareas/Hora'. Extrae solo el número.",
-                    "recargo": "Valor del recargo. ¡COORDENADA EXACTA!: Se encuentra en la parte inferior, cerca de 'Observaciones' o 'Valor Recargo Festivo'. Si está en blanco o tiene un guion, escribe '0'.",
-                    "fincas": [
-                      {
-                        "nombre_finca": "Nombre de la finca",
-                        "hectareas": "Número de hectáreas",
-                        "coctel": "Nombre de la mezcla o producto"
-                      }
-                    ]
+                    "numero_os": "...",
+                    "fecha": "DD/MM/AAAA",
+                    "piloto": "...",
+                    "aeronave_hk": "...",
+                    "horometro_total": "...",
+                    "valor_hectarea": "...",
+                    "recargo": "...",
+                    "fincas": [{"nombre_finca": "...", "hectareas": "...", "coctel": "..."}]
                   }
                 ]
-                """
-                
+                """                
                 respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]])
                 texto_json = respuesta.text.replace("```json", "").replace("```", "").strip()
                 datos_extraidos = json.loads(texto_json)
