@@ -630,5 +630,50 @@ elif menu == "⚙️ 2. Validación de Misión":
         st.metric("🔥 TOTAL FACTURACIÓN FINCA (GRAN TOTAL)", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
-            st.balloons()
-            st.success(f"Misión de {finca_sel} validada. ¡Sistemas listos para escribir en la Bóveda de Google Drive!")
+            with st.spinner("🚀 Inyectando datos de costos en la Bóveda Satelital (Google Drive)..."):
+                try:
+                    # 1. Reconexión Satelital (Usando las mismas credenciales del Módulo 1)
+                    if "gcp_credentials" in st.secrets:
+                        cred_dict = dict(st.secrets["gcp_credentials"])
+                        gc = gspread.service_account_from_dict(cred_dict)
+                    else:
+                        gc = gspread.service_account(filename='credenciales.json')
+                    
+                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                    boveda = gc.open_by_url(url_boveda)
+                    hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
+
+                    # 2. Identificar la Aeronave Principal
+                    aeronave_final = ""
+                    if mision_solo_dron:
+                        aeronave_final = escuadron_drones.iloc[0]["Drone"] if not escuadron_drones.empty else "DRONE"
+                        tipo_mision = "DRONE"
+                    else:
+                        aeronave_final = escuadron_aviones.iloc[0]["Avión"] if not escuadron_aviones.empty else "AVION"
+                        tipo_mision = "AVION"
+
+                    # 3. Armar el Misil de Datos (Mapeo exacto basado en su Macro de VBA)
+                    # Columnas: A:Vacio, B:Finca, C:Ha, D:Vacio, E:Costo, F:Fecha, G:Vacio, H:Vacio, I:Coctel, J:Vacio, K:Aeronave, L:Vacio, M:Vacio, N:Tipo
+                    fila_apoyo = [
+                        "",                                     # Col 1
+                        finca_limpia,                           # Col 2: sFinca
+                        float(ha_dosis_final),                  # Col 3: dha
+                        "",                                     # Col 4
+                        float(gran_total),                      # Col 5: dCosto
+                        fecha_operacion.strftime("%d/%m/%Y"),   # Col 6: dFechaTrabajo
+                        "", "",                                 # Col 7, 8
+                        coctel_ganador,                         # Col 9: sCoctel
+                        "",                                     # Col 10
+                        aeronave_final,                         # Col 11: sDrone/Avion
+                        "", "",                                 # Col 12, 13
+                        tipo_mision                             # Col 14: "DRONE" o "AVION"
+                    ]
+
+                    # 4. Disparo a la nube
+                    hoja_apoyo.append_row(fila_apoyo)
+
+                    st.balloons()
+                    st.success(f"✅ ¡MISIÓN GUARDADA! El costo de la finca {finca_limpia} ha sido inyectado en la TABLA DE APOYO2023.")
+                    
+                except Exception as e_save:
+                    st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
