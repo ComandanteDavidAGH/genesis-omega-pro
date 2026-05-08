@@ -745,4 +745,4 @@ if st.button("🔍 INICIAR ESCANEO DE SEGURIDAD", type="secondary"):
                     if seleccion != "-- Seleccionar --":
                         st.success(f"Vínculo creado: {finca_r} ➡️ {seleccion}")
     else:
-        st.warning("La pista está vacía. Por favor, ingrese datos de una OS.")v
+        st.warning("La pista está vacía. Por favor, ingrese datos de una OS.")
