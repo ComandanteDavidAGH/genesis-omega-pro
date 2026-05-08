@@ -700,7 +700,6 @@ try:
     boveda = gc.open_by_url(url_boveda)
     hoja_maestra = boveda.worksheet("TABLA 1")
     
-    # 🎯 Extraemos OS (Col 1), Fincas (Col 3) y Cócteles (Col 7)
     columna_os = hoja_maestra.col_values(1)
     columna_fincas = hoja_maestra.col_values(3)
     columna_cocteles = hoja_maestra.col_values(7)
@@ -734,16 +733,16 @@ if archivo_os is not None:
     st.success("✅ Documento recibido en la bahía de carga.")
     
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
-        with st.spinner("🤖 La IA está barriendo el documento buscando TODAS las órdenes. Por favor espere..."):
+        with st.spinner("🤖 La IA está barriendo el documento con las nuevas coordenadas. Por favor espere..."):
             try:
                 documento_bytes = archivo_os.getvalue()
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
-                # 📜 LA NUEVA ORDEN PARA LA IA (Arreglo múltiple)
+                # 📜 LA ORDEN MILITAR CALIBRADA (Con sus coordenadas exactas)
                 orden_militar = """
                 Eres un asistente experto en lectura de facturas agrícolas. 
-                El documento que vas a leer puede contener UNA O VARIAS Órdenes de Servicio en la misma imagen/página.
+                El documento puede contener UNA O VARIAS Órdenes de Servicio en la misma imagen.
                 Extrae TODAS las órdenes que encuentres y preséntalas en un arreglo (lista) en formato JSON estricto.
                 No escribas nada más, solo el JSON puro.
                 
@@ -751,15 +750,16 @@ if archivo_os is not None:
                 [
                   {
                     "numero_os": "Número de la orden",
-                    "fecha": "Fecha de la orden (trata de ponerla en formato DD/MM/AAAA)",
+                    "fecha": "Fecha de la orden. Búscala junto a la palabra 'FECHA:' en la cabecera. Formato DD/MM/AAAA",
                     "piloto": "Nombre del piloto",
                     "aeronave_hk": "Matrícula del avión",
-                    "horometro_total": "Solo el número total de horas de vuelo o diferencia final (ej. 1.90 o 0.70)",
-                    "valor_hectarea": "Costo por hectárea o Valor por ha (extrae solo el número si aparece, si no, déjalo vacío)",
+                    "horometro_total": "Solo la diferencia o total de horas (ej. 1.90 o 0.70)",
+                    "valor_hectarea": "Costo por hectárea. ¡COORDENADA EXACTA!: Se encuentra en la sección '3- INFORMACIÓN FUMIGACIÓN', en la casilla que está justo debajo de 'Rendimiento Hectareas/Hora'. Extrae solo el número.",
+                    "recargo": "Valor del recargo. ¡COORDENADA EXACTA!: Se encuentra en la parte inferior, cerca de 'Observaciones' o 'Valor Recargo Festivo'. Si está en blanco o tiene un guion, escribe '0'.",
                     "fincas": [
                       {
                         "nombre_finca": "Nombre de la finca",
-                        "hectareas": "Número de hectáreas aplicadas",
+                        "hectareas": "Número de hectáreas",
                         "coctel": "Nombre de la mezcla o producto"
                       }
                     ]
@@ -772,16 +772,15 @@ if archivo_os is not None:
                 datos_extraidos = json.loads(texto_json)
                 
                 st.session_state['datos_os_ia'] = datos_extraidos
-                st.success("🎯 ¡Lectura múltiple completada con éxito!")
+                st.success("🎯 ¡Lectura calibrada completada con éxito!")
                 
             except Exception as e:
                 st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
 
-# 4. EL PUESTO DE CONTROL (Escaneo Múltiple)
+# 4. EL PUESTO DE CONTROL (Escaneo Múltiple con Recargo)
 if 'datos_os_ia' in st.session_state:
     datos_ia = st.session_state['datos_os_ia']
     
-    # Asegurarnos de que siempre sea una lista, aunque la IA encuentre solo 1 orden
     if isinstance(datos_ia, dict):
         lista_ordenes = [datos_ia]
     elif isinstance(datos_ia, list):
@@ -792,24 +791,28 @@ if 'datos_os_ia' in st.session_state:
     st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
     st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio en este documento.")
     
-    # Creamos un bloque de revisión por CADA orden encontrada
     for i, datos in enumerate(lista_ordenes):
         st.markdown(f"#### 📄 Documento #{i+1}: Orden de Servicio {datos.get('numero_os', 'Desconocida')}")
         
+        # Fila 1
         col1, col2, col3 = st.columns(3)
         os_leida = col1.text_input("Nº Orden", value=datos.get('numero_os', ''), key=f"os_{i}")
         fecha_leida = col2.text_input("Fecha", value=datos.get('fecha', ''), key=f"fecha_{i}")
         col3.text_input("Piloto", value=datos.get('piloto', ''), key=f"piloto_{i}")
         
+        # Fila 2
         col4, col5, col6 = st.columns(3)
         col4.text_input("HK Aeronave", value=datos.get('aeronave_hk', ''), key=f"hk_{i}")
         col5.text_input("Horómetro TOTAL", value=datos.get('horometro_total', ''), help="Solo la diferencia", key=f"horo_{i}")
         col6.text_input("Costo / Hectárea", value=datos.get('valor_hectarea', ''), key=f"costo_{i}")
         
+        # Fila 3 (El Recargo)
+        col7, col8, col9 = st.columns(3)
+        col7.text_input("Recargo ($)", value=datos.get('recargo', ''), help="Dejar en 0 si no hay", key=f"recargo_{i}")
+        
         st.write(f"**Fincas de la OS {os_leida}:**")
         df_fincas = pd.DataFrame(datos.get('fincas', []))
         
-        # Tabla interactiva con menú desplegable para el Cóctel
         df_fincas_editado = st.data_editor(
             df_fincas, 
             use_container_width=True, 
@@ -825,13 +828,13 @@ if 'datos_os_ia' in st.session_state:
             }
         )
         
-        # 🛡️ ESCUDO ANTI-DUPLICADOS INDIVIDUAL
+        # 🛡️ ESCUDO ANTI-DUPLICADOS
         os_limpia = str(os_leida).strip()
         if os_limpia in lista_os_existentes:
             st.error(f"🚨 ¡ALERTA! La OS Nº '{os_limpia}' ya existe en su Excel. No se puede duplicar.")
         else:
             st.success("✅ OS autorizada.")
             if st.button(f"🚀 APROBAR OS {os_limpia} Y PREPARAR PRORRATEO", type="primary", key=f"btn_aprobar_{i}"):
-                st.info("¡Motor listo!")
+                st.info("¡Motor listo para disparar los datos a la TABLA 1!")
                 
-        st.divider() # Línea separadora entre órdenes
+        st.divider()
