@@ -804,7 +804,29 @@ if 'datos_os_ia' in st.session_state:
             col7, col8, col9 = st.columns(3)
             col7.text_input("Recargo ($)", value=str(datos.get('recargo', '')), key=f"recargo_{i}")
             
-            # --- EL BOTÓN MÁGICO DEL SABUESO ---
+            st.write(f"**Fincas de la OS {os_val}:** (Corrija el nombre oficial aquí antes de buscar)")
+            
+            # 1. MOSTRAR LA TABLA PRIMERO
+            df_fincas = pd.DataFrame(datos.get('fincas', []))
+            if 'coctel' not in df_fincas.columns:
+                df_fincas['coctel'] = ""
+                
+            df_editado = st.data_editor(
+                df_fincas, 
+                use_container_width=True, 
+                num_rows="dynamic",
+                key=f"tabla_fincas_edit_{i}",
+                column_config={
+                    "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
+                    "coctel": st.column_config.SelectboxColumn("Cóctel Oficial", options=lista_cocteles_oficiales, required=True)
+                }
+            )
+            
+            # 2. GUARDAR EN MEMORIA LO QUE EL USUARIO CORRIGIÓ
+            datos['fincas'] = df_editado.to_dict('records')
+            st.session_state['datos_os_ia'] = lista_ordenes
+            
+            # 3. EL BOTÓN MÁGICO DEL SABUESO (AHORA ABAJO DE LA TABLA)
             if st.button(f"🔍 BUSCAR CÓCTELES EN APOYO2023 (OS {os_val})", key=f"btn_buscar_{i}"):
                 if df_apoyo.empty:
                     st.error("🚨 La hoja de apoyo no tiene datos a partir de la fila 10.")
@@ -829,22 +851,6 @@ if 'datos_os_ia' in st.session_state:
                     
                     st.session_state['datos_os_ia'] = lista_ordenes
                     st.rerun()
-
-            st.write(f"**Fincas de la OS {os_val}:** (Seleccione el nombre oficial antes de buscar)")
-            df_fincas = pd.DataFrame(datos.get('fincas', []))
-            if 'coctel' not in df_fincas.columns:
-                df_fincas['coctel'] = ""
-                
-            df_editado = st.data_editor(
-                df_fincas, 
-                use_container_width=True, 
-                num_rows="dynamic",
-                key=f"tabla_fincas_edit_{i}",
-                column_config={
-                    "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
-                    "coctel": st.column_config.SelectboxColumn("Cóctel Oficial", options=lista_cocteles_oficiales, required=True)
-                }
-            )
             
             if str(os_val).strip() in lista_os_existentes:
                 st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
