@@ -830,6 +830,23 @@ if 'datos_os_ia' in st.session_state:
                 if st.button(f"💾 GUARDAR Y PRORRATEAR OS {os_val} EN TABLA 1", key=f"btn_guardar_{i}", type="primary"):
                     try:
                         with st.spinner("🚀 Ejecutando maniobra de guardado..."):
+                            import re # Importamos herramienta para buscar números en texto
+                            
+                            # --- 1. LIMPIEZA DE FECHA (De "sábado, 2 de mayo de 2026" a "02/05/2026") ---
+                            fecha_limpia = str(fecha_val).lower()
+                            meses = {'enero':'01', 'febrero':'02', 'marzo':'03', 'abril':'04', 'mayo':'05', 'junio':'06', 'julio':'07', 'agosto':'08', 'septiembre':'09', 'octubre':'10', 'noviembre':'11', 'diciembre':'12'}
+                            for mes_nombre, mes_num in meses.items():
+                                if mes_nombre in fecha_limpia:
+                                    numeros = re.findall(r'\d+', fecha_limpia)
+                                    if len(numeros) >= 2:
+                                        dia = numeros[0].zfill(2) # Rellena con 0 si es un solo dígito
+                                        anio = numeros[1] if len(numeros[1])==4 else numeros[-1]
+                                        fecha_limpia = f"{dia}/{mes_num}/{anio}"
+                                    break
+                            if "de" in fecha_limpia: # Si no pudo convertirla, usa la original
+                                fecha_limpia = str(fecha_val)
+
+                            # --- 2. PREPARAR DATOS Y MATEMÁTICAS ---
                             h_total = float(str(horo_val).replace(',', '.'))
                             precio_ha = float(str(costo_val).replace('.', '').replace(',', '.'))
                             recargo_str = str(recargo_val).replace('.', '').replace(',', '.')
@@ -844,23 +861,25 @@ if 'datos_os_ia' in st.session_state:
                                 horo_prorrateado = (ha_finca / total_ha_orden) * h_total
                                 recargo_finca = (ha_finca / total_ha_orden) * recargo_total
                                 
-                                # 🗺️ PLANTILLA DE 32 POSICIONES (A=0, B=1 ... AF=31)
-                                nueva_fila = [""] * 32
+                                # 🗺️ PLANTILLA DE 34 POSICIONES (A=0, C=2, K=10, AH=33)
+                                # Usamos strings vacíos para no sobreescribir datos en otras columnas
+                                nueva_fila = [""] * 34
                                 nueva_fila[0]  = os_val                  # A: Nº ORDEN
                                 nueva_fila[2]  = finca['nombre_finca']   # C: FINCA
                                 nueva_fila[5]  = ha_finca                # F: ÀREA FUMIG. (ha)
                                 nueva_fila[6]  = finca['coctel']         # G: COCTEL
-                                nueva_fila[7]  = fecha_val               # H: FECHA
-                                nueva_fila[13] = round(horo_prorrateado, 2) # N: RENDIMIENTO (horas)
+                                nueva_fila[7]  = fecha_limpia            # H: FECHA (Con formato DD/MM/YYYY)
+                                nueva_fila[10] = h_total                 # K: ODÒM. (Horómetro Total para todas)
+                                nueva_fila[13] = round(horo_prorrateado, 2) # N: RENDIMIENTO (horas prorrateado)
                                 nueva_fila[15] = piloto_val              # P: PILOTO
                                 nueva_fila[16] = hk_val                  # Q: HK
                                 nueva_fila[19] = precio_ha               # T: VALOR HECTÁREA ($/ha)
                                 nueva_fila[20] = round(recargo_finca, 2) # U: RECARGO ($/ha)
-                                nueva_fila[31] = "IA_GENESIS"            # AF: TIPO PRODUCTOR/OBSERVACIONES
+                                nueva_fila[33] = "IA_GENESIS"            # AH: MARCA DE SISTEMA
                                 
                                 filas_para_guardar.append(nueva_fila)
                             
-                            # Disparo final con USER_ENTERED para activar fórmulas
+                            # Disparo final con USER_ENTERED 
                             hoja_maestra.append_rows(filas_para_guardar, value_input_option='USER_ENTERED')
                             
                             st.balloons()
