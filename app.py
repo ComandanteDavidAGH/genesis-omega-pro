@@ -734,48 +734,37 @@ if archivo_os is not None:
     
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
         with st.spinner("🤖 La IA está barriendo el documento con las nuevas coordenadas. Por favor espere..."):
-            try:
-                documento_bytes = archivo_os.getvalue()
-                tipo_mime = archivo_os.type
-                archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
-                
-                # 📜 LA ORDEN MILITAR DE ALTA PRECISIÓN
+            # 📜 EL ARSENAL PESADO: MODO ESCÁNER CIEGO
                 orden_militar = """
-                Eres un asistente experto en lectura de facturas agrícolas de FUMIGARAY. 
-                El documento puede contener UNA O VARIAS Órdenes de Servicio. Extrae TODAS en un arreglo JSON.
+                Eres un escáner óptico estricto. NO intentes pensar, calcular, ni dar formato a nada. Tu única misión es encontrar el texto en la imagen y COPIARLO LITERALMENTE como está escrito en el papel.
+                El documento puede tener varias Órdenes de Servicio (ej. 295 y 296). Sepáralas en una lista.
                 
-                INSTRUCCIONES DE COORDENADAS:
-                1. FECHA: Busca cualquier mención de fecha (ej: 'sábado 2 de mayo de 2026') y conviértela SIEMPRE al formato DD/MM/AAAA. No importa si tiene el nombre del día, extrae solo el número/mes/año.
-                2. NÚMERO OS: Es el número grande que suele estar en la parte superior derecha.
-                3. VALOR HECTÁREA: ¡IMPORTANTE! Ubica la tabla '3- INFORMACIÓN FUMIGACIÓN'. Busca la casilla 'Rendimiento Hectareas/Hora' y extrae el valor numérico que está JUSTO EN LA FILA DE ABAJO. Suele ser un número como 55.247 o similar.
-                4. RECARGO: Busca en la parte inferior, cerca de observaciones, cualquier valor que diga 'Recargo' o 'Festivo'. Si no hay número claro, pon "0".
-                5. HORÓMETRO TOTAL: Extrae el tiempo total de vuelo (la diferencia).
-                6. FINCAS: Extrae nombres de fincas, hectáreas y el producto/cóctel.
-
-                No escribas nada más, solo el JSON puro con esta estructura:
-                [
-                  {
-                    "numero_os": "...",
-                    "fecha": "DD/MM/AAAA",
-                    "piloto": "...",
-                    "aeronave_hk": "...",
-                    "horometro_total": "...",
-                    "valor_hectarea": "...",
-                    "recargo": "...",
-                    "fincas": [{"nombre_finca": "...", "hectareas": "...", "coctel": "..."}]
-                  }
-                ]
-                """                
-                respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]])
-                texto_json = respuesta.text.replace("```json", "").replace("```", "").strip()
-                datos_extraidos = json.loads(texto_json)
+                BUSCA ESTO Y CÓPIALO EXACTAMENTE:
+                1. "fecha": Copia TODO el texto de la fecha tal cual aparece arriba (ej. "sábado 2 de mayo de 2026"). NO LO CONVIERTAS.
+                2. "numero_os": El número de la orden (ej. 295).
+                3. "piloto": Nombre del piloto.
+                4. "aeronave_hk": Matrícula del avión.
+                5. "horometro_total": El tiempo total de vuelo.
+                6. "valor_hectarea": Busca el cuadro '3- INFORMACION FUMIGACION'. Busca el título 'Rendimiento Hectareas/Hora'. Copia el número que está EN LA CASILLA JUSTO DEBAJO (ej. 55.247 o lo que esté escrito ahí).
+                7. "recargo": Busca la casilla de 'Recargo'. Si hay una raya (-) o está vacía, escribe "0".
+                8. "fincas": Extrae la lista de fincas [{"nombre_finca": "...", "hectareas": "...", "coctel": "..."}]
+                """
+                
+                # DISPARO CON MODO JSON NATIVO (Obliga a Google a no equivocarse de formato)
+                respuesta = modelo_ia.generate_content(
+                    [orden_militar, archivo_ia[0]],
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                
+                # Como disparamos en JSON Nativo, ya no hay que limpiar el texto, entra directo
+                datos_extraidos = json.loads(respuesta.text)
                 
                 st.session_state['datos_os_ia'] = datos_extraidos
-                st.success("🎯 ¡Lectura calibrada completada con éxito!")
+                st.success("🎯 ¡Lectura de Artillería Pesada completada con éxito!")
                 
             except Exception as e:
-                st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
-
+                st.error(f"❌ El misil de escaneo reportó un fallo: {e}")
+        
 # 4. EL PUESTO DE CONTROL (Escaneo Múltiple con Recargo)
 if 'datos_os_ia' in st.session_state:
     datos_ia = st.session_state['datos_os_ia']
