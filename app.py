@@ -676,3 +676,73 @@ elif menu == "⚙️ 2. Validación de Misión":
                     
                 except Exception as e_save:
                     st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
+import pandas as pd
+from datetime import datetime
+
+# --- INICIO DEL MÓDULO 3 ---
+st.divider()
+st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (OS)")
+st.subheader("Pista de Aterrizaje y Sala de Cuarentena")
+
+# 1. CARGA DE DATOS MAESTROS (TABLA 2) PARA VALIDACIÓN
+try:
+    # Usamos la conexión que ya tenemos configurada
+    hoja_maestra = boveda.worksheet("TABLA 2")
+    df_maestro = pd.DataFrame(hoja_maestra.get_all_records())
+    lista_fincas_oficiales = df_maestro['FINCA'].unique().tolist()
+except:
+    st.error("🚨 No se pudo conectar con la TABLA 2 para validar fincas.")
+    lista_fincas_oficiales = []
+
+# 2. PISTA DE ATERRIZAJE (Data Input)
+st.info("💡 Instrucción: Copie los datos de su Excel azul (Piloto, Finca, Ha, Horómetro) y péguelos aquí abajo.")
+
+# Creamos un dataframe vacío para que usted pegue los datos
+df_os_input = st.data_editor(
+    pd.DataFrame(columns=["OS", "PILOTO", "FINCA_RAW", "HECTAREAS", "HOROMETRO_TOTAL"]),
+    num_rows="dynamic",
+    use_container_width=True,
+    key="pista_os"
+)
+
+if st.button("🔍 INICIAR ESCANEO DE SEGURIDAD", type="secondary"):
+    if not df_os_input.empty:
+        st.write("### ☣️ RESULTADOS DE LA SALA DE CUARENTENA")
+        
+        # Diccionario para corregir nombres (Piedra Rosetta)
+        # En el futuro, esto lo leeremos de una pestaña de Google Sheets
+        correcciones = {} 
+        
+        fincas_desconocidas = []
+        for finca in df_os_input["FINCA_RAW"].unique():
+            if finca not in lista_fincas_oficiales:
+                fincas_desconocidas.append(finca)
+        
+        if not fincas_desconocidas:
+            st.success("✅ ¡PERÍMETRO LIMPIO! Todas las fincas coinciden con la base maestra.")
+            
+            # --- CÁLCULO DE SEMANA ISO POR PYTHON ---
+            # Tomamos la fecha de hoy o la que usted elija en el calendario del Módulo 1
+            semana_iso = fecha_operacion.isocalendar()[1]
+            st.info(f"📅 Python ha calculado automáticamente la **Semana ISO: {semana_iso}**")
+            
+            # Aquí iría el siguiente paso: El Motor de Prorrateo
+            st.warning("🚀 Próximo paso disponible: Detonar Prorrateo y cruce con Tabla de Apoyo.")
+            
+        else:
+            st.error(f"⚠️ Se detectaron {len(fincas_desconocidas)} nombres de fincas no autorizados.")
+            
+            for finca_r in fincas_desconocidas:
+                col_a, col_b = st.columns([1, 1])
+                with col_a:
+                    st.warning(f"Nombre en la OS: **{finca_r}**")
+                with col_b:
+                    seleccion = st.selectbox(
+                        f"Vincular '{finca_r}' con nombre oficial:",
+                        options=["-- Seleccionar --"] + lista_fincas_oficiales,
+                        key=f"fix_{finca_r}"
+                    )
+                    if seleccion != "-- Seleccionar --":
+                        st.success(f"Vínculo creado: {finca_r} ➡️ {seleccion}")
+    else:
+        st.warning("La pista está vacía. Por favor, ingrese datos de una OS.")v
