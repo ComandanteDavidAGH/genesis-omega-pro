@@ -797,12 +797,12 @@ if 'datos_os_ia' in st.session_state:
             # Fila 2
             col4, col5, col6 = st.columns(3)
             col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
-            col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
-            col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
+            horo_val = col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
+            costo_val = col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
             
             # Fila 3
             col7, col8, col9 = st.columns(3)
-            col7.text_input("Recargo ($)", value=str(datos.get('recargo', '')), key=f"recargo_{i}")
+            recargo_val = col7.text_input("Recargo ($)", value=str(datos.get('recargo', '0')), key=f"recargo_{i}")
             
             st.write(f"**Fincas de la OS {os_val}:** (Corrija el nombre oficial aquí antes de buscar)")
             
@@ -826,7 +826,7 @@ if 'datos_os_ia' in st.session_state:
             datos['fincas'] = df_editado.to_dict('records')
             st.session_state['datos_os_ia'] = lista_ordenes
             
-            # 3. EL BOTÓN MÁGICO DEL SABUESO (AHORA ABAJO DE LA TABLA)
+            # 3. EL BOTÓN MÁGICO DEL SABUESO
             if st.button(f"🔍 BUSCAR CÓCTELES EN APOYO2023 (OS {os_val})", key=f"btn_buscar_{i}"):
                 if df_apoyo.empty:
                     st.error("🚨 La hoja de apoyo no tiene datos a partir de la fila 10.")
@@ -834,12 +834,10 @@ if 'datos_os_ia' in st.session_state:
                     for finca_item in datos.get('fincas', []):
                         finca_nombre = str(finca_item.get('nombre_finca', '')).strip().upper()
                         
-                        # Buscamos en la Columna B (índice 1)
                         filtro = df_apoyo.iloc[:, 1].astype(str).str.upper().str.strip() == finca_nombre
                         resultado = df_apoyo[filtro]
                         
                         if not resultado.empty:
-                            # Tomamos el último registro en la Col I (índice 8)
                             coctel_hallado = str(resultado.iloc[-1, 8]).strip()
                             if coctel_hallado != "":
                                 finca_item['coctel'] = coctel_hallado
@@ -851,22 +849,23 @@ if 'datos_os_ia' in st.session_state:
                     
                     st.session_state['datos_os_ia'] = lista_ordenes
                     st.rerun()
-            
-            if str(os_val).strip() in lista_os_existentes:
-                st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
-            else:
-                # --- 🚀 MOTOR DE PRORRATEO Y GUARDADO FINAL ---
+
+            st.divider()
+
+            # --- 🚀 MOTOR DE PRORRATEO Y GUARDADO FINAL ---
             if str(os_val).strip() in lista_os_existentes:
                 st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
             else:
                 if st.button(f"💾 GUARDAR Y PRORRATEAR OS {os_val} EN TABLA 1", key=f"btn_guardar_{i}", type="primary"):
                     try:
-                        with st.spinner("🚀 Ejecutando maniobra de guardado..."):
-                            # 1. Preparar datos maestros y limpiar números
-                            # (Cambiamos comas por puntos para que Python pueda hacer cuentas)
-                            h_total = float(str(col5.values[i] if hasattr(col5, 'values') else horo_val).replace(',', '.'))
-                            precio_ha = float(str(col6.values[i] if hasattr(col6, 'values') else costo_val).replace('.', '').replace(',', '.'))
-                            recargo_total = float(str(col7.values[i] if hasattr(col7, 'values') else recargo_val).replace('.', '').replace(',', '.'))
+                        with st.spinner("🚀 Ejecutando maniobra de guardado y cálculo..."):
+                            # 1. Preparar datos maestros y limpiar números (comas por puntos)
+                            h_total = float(str(horo_val).replace(',', '.'))
+                            precio_ha = float(str(costo_val).replace('.', '').replace(',', '.'))
+                            
+                            # Limpieza del recargo (por si viene vacío o con símbolos raros)
+                            recargo_str = str(recargo_val).replace('.', '').replace(',', '.')
+                            recargo_total = float(recargo_str) if recargo_str.strip() != "" else 0.0
                             
                             fincas_finales = df_editado.to_dict('records')
                             total_ha_orden = sum([float(str(f['hectareas']).replace(',', '.')) for f in fincas_finales])
@@ -877,25 +876,20 @@ if 'datos_os_ia' in st.session_state:
                                 ha_finca = float(str(finca['hectareas']).replace(',', '.'))
                                 
                                 # --- 🧮 LA MATEMÁTICA DEL PRORRATEO ---
-                                # Horómetro proporcional: (Ha Finca / Total Ha) * Horómetro Total
                                 horo_prorrateado = (ha_finca / total_ha_orden) * h_total
-                                
-                                # Valor Proporcional: (Ha Finca * Precio Ha) + (Parte del recargo)
-                                # Nota: Aquí repartimos el recargo también proporcionalmente si existe
                                 valor_finca = (ha_finca * precio_ha) + ((ha_finca / total_ha_orden) * recargo_total)
                                 
                                 # --- 📝 CONSTRUCCIÓN DE LA FILA PARA EXCEL ---
-                                # Ajuste este orden según las columnas exactas de su TABLA 1
                                 nueva_fila = [
-                                    os_val,          # Col A: Nº ORDEN
-                                    fecha_val,       # Col B: FECHA
-                                    finca['nombre_finca'], # Col C: FINCA
-                                    ha_finca,        # Col D: HECTÁREAS
-                                    horo_prorrateado,# Col E: HORÓMETRO PRORRATEADO
-                                    precio_ha,       # Col F: VALOR HECTÁREA
-                                    finca['coctel'], # Col G: COCTEL
-                                    valor_finca,     # Col H: VALOR TOTAL
-                                    "IA_GENESIS"     # Col I: OBSERVACIONES/ORIGEN
+                                    os_val,          
+                                    fecha_val,       
+                                    finca['nombre_finca'], 
+                                    ha_finca,        
+                                    round(horo_prorrateado, 2), # Redondeado a 2 decimales
+                                    precio_ha,       
+                                    finca['coctel'], 
+                                    round(valor_finca, 2),      # Redondeado a 2 decimales
+                                    "IA_GENESIS"     
                                 ]
                                 filas_para_guardar.append(nueva_fila)
                             
@@ -906,4 +900,4 @@ if 'datos_os_ia' in st.session_state:
                             st.success(f"✅ ¡MISIÓN CUMPLIDA! OS {os_val} guardada y prorrateada en TABLA 1.")
                             
                     except Exception as e:
-                        st.error(f"❌ Error en el cálculo o guardado: {e}")
+                        st.error(f"❌ Error en el cálculo matemático o guardado: {e}")
