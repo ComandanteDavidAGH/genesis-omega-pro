@@ -684,16 +684,35 @@ st.divider()
 st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (OS)")
 st.subheader("Pista de Aterrizaje y Sala de Cuarentena")
 
-# 1. CARGA DE DATOS MAESTROS (TABLA 2) PARA VALIDACIÓN
+# 1. CARGA DE DATOS MAESTROS (TABLA 1) PARA VALIDACIÓN
 try:
-    # Usamos la conexión que ya tenemos configurada
-    hoja_maestra = boveda.worksheet("TABLA 2")
+    # --- RECONEXIÓN SATELITAL EXCLUSIVA PARA EL MÓDULO 3 ---
+    if "gcp_credentials" in st.secrets:
+        cred_dict = dict(st.secrets["gcp_credentials"])
+        gc = gspread.service_account_from_dict(cred_dict)
+    else:
+        gc = gspread.service_account(filename='credenciales.json')
+    
+    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+    boveda = gc.open_by_url(url_boveda)
+    
+    # Lectura de la base de llegada oficial
+    hoja_maestra = boveda.worksheet("TABLA 1")
     df_maestro = pd.DataFrame(hoja_maestra.get_all_records())
-    lista_fincas_oficiales = df_maestro['FINCA'].unique().tolist()
-except:
-    st.error("🚨 No se pudo conectar con la TABLA 2 para validar fincas.")
+    
+    # Extraemos la lista limpia de fincas. 
+    # NOTA TÁCTICA: Asumo que la columna se llama "FINCA" en la fila 1 de su TABLA 1.
+    if "FINCA" in df_maestro.columns:
+        lista_fincas_oficiales = [str(f).strip() for f in df_maestro['FINCA'].unique().tolist() if str(f).strip() != ""]
+    else:
+        # Si el encabezado se llama diferente (ej: "Nombre Finca"), el sistema avisará.
+        st.warning("⚠️ El radar no detecta la columna llamada 'FINCA' en la TABLA 1. Verifique el encabezado exacto.")
+        lista_fincas_oficiales = []
+        
+except Exception as e:
+    st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
     lista_fincas_oficiales = []
-
+    
 # 2. PISTA DE ATERRIZAJE (Data Input)
 st.info("💡 Instrucción: Copie los datos de su Excel azul (Piloto, Finca, Ha, Horómetro) y péguelos aquí abajo.")
 
