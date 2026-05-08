@@ -686,7 +686,7 @@ st.divider()
 st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (Visión IA)")
 st.subheader("Buzón de Recepción y Puesto de Control")
 
-# 1. CARGA DE FINCAS OFICIALES (FRANCOTIRADOR - COLUMNA C)
+# 1. CARGA DE FINCAS OFICIALES Y ÓRDENES EXISTENTES (FRANCOTIRADOR DOBLE)
 try:
     if "gcp_credentials" in st.secrets:
         cred_dict = dict(st.secrets["gcp_credentials"])
@@ -700,24 +700,31 @@ try:
     boveda = gc.open_by_url(url_boveda)
     hoja_maestra = boveda.worksheet("TABLA 1")
     
-    # 🎯 MISIÓN DE FRANCOTIRADOR: Extraemos SOLO la Columna C (índice 3) para evitar el error de duplicados
-    columna_fincas = hoja_maestra.col_values(3)
+    # 🎯 MISIÓN DE FRANCOTIRADOR DOBLE: Extraemos Fincas (Col C) y OS Existentes (Col A)
+    columna_os = hoja_maestra.col_values(1)      # Columna A: Nº ORDEN
+    columna_fincas = hoja_maestra.col_values(3)  # Columna C: FINCA
     
+    # Limpiamos la lista de Fincas
     lista_fincas_oficiales = []
     for f in columna_fincas:
         f_limpia = str(f).strip()
         if f_limpia != "" and f_limpia.upper() != "FINCA" and f_limpia not in lista_fincas_oficiales:
             lista_fincas_oficiales.append(f_limpia)
             
+    # Limpiamos la lista de OS ya registradas (para el escudo anti-duplicados)
+    lista_os_existentes = [str(os).strip() for os in columna_os if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
+            
 except Exception as e:
     st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
     lista_fincas_oficiales = []
+    lista_os_existentes = []
 
 # 2. CONFIGURACIÓN DEL CEREBRO IA
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    modelo_ia = genai.GenerativeModel('gemini-1.5-flash-latest')
+    # Volvemos a la versión estable sin etiquetas raras
+    modelo_ia = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error("🚨 Falla en el sistema de IA. Revise que GEMINI_API_KEY esté en los secrets.")
     st.stop()
@@ -768,14 +775,14 @@ if archivo_os is not None:
             except Exception as e:
                 st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
 
-# 4. EL PUESTO DE CONTROL (Verificación Humana)
+# 4. EL PUESTO DE CONTROL (Verificación Humana y Escudo Anti-Duplicados)
 if 'datos_os_ia' in st.session_state:
     datos = st.session_state['datos_os_ia']
     
     st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
     
     col1, col2, col3 = st.columns(3)
-    col1.text_input("Nº Orden de Servicio", value=datos.get('numero_os', ''))
+    os_leida = col1.text_input("Nº Orden de Servicio", value=datos.get('numero_os', ''))
     col2.text_input("Piloto", value=datos.get('piloto', ''))
     col3.text_input("Aeronave (HK)", value=datos.get('aeronave_hk', ''))
     
@@ -794,7 +801,15 @@ if 'datos_os_ia' in st.session_state:
         key="tabla_fincas_control"
     )
     
-    st.warning("⚠️ Revise que los números sean correctos y corrija si es necesario.")
+    st.divider()
     
-    if st.button("🚀 APROBAR Y PREPARAR PRORRATEO", type="primary"):
-        st.info("¡Motor de prorrateo listo para la siguiente fase!")
+    # 🛡️ ESCUDO ANTI-DUPLICADOS EN ACCIÓN
+    os_limpia = str(os_leida).strip()
+    
+    if os_limpia in lista_os_existentes:
+        st.error(f"🚨 ¡ALERTA ROJA! La Orden de Servicio Nº '{os_limpia}' ya se encuentra registrada en la TABLA 1. Operación bloqueada para evitar duplicados.")
+    else:
+        st.success("✅ Orden de Servicio nueva y autorizada para ingreso.")
+        st.warning("⚠️ Revise que los números sean correctos y corrija si es necesario.")
+        if st.button("🚀 APROBAR Y PREPARAR PRORRATEO", type="primary"):
+            st.info("¡Motor de prorrateo listo para la siguiente fase!")
