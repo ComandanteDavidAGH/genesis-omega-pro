@@ -739,20 +739,21 @@ if archivo_os is not None:
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
-                # 📜 EL ARSENAL PESADO: MODO ESCÁNER CIEGO
+                # 📜 EL MISIL DE PRECISIÓN QUIRÚRGICA
                 orden_militar = """
-                Eres un escáner óptico estricto. NO intentes pensar, calcular, ni dar formato a nada. Tu única misión es encontrar el texto en la imagen y COPIARLO LITERALMENTE como está escrito en el papel.
-                El documento puede tener varias Órdenes de Servicio (ej. 295 y 296). Sepáralas en una lista.
+                Actúa como un analista de datos experto en documentos agrícolas. Tu misión es extraer información de una Orden de Servicio de FUMIGARAY.
                 
-                BUSCA ESTO Y CÓPIALO EXACTAMENTE:
-                1. "fecha": Copia TODO el texto de la fecha tal cual aparece arriba (ej. "sábado 2 de mayo de 2026"). NO LO CONVIERTAS.
-                2. "numero_os": El número de la orden (ej. 295).
-                3. "piloto": Nombre del piloto.
-                4. "aeronave_hk": Matrícula del avión.
-                5. "horometro_total": El tiempo total de vuelo.
-                6. "valor_hectarea": Busca el cuadro '3- INFORMACION FUMIGACION'. Busca el título 'Rendimiento Hectareas/Hora'. Copia el número que está EN LA CASILLA JUSTO DEBAJO (ej. 55.247 o lo que esté escrito ahí).
-                7. "recargo": Busca la casilla de 'Recargo'. Si hay una raya (-) o está vacía, escribe "0".
-                8. "fincas": Extrae la lista de fincas [{"nombre_finca": "...", "hectareas": "...", "coctel": "..."}]
+                REGLAS DE EXTRACCIÓN (MIRA EL DOCUMENTO COMO UN MAPA):
+                1. "fecha": Localiza el extremo superior izquierdo. Copia TODO el texto que aparezca después de 'FECHA:' (ej. 'Sábado 2 de mayo de 2026'). NO omitas palabras.
+                2. "numero_os": Busca en el extremo superior derecho, el número grande (ej. 295).
+                3. "piloto": Nombre de la persona después de 'PILOTO:'.
+                4. "aeronave_hk": El código alfanumérico después de 'AVION:'.
+                5. "horometro_total": Busca en la tabla de horómetros el valor que diga 'TOTAL' o la diferencia.
+                6. "valor_hectarea": ¡MUCHA ATENCIÓN! Ubica el bloque '3- INFORMACION FUMIGACION'. Busca el encabezado 'Rendimiento Hectareas/Hora'. El valor que necesito es el NÚMERO que está escrito en la celda inmediatamente DEBAJO de ese título. Copia ese número exactamente.
+                7. "recargo": Busca en la parte inferior, debajo de la tabla de fincas, la palabra 'RECARGO' o 'VALOR RECARGO'. Si no hay nada, escribe "0".
+                8. "fincas": Extrae la tabla de fincas completa con su nombre y hectáreas.
+                
+                IMPORTANTE: Devuelve la respuesta en formato JSON puro. Si hay varias órdenes en la imagen, haz una lista.
                 """
                 
                 # DISPARO CON MODO JSON NATIVO (Obliga a Google a no equivocarse de formato)
