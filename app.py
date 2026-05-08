@@ -763,33 +763,31 @@ if archivo_os is not None:
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
-# 4. PUESTO DE CONTROL Y SABUESO DE CÓCTELES
-if 'datos_os_ia' in st.session_state:
-    lista_ordenes = st.session_state['datos_os_ia']
-    if isinstance(lista_ordenes, dict): lista_ordenes = [lista_ordenes]
-
-    st.write("### 🚦 PUESTO DE CONTROL")
-
-    for i, datos in enumerate(lista_ordenes):
-        with st.expander(f"📄 Orden {datos.get('numero_os')} - Ver y Editar", expanded=True):
-            col1, col2, col3 = st.columns(3)
-            os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
-            fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
-            
-            # --- EL BOTÓN MÁGICO DEL SABUESO ---
+# --- EL BOTÓN MÁGICO DEL SABUESO ---
             if st.button(f"🔍 BUSCAR CÓCTELES EN APOYO2023 (OS {os_val})", key=f"btn_buscar_{i}"):
-                for finca_item in datos.get('fincas', []):
-                    finca_nombre = str(finca_item['nombre_finca']).strip().upper()
-                    # Buscamos en el DataFrame de apoyo (Finca en Col B, Fecha en Col F)
-                    # Nota: Aquí usamos los nombres de las columnas que tiene su Excel
-                    resultado = df_apoyo[(df_apoyo.iloc[:, 1].astype(str).str.upper() == finca_nombre)]
-                    if not resultado.empty:
-                        finca_item['coctel'] = resultado.iloc[0, 8] # Columna I (indice 8)
-                        st.toast(f"✅ Cóctel hallado para {finca_nombre}")
-                    else:
-                        finca_item['coctel'] = ""
-                        st.toast(f"❓ No se halló cóctel para {finca_nombre}")
-
+                if df_apoyo.empty:
+                    st.error("🚨 La hoja de apoyo está vacía o no tiene datos a partir de la fila 10.")
+                else:
+                    for finca_item in datos.get('fincas', []):
+                        finca_nombre = str(finca_item['nombre_finca']).strip().upper()
+                        
+                        # Columna B es el índice 1.
+                        filtro = df_apoyo.iloc[:, 1].astype(str).str.upper().str.strip() == finca_nombre
+                        resultado = df_apoyo[filtro]
+                        
+                        if not resultado.empty:
+                            # Tomamos el ÚLTIMO cóctel registrado (Col I = índice 8)
+                            coctel_hallado = str(resultado.iloc[-1, 8]).strip()
+                            if coctel_hallado != "":
+                                finca_item['coctel'] = coctel_hallado
+                                st.toast(f"✅ Cóctel hallado para {finca_nombre}: {coctel_hallado}")
+                            else:
+                                st.toast(f"⚠️ Finca {finca_nombre} hallada, pero su casilla de cóctel estaba vacía.")
+                        else:
+                            st.toast(f"❓ No se halló la finca '{finca_nombre}' en APOYO2023.")
+                    
+                    st.session_state['datos_os_ia'] = lista_ordenes
+                    st.rerun()
             # Tabla de Fincas
             df_fincas = pd.DataFrame(datos.get('fincas', []))
             if 'coctel' not in df_fincas.columns: df_fincas['coctel'] = ""
