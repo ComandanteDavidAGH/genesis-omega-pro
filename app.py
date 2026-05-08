@@ -713,15 +713,23 @@ try:
     # --- CONEXIÓN A TABLA DE APOYO2023 (Para el Sabueso) ---
     try:
         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
-        datos_apoyo = hoja_apoyo.get_all_records() # Esto trae toda la tabla para buscar rápido
-        df_apoyo = pd.DataFrame(datos_apoyo)
-    except:
-        st.warning("⚠️ No se pudo cargar 'TABLA DE APOYO2023'. El autocompletado de cócteles estará desactivado.")
+        datos_crudos = hoja_apoyo.get_all_values()
+        
+        # 🛡️ BLINDAJE TÁCTICO:
+        # 1. Forzamos a que todas las filas tengan al menos 15 columnas (rellenando con vacíos)
+        datos_limpios = [fila + [""] * (15 - len(fila)) if len(fila) < 15 else fila for fila in datos_crudos]
+        df_apoyo_completo = pd.DataFrame(datos_limpios)
+        
+        # 2. Cortamos el ruido: Eliminamos las primeras 9 filas (índices 0 al 8) 
+        if len(df_apoyo_completo) > 9:
+            df_apoyo = df_apoyo_completo.iloc[9:] # Empezamos a leer datos puros desde la fila 10
+        else:
+            df_apoyo = pd.DataFrame()
+            
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo cargar 'TABLA DE APOYO2023': {e}")
         df_apoyo = pd.DataFrame()
-
-except Exception as e:
-    st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
-
+        
 # 2. CONFIGURACIÓN DEL CEREBRO IA
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
