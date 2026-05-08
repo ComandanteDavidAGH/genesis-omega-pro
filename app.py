@@ -855,4 +855,55 @@ if 'datos_os_ia' in st.session_state:
             if str(os_val).strip() in lista_os_existentes:
                 st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
             else:
-                st.success("✅ OS lista para validación final.")
+                # --- 🚀 MOTOR DE PRORRATEO Y GUARDADO FINAL ---
+            if str(os_val).strip() in lista_os_existentes:
+                st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
+            else:
+                if st.button(f"💾 GUARDAR Y PRORRATEAR OS {os_val} EN TABLA 1", key=f"btn_guardar_{i}", type="primary"):
+                    try:
+                        with st.spinner("🚀 Ejecutando maniobra de guardado..."):
+                            # 1. Preparar datos maestros y limpiar números
+                            # (Cambiamos comas por puntos para que Python pueda hacer cuentas)
+                            h_total = float(str(col5.values[i] if hasattr(col5, 'values') else horo_val).replace(',', '.'))
+                            precio_ha = float(str(col6.values[i] if hasattr(col6, 'values') else costo_val).replace('.', '').replace(',', '.'))
+                            recargo_total = float(str(col7.values[i] if hasattr(col7, 'values') else recargo_val).replace('.', '').replace(',', '.'))
+                            
+                            fincas_finales = df_editado.to_dict('records')
+                            total_ha_orden = sum([float(str(f['hectareas']).replace(',', '.')) for f in fincas_finales])
+                            
+                            filas_para_guardar = []
+                            
+                            for finca in fincas_finales:
+                                ha_finca = float(str(finca['hectareas']).replace(',', '.'))
+                                
+                                # --- 🧮 LA MATEMÁTICA DEL PRORRATEO ---
+                                # Horómetro proporcional: (Ha Finca / Total Ha) * Horómetro Total
+                                horo_prorrateado = (ha_finca / total_ha_orden) * h_total
+                                
+                                # Valor Proporcional: (Ha Finca * Precio Ha) + (Parte del recargo)
+                                # Nota: Aquí repartimos el recargo también proporcionalmente si existe
+                                valor_finca = (ha_finca * precio_ha) + ((ha_finca / total_ha_orden) * recargo_total)
+                                
+                                # --- 📝 CONSTRUCCIÓN DE LA FILA PARA EXCEL ---
+                                # Ajuste este orden según las columnas exactas de su TABLA 1
+                                nueva_fila = [
+                                    os_val,          # Col A: Nº ORDEN
+                                    fecha_val,       # Col B: FECHA
+                                    finca['nombre_finca'], # Col C: FINCA
+                                    ha_finca,        # Col D: HECTÁREAS
+                                    horo_prorrateado,# Col E: HORÓMETRO PRORRATEADO
+                                    precio_ha,       # Col F: VALOR HECTÁREA
+                                    finca['coctel'], # Col G: COCTEL
+                                    valor_finca,     # Col H: VALOR TOTAL
+                                    "IA_GENESIS"     # Col I: OBSERVACIONES/ORIGEN
+                                ]
+                                filas_para_guardar.append(nueva_fila)
+                            
+                            # 2. DISPARO A LA BÓVEDA (Escritura en Google Sheets)
+                            hoja_maestra.append_rows(filas_para_guardar)
+                            
+                            st.balloons()
+                            st.success(f"✅ ¡MISIÓN CUMPLIDA! OS {os_val} guardada y prorrateada en TABLA 1.")
+                            
+                    except Exception as e:
+                        st.error(f"❌ Error en el cálculo o guardado: {e}")
