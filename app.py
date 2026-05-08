@@ -680,13 +680,14 @@ import pandas as pd
 import streamlit as st
 import google.generativeai as genai
 import json
+from datetime import datetime
 
 # --- INICIO DEL MÓDULO 3 ---
 st.divider()
 st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (Visión IA)")
 st.subheader("Buzón de Recepción y Puesto de Control")
 
-# 1. CARGA DE BASE DE DATOS (FRANCOTIRADOR TRIPLE)
+# 1. CARGA DE BASES DE DATOS (TABLA 1 y APOYO2023)
 try:
     if "gcp_credentials" in st.secrets:
         cred_dict = dict(st.secrets["gcp_credentials"])
@@ -698,131 +699,105 @@ try:
     
     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     boveda = gc.open_by_url(url_boveda)
-    hoja_maestra = boveda.worksheet("TABLA 1")
     
+    # --- CONEXIÓN A TABLA 1 (Para validaciones y menús) ---
+    hoja_maestra = boveda.worksheet("TABLA 1")
     columna_os = hoja_maestra.col_values(1)
     columna_fincas = hoja_maestra.col_values(3)
     columna_cocteles = hoja_maestra.col_values(7)
     
     lista_os_existentes = [str(os).strip() for os in columna_os if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
-    
-    lista_cocteles_oficiales = []
-    for c in columna_cocteles:
-        c_limpio = str(c).strip()
-        if c_limpio != "" and c_limpio.upper() != "COCTEL" and c_limpio not in lista_cocteles_oficiales:
-            lista_cocteles_oficiales.append(c_limpio)
-            
+    lista_fincas_oficiales = sorted(list(set([str(f).strip() for f in columna_fincas if str(f).strip() != "" and str(f).upper() != "FINCA"])))
+    lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in columna_cocteles if str(c).strip() != "" and str(c).upper() != "COCTEL"])))
+
+    # --- CONEXIÓN A TABLA DE APOYO2023 (Para el Sabueso) ---
+    try:
+        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
+        datos_apoyo = hoja_apoyo.get_all_records() # Esto trae toda la tabla para buscar rápido
+        df_apoyo = pd.DataFrame(datos_apoyo)
+    except:
+        st.warning("⚠️ No se pudo cargar 'TABLA DE APOYO2023'. El autocompletado de cócteles estará desactivado.")
+        df_apoyo = pd.DataFrame()
+
 except Exception as e:
     st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
-    lista_os_existentes = []
-    lista_cocteles_oficiales = []
 
-# 2. CONFIGURACIÓN DEL CEREBRO IA (Motor Rápido y Potente)
+# 2. CONFIGURACIÓN DEL CEREBRO IA
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
-except Exception as e:
-    st.error("🚨 Falla en el sistema de IA. Revise sus llaves de seguridad.")
+except:
     st.stop()
 
-# 3. BUZÓN DE RECEPCIÓN (Dropzone)
-archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
+# 3. BUZÓN DE RECEPCIÓN
+archivo_os = st.file_uploader("📥 Arrastre aquí la foto de la Orden de Servicio", type=['jpg', 'jpeg', 'png'])
 
 if archivo_os is not None:
-    st.success("✅ Documento recibido en la bahía de carga.")
-    
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
         with st.spinner("🤖 La IA está barriendo el documento..."):
             try:
                 documento_bytes = archivo_os.getvalue()
-                tipo_mime = archivo_os.type
-                archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
+                archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
                 
-                # 📜 EL MISIL TELEDIRIGIDO (Mapa Cartográfico)
                 orden_militar = """
-                Eres un analista experto en extraer datos de planillas de FUMIGARAY.
-                La imagen contiene VARIAS Órdenes de Servicio (ej. 296 y 295). Extrae TODAS en una lista JSON.
-                
-                REGLAS ESTRICTAS DE EXTRACCIÓN (LEER CON CUIDADO):
-                1. "fecha": Copia literalmente el texto completo que está a la derecha de 'FECHA:' (ej. "sábado, 2 de mayo de 2026"). No intentes cambiarle el formato.
-                2. "numero_os": El número a la derecha de 'ORDEN DE SERVICIO No.:'
-                3. "piloto": Nombre a la derecha de 'PILOTO:'
-                4. "aeronave_hk": Matrícula a la derecha de 'AERONAVE ORGANICA:'
-                5. "horometro_total": En el cuadro de la sección 3, es el número de la diferencia de horas de vuelo (ej. 1,90 o 0,40).
-                6. "valor_hectarea": ¡CLAVE! Busca la fila que comienza con 'Tacomt. Inicial:'. En esa misma fila, más a la derecha, hay un número con un signo de dólar (ej. 55.247 o 96.586). Extrae SOLO ESE NÚMERO (ignora el signo $).
-                7. "recargo": Busca la palabra 'Valor Recargo Festivo :'. Si a su derecha hay un guion (-) o está vacío, escribe "0". Si hay un número, extrae el número.
-                8. "fincas": Extrae la tabla de fincas completa (nombre_finca, hectareas, coctel).
+                Eres un analista de FUMIGARAY. Extrae todas las órdenes en una lista JSON.
+                Instrucciones:
+                1. "fecha": Copia la fecha tal cual (ej. "sábado, 2 de mayo de 2026").
+                2. "numero_os": Número de la orden.
+                3. "piloto", "aeronave_hk", "horometro_total", "valor_hectarea", "recargo".
+                4. "fincas": Lista de [{"nombre_finca": "...", "hectareas": "..."}]. (No extraigas el cóctel del papel, lo buscaremos en Excel).
                 """
                 
-                respuesta = modelo_ia.generate_content(
-                    [orden_militar, archivo_ia[0]],
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                
-                datos_extraidos = json.loads(respuesta.text)
-                st.session_state['datos_os_ia'] = datos_extraidos
-                st.success("🎯 ¡Lectura completada con éxito!")
-                
+                respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
+                st.session_state['datos_os_ia'] = json.loads(respuesta.text)
+                st.success("🎯 ¡Lectura completada!")
             except Exception as e:
-                st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
+                st.error(f"❌ Error: {e}")
 
-# 4. EL PUESTO DE CONTROL (Pantallas Restauradas)
+# 4. PUESTO DE CONTROL Y SABUESO DE CÓCTELES
 if 'datos_os_ia' in st.session_state:
-    datos_ia = st.session_state['datos_os_ia']
-    
-    if isinstance(datos_ia, dict):
-        lista_ordenes = [datos_ia]
-    elif isinstance(datos_ia, list):
-        lista_ordenes = datos_ia
-    else:
-        lista_ordenes = []
-        
-    st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
-    st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio.")
-    
+    lista_ordenes = st.session_state['datos_os_ia']
+    if isinstance(lista_ordenes, dict): lista_ordenes = [lista_ordenes]
+
+    st.write("### 🚦 PUESTO DE CONTROL")
+
     for i, datos in enumerate(lista_ordenes):
-        st.markdown(f"#### 📄 Orden de Servicio {datos.get('numero_os', 'Desconocida')}")
-        
-        # Fila 1
-        col1, col2, col3 = st.columns(3)
-        os_leida = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
-        fecha_leida = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
-        col3.text_input("Piloto", value=str(datos.get('piloto', '')), key=f"piloto_{i}")
-        
-        # Fila 2
-        col4, col5, col6 = st.columns(3)
-        col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
-        col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
-        col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
-        
-        # Fila 3
-        col7, col8, col9 = st.columns(3)
-        col7.text_input("Recargo ($)", value=str(datos.get('recargo', '')), key=f"recargo_{i}")
-        
-        st.write(f"**Fincas de la OS {os_leida}:**")
-        df_fincas = pd.DataFrame(datos.get('fincas', []))
-        
-        df_fincas_editado = st.data_editor(
-            df_fincas, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            key=f"tabla_fincas_{i}",
-            column_config={
-                "coctel": st.column_config.SelectboxColumn(
-                    "Cóctel (Menú Oficial)",
-                    options=lista_cocteles_oficiales,
-                    required=True
-                )
-            }
-        )
-        
-        # Escudo Anti-Duplicados
-        os_limpia = str(os_leida).strip()
-        if os_limpia in lista_os_existentes:
-            st.error(f"🚨 ¡ALERTA! La OS Nº '{os_limpia}' ya existe en su Excel.")
-        else:
-            st.success("✅ OS lista para Prorrateo.")
-            # Aquí irá el botón de guardar más adelante
-                
-        st.divider()
+        with st.expander(f"📄 Orden {datos.get('numero_os')} - Ver y Editar", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
+            fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
+            
+            # --- EL BOTÓN MÁGICO DEL SABUESO ---
+            if st.button(f"🔍 BUSCAR CÓCTELES EN APOYO2023 (OS {os_val})", key=f"btn_buscar_{i}"):
+                for finca_item in datos.get('fincas', []):
+                    finca_nombre = str(finca_item['nombre_finca']).strip().upper()
+                    # Buscamos en el DataFrame de apoyo (Finca en Col B, Fecha en Col F)
+                    # Nota: Aquí usamos los nombres de las columnas que tiene su Excel
+                    resultado = df_apoyo[(df_apoyo.iloc[:, 1].astype(str).str.upper() == finca_nombre)]
+                    if not resultado.empty:
+                        finca_item['coctel'] = resultado.iloc[0, 8] # Columna I (indice 8)
+                        st.toast(f"✅ Cóctel hallado para {finca_nombre}")
+                    else:
+                        finca_item['coctel'] = ""
+                        st.toast(f"❓ No se halló cóctel para {finca_nombre}")
+
+            # Tabla de Fincas
+            df_fincas = pd.DataFrame(datos.get('fincas', []))
+            if 'coctel' not in df_fincas.columns: df_fincas['coctel'] = ""
+
+            df_editado = st.data_editor(
+                df_fincas,
+                use_container_width=True,
+                num_rows="dynamic",
+                key=f"tabla_fincas_{i}",
+                column_config={
+                    "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
+                    "coctel": st.column_config.SelectboxColumn("Cóctel Oficial", options=lista_cocteles_oficiales, required=True)
+                }
+            )
+            
+            if str(os_val).strip() in lista_os_existentes:
+                st.error("🚨 Esta OS ya existe en la TABLA 1.")
+            else:
+                st.success("✅ OS Lista.")
