@@ -739,13 +739,22 @@ if archivo_os is not None:
                 tipo_mime = archivo_os.type
                 archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
                 
-                # 📜 EL SEÑUELO: Sin reglas estrictas, solo que nos diga qué ve con sus propios ojos.
+                # 📜 EL MISIL TELEDIRIGIDO (Calibrado con el mapa real)
                 orden_militar = """
-                Analiza esta imagen como si fueras un humano leyendo el papel. Respóndeme SOLO estas 4 preguntas de forma clara y directa:
-                1. ¿Qué fecha exacta ves en la parte de arriba del todo? (Escribe la frase completa que leas, letra por letra).
-                2. Busca la sección '3- INFORMACION FUMIGACION'. ¿Qué número está escrito EXACTAMENTE DEBAJO del título 'Rendimiento Hectareas/Hora'?
-                3. ¿Ves algún número cerca de la palabra 'Recargo' en la parte de abajo?
-                4. ¿Cuál es el número del Horómetro Total?
+                Eres un analista experto en extraer datos de planillas de FUMIGARAY.
+                La imagen contiene VARIAS Órdenes de Servicio (ej. 296 y 295). Extrae TODAS en una lista JSON.
+                
+                REGLAS ESTRICTAS DE EXTRACCIÓN (LEER CON CUIDADO):
+                1. "fecha": Copia literalmente el texto completo que está a la derecha de 'FECHA:' (ej. "sábado, 2 de mayo de 2026"). No intentes cambiarle el formato.
+                2. "numero_os": El número a la derecha de 'ORDEN DE SERVICIO No.:'
+                3. "piloto": Nombre a la derecha de 'PILOTO:'
+                4. "aeronave_hk": Matrícula a la derecha de 'AERONAVE ORGANICA:'
+                5. "horometro_total": En el cuadro de la sección 3, es el número de la diferencia de horas de vuelo (ej. 1,90 o 0,40).
+                6. "valor_hectarea": ¡CLAVE! Busca la fila que comienza con 'Tacomt. Inicial:'. En esa misma fila, más a la derecha, hay un número con un signo de dólar (ej. 55.247 o 96.586). Extrae SOLO ESE NÚMERO (ignora el signo $).
+                7. "recargo": Busca la palabra 'Valor Recargo Festivo :'. Si a su derecha hay un guion (-) o está vacío, escribe "0". Si hay un número, extrae el número.
+                8. "fincas": Extrae la tabla de fincas completa (nombre_finca, hectareas, coctel).
+
+                Devuelve la respuesta en formato JSON puro.
                 """
                 
                 # Disparamos el señuelo sin formato JSON para que hable libremente
