@@ -792,11 +792,11 @@ if 'datos_os_ia' in st.session_state:
             col1, col2, col3 = st.columns(3)
             os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
             fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
-            col3.text_input("Piloto", value=str(datos.get('piloto', '')), key=f"piloto_{i}")
+            piloto_val = col3.text_input("Piloto", value=str(datos.get('piloto', '')), key=f"piloto_{i}")
             
             # Fila 2
             col4, col5, col6 = st.columns(3)
-            col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
+            hk_val = col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
             horo_val = col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
             costo_val = col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
             
@@ -877,24 +877,38 @@ if 'datos_os_ia' in st.session_state:
                                 
                                 # --- 🧮 LA MATEMÁTICA DEL PRORRATEO ---
                                 horo_prorrateado = (ha_finca / total_ha_orden) * h_total
-                                valor_finca = (ha_finca * precio_ha) + ((ha_finca / total_ha_orden) * recargo_total)
+                                recargo_finca = (ha_finca / total_ha_orden) * recargo_total # Repartimos el recargo según Hectáreas
                                 
-                                # --- 📝 CONSTRUCCIÓN DE LA FILA PARA EXCEL ---
+                                # --- 📝 CONSTRUCCIÓN MILIMÉTRICA DE LA FILA (A hasta V) ---
                                 nueva_fila = [
-                                    os_val,          
-                                    fecha_val,       
-                                    finca['nombre_finca'], 
-                                    ha_finca,        
-                                    round(horo_prorrateado, 2), # Redondeado a 2 decimales
-                                    precio_ha,       
-                                    finca['coctel'], 
-                                    round(valor_finca, 2),      # Redondeado a 2 decimales
-                                    "IA_GENESIS"     
+                                    os_val,                  # Col A (0): Nº ORDEN
+                                    "",                      # Col B (1): FACTURA (Vacío)
+                                    fecha_val,               # Col C (2): FECHA
+                                    finca['nombre_finca'],   # Col D (3): FINCA
+                                    "",                      # Col E (4): BLOQUE O ZONA
+                                    "",                      # Col F (5): SECTOR
+                                    ha_finca,                # Col G (6): AREA FUMIGADA (Ha)
+                                    finca['coctel'],         # Col H (7): COCTEL
+                                    "",                      # Col I (8): VACÍO
+                                    "",                      # Col J (9): VACÍO
+                                    "",                      # Col K (10): VACÍO
+                                    "",                      # Col L (11): VACÍO
+                                    "",                      # Col M (12): VACÍO
+                                    round(horo_prorrateado, 2), # Col N (13): RENDIMIENTO HORAS
+                                    "",                      # Col O (14): VACÍO
+                                    piloto_val,              # Col P (15): PILOTO
+                                    hk_val,                  # Col Q (16): HK AERONAVE
+                                    "",                      # Col R (17): VACÍO
+                                    "",                      # Col S (18): VACÍO
+                                    precio_ha,               # Col T (19): VALOR HECTÁREA
+                                    round(recargo_finca, 2), # Col U (20): RECARGO (Prorrateado)
+                                    "IA_GENESIS"             # Col V (21): OBSERVACIONES
                                 ]
                                 filas_para_guardar.append(nueva_fila)
                             
-                            # 2. DISPARO A LA BÓVEDA (Escritura en Google Sheets)
-                            hoja_maestra.append_rows(filas_para_guardar)
+                            # 2. DISPARO A LA BÓVEDA CON MODO USUARIO
+                            # 'USER_ENTERED' obliga a Sheets a activar sus propias fórmulas en los espacios que dejamos vacíos
+                            hoja_maestra.append_rows(filas_para_guardar, value_input_option='USER_ENTERED')
                             
                             st.balloons()
                             st.success(f"✅ ¡MISIÓN CUMPLIDA! OS {os_val} guardada y prorrateada en TABLA 1.")
