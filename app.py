@@ -677,91 +677,124 @@ elif menu == "⚙️ 2. Validación de Misión":
                 except Exception as e_save:
                     st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
 import pandas as pd
-from datetime import datetime
+import streamlit as st
+import google.generativeai as genai
+import json
 
 # --- INICIO DEL MÓDULO 3 ---
 st.divider()
-st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (OS)")
-st.subheader("Pista de Aterrizaje y Sala de Cuarentena")
+st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (Visión IA)")
+st.subheader("Buzón de Recepción y Puesto de Control")
 
-# 1. CARGA DE DATOS MAESTROS (TABLA 1) PARA VALIDACIÓN
+# 1. CARGA DE FINCAS OFICIALES (FRANCOTIRADOR - COLUMNA C)
 try:
-    # --- RECONEXIÓN SATELITAL EXCLUSIVA PARA EL MÓDULO 3 ---
     if "gcp_credentials" in st.secrets:
         cred_dict = dict(st.secrets["gcp_credentials"])
+        import gspread
         gc = gspread.service_account_from_dict(cred_dict)
     else:
+        import gspread
         gc = gspread.service_account(filename='credenciales.json')
     
     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     boveda = gc.open_by_url(url_boveda)
-    
-    # Lectura de la base de llegada oficial
     hoja_maestra = boveda.worksheet("TABLA 1")
-    df_maestro = pd.DataFrame(hoja_maestra.get_all_records())
     
-    # Extraemos la lista limpia de fincas. 
-    # NOTA TÁCTICA: Asumo que la columna se llama "FINCA" en la fila 1 de su TABLA 1.
-    if "FINCA" in df_maestro.columns:
-        lista_fincas_oficiales = [str(f).strip() for f in df_maestro['FINCA'].unique().tolist() if str(f).strip() != ""]
-    else:
-        # Si el encabezado se llama diferente (ej: "Nombre Finca"), el sistema avisará.
-        st.warning("⚠️ El radar no detecta la columna llamada 'FINCA' en la TABLA 1. Verifique el encabezado exacto.")
-        lista_fincas_oficiales = []
-        
+    # 🎯 MISIÓN DE FRANCOTIRADOR: Extraemos SOLO la Columna C (índice 3) para evitar el error de duplicados
+    columna_fincas = hoja_maestra.col_values(3)
+    
+    lista_fincas_oficiales = []
+    for f in columna_fincas:
+        f_limpia = str(f).strip()
+        if f_limpia != "" and f_limpia.upper() != "FINCA" and f_limpia not in lista_fincas_oficiales:
+            lista_fincas_oficiales.append(f_limpia)
+            
 except Exception as e:
     st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
     lista_fincas_oficiales = []
+
+# 2. CONFIGURACIÓN DEL CEREBRO IA
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+    modelo_ia = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error("🚨 Falla en el sistema de IA. Revise que GEMINI_API_KEY esté en los secrets.")
+    st.stop()
+
+# 3. BUZÓN DE RECEPCIÓN (Dropzone)
+archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
+
+if archivo_os is not None:
+    st.success("✅ Documento recibido en la bahía de carga.")
     
-# 2. PISTA DE ATERRIZAJE (Data Input)
-st.info("💡 Instrucción: Copie los datos de su Excel azul (Piloto, Finca, Ha, Horómetro) y péguelos aquí abajo.")
+    if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
+        with st.spinner("🤖 La IA está leyendo el documento. Por favor espere..."):
+            try:
+                documento_bytes = archivo_os.getvalue()
+                tipo_mime = archivo_os.type
+                archivo_ia = [{"mime_type": tipo_mime, "data": documento_bytes}]
+                
+                orden_militar = """
+                Eres un asistente experto en lectura de facturas agrícolas. 
+                Lee este documento de Orden de Servicio y extrae la siguiente información en formato JSON estricto.
+                No escribas nada más, solo el JSON puro.
+                Estructura requerida:
+                {
+                  "numero_os": "Número de la orden",
+                  "piloto": "Nombre del piloto",
+                  "aeronave_hk": "Matrícula del avión",
+                  "horometro_inicial": "Número",
+                  "horometro_final": "Número",
+                  "horometro_total": "Número (si no está, calcúlalo restando el final menos el inicial)",
+                  "fincas": [
+                    {
+                      "nombre_finca": "Nombre de la finca",
+                      "hectareas": "Número de hectáreas aplicadas",
+                      "coctel": "Nombre de la mezcla o cóctel si aparece"
+                    }
+                  ]
+                }
+                """
+                
+                respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]])
+                
+                texto_json = respuesta.text.replace("```json", "").replace("```", "").strip()
+                datos_extraidos = json.loads(texto_json)
+                
+                st.session_state['datos_os_ia'] = datos_extraidos
+                st.success("🎯 ¡Lectura completada con éxito!")
+                
+            except Exception as e:
+                st.error(f"❌ La IA encontró interferencias al leer el documento. Intente de nuevo.")
 
-# Creamos un dataframe vacío para que usted pegue los datos
-df_os_input = st.data_editor(
-    pd.DataFrame(columns=["OS", "PILOTO", "FINCA_RAW", "HECTAREAS", "HOROMETRO_TOTAL"]),
-    num_rows="dynamic",
-    use_container_width=True,
-    key="pista_os"
-)
-
-if st.button("🔍 INICIAR ESCANEO DE SEGURIDAD", type="secondary"):
-    if not df_os_input.empty:
-        st.write("### ☣️ RESULTADOS DE LA SALA DE CUARENTENA")
-        
-        # Diccionario para corregir nombres (Piedra Rosetta)
-        # En el futuro, esto lo leeremos de una pestaña de Google Sheets
-        correcciones = {} 
-        
-        fincas_desconocidas = []
-        for finca in df_os_input["FINCA_RAW"].unique():
-            if finca not in lista_fincas_oficiales:
-                fincas_desconocidas.append(finca)
-        
-        if not fincas_desconocidas:
-            st.success("✅ ¡PERÍMETRO LIMPIO! Todas las fincas coinciden con la base maestra.")
-            
-            # --- CÁLCULO DE SEMANA ISO POR PYTHON ---
-            # Tomamos la fecha de hoy o la que usted elija en el calendario del Módulo 1
-            semana_iso = fecha_operacion.isocalendar()[1]
-            st.info(f"📅 Python ha calculado automáticamente la **Semana ISO: {semana_iso}**")
-            
-            # Aquí iría el siguiente paso: El Motor de Prorrateo
-            st.warning("🚀 Próximo paso disponible: Detonar Prorrateo y cruce con Tabla de Apoyo.")
-            
-        else:
-            st.error(f"⚠️ Se detectaron {len(fincas_desconocidas)} nombres de fincas no autorizados.")
-            
-            for finca_r in fincas_desconocidas:
-                col_a, col_b = st.columns([1, 1])
-                with col_a:
-                    st.warning(f"Nombre en la OS: **{finca_r}**")
-                with col_b:
-                    seleccion = st.selectbox(
-                        f"Vincular '{finca_r}' con nombre oficial:",
-                        options=["-- Seleccionar --"] + lista_fincas_oficiales,
-                        key=f"fix_{finca_r}"
-                    )
-                    if seleccion != "-- Seleccionar --":
-                        st.success(f"Vínculo creado: {finca_r} ➡️ {seleccion}")
-    else:
-        st.warning("La pista está vacía. Por favor, ingrese datos de una OS.")
+# 4. EL PUESTO DE CONTROL (Verificación Humana)
+if 'datos_os_ia' in st.session_state:
+    datos = st.session_state['datos_os_ia']
+    
+    st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
+    
+    col1, col2, col3 = st.columns(3)
+    col1.text_input("Nº Orden de Servicio", value=datos.get('numero_os', ''))
+    col2.text_input("Piloto", value=datos.get('piloto', ''))
+    col3.text_input("Aeronave (HK)", value=datos.get('aeronave_hk', ''))
+    
+    col4, col5, col6 = st.columns(3)
+    col4.text_input("Horómetro Inicial", value=datos.get('horometro_inicial', ''))
+    col5.text_input("Horómetro Final", value=datos.get('horometro_final', ''))
+    col6.text_input("Horómetro Total", value=datos.get('horometro_total', ''))
+    
+    st.write("**Detalle de Fincas y Hectáreas:**")
+    df_fincas = pd.DataFrame(datos.get('fincas', []))
+    
+    df_fincas_editado = st.data_editor(
+        df_fincas, 
+        use_container_width=True, 
+        num_rows="dynamic",
+        key="tabla_fincas_control"
+    )
+    
+    st.warning("⚠️ Revise que los números sean correctos y corrija si es necesario.")
+    
+    if st.button("🚀 APROBAR Y PREPARAR PRORRATEO", type="primary"):
+        st.info("¡Motor de prorrateo listo para la siguiente fase!")
