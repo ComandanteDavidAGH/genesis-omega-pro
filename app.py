@@ -766,7 +766,7 @@ if archivo_os is not None:
                 st.success("🎯 ¡Lectura completada con éxito!")
                 
             except Exception as e:
-                st.error(f"❌ La IA encontró interferencias al leer el documento. Intente de nuevo.")
+                st.error(f"❌ La IA encontró interferencias al leer el documento: {e}")
 
 # 4. EL PUESTO DE CONTROL (Verificación Humana)
 if 'datos_os_ia' in st.session_state:
