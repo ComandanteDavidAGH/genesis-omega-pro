@@ -680,7 +680,6 @@ import pandas as pd
 import streamlit as st
 import google.generativeai as genai
 import json
-from datetime import datetime
 
 # --- INICIO DEL MÓDULO 3 ---
 st.divider()
@@ -700,7 +699,7 @@ try:
     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     boveda = gc.open_by_url(url_boveda)
     
-    # --- CONEXIÓN A TABLA 1 (Para validaciones y menús) ---
+    # --- CONEXIÓN A TABLA 1 ---
     hoja_maestra = boveda.worksheet("TABLA 1")
     columna_os = hoja_maestra.col_values(1)
     columna_fincas = hoja_maestra.col_values(3)
@@ -710,38 +709,46 @@ try:
     lista_fincas_oficiales = sorted(list(set([str(f).strip() for f in columna_fincas if str(f).strip() != "" and str(f).upper() != "FINCA"])))
     lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in columna_cocteles if str(c).strip() != "" and str(c).upper() != "COCTEL"])))
 
-    # --- CONEXIÓN A TABLA DE APOYO2023 (Para el Sabueso) ---
+    # --- CONEXIÓN A TABLA DE APOYO2023 ---
     try:
         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
         datos_crudos = hoja_apoyo.get_all_values()
         
         # 🛡️ BLINDAJE TÁCTICO:
-        # 1. Forzamos a que todas las filas tengan al menos 15 columnas (rellenando con vacíos)
+        # 1. Rellenamos columnas vacías para que no haya errores de "Index out of bounds"
         datos_limpios = [fila + [""] * (15 - len(fila)) if len(fila) < 15 else fila for fila in datos_crudos]
         df_apoyo_completo = pd.DataFrame(datos_limpios)
         
-        # 2. Cortamos el ruido: Eliminamos las primeras 9 filas (índices 0 al 8) 
+        # 2. Cortamos el ruido: Eliminamos las primeras 9 filas de títulos
         if len(df_apoyo_completo) > 9:
-            df_apoyo = df_apoyo_completo.iloc[9:] # Empezamos a leer datos puros desde la fila 10
+            df_apoyo = df_apoyo_completo.iloc[9:] 
         else:
             df_apoyo = pd.DataFrame()
             
     except Exception as e:
         st.warning(f"⚠️ No se pudo cargar 'TABLA DE APOYO2023': {e}")
         df_apoyo = pd.DataFrame()
-        
+
+except Exception as e:
+    st.error(f"🚨 Falla de conexión con la Bóveda Satelital: {e}")
+    lista_os_existentes, lista_fincas_oficiales, lista_cocteles_oficiales = [], [], []
+    df_apoyo = pd.DataFrame()
+
 # 2. CONFIGURACIÓN DEL CEREBRO IA
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
-except:
+except Exception as e:
+    st.error("🚨 Falla en el sistema de IA. Revise sus llaves de seguridad.")
     st.stop()
 
 # 3. BUZÓN DE RECEPCIÓN
-archivo_os = st.file_uploader("📥 Arrastre aquí la foto de la Orden de Servicio", type=['jpg', 'jpeg', 'png'])
+archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
 
 if archivo_os is not None:
+    st.success("✅ Documento recibido en la bahía de carga.")
+    
     if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
         with st.spinner("🤖 La IA está barriendo el documento..."):
             try:
@@ -749,54 +756,90 @@ if archivo_os is not None:
                 archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
                 
                 orden_militar = """
-                Eres un analista de FUMIGARAY. Extrae todas las órdenes en una lista JSON.
-                Instrucciones:
-                1. "fecha": Copia la fecha tal cual (ej. "sábado, 2 de mayo de 2026").
-                2. "numero_os": Número de la orden.
-                3. "piloto", "aeronave_hk", "horometro_total", "valor_hectarea", "recargo".
-                4. "fincas": Lista de [{"nombre_finca": "...", "hectareas": "..."}]. (No extraigas el cóctel del papel, lo buscaremos en Excel).
+                Eres un analista experto en extraer datos de planillas de FUMIGARAY.
+                La imagen contiene VARIAS Órdenes de Servicio (ej. 296 y 295). Extrae TODAS en una lista JSON.
+                
+                REGLAS ESTRICTAS DE EXTRACCIÓN:
+                1. "fecha": Copia literalmente el texto completo que está a la derecha de 'FECHA:'.
+                2. "numero_os": El número a la derecha de 'ORDEN DE SERVICIO No.:'
+                3. "piloto": Nombre a la derecha de 'PILOTO:'
+                4. "aeronave_hk": Matrícula a la derecha de 'AERONAVE ORGANICA:'
+                5. "horometro_total": En el cuadro de la sección 3, es el número de la diferencia de horas de vuelo (ej. 1,90 o 0,40).
+                6. "valor_hectarea": Busca la fila que comienza con 'Tacomt. Inicial:'. En esa misma fila, más a la derecha, hay un número con un signo de dólar. Extrae SOLO ESE NÚMERO (ignora el signo $).
+                7. "recargo": Busca la palabra 'Valor Recargo Festivo :'. Si a su derecha hay un guion (-) o está vacío, escribe "0". Si hay un número, extrae el número.
+                8. "fincas": Extrae la tabla de fincas completa (nombre_finca, hectareas). El coctel déjalo vacío.
                 """
                 
                 respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
                 st.session_state['datos_os_ia'] = json.loads(respuesta.text)
                 st.success("🎯 ¡Lectura completada!")
+                
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.error(f"❌ La IA encontró interferencias: {e}")
 
-# --- EL BOTÓN MÁGICO DEL SABUESO ---
+# 4. EL PUESTO DE CONTROL Y EL SABUESO
+if 'datos_os_ia' in st.session_state:
+    lista_ordenes = st.session_state['datos_os_ia']
+    if isinstance(lista_ordenes, dict): lista_ordenes = [lista_ordenes]
+        
+    st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
+    st.info(f"📡 El radar detectó **{len(lista_ordenes)}** Órdenes de Servicio.")
+    
+    for i, datos in enumerate(lista_ordenes):
+        with st.expander(f"📄 Orden de Servicio {datos.get('numero_os', 'Desconocida')} - CLIC PARA VER", expanded=True):
+            
+            # Fila 1
+            col1, col2, col3 = st.columns(3)
+            os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
+            fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
+            col3.text_input("Piloto", value=str(datos.get('piloto', '')), key=f"piloto_{i}")
+            
+            # Fila 2
+            col4, col5, col6 = st.columns(3)
+            col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
+            col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
+            col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
+            
+            # Fila 3
+            col7, col8, col9 = st.columns(3)
+            col7.text_input("Recargo ($)", value=str(datos.get('recargo', '')), key=f"recargo_{i}")
+            
+            # --- EL BOTÓN MÁGICO DEL SABUESO ---
             if st.button(f"🔍 BUSCAR CÓCTELES EN APOYO2023 (OS {os_val})", key=f"btn_buscar_{i}"):
                 if df_apoyo.empty:
-                    st.error("🚨 La hoja de apoyo está vacía o no tiene datos a partir de la fila 10.")
+                    st.error("🚨 La hoja de apoyo no tiene datos a partir de la fila 10.")
                 else:
                     for finca_item in datos.get('fincas', []):
-                        finca_nombre = str(finca_item['nombre_finca']).strip().upper()
+                        finca_nombre = str(finca_item.get('nombre_finca', '')).strip().upper()
                         
-                        # Columna B es el índice 1.
+                        # Buscamos en la Columna B (índice 1)
                         filtro = df_apoyo.iloc[:, 1].astype(str).str.upper().str.strip() == finca_nombre
                         resultado = df_apoyo[filtro]
                         
                         if not resultado.empty:
-                            # Tomamos el ÚLTIMO cóctel registrado (Col I = índice 8)
+                            # Tomamos el último registro en la Col I (índice 8)
                             coctel_hallado = str(resultado.iloc[-1, 8]).strip()
                             if coctel_hallado != "":
                                 finca_item['coctel'] = coctel_hallado
-                                st.toast(f"✅ Cóctel hallado para {finca_nombre}: {coctel_hallado}")
+                                st.toast(f"✅ Cóctel hallado para {finca_nombre}")
                             else:
-                                st.toast(f"⚠️ Finca {finca_nombre} hallada, pero su casilla de cóctel estaba vacía.")
+                                st.toast(f"⚠️ Finca hallada, pero el cóctel estaba en blanco en Excel.")
                         else:
                             st.toast(f"❓ No se halló la finca '{finca_nombre}' en APOYO2023.")
                     
                     st.session_state['datos_os_ia'] = lista_ordenes
                     st.rerun()
-            # Tabla de Fincas
-            df_fincas = pd.DataFrame(datos.get('fincas', []))
-            if 'coctel' not in df_fincas.columns: df_fincas['coctel'] = ""
 
+            st.write(f"**Fincas de la OS {os_val}:** (Seleccione el nombre oficial antes de buscar)")
+            df_fincas = pd.DataFrame(datos.get('fincas', []))
+            if 'coctel' not in df_fincas.columns:
+                df_fincas['coctel'] = ""
+                
             df_editado = st.data_editor(
-                df_fincas,
-                use_container_width=True,
+                df_fincas, 
+                use_container_width=True, 
                 num_rows="dynamic",
-                key=f"tabla_fincas_{i}",
+                key=f"tabla_fincas_edit_{i}",
                 column_config={
                     "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
                     "coctel": st.column_config.SelectboxColumn("Cóctel Oficial", options=lista_cocteles_oficiales, required=True)
@@ -804,6 +847,6 @@ if archivo_os is not None:
             )
             
             if str(os_val).strip() in lista_os_existentes:
-                st.error("🚨 Esta OS ya existe en la TABLA 1.")
+                st.error(f"🚨 ¡ALERTA! La OS Nº '{str(os_val).strip()}' ya existe en su Excel.")
             else:
-                st.success("✅ OS Lista.")
+                st.success("✅ OS lista para validación final.")
