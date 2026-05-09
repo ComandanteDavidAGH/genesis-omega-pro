@@ -714,11 +714,12 @@ elif menu == "⚙️ 2. Validación de Misión":
                     row_azul[32] = tipo_productor
                     row_azul[33] = "GÉNESIS_V2_PRO"
 
-                    # --- 🎯 MISIL 2: TABLA DE APOYO (Con la fórmula solicitada) ---
-                    # Col A (0): Es el número de registro formulado
+                    # --- 🎯 MISIL 2: TABLA DE APOYO (Corrección de Sintaxis) ---
                     fila_apoyo = [""] * 15
-                    # Inyectamos la fórmula SI.ERROR con FILA()
-                    fila_apoyo[0] = "=IFERROR(ROW('TABLA DE APOYO2023'!B1)-3, 0)" 
+                    
+                    # Cambiamos la coma por punto y coma para evitar el error de análisis
+                    fila_apoyo[0] = "=IFERROR(ROW('TABLA DE APOYO2023'!B1)-3; 0)" 
+                    
                     fila_apoyo[1] = finca_limpia
                     fila_apoyo[2] = ha_f
                     fila_apoyo[3] = float(costo_por_ha)
@@ -726,7 +727,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                     fila_apoyo[8] = coctel_ganador
                     fila_apoyo[10] = pista_manual
                     fila_apoyo[13] = tipo_mision
-
+                    
                     # 4. EJECUCIÓN DEL IMPACTO
                     hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
                     hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
