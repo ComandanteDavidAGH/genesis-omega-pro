@@ -847,39 +847,53 @@ if 'datos_os_ia' in st.session_state:
                                 fecha_limpia = str(fecha_val)
 
                             # --- 2. PREPARAR DATOS Y MATEMÁTICAS ---
-                            h_total = float(str(horo_val).replace(',', '.'))
-                            precio_ha = float(str(costo_val).replace('.', '').replace(',', '.'))
+                            h_total = float(str(horo_val).replace(',','.'))
+                        p_ha = float(str(costo_val).replace('.','').replace(',','.'))
+                        rec_total = float(str(recargo_val).replace('.','').replace(',','.'))
+                        t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas']])
+
+                        filas = []
+                        for f in datos['fincas']:
+                            ha_f = float(str(f['hectareas']).replace(',','.'))
+                            h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
                             
-                            # Recargo capturado tal cual (fijo)
-                            recargo_str = str(recargo_val).replace('.', '').replace(',', '.')
-                            recargo_total = float(recargo_str) if recargo_str.strip() != "" else 0.0
+                            # --- 🧮 LOS CÁLCULOS ESPECTACULARES DE PYTHON ---
+                            vol_gln = ha_f * 6                               # Col M: Área * 6
+                            rend_min = h_pro * 60                            # Col O: Horas * 60
+                            costo_finca = (ha_f * p_ha) + (ha_f * rec_total) # Col V: Fórmula (Ha*Prec)+(Ha*Rec)
+                            pago_avion = ha_f * p_ha                         # Col AD: Fórmula (Ha*Prec)
                             
-                            fincas_finales = df_editado.to_dict('records')
-                            total_ha_orden = sum([float(str(f['hectareas']).replace(',', '.')) for f in fincas_finales])
-                            filas_para_guardar = []
-                            
-                            for finca in fincas_finales:
-                                ha_finca = float(str(finca['hectareas']).replace(',', '.'))
-                                
-                                # Solo prorrateamos el horómetro
-                                horo_prorrateado = (ha_finca / total_ha_orden) * h_total
-                                
-                                # 🗺️ PLANTILLA DE 34 POSICIONES
-                                nueva_fila = [""] * 34
-                                nueva_fila[0]  = os_val                  # A: Nº ORDEN
-                                nueva_fila[2]  = finca['nombre_finca']   # C: FINCA
-                                nueva_fila[5]  = ha_finca                # F: ÀREA FUMIG. (ha)
-                                nueva_fila[6]  = finca['coctel']         # G: COCTEL
-                                nueva_fila[7]  = fecha_limpia            # H: FECHA 
-                                nueva_fila[10] = h_total                 # K: ODÒM. (Horómetro Total fijo)
-                                nueva_fila[13] = round(horo_prorrateado, 2) # N: RENDIMIENTO (horas prorrateado)
-                                nueva_fila[15] = piloto_val              # P: PILOTO
-                                nueva_fila[16] = hk_val                  # Q: HK
-                                nueva_fila[19] = precio_ha               # T: VALOR HECTÁREA ($/ha)
-                                nueva_fila[20] = recargo_total           # U: RECARGO (Fijo, sin prorratear)
-                                nueva_fila[33] = "IA_GENESIS"            # AH: MARCA DE SISTEMA
-                                
-                                filas_para_guardar.append(nueva_fila)
+                            # --- 🗺️ PLANTILLA EXACTA (A=0 hasta AH=33) ---
+                            row = [""] * 34
+                            row[0] = os_val               # A: Nº ORDEN
+                            row[1] = f.get('bloque','')   # B: BLOQUE (De Tabla 2)
+                            row[2] = f['nombre_finca']    # C: FINCA
+                            row[3] = f.get('sector','')   # D: SECTOR (De Tabla 2)
+                            row[4] = f.get('ha_bruta','') # E: ÀREA BRUTA (De Tabla 2)
+                            row[5] = ha_f                 # F: ÀREA FUMIGADA (Del PDF)
+                            row[6] = f.get('coctel','')   # G: COCTEL (De APOYO2023)
+                            row[7] = fecha_corta          # H: FECHA (Limpia)
+                            row[8] = dia_sem              # I: DÌA SEM (Calculado en Python)
+                            row[9] = num_sem              # J: SEM (Calculado en Python)
+                            row[10] = h_total             # K: ODÒM. TOTAL (Del PDF)
+                            row[11] = 6                   # L: VOL. APLICADO gln/ha (Fijo)
+                            row[12] = round(vol_gln, 2)   # M: VOL. APLICADO gln (Calculado)
+                            row[13] = round(h_pro, 2)     # N: RENDIMIENTO horas (Prorrateado)
+                            row[14] = round(rend_min, 2)  # O: RENDIMIENTO min (Calculado)
+                            row[15] = piloto_val          # P: PILOTO
+                            row[16] = hk_val              # Q: HK
+                            # R y S vacíos para fórmulas de Excel
+                            row[19] = p_ha                # T: COSTO AVIÒN $/ha (Precio PDF)
+                            row[20] = rec_total           # U: DOMINIC. $/ha (Recargo PDF)
+                            row[21] = round(costo_finca, 2) # V: COSTO AVIÒN $/finca (Calculado)
+                            # W, X, Y, Z, AA, AB, AC vacíos para fórmulas complejas de Excel
+                            row[29] = round(pago_avion, 2)# AD: TOTAL PAGO AVIÒN (Calculado)
+                            # AE vacío
+                            row[31] = 1                   # AF: Columna1 (Fijo en 1)
+                            row[32] = f.get('tipo_productor','') # AG: TIPO DE PRODUCTOR (Tabla 2)
+                            row[33] = "IA_GENESIS"        # AH: MARCA DE SISTEMA
+
+                            filas.append(row)
                             
                             # Disparo final con USER_ENTERED para activar fórmulas de Excel
                             hoja_maestra.append_rows(filas_para_guardar, value_input_option='USER_ENTERED')
