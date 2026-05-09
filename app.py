@@ -652,22 +652,23 @@ elif menu == "⚙️ 2. Validación de Misión":
                         tipo_mision = "AVION"
 
                     # 3. Armar el Misil de Datos (CORRECCIÓN COLUMNA K = PISTA)
-                    # Columnas: A, B:Finca, C:Ha, D, E:Costo, F:Fecha, G, H, I:Coctel, J, K:PISTA, L, M, N:Tipo
+                    # --- 🗺️ RECALIBRACIÓN TABLA DE APOYO (B:Finca, D:Valor, F:Fecha) ---
                     fila_apoyo = [
-                        "",                                     # Col 1 (A)
-                        finca_limpia,                           # Col 2 (B): Finca
-                        float(ha_dosis_final),                  # Col 3 (C): Hectáreas
-                        "",                                     # Col 4 (D)
-                        float(gran_total),                      # Col 5 (E): Costo Total
-                        fecha_operacion.strftime("%d/%m/%Y"),   # Col 6 (F): Fecha
-                        "", "",                                 # Col 7 (G), 8 (H)
-                        coctel_ganador,                         # Col 9 (I): Coctel
-                        "",                                     # Col 10 (J)
-                        pista_sel,                              # Col 11 (K): 🎯 NOMBRE DE LA PISTA
-                        "", "",                                 # Col 12 (L), 13 (M)
-                        tipo_mision                             # Col 14 (N): "DRONE" o "AVION"
+                        "",                                     # A (0): Vacío
+                        finca_limpia,                           # B (1): FINCA
+                        float(ha_dosis_final),                  # C (2): HECTÁREAS
+                        float(gran_total),                      # D (3): VALOR (Inyectado aquí 🎯)
+                        "",                                     # E (4): Vacío (Para empujar la fecha a la F)
+                        fecha_operacion.strftime("%d/%m/%Y"),   # F (5): FECHA
+                        "",                                     # G (6): Vacío
+                        "",                                     # H (7): Vacío
+                        coctel_ganador,                         # I (8): COCTEL
+                        "",                                     # J (9): Vacío
+                        pista_sel,                              # K (10): PISTA
+                        "",                                     # L (11): Vacío
+                        "",                                     # M (12): Vacío
+                        tipo_mision                             # N (13): TIPO (AVION/DRONE)
                     ]
-
                     # 4. Disparo a la nube
                     hoja_apoyo.append_row(fila_apoyo)
 
