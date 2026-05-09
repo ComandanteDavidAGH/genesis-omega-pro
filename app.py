@@ -654,7 +654,28 @@ elif menu == "⚙️ 2. Validación de Misión":
                     dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
                     num_sem = fecha_operacion.isocalendar()[1]
 
-                    # --- 🎯 MISIL 1: FILA PARA TABLA 1 (AZUL - 34 Columnas) ---
+                    # --- 🛸 RADAR DE MATRÍCULAS (NUEVO) ---
+                    hk_final = "S/N"
+                    modelo_final = tipo_mision # Por defecto dirá "AVION" o "DRONE"
+
+                    if mision_solo_dron:
+                        dict_hk_drones = {"DRONE DATAROT": "DR51", "DRONE GENESYS": "DR52", "DRONE AVIL": "DR53"}
+                        # Buscamos qué dron se seleccionó en el panel
+                        for _, row_dr in escuadron_drones.iterrows():
+                            dr_sel = row_dr.get("Drone")
+                            if pd.notna(dr_sel) and dr_sel in dict_hk_drones:
+                                modelo_final = dr_sel
+                                hk_final = dict_hk_drones[dr_sel]
+                                break # Tomamos el dron principal
+                    else:
+                        # Si es avión, sacamos el modelo del panel
+                        for _, row_av in escuadron_aviones.iterrows():
+                            av_sel = row_av.get("Avión")
+                            if pd.notna(av_sel):
+                                modelo_final = av_sel
+                                break
+
+                    # --- 🎯 MISIL 1: FILA PARA TABLA 1 (AZUL - RECALIBRADA) ---
                     row_azul = [""] * 34
                     row_azul[0] = os_virtual                        # A: OS Virtual
                     row_azul[2] = finca_limpia                      # C: FINCA
@@ -663,12 +684,18 @@ elif menu == "⚙️ 2. Validación de Misión":
                     row_azul[7] = fecha_str                         # H: FECHA
                     row_azul[8] = dia_sem                           # I: DÍA
                     row_azul[9] = num_sem                           # J: SEMANA
-                    row_azul[18] = pista_sel                        # S: PISTA
-                    row_azul[19] = float(costo_por_ha)              # T: $/HA
+                    
+                    row_azul[16] = hk_final                         # Q: HK (Aquí inyecta DR51, DR52 o DR53 🎯)
+                    row_azul[17] = modelo_final                     # R: MODELO (Aquí inyecta el nombre exacto 🎯)
+                    
+                    row_azul[18] = float(gran_total)                # S: COSTO AVIÓN $ (Total)
+                    row_azul[19] = float(costo_por_ha)              # T: COSTO AVIÓN $/ha
+                    row_azul[20] = float(recargo_final)             # U: DOMINIC. $/ha (Recargo)
+                    row_azul[21] = float(gran_total)                # V: COSTO AVIÓN $/finca
+                    row_azul[23] = pista_sel                        # X: PISTA
                     row_azul[28] = float(gran_total)                # AC: COSTO TOTAL
                     row_azul[32] = tipo_productor                   # AG: TIPO
                     row_azul[33] = "GÉNESIS_CALCULADORA"            # AH: SISTEMA
-
                     # --- 🎯 MISIL 2: FILA PARA TABLA DE APOYO (RECALIBRADA) ---
                     # B:Finca(1), C:Ha(2), D:Valor/ha(3), F:Fecha(5)
                     fila_apoyo = [""] * 15
