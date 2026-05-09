@@ -704,23 +704,41 @@ elif menu == "⚙️ 2. Validación de Misión":
                     # Piloto
                     piloto_final = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
 
-                    # --- 🎯 MISIL 1: FILA PARA TABLA 1 (AZUL - RECARGADA) ---
+                    # --- 🔍 1. RADAR DE DATOS DE FINCA (Buscando en Tabla 2) ---
+                    bloque_f = ""; sector_f = ""; ha_bruta_f = ""
+                    if not df_t2.empty:
+                        # Buscamos la finca en la Columna A de la Tabla 2
+                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia]
+                        if not match_f.empty:
+                            sector_f = match_f.iloc[0, 1]     # Col B: Sector
+                            ha_bruta_f = match_f.iloc[0, 2]   # Col C: Ha Bruta
+                            bloque_f = match_f.iloc[0, 3]     # Col D: Bloque
+
+                    # --- 🧮 2. CÁLCULOS TÁCTICOS (Horómetro y Rendimientos) ---
+                    ha_f = float(ha_dosis_final)
+                    # Si es Drone: Ha/10. Si es Avión: usamos 1.0 (o lo que venga del informe)
+                    h_total_virtual = (ha_f / 10) if mision_solo_dron else 1.0
+                    vol_total_gln = ha_f * 6
+                    rend_minutos = h_total_virtual * 60
+                    piloto_final = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+
+                    # --- 🎯 3. EL MISIL: FILA PARA TABLA 1 (AZUL - 34 Columnas) ---
                     row_azul = [""] * 34
                     row_azul[0] = os_virtual                        # A: OS Virtual
-                    row_azul[1] = ""                                # B: BLOQUE (Excel lo sacará por BuscarV si quiere)
+                    row_azul[1] = bloque_f                          # B: BLOQUE 🎯
                     row_azul[2] = finca_limpia                      # C: FINCA
-                    row_azul[3] = ""                                # D: SECTOR
-                    row_azul[4] = ""                                # E: ÁREA BRUTA
+                    row_azul[3] = sector_f                          # D: SECTOR 🎯
+                    row_azul[4] = ha_bruta_f                        # E: ÁREA BRUTA 🎯
                     row_azul[5] = ha_f                              # F: ÁREA FUMIGADA
                     row_azul[6] = coctel_ganador                    # G: COCTEL
                     row_azul[7] = fecha_str                         # H: FECHA
                     row_azul[8] = dia_sem                           # I: DÍA
                     row_azul[9] = num_sem                           # J: SEMANA
-                    row_azul[10] = h_total_virtual                  # K: ODÓM. TOTAL (Ha/10 para Dron) 🎯
-                    row_azul[11] = vol_gln_ha                       # L: VOL. gln/ha (6)
+                    row_azul[10] = h_total_virtual                  # K: ODÓM. TOTAL 🎯
+                    row_azul[11] = 6                                # L: VOL. gln/ha
                     row_azul[12] = round(vol_total_gln, 2)          # M: VOL. TOTAL gln
-                    row_azul[13] = round(h_total_virtual, 2)        # N: RENDIMIENTO horas
-                    row_azul[14] = round(rend_minutos, 2)           # O: RENDIMIENTO min
+                    row_azul[13] = round(h_total_virtual, 2)        # N: RENDIMIENTO horas 🎯
+                    row_azul[14] = round(rend_minutos, 2)           # O: RENDIMIENTO min 🎯
                     row_azul[15] = piloto_final                     # P: PILOTO 🎯
                     row_azul[16] = hk_final                         # Q: HK (DR51/52/53)
                     row_azul[17] = modelo_final                     # R: MODELO
@@ -729,10 +747,7 @@ elif menu == "⚙️ 2. Validación de Misión":
                     row_azul[20] = float(recargo_final)             # U: RECARGO (Dominic)
                     row_azul[21] = float(gran_total)                # V: TOTAL FINCA
                     row_azul[23] = pista_manual                     # X: PISTA
-                    
-                    # AC (28): TOTAL PAGO AVION (Costo total de la misión)
-                    row_azul[28] = float(gran_total)                # AC: TOTAL PAGO 🎯
-                    
+                    row_azul[28] = float(gran_total)                # AC: TOTAL NETO
                     row_azul[32] = tipo_productor                   # AG: TIPO PRODUCTOR
                     row_azul[33] = "GÉNESIS_V2_PRO"                 # AH: SISTEMA
                     
