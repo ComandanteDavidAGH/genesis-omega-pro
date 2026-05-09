@@ -632,6 +632,10 @@ elif menu == "⚙️ 2. Validación de Misión":
         # --- 📍 SELECTOR DE PISTA PARA DRONES Y AVIONES ---
         st.markdown("---")
         st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
+        
+        # 1. Definimos tipo_mision ANTES de usarlo en el st.info
+        tipo_mision = "DRONE" if mision_solo_dron else "AVION"
+        
         c_p1, c_p2 = st.columns(2)
         
         with c_p1:
@@ -640,10 +644,12 @@ elif menu == "⚙️ 2. Validación de Misión":
             pista_manual = st.selectbox("📍 Confirmar Pista de Operación:", pistas_disponibles, index=pistas_disponibles.index(pista_sel) if pista_sel in pistas_disponibles else 0)
 
         with c_p2:
+            # Ahora sí, tipo_mision ya existe y no dará error
             st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             with st.spinner("🚀 Inyectando datos en TABLA 1 y APOYO simultáneamente..."):
+                
                 try:
                     # 1. Reconexión Satelital
                     if "gcp_credentials" in st.secrets:
