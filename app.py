@@ -714,11 +714,12 @@ elif menu == "⚙️ 2. Validación de Misión":
                     row_azul[32] = tipo_productor
                     row_azul[33] = "GÉNESIS_V2_PRO"
 
-                    # --- 🎯 MISIL 2: TABLA DE APOYO (Corrección de Sintaxis) ---
+                    # --- 🎯 MISIL 2: TABLA DE APOYO (Fórmula Corregida) ---
                     fila_apoyo = [""] * 15
                     
-                    # Cambiamos la coma por punto y coma para evitar el error de análisis
-                    fila_apoyo[0] = "=IFERROR(ROW('TABLA DE APOYO2023'!B1)-3; 0)" 
+                    # Esta fórmula detecta su propia fila y ajusta el número automáticamente
+                    # Usamos punto y coma (;) y nombres en inglés para compatibilidad total
+                    fila_apoyo[0] = "=IFERROR(ROW()-3; 0)" 
                     
                     fila_apoyo[1] = finca_limpia
                     fila_apoyo[2] = ha_f
