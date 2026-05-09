@@ -630,7 +630,7 @@ elif menu == "⚙️ 2. Validación de Misión":
         st.metric("🔥 TOTAL FACTURACIÓN FINCA (GRAN TOTAL)", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
-            with st.spinner("🚀 Inyectando datos de costos en la Bóveda Satelital (Google Drive)..."):
+            with st.spinner("🚀 Inyectando datos en ambas tablas simultáneamente..."):
                 try:
                     # 1. Reconexión Satelital
                     if "gcp_credentials" in st.secrets:
@@ -642,41 +642,58 @@ elif menu == "⚙️ 2. Validación de Misión":
                     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                     boveda = gc.open_by_url(url_boveda)
                     hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
+                    hoja_maestra = boveda.worksheet("TABLA 1")
 
-                    # 2. Identificar el Tipo de Misión
-                    if mision_solo_dron:
-                        tipo_mision = "DRONE"
-                        # Nota: Si es solo dron, pista_sel por defecto es "PLUC" u otra que haya quedado guardada.
-                        # Si necesita que diga algo específico como "N/A" para drones, me avisa.
-                    else:
-                        tipo_mision = "AVION"
+                    # 2. Identificar el Tipo de Misión y Crear OS Virtual
+                    tipo_mision = "DRONE" if mision_solo_dron else "AVION"
+                    fecha_str = fecha_operacion.strftime("%d/%m/%Y")
+                    # Creamos una OS Virtual para que la Tabla Azul tenga una referencia
+                    os_virtual = f"VIRT-{tipo_mision[:2]}-{finca_limpia[:3]}-{fecha_operacion.strftime('%d%m%y')}"
 
-                    # 3. Armar el Misil de Datos (CORRECCIÓN COLUMNA K = PISTA)
-                    # --- 🗺️ RECALIBRACIÓN TABLA DE APOYO (B:Finca, D:Valor, F:Fecha) ---
-                    fila_apoyo = [
-                        "",                                     # A (0): Vacío
-                        finca_limpia,                           # B (1): FINCA
-                        float(ha_dosis_final),                  # C (2): HECTÁREAS
-                        float(gran_total),                      # D (3): VALOR (Inyectado aquí 🎯)
-                        "",                                     # E (4): Vacío (Para empujar la fecha a la F)
-                        fecha_operacion.strftime("%d/%m/%Y"),   # F (5): FECHA
-                        "",                                     # G (6): Vacío
-                        "",                                     # H (7): Vacío
-                        coctel_ganador,                         # I (8): COCTEL
-                        "",                                     # J (9): Vacío
-                        pista_sel,                              # K (10): PISTA
-                        "",                                     # L (11): Vacío
-                        "",                                     # M (12): Vacío
-                        tipo_mision                             # N (13): TIPO (AVION/DRONE)
-                    ]
-                    # 4. Disparo a la nube
-                    hoja_apoyo.append_row(fila_apoyo)
+                    # 3. Cálculos de tiempo para Tabla Azul
+                    dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
+                    num_sem = fecha_operacion.isocalendar()[1]
+
+                    # --- 🎯 MISIL 1: FILA PARA TABLA 1 (AZUL - 34 Columnas) ---
+                    row_azul = [""] * 34
+                    row_azul[0] = os_virtual                        # A: OS Virtual
+                    row_azul[2] = finca_limpia                      # C: FINCA
+                    row_azul[5] = float(ha_dosis_final)             # F: HA
+                    row_azul[6] = coctel_ganador                    # G: COCTEL
+                    row_azul[7] = fecha_str                         # H: FECHA
+                    row_azul[8] = dia_sem                           # I: DÍA
+                    row_azul[9] = num_sem                           # J: SEMANA
+                    row_azul[18] = pista_sel                        # S: PISTA
+                    row_azul[19] = float(costo_por_ha)              # T: $/HA
+                    row_azul[28] = float(gran_total)                # AC: COSTO TOTAL
+                    row_azul[32] = tipo_productor                   # AG: TIPO
+                    row_azul[33] = "GÉNESIS_CALCULADORA"            # AH: SISTEMA
+
+                    # --- 🎯 MISIL 2: FILA PARA TABLA DE APOYO (RECALIBRADA) ---
+                    # B:Finca(1), C:Ha(2), D:Valor/ha(3), F:Fecha(5)
+                    fila_apoyo = [""] * 15
+                    fila_apoyo[1] = finca_limpia                    # B: FINCA
+                    fila_apoyo[2] = float(ha_dosis_final)           # C: HECTÁREAS
+                    fila_apoyo[3] = float(costo_por_ha)             # D: VALOR/HA 🎯
+                    fila_apoyo[5] = fecha_str                       # F: FECHA
+                    fila_apoyo[8] = coctel_ganador                  # I: COCTEL
+                    fila_apoyo[10] = pista_sel                      # K: PISTA
+                    fila_apoyo[13] = tipo_mision                    # N: TIPO
+
+                    # 4. EJECUCIÓN DEL DISPARO DUAL
+                    hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
+                    hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
 
                     st.balloons()
-                    st.success(f"✅ ¡MISIÓN GUARDADA! El costo de la finca {finca_limpia} (Pista: {pista_sel}) ha sido inyectado en la TABLA DE APOYO2023.")
+                    st.success(f"✅ ¡MISIÓN CUMPLIDA! Datos inyectados en TABLA 1 y APOYO. OS Virtual: {os_virtual}")
                     
+                    # Limpiamos memoria para forzar recarga de datos si es necesario
+                    if 'memoria_excel' in st.session_state:
+                        del st.session_state['memoria_excel']
+                        
                 except Exception as e_save:
-                    st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
+                    st.error(f"🚨 Falla en el sistema de guardado: {e_save}")
+
 import pandas as pd
 import streamlit as st
 import google.generativeai as genai
