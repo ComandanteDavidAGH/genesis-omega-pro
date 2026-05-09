@@ -825,7 +825,8 @@ if 'datos_os_ia' in st.session_state:
             else:
                 if st.button(f"💾 GUARDAR TODO EN TABLA 1 (OS {os_val})", type="primary", key=f"save_{i}"):
                     try:
-                        with st.spinner("🚀 Escribiendo en la Bóveda..."):
+                        with st.spinner("🚀 Procesando cálculos y enviando a la Bóveda..."):
+                            # 1. Limpieza de Fecha y Cálculos de Tiempo
                             f_raw = str(fecha_val).lower()
                             meses_dict = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06','julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
                             fecha_corta = f_raw
@@ -839,23 +840,37 @@ if 'datos_os_ia' in st.session_state:
                             dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][dt_obj.weekday()]
                             num_sem = dt_obj.isocalendar()[1]
 
+                            # 2. Preparar Matemáticas
                             h_total = float(str(horo_val).replace(',','.'))
                             p_ha = float(str(costo_val).replace('.','').replace(',','.'))
-                            rec_total = float(str(recargo_val).replace('.','').replace(',','.'))
+                            rec_ha = float(str(recargo_val).replace('.','').replace(',','.'))
                             t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas']])
+
+                            # 3. Radar de Búsqueda de Avión (En Tabla 2)
+                            modelo_avion = "NO ENCONTRADO"
+                            pista_avion = "NO ENCONTRADO"
+                            hk_busqueda = str(hk_val).strip().upper()
+                            
+                            if not df_t2.empty:
+                                # Col I:Matricula(8), J:Tipo(9), K:Pista(10)
+                                match_avion = df_t2[df_t2.iloc[:, 8].str.upper().str.strip() == hk_busqueda]
+                                if not match_avion.empty:
+                                    modelo_avion = match_avion.iloc[0, 9]
+                                    pista_avion = match_avion.iloc[0, 10]
 
                             filas = []
                             for f in datos['fincas']:
                                 ha_f = float(str(f['hectareas']).replace(',','.'))
                                 h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
                                 
-                                # --- 🧮 LOS CÁLCULOS ESPECTACULARES ---
-                                vol_gln = ha_f * 6
-                                rend_min = h_pro * 60
-                                costo_finca = (ha_f * p_ha) + (ha_f * rec_total)
-                                pago_avion = ha_f * p_ha
+                                # --- 🧮 CÁLCULOS ESPECTACULARES ---
+                                vol_total_gln = ha_f * 6
+                                rend_minutos = h_pro * 60
+                                costo_finca = (ha_f * p_ha) + (ha_f * rec_ha) # (F*T)+(F*U)
+                                costo_avion_hora = costo_finca / h_pro if h_pro > 0 else 0 # V/N
+                                costo_total_neto = p_ha * ha_f # T*F
                                 
-                                # --- 🗺️ PLANTILLA EXACTA (A=0 hasta AH=33) ---
+                                # --- 🗺️ PLANTILLA FINAL (A=0 hasta AH=33) ---
                                 row = [""] * 34
                                 row[0] = os_val               # A: Nº ORDEN
                                 row[1] = f.get('bloque','')   # B: BLOQUE
@@ -869,26 +884,28 @@ if 'datos_os_ia' in st.session_state:
                                 row[9] = num_sem              # J: SEM
                                 row[10] = h_total             # K: ODÒM. TOTAL
                                 row[11] = 6                   # L: VOL. APLICADO gln/ha
-                                row[12] = round(vol_gln, 2)   # M: VOL. APLICADO gln
+                                row[12] = round(vol_total_gln, 2) # M: VOL. APLICADO gln
                                 row[13] = round(h_pro, 2)     # N: RENDIMIENTO horas
-                                row[14] = round(rend_min, 2)  # O: RENDIMIENTO min
+                                row[14] = round(rend_minutos, 2) # O: RENDIMIENTO min
                                 row[15] = piloto_val          # P: PILOTO
                                 row[16] = hk_val              # Q: HK
-                                row[19] = p_ha                # T: COSTO AVIÒN $/ha
-                                row[20] = rec_total           # U: DOMINIC. $/ha
-                                row[21] = round(costo_finca, 2) # V: COSTO AVIÒN $/finca
-                                row[29] = round(pago_avion, 2)# AD: TOTAL PAGO AVIÒN
+                                row[17] = modelo_avion        # R: MODELO (Buscado por Python)
+                                row[18] = pista_avion         # S: PISTA (Buscado por Python)
+                                row[19] = p_ha                # T: $/ha
+                                row[20] = rec_ha              # U: RECARGO $/ha
+                                row[21] = round(costo_finca, 2) # V: COSTO AVIÒN / FINCA
+                                row[22] = round(costo_avion_hora, 2) # W: COSTO AVIÒN / HORA
+                                row[25] = round(costo_total_neto, 2) # Z: COSTO TOTAL (T*F)
+                                # AA (26): VALOR A FACTURAR (Se deja vacío para el Modo Dios de Excel)
                                 row[31] = 1                   # AF: Columna1
                                 row[32] = f.get('tipo_productor','') # AG: TIPO DE PRODUCTOR
-                                row[33] = "IA_GENESIS"        # AH: MARCA SISTEMA
+                                row[33] = "IA_GENESIS"        # AH: SISTEMA
 
                                 filas.append(row)
                             
                             hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                             st.balloons()
-                            st.success("✅ ¡Génesis ha completado la misión con éxito!")
-                            
-                            # Tras guardar exitosamente, refrescamos la memoria para la próxima OS
+                            st.success("✅ ¡Génesis ha completado el aterrizaje de datos!")
                             del st.session_state['memoria_excel']
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
