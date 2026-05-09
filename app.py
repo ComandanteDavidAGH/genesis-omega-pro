@@ -895,7 +895,7 @@ if 'datos_os_ia' in st.session_state:
                                 row[20] = rec_ha              # U: RECARGO $/ha
                                 row[21] = round(costo_finca, 2) # V: COSTO AVIÒN / FINCA
                                 row[22] = round(costo_avion_hora, 2) # W: COSTO AVIÒN / HORA
-                                row[25] = round(costo_total_neto, 2) # Z: COSTO TOTAL (T*F)
+                                row[28] = round(costo_total_neto, 2)
                                 # AA (26): VALOR A FACTURAR (Se deja vacío para el Modo Dios de Excel)
                                 row[31] = 1                   # AF: Columna1
                                 row[32] = f.get('tipo_productor','') # AG: TIPO DE PRODUCTOR
