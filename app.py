@@ -649,7 +649,6 @@ elif menu == "⚙️ 2. Validación de Misión":
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             with st.spinner("🚀 Inyectando datos en TABLA 1 y APOYO simultáneamente..."):
-                
                 try:
                     # 1. Reconexión Satelital
                     if "gcp_credentials" in st.secrets:
@@ -663,111 +662,77 @@ elif menu == "⚙️ 2. Validación de Misión":
                     hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
                     hoja_maestra = boveda.worksheet("TABLA 1")
 
-                    # 2. Generar Referencia y Tiempos
+                    # 2. Preparación de Variables
                     fecha_str = fecha_operacion.strftime("%d/%m/%Y")
                     dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
                     num_sem = fecha_operacion.isocalendar()[1]
-                    # OS Virtual para registros sin papel
                     os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
-
-                    # 3. Radar de Matrículas (Drones DR51, DR52, DR53)
-                    hk_final = "S/N"
-                    modelo_final = tipo_mision
                     
-                    if mision_solo_dron:
-                        dict_hk_drones = {"DRONE DATAROT": "DR51", "DRONE GENESYS": "DR52", "DRONE AVIL": "DR53"}
-                        for _, row_dr in escuadron_drones.iterrows():
-                            dr_sel = row_dr.get("Drone")
-                            if pd.notna(dr_sel) and dr_sel in dict_hk_drones:
-                                modelo_final = dr_sel
-                                hk_final = dict_hk_drones[dr_sel]
-                                break
-                    else:
-                        for _, row_av in escuadron_aviones.iterrows():
-                            av_sel = row_av.get("Avión")
-                            if pd.notna(av_sel):
-                                modelo_final = av_sel
-                                hk_final = "VER_TABLA_2" # El buscador de HK para aviones
-                                break
-
-                    # --- 🧮 CÁLCULOS TÁCTICOS ADICIONALES ---
-                    ha_f = float(ha_dosis_final)
-                    
-                    # Para Drone, el horómetro es Ha / 10. Para Avión, usamos 1.0 o el dato real si existe.
-                    h_total_virtual = (ha_f / 10) if mision_solo_dron else 1.0
-                    
-                    # Volúmenes y Rendimientos
-                    vol_gln_ha = 6
-                    vol_total_gln = ha_f * vol_gln_ha
-                    rend_minutos = h_total_virtual * 60
-                    
-                    # Piloto
-                    piloto_final = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
-
-                    # --- 🔍 1. RADAR DE DATOS DE FINCA (Buscando en Tabla 2) ---
+                    # 🔍 Radar de Finca (Bloque, Sector, Área Bruta)
                     bloque_f = ""; sector_f = ""; ha_bruta_f = ""
                     if not df_t2.empty:
-                        # Buscamos la finca en la Columna A de la Tabla 2
-                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia]
+                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia.upper().strip()]
                         if not match_f.empty:
-                            sector_f = match_f.iloc[0, 1]     # Col B: Sector
-                            ha_bruta_f = match_f.iloc[0, 2]   # Col C: Ha Bruta
-                            bloque_f = match_f.iloc[0, 3]     # Col D: Bloque
+                            sector_f = match_f.iloc[0, 1]
+                            ha_bruta_f = match_f.iloc[0, 2]
+                            bloque_f = match_f.iloc[0, 3]
 
-                    # --- 🧮 2. CÁLCULOS TÁCTICOS (Horómetro y Rendimientos) ---
+                    # 🧮 Cálculos de Rendimiento
                     ha_f = float(ha_dosis_final)
-                    # Si es Drone: Ha/10. Si es Avión: usamos 1.0 (o lo que venga del informe)
-                    h_total_virtual = (ha_f / 10) if mision_solo_dron else 1.0
+                    h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
                     vol_total_gln = ha_f * 6
-                    rend_minutos = h_total_virtual * 60
-                    piloto_final = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+                    rend_min = h_total_v * 60
+                    piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+                    hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
 
-                    # --- 🎯 3. EL MISIL: FILA PARA TABLA 1 (AZUL - 34 Columnas) ---
+                    # --- 🎯 MISIL 1: TABLA 1 (AZUL) ---
                     row_azul = [""] * 34
-                    row_azul[0] = os_virtual                        # A: OS Virtual
-                    row_azul[1] = bloque_f                          # B: BLOQUE 🎯
-                    row_azul[2] = finca_limpia                      # C: FINCA
-                    row_azul[3] = sector_f                          # D: SECTOR 🎯
-                    row_azul[4] = ha_bruta_f                        # E: ÁREA BRUTA 🎯
-                    row_azul[5] = ha_f                              # F: ÁREA FUMIGADA
-                    row_azul[6] = coctel_ganador                    # G: COCTEL
-                    row_azul[7] = fecha_str                         # H: FECHA
-                    row_azul[8] = dia_sem                           # I: DÍA
-                    row_azul[9] = num_sem                           # J: SEMANA
-                    row_azul[10] = h_total_virtual                  # K: ODÓM. TOTAL 🎯
-                    row_azul[11] = 6                                # L: VOL. gln/ha
-                    row_azul[12] = round(vol_total_gln, 2)          # M: VOL. TOTAL gln
-                    row_azul[13] = round(h_total_virtual, 2)        # N: RENDIMIENTO horas 🎯
-                    row_azul[14] = round(rend_minutos, 2)           # O: RENDIMIENTO min 🎯
-                    row_azul[15] = piloto_final                     # P: PILOTO 🎯
-                    row_azul[16] = hk_final                         # Q: HK (DR51/52/53)
-                    row_azul[17] = modelo_final                     # R: MODELO
-                    row_azul[18] = float(gran_total)                # S: COSTO TOTAL $
-                    row_azul[19] = float(costo_por_ha)              # T: $/ha
-                    row_azul[20] = float(recargo_final)             # U: RECARGO (Dominic)
-                    row_azul[21] = float(gran_total)                # V: TOTAL FINCA
-                    row_azul[23] = pista_manual                     # X: PISTA
-                    row_azul[28] = float(gran_total)                # AC: TOTAL NETO
-                    row_azul[32] = tipo_productor                   # AG: TIPO PRODUCTOR
-                    row_azul[33] = "GÉNESIS_V2_PRO"                 # AH: SISTEMA
-                    
-                    # --- 🎯 MISIL 2: FILA PARA TABLA DE APOYO ---
-                    # B:Finca(1), C:Ha(2), D:Valor/ha(3), F:Fecha(5), I:Coctel(8), K:Pista(10)
+                    row_azul[0] = os_virtual
+                    row_azul[1] = bloque_f
+                    row_azul[2] = finca_limpia
+                    row_azul[3] = sector_f
+                    row_azul[4] = ha_bruta_f
+                    row_azul[5] = ha_f
+                    row_azul[6] = coctel_ganador
+                    row_azul[7] = fecha_str
+                    row_azul[8] = dia_sem
+                    row_azul[9] = num_sem
+                    row_azul[10] = h_total_v
+                    row_azul[11] = 6
+                    row_azul[12] = round(vol_total_gln, 2)
+                    row_azul[13] = round(h_total_v, 2)
+                    row_azul[14] = round(rend_min, 2)
+                    row_azul[15] = piloto_f
+                    row_azul[16] = hk_f
+                    row_azul[17] = tipo_mision
+                    row_azul[18] = float(gran_total)
+                    row_azul[19] = float(costo_por_ha)
+                    row_azul[20] = float(recargo_final)
+                    row_azul[21] = float(gran_total)
+                    row_azul[23] = pista_manual
+                    row_azul[28] = float(gran_total)
+                    row_azul[32] = tipo_productor
+                    row_azul[33] = "GÉNESIS_V2_PRO"
+
+                    # --- 🎯 MISIL 2: TABLA DE APOYO (Con la fórmula solicitada) ---
+                    # Col A (0): Es el número de registro formulado
                     fila_apoyo = [""] * 15
+                    # Inyectamos la fórmula SI.ERROR con FILA()
+                    fila_apoyo[0] = "=IFERROR(ROW('TABLA DE APOYO2023'!B1)-3, 0)" 
                     fila_apoyo[1] = finca_limpia
-                    fila_apoyo[2] = float(ha_dosis_final)
+                    fila_apoyo[2] = ha_f
                     fila_apoyo[3] = float(costo_por_ha)
                     fila_apoyo[5] = fecha_str
                     fila_apoyo[8] = coctel_ganador
                     fila_apoyo[10] = pista_manual
                     fila_apoyo[13] = tipo_mision
 
-                    # 4. DISPARO FINAL
+                    # 4. EJECUCIÓN DEL IMPACTO
                     hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
                     hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
 
                     st.balloons()
-                    st.success(f"✅ IMPACTO TOTAL: Datos guardados en ambas tablas. Referencia: {os_virtual}")
+                    st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia: {os_virtual}")
                     
                     if 'memoria_excel' in st.session_state:
                         del st.session_state['memoria_excel']
