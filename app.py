@@ -629,8 +629,21 @@ elif menu == "⚙️ 2. Validación de Misión":
         st.markdown("<br>", unsafe_allow_html=True)
         st.metric("🔥 TOTAL FACTURACIÓN FINCA (GRAN TOTAL)", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
 
+        # --- 📍 SELECTOR DE PISTA PARA DRONES Y AVIONES ---
+        st.markdown("---")
+        st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
+        c_p1, c_p2 = st.columns(2)
+        
+        with c_p1:
+            # Lista de pistas para elegir
+            pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
+            pista_manual = st.selectbox("📍 Confirmar Pista de Operación:", pistas_disponibles, index=pistas_disponibles.index(pista_sel) if pista_sel in pistas_disponibles else 0)
+
+        with c_p2:
+            st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
+
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
-            with st.spinner("🚀 Inyectando datos en ambas tablas simultáneamente..."):
+            with st.spinner("🚀 Inyectando datos en TABLA 1 y APOYO simultáneamente..."):
                 try:
                     # 1. Reconexión Satelital
                     if "gcp_credentials" in st.secrets:
@@ -644,83 +657,77 @@ elif menu == "⚙️ 2. Validación de Misión":
                     hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
                     hoja_maestra = boveda.worksheet("TABLA 1")
 
-                    # 2. Identificar el Tipo de Misión y Crear OS Virtual
-                    tipo_mision = "DRONE" if mision_solo_dron else "AVION"
+                    # 2. Generar Referencia y Tiempos
                     fecha_str = fecha_operacion.strftime("%d/%m/%Y")
-                    # Creamos una OS Virtual para que la Tabla Azul tenga una referencia
-                    os_virtual = f"VIRT-{tipo_mision[:2]}-{finca_limpia[:3]}-{fecha_operacion.strftime('%d%m%y')}"
-
-                    # 3. Cálculos de tiempo para Tabla Azul
                     dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
                     num_sem = fecha_operacion.isocalendar()[1]
+                    # OS Virtual para registros sin papel
+                    os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
 
-                    # --- 🛸 RADAR DE MATRÍCULAS (NUEVO) ---
+                    # 3. Radar de Matrículas (Drones DR51, DR52, DR53)
                     hk_final = "S/N"
-                    modelo_final = tipo_mision # Por defecto dirá "AVION" o "DRONE"
-
+                    modelo_final = tipo_mision
+                    
                     if mision_solo_dron:
                         dict_hk_drones = {"DRONE DATAROT": "DR51", "DRONE GENESYS": "DR52", "DRONE AVIL": "DR53"}
-                        # Buscamos qué dron se seleccionó en el panel
                         for _, row_dr in escuadron_drones.iterrows():
                             dr_sel = row_dr.get("Drone")
                             if pd.notna(dr_sel) and dr_sel in dict_hk_drones:
                                 modelo_final = dr_sel
                                 hk_final = dict_hk_drones[dr_sel]
-                                break # Tomamos el dron principal
+                                break
                     else:
-                        # Si es avión, sacamos el modelo del panel
                         for _, row_av in escuadron_aviones.iterrows():
                             av_sel = row_av.get("Avión")
                             if pd.notna(av_sel):
                                 modelo_final = av_sel
+                                hk_final = "VER_TABLA_2" # El buscador de HK para aviones
                                 break
 
-                    # --- 🎯 MISIL 1: FILA PARA TABLA 1 (AZUL - RECALIBRADA) ---
+                    # --- 🎯 MISIL 1: FILA PARA TABLA 1 (AZUL - 34 Columnas) ---
                     row_azul = [""] * 34
                     row_azul[0] = os_virtual                        # A: OS Virtual
                     row_azul[2] = finca_limpia                      # C: FINCA
-                    row_azul[5] = float(ha_dosis_final)             # F: HA
+                    row_azul[5] = float(ha_dosis_final)             # F: HA FUMIGADA
                     row_azul[6] = coctel_ganador                    # G: COCTEL
                     row_azul[7] = fecha_str                         # H: FECHA
                     row_azul[8] = dia_sem                           # I: DÍA
                     row_azul[9] = num_sem                           # J: SEMANA
-                    
-                    row_azul[16] = hk_final                         # Q: HK (Aquí inyecta DR51, DR52 o DR53 🎯)
-                    row_azul[17] = modelo_final                     # R: MODELO (Aquí inyecta el nombre exacto 🎯)
-                    
-                    row_azul[18] = float(gran_total)                # S: COSTO AVIÓN $ (Total)
-                    row_azul[19] = float(costo_por_ha)              # T: COSTO AVIÓN $/ha
-                    row_azul[20] = float(recargo_final)             # U: DOMINIC. $/ha (Recargo)
-                    row_azul[21] = float(gran_total)                # V: COSTO AVIÓN $/finca
-                    row_azul[23] = pista_sel                        # X: PISTA
-                    row_azul[28] = float(gran_total)                # AC: COSTO TOTAL
-                    row_azul[32] = tipo_productor                   # AG: TIPO
+                    row_azul[16] = hk_final                         # Q: HK (DR51/52/53)
+                    row_azul[17] = modelo_final                     # R: MODELO
+                    row_azul[18] = float(gran_total)                # S: COSTO TOTAL $
+                    row_azul[19] = float(costo_por_ha)              # T: $/ha
+                    row_azul[20] = float(recargo_final)             # U: RECARGO (Dominic)
+                    row_azul[21] = float(gran_total)                # V: TOTAL FINCA
+                    row_azul[23] = pista_manual                     # X: PISTA 🎯 (Confirmada por el usuario)
+                    row_azul[28] = float(gran_total)                # AC: TOTAL NETO
+                    row_azul[32] = tipo_productor                   # AG: TIPO PRODUCTOR
                     row_azul[33] = "GÉNESIS_CALCULADORA"            # AH: SISTEMA
-                    # --- 🎯 MISIL 2: FILA PARA TABLA DE APOYO (RECALIBRADA) ---
-                    # B:Finca(1), C:Ha(2), D:Valor/ha(3), F:Fecha(5)
-                    fila_apoyo = [""] * 15
-                    fila_apoyo[1] = finca_limpia                    # B: FINCA
-                    fila_apoyo[2] = float(ha_dosis_final)           # C: HECTÁREAS
-                    fila_apoyo[3] = float(costo_por_ha)             # D: VALOR/HA 🎯
-                    fila_apoyo[5] = fecha_str                       # F: FECHA
-                    fila_apoyo[8] = coctel_ganador                  # I: COCTEL
-                    fila_apoyo[10] = pista_sel                      # K: PISTA
-                    fila_apoyo[13] = tipo_mision                    # N: TIPO
 
-                    # 4. EJECUCIÓN DEL DISPARO DUAL
+                    # --- 🎯 MISIL 2: FILA PARA TABLA DE APOYO ---
+                    # B:Finca(1), C:Ha(2), D:Valor/ha(3), F:Fecha(5), I:Coctel(8), K:Pista(10)
+                    fila_apoyo = [""] * 15
+                    fila_apoyo[1] = finca_limpia
+                    fila_apoyo[2] = float(ha_dosis_final)
+                    fila_apoyo[3] = float(costo_por_ha)
+                    fila_apoyo[5] = fecha_str
+                    fila_apoyo[8] = coctel_ganador
+                    fila_apoyo[10] = pista_manual
+                    fila_apoyo[13] = tipo_mision
+
+                    # 4. DISPARO FINAL
                     hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
                     hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
 
                     st.balloons()
-                    st.success(f"✅ ¡MISIÓN CUMPLIDA! Datos inyectados en TABLA 1 y APOYO. OS Virtual: {os_virtual}")
+                    st.success(f"✅ IMPACTO TOTAL: Datos guardados en ambas tablas. Referencia: {os_virtual}")
                     
-                    # Limpiamos memoria para forzar recarga de datos si es necesario
                     if 'memoria_excel' in st.session_state:
                         del st.session_state['memoria_excel']
-                        
-                except Exception as e_save:
-                    st.error(f"🚨 Falla en el sistema de guardado: {e_save}")
 
+                except Exception as e_save:
+                    st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
+                    
 import pandas as pd
 import streamlit as st
 import google.generativeai as genai
