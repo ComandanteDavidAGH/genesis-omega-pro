@@ -680,15 +680,17 @@ import pandas as pd
 import streamlit as st
 import google.generativeai as genai
 import json
+from datetime import datetime
+import re
 
 # ==========================================
-# --- INICIO DEL MÓDULO 3 ---
+# --- INICIO DEL MÓDULO 3: GENESIS PRO ---
 # ==========================================
 st.divider()
-st.header("🛰️ MÓDULO 3: RADAR DE ÓRDENES DE SERVICIO (Visión IA)")
+st.header("🛰️ MÓDULO 3: SISTEMA GÉNESIS TOTAL")
 st.subheader("Buzón de Recepción y Puesto de Control")
 
-# 1. CARGA DE BASES DE DATOS Y CONEXIÓN BLINDADA
+# 1. CARGA DE BASES DE DATOS CON ESCUDO DE MEMORIA
 try:
     if "gcp_credentials" in st.secrets:
         cred_dict = dict(st.secrets["gcp_credentials"])
@@ -701,82 +703,79 @@ try:
     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     boveda = gc.open_by_url(url_boveda)
     
-    # --- CONEXIÓN A TABLA 1 ---
+    # Esta hoja se necesita siempre para guardar datos
     hoja_maestra = boveda.worksheet("TABLA 1")
-    columna_os = hoja_maestra.col_values(1)
-    columna_fincas = hoja_maestra.col_values(3)
-    columna_cocteles = hoja_maestra.col_values(7)
     
-    lista_os_existentes = [str(os).strip() for os in columna_os if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
-    lista_fincas_oficiales = sorted(list(set([str(f).strip() for f in columna_fincas if str(f).strip() != "" and str(f).upper() != "FINCA"])))
-    lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in columna_cocteles if str(c).strip() != "" and str(c).upper() != "COCTEL"])))
+    # --- 🛡️ ESCUDO ANTI-BLOQUEOS (Error 429) ---
+    if 'memoria_excel' not in st.session_state:
+        with st.spinner("📡 Sincronizando bases de datos con la Bóveda (Solo una vez)..."):
+            memoria = {}
+            memoria['col_os'] = hoja_maestra.col_values(1)
+            memoria['col_fincas'] = hoja_maestra.col_values(3)
+            memoria['col_cocteles'] = hoja_maestra.col_values(7)
+            
+            try:
+                d_t2 = boveda.worksheet("Tabla 2").get_all_values()
+                memoria['df_t2'] = pd.DataFrame(d_t2[1:], columns=d_t2[0])
+            except: memoria['df_t2'] = pd.DataFrame()
 
-    # --- CONEXIÓN A TABLA DE APOYO2023 ---
-    try:
-        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
-        datos_crudos = hoja_apoyo.get_all_values()
-        datos_limpios = [fila + [""] * (15 - len(fila)) if len(fila) < 15 else fila for fila in datos_crudos]
-        df_apoyo_completo = pd.DataFrame(datos_limpios)
-        if len(df_apoyo_completo) > 9:
-            df_apoyo = df_apoyo_completo.iloc[9:] 
-        else:
-            df_apoyo = pd.DataFrame()
-    except Exception as e:
-        st.warning(f"⚠️ No se pudo cargar 'TABLA DE APOYO2023'.")
-        df_apoyo = pd.DataFrame()
+            try:
+                d_t3 = boveda.worksheet("Tabla 3").get_all_values()
+                memoria['df_t3'] = pd.DataFrame(d_t3[1:], columns=d_t3[0])
+            except: memoria['df_t3'] = pd.DataFrame()
+
+            try:
+                d_apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
+                d_ap_limpio = [f + [""] * (15 - len(f)) if len(f) < 15 else f for f in d_apoyo]
+                memoria['df_apoyo'] = pd.DataFrame(d_ap_limpio[9:])
+            except: memoria['df_apoyo'] = pd.DataFrame()
+            
+            st.session_state['memoria_excel'] = memoria
+
+    # Asignar variables desde la memoria
+    mem = st.session_state['memoria_excel']
+    lista_os_existentes = [str(os).strip() for os in mem['col_os'] if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
+    lista_fincas_oficiales = sorted(list(set([str(f).strip() for f in mem['col_fincas'] if str(f).strip() != "" and str(f).upper() != "FINCA"])))
+    lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in mem['col_cocteles'] if str(c).strip() != "" and str(c).upper() != "COCTEL"])))
+    df_t2 = mem['df_t2']
+    df_t3 = mem['df_t3']
+    df_apoyo = mem['df_apoyo']
 
 except Exception as e:
     st.error(f"🚨 Falla de conexión principal: {e}")
-    st.stop() # Si falla la conexión, detenemos todo para evitar errores más adelante.
+    st.stop()
 
-# 2. CONFIGURACIÓN DEL CEREBRO IA
+# 2. CEREBRO IA
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
-    st.error("🚨 Falla en el sistema de IA. Revise sus llaves de seguridad.")
+    st.error("🚨 Falla en llaves IA.")
     st.stop()
 
-# 3. BUZÓN DE RECEPCIÓN
-archivo_os = st.file_uploader("📥 Arrastre aquí la foto o PDF de la Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
+# 3. RECEPCIÓN
+archivo_os = st.file_uploader("📥 Subir Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
 
 if archivo_os is not None:
-    st.success("✅ Documento recibido en la bahía de carga.")
-    if st.button("🧠 INICIAR ESCANEO DE INTELIGENCIA", type="primary"):
-        with st.spinner("🤖 La IA está barriendo el documento..."):
+    if st.button("🧠 ESCANEO DE INTELIGENCIA GÉNESIS", type="primary"):
+        with st.spinner("🤖 Analizando documento..."):
             try:
                 documento_bytes = archivo_os.getvalue()
                 archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
-                orden_militar = """
-                Eres un analista experto en extraer datos de planillas de FUMIGARAY.
-                La imagen contiene VARIAS Órdenes de Servicio (ej. 296 y 295). Extrae TODAS en una lista JSON.
-                REGLAS ESTRICTAS DE EXTRACCIÓN:
-                1. "fecha": Copia literalmente el texto completo que está a la derecha de 'FECHA:'.
-                2. "numero_os": El número a la derecha de 'ORDEN DE SERVICIO No.:'
-                3. "piloto": Nombre a la derecha de 'PILOTO:'
-                4. "aeronave_hk": Matrícula a la derecha de 'AERONAVE ORGANICA:'
-                5. "horometro_total": En el cuadro de la sección 3, es la diferencia de horas de vuelo (ej. 1,90 o 0,40).
-                6. "valor_hectarea": Busca la fila 'Tacomt. Inicial:'. A la derecha hay un número con $. Extrae SOLO ESE NÚMERO (ignora el signo).
-                7. "recargo": Busca 'Valor Recargo Festivo :'. Si hay guion o vacío, escribe "0". Si hay número, extrae el número.
-                8. "fincas": Extrae la tabla de fincas completa (nombre_finca, hectareas). El coctel déjalo vacío.
-                """
-                respuesta = modelo_ia.generate_content([orden_militar, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
-                st.session_state['datos_os_ia'] = json.loads(respuesta.text)
-                st.success("🎯 ¡Lectura completada!")
-            except Exception as e:
-                st.error(f"❌ La IA encontró interferencias: {e}")
+                prompt = "Extrae datos de FUMIGARAY en JSON: fecha, numero_os, piloto, aeronave_hk, horometro_total, valor_hectarea, recargo, fincas:[{nombre_finca, hectareas}]."
+                res = modelo_ia.generate_content([prompt, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
+                st.session_state['datos_os_ia'] = json.loads(res.text)
+                st.success("🎯 Lectura completada!")
+            except Exception as e: st.error(f"Error IA: {e}")
 
-# 4. EL PUESTO DE CONTROL Y EL SABUESO
+# 4. PUESTO DE CONTROL
 if 'datos_os_ia' in st.session_state:
     lista_ordenes = st.session_state['datos_os_ia']
     if isinstance(lista_ordenes, dict): lista_ordenes = [lista_ordenes]
-        
-    st.write("### 🚦 PUESTO DE CONTROL: Verifique los datos extraídos")
     
     for i, datos in enumerate(lista_ordenes):
-        with st.expander(f"📄 Orden de Servicio {datos.get('numero_os', 'Desconocida')}", expanded=True):
-            
+        with st.expander(f"📄 OS {datos.get('numero_os')}", expanded=True):
             col1, col2, col3 = st.columns(3)
             os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
             fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
@@ -786,120 +785,110 @@ if 'datos_os_ia' in st.session_state:
             hk_val = col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
             horo_val = col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
             costo_val = col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
-            
-            col7, col8, col9 = st.columns(3)
-            recargo_val = col7.text_input("Recargo ($)", value=str(datos.get('recargo', '0')), key=f"recargo_{i}")
-            
-            st.write(f"**Fincas:** (Corrija el nombre oficial aquí antes de buscar cócteles)")
-            
-            df_fincas = pd.DataFrame(datos.get('fincas', []))
-            if 'coctel' not in df_fincas.columns: df_fincas['coctel'] = ""
+            recargo_val = st.text_input("Recargo Dominical ($)", value=str(datos.get('recargo', '0')), key=f"recargo_{i}")
+
+            # --- BOTÓN DE ENRIQUECIMIENTO TOTAL ---
+            if st.button(f"🔍 ENRIQUECER DATOS (OS {os_val})", key=f"btn_enriquecer_{i}"):
+                for f_item in datos.get('fincas', []):
+                    nombre = str(f_item['nombre_finca']).strip().upper()
+                    if not df_t2.empty:
+                        match_t2 = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == nombre]
+                        if not match_t2.empty:
+                            f_item['bloque'] = match_t2.iloc[0, 3]
+                            f_item['sector'] = match_t2.iloc[0, 1]
+                            f_item['ha_bruta'] = match_t2.iloc[0, 2]
+                            f_item['tipo_productor'] = match_t2.iloc[0, 5]
+                    
+                    if not df_apoyo.empty:
+                        match_ap = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == nombre]
+                        if not match_ap.empty: f_item['coctel'] = match_ap.iloc[-1, 8]
                 
+                st.session_state['datos_os_ia'] = lista_ordenes
+                st.rerun()
+
+            df_fincas = pd.DataFrame(datos.get('fincas', []))
+            for c in ['bloque', 'sector', 'ha_bruta', 'coctel', 'tipo_productor']:
+                if c not in df_fincas.columns: df_fincas[c] = ""
+
             df_editado = st.data_editor(
-                df_fincas, use_container_width=True, num_rows="dynamic", key=f"tabla_fincas_edit_{i}",
+                df_fincas, use_container_width=True, num_rows="dynamic", key=f"ed_{i}",
                 column_config={
-                    "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
-                    "coctel": st.column_config.SelectboxColumn("Cóctel Oficial", options=lista_cocteles_oficiales, required=True)
+                    "nombre_finca": st.column_config.SelectboxColumn("Finca", options=lista_fincas_oficiales),
+                    "coctel": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_oficiales)
                 }
             )
-            
             datos['fincas'] = df_editado.to_dict('records')
-            
-            if st.button(f"🔍 BUSCAR CÓCTELES (OS {os_val})", key=f"btn_buscar_{i}"):
-                if df_apoyo.empty:
-                    st.error("🚨 La hoja de apoyo no tiene datos.")
-                else:
-                    for finca_item in datos.get('fincas', []):
-                        finca_nombre = str(finca_item.get('nombre_finca', '')).strip().upper()
-                        filtro = df_apoyo.iloc[:, 1].astype(str).str.upper().str.strip() == finca_nombre
-                        resultado = df_apoyo[filtro]
-                        if not resultado.empty:
-                            coctel_hallado = str(resultado.iloc[-1, 8]).strip()
-                            if coctel_hallado != "":
-                                finca_item['coctel'] = coctel_hallado
-                                st.toast(f"✅ Cóctel hallado para {finca_nombre}")
-                    st.session_state['datos_os_ia'] = lista_ordenes
-                    st.rerun()
 
-            st.divider()
-
-            # --- 🚀 MOTOR DE PRORRATEO Y GUARDADO (PLANTILLA EXACTA) ---
+            # --- BOTÓN DE GUARDADO FINAL ---
             if str(os_val).strip() in lista_os_existentes:
-                st.error(f"🚨 La OS Nº '{str(os_val).strip()}' ya existe.")
+                st.error("🚨 Esta OS ya existe en Excel.")
             else:
-                if st.button(f"💾 GUARDAR Y PRORRATEAR OS {os_val} EN TABLA 1", key=f"btn_guardar_{i}", type="primary"):
+                if st.button(f"💾 GUARDAR TODO EN TABLA 1 (OS {os_val})", type="primary", key=f"save_{i}"):
                     try:
-                        with st.spinner("🚀 Ejecutando maniobra de guardado..."):
-                            import re
-                            
-                            # --- 1. LIMPIEZA DE FECHA ---
-                            fecha_limpia = str(fecha_val).lower()
-                            meses = {'enero':'01', 'febrero':'02', 'marzo':'03', 'abril':'04', 'mayo':'05', 'junio':'06', 'julio':'07', 'agosto':'08', 'septiembre':'09', 'octubre':'10', 'noviembre':'11', 'diciembre':'12'}
-                            for mes_nombre, mes_num in meses.items():
-                                if mes_nombre in fecha_limpia:
-                                    numeros = re.findall(r'\d+', fecha_limpia)
-                                    if len(numeros) >= 2:
-                                        dia = numeros[0].zfill(2)
-                                        anio = numeros[1] if len(numeros[1])==4 else numeros[-1]
-                                        fecha_limpia = f"{dia}/{mes_num}/{anio}"
+                        with st.spinner("🚀 Escribiendo en la Bóveda..."):
+                            f_raw = str(fecha_val).lower()
+                            meses_dict = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06','julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
+                            fecha_corta = f_raw
+                            for m_n, m_v in meses_dict.items():
+                                if m_n in f_raw:
+                                    nums = re.findall(r'\d+', f_raw)
+                                    if len(nums) >= 2: fecha_corta = f"{nums[0].zfill(2)}/{m_v}/{nums[-1]}"
                                     break
-                            if "de" in fecha_limpia:
-                                fecha_limpia = str(fecha_val)
+                            
+                            dt_obj = datetime.strptime(fecha_corta, "%d/%m/%Y")
+                            dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][dt_obj.weekday()]
+                            num_sem = dt_obj.isocalendar()[1]
 
-                            # --- 2. PREPARAR DATOS Y MATEMÁTICAS ---
                             h_total = float(str(horo_val).replace(',','.'))
-                        p_ha = float(str(costo_val).replace('.','').replace(',','.'))
-                        rec_total = float(str(recargo_val).replace('.','').replace(',','.'))
-                        t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas']])
+                            p_ha = float(str(costo_val).replace('.','').replace(',','.'))
+                            rec_total = float(str(recargo_val).replace('.','').replace(',','.'))
+                            t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas']])
 
-                        filas = []
-                        for f in datos['fincas']:
-                            ha_f = float(str(f['hectareas']).replace(',','.'))
-                            h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
-                            
-                            # --- 🧮 LOS CÁLCULOS ESPECTACULARES DE PYTHON ---
-                            vol_gln = ha_f * 6                               # Col M: Área * 6
-                            rend_min = h_pro * 60                            # Col O: Horas * 60
-                            costo_finca = (ha_f * p_ha) + (ha_f * rec_total) # Col V: Fórmula (Ha*Prec)+(Ha*Rec)
-                            pago_avion = ha_f * p_ha                         # Col AD: Fórmula (Ha*Prec)
-                            
-                            # --- 🗺️ PLANTILLA EXACTA (A=0 hasta AH=33) ---
-                            row = [""] * 34
-                            row[0] = os_val               # A: Nº ORDEN
-                            row[1] = f.get('bloque','')   # B: BLOQUE (De Tabla 2)
-                            row[2] = f['nombre_finca']    # C: FINCA
-                            row[3] = f.get('sector','')   # D: SECTOR (De Tabla 2)
-                            row[4] = f.get('ha_bruta','') # E: ÀREA BRUTA (De Tabla 2)
-                            row[5] = ha_f                 # F: ÀREA FUMIGADA (Del PDF)
-                            row[6] = f.get('coctel','')   # G: COCTEL (De APOYO2023)
-                            row[7] = fecha_corta          # H: FECHA (Limpia)
-                            row[8] = dia_sem              # I: DÌA SEM (Calculado en Python)
-                            row[9] = num_sem              # J: SEM (Calculado en Python)
-                            row[10] = h_total             # K: ODÒM. TOTAL (Del PDF)
-                            row[11] = 6                   # L: VOL. APLICADO gln/ha (Fijo)
-                            row[12] = round(vol_gln, 2)   # M: VOL. APLICADO gln (Calculado)
-                            row[13] = round(h_pro, 2)     # N: RENDIMIENTO horas (Prorrateado)
-                            row[14] = round(rend_min, 2)  # O: RENDIMIENTO min (Calculado)
-                            row[15] = piloto_val          # P: PILOTO
-                            row[16] = hk_val              # Q: HK
-                            # R y S vacíos para fórmulas de Excel
-                            row[19] = p_ha                # T: COSTO AVIÒN $/ha (Precio PDF)
-                            row[20] = rec_total           # U: DOMINIC. $/ha (Recargo PDF)
-                            row[21] = round(costo_finca, 2) # V: COSTO AVIÒN $/finca (Calculado)
-                            # W, X, Y, Z, AA, AB, AC vacíos para fórmulas complejas de Excel
-                            row[29] = round(pago_avion, 2)# AD: TOTAL PAGO AVIÒN (Calculado)
-                            # AE vacío
-                            row[31] = 1                   # AF: Columna1 (Fijo en 1)
-                            row[32] = f.get('tipo_productor','') # AG: TIPO DE PRODUCTOR (Tabla 2)
-                            row[33] = "IA_GENESIS"        # AH: MARCA DE SISTEMA
+                            filas = []
+                            for f in datos['fincas']:
+                                ha_f = float(str(f['hectareas']).replace(',','.'))
+                                h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
+                                
+                                # --- 🧮 LOS CÁLCULOS ESPECTACULARES ---
+                                vol_gln = ha_f * 6
+                                rend_min = h_pro * 60
+                                costo_finca = (ha_f * p_ha) + (ha_f * rec_total)
+                                pago_avion = ha_f * p_ha
+                                
+                                # --- 🗺️ PLANTILLA EXACTA (A=0 hasta AH=33) ---
+                                row = [""] * 34
+                                row[0] = os_val               # A: Nº ORDEN
+                                row[1] = f.get('bloque','')   # B: BLOQUE
+                                row[2] = f['nombre_finca']    # C: FINCA
+                                row[3] = f.get('sector','')   # D: SECTOR
+                                row[4] = f.get('ha_bruta','') # E: ÀREA BRUTA
+                                row[5] = ha_f                 # F: ÀREA FUMIGADA
+                                row[6] = f.get('coctel','')   # G: COCTEL
+                                row[7] = fecha_corta          # H: FECHA
+                                row[8] = dia_sem              # I: DÌA SEM
+                                row[9] = num_sem              # J: SEM
+                                row[10] = h_total             # K: ODÒM. TOTAL
+                                row[11] = 6                   # L: VOL. APLICADO gln/ha
+                                row[12] = round(vol_gln, 2)   # M: VOL. APLICADO gln
+                                row[13] = round(h_pro, 2)     # N: RENDIMIENTO horas
+                                row[14] = round(rend_min, 2)  # O: RENDIMIENTO min
+                                row[15] = piloto_val          # P: PILOTO
+                                row[16] = hk_val              # Q: HK
+                                row[19] = p_ha                # T: COSTO AVIÒN $/ha
+                                row[20] = rec_total           # U: DOMINIC. $/ha
+                                row[21] = round(costo_finca, 2) # V: COSTO AVIÒN $/finca
+                                row[29] = round(pago_avion, 2)# AD: TOTAL PAGO AVIÒN
+                                row[31] = 1                   # AF: Columna1
+                                row[32] = f.get('tipo_productor','') # AG: TIPO DE PRODUCTOR
+                                row[33] = "IA_GENESIS"        # AH: MARCA SISTEMA
 
-                            filas.append(row)
+                                filas.append(row)
                             
-                            # Disparo final con USER_ENTERED para activar fórmulas de Excel
-                            hoja_maestra.append_rows(filas_para_guardar, value_input_option='USER_ENTERED')
-                            
+                            hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                             st.balloons()
-                            st.success(f"✅ ¡MISIÓN CUMPLIDA! OS {os_val} guardada con éxito en la Bóveda.")
+                            st.success("✅ ¡Génesis ha completado la misión con éxito!")
                             
-                    except Exception as e:
-                        st.error(f"❌ Error en el guardado: {e}")
+                            # Tras guardar exitosamente, refrescamos la memoria para la próxima OS
+                            del st.session_state['memoria_excel']
+                            
+                    except Exception as e: st.error(f"Falla en guardado: {e}")
