@@ -976,80 +976,89 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO OMEGA V6: PRECISIÓN CON DOSIS LOCALES ---
+# --- 🔄 MÓDULO OMEGA V7: MULTIPLICADOR DE PRECISIÓN ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
-def limpiar_valor_v6(valor):
+def limpiar_v7(valor):
     if not valor or str(valor).strip() == "": return 0.0
-    s = str(valor).replace('$', '').replace(' ', '').strip()
-    if '.' in s and ',' in s: s = s.replace('.', '').replace(',', '.')
-    elif s.count('.') >= 1 and ',' not in s:
+    s = str(valor).replace('$', '').replace(' ', '').replace('.', '').replace(',', '.').strip()
+    # Caso especial: si después de limpiar hay más de un punto (error de miles anterior)
+    if s.count('.') > 1:
         partes = s.split('.')
         s = "".join(partes[:-1]) + "." + partes[-1]
-    elif ',' in s: s = s.replace(',', '.')
     try: return float(s)
     except: return 0.0
 
-if st.sidebar.button("🚀 EJECUTAR TRASPLANTE V6", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR MULTIPLICACIÓN", use_container_width=True):
     try:
-        with st.spinner(f"Sincronizando Semana {semana_target}..."):
-            # 1. ORIGEN: Precios de Configuración (Columnas I y J)
+        with st.spinner(f"Calculando y multiplicando Semana {semana_target}..."):
+            # 1. ORIGEN: Precios
             url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_gen)
             raw_config = sh_gen.worksheet("Configuración").get_all_values()
-            dict_precios = {str(r[8]).strip().upper(): limpiar_valor_v6(r[9]) for r in raw_config if len(r) > 9 and r[8]}
+            dict_precios = {str(r[8]).strip().upper(): limpiar_v7(r[9]) for r in raw_config if len(r) > 9 and r[8]}
 
-            # 2. DESTINO: Lectura de Estructura y Dosis Locales
+            # 2. DESTINO: Dosis y Aplicación
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
             datos_destino = ws_datos.get_all_values()
             
-            # --- MAPEO DE DOSIS (Desde Fila 64, asumiendo Col A=Producto, Col B=Dosis) ---
-            dict_dosis_local = {}
+            # --- MAPEO DE DOSIS (Fila 64 en adelante) ---
+            # Asegúrese que en la Fila 64, Columna A está el nombre y Columna B la dosis
+            dict_dosis_v7 = {}
             for r_idx, row in enumerate(datos_destino):
                 if (r_idx + 1) >= 64 and len(row) > 1:
-                    prod_d = str(row[0]).strip().upper() # Columna A
-                    dosis_v = limpiar_valor_v6(row[1])   # Columna B
-                    if prod_d: dict_dosis_local[prod_d] = dosis_v
+                    prod_nombre = str(row[0]).strip().upper() 
+                    valor_dosis = limpiar_v7(row[1])
+                    if prod_nombre:
+                        dict_dosis_v7[prod_nombre] = valor_dosis
 
             col_semana = next((i + 1 for i, v in enumerate(datos_destino[6]) if str(v).strip() == str(semana_target)), -1)
 
             if col_semana == -1:
-                st.error(f"❌ No se halló la columna de la Semana {semana_target}.")
+                st.error(f"❌ No se encontró la columna de la semana {semana_target}.")
             else:
                 updates = []
                 for r_idx, row in enumerate(datos_destino):
-                    fila_g = r_idx + 1
-                    if fila_g < 8 or fila_g == 15 or fila_g >= 64: continue # Protegemos encabezados y la zona de dosis
+                    n_fila = r_idx + 1
+                    # Filtro Quirúrgico: Solo filas de datos, saltando encabezados y zona de dosis
+                    if n_fila < 8 or n_fila == 15 or n_fila >= 64: continue
                     
                     if len(row) > 3:
-                        prod_target = str(row[3]).strip().upper() # Columna D
+                        p_nombre = str(row[3]).strip().upper()
                         
-                        if prod_target in dict_precios:
-                            precio_unit = dict_precios[prod_target]
+                        if p_nombre in dict_precios:
+                            precio_base = dict_precios[p_nombre]
                             
-                            # Lógica Quirúrgica:
-                            if fila_g >= 16: # Estamos en la segunda tabla (Dosis-HA)
-                                dosis = dict_dosis_local.get(prod_target, 1.0) # Si no hay dosis, asume 1
-                                valor_final = precio_unit * dosis
-                            else: # Estamos en la primera tabla (Unitarios)
-                                valor_final = precio_unit
+                            # --- EL CORAZÓN DEL CÁLCULO ---
+                            if n_fila >= 16: # SEGUNDA TABLA (COSTO/HA)
+                                # Buscamos la dosis. Si no está en la fila 64, multiplicará por 0 (error visible)
+                                dosis_aplicar = dict_dosis_v7.get(p_nombre, 0.0)
+                                if dosis_aplicar == 0.0:
+                                    # Si no hay dosis, intentamos buscarla en la Columna E de la misma fila (si existiera)
+                                    # Pero por ahora, forzamos el cálculo con la tabla de abajo
+                                    pass 
+                                valor_final = precio_base * dosis_aplicar
+                            else: # PRIMERA TABLA (UNITARIOS)
+                                valor_final = precio_base
                             
                             updates.append({
-                                'range': gspread.utils.rowcol_to_a1(fila_g, col_semana),
+                                'range': gspread.utils.rowcol_to_a1(n_fila, col_semana),
                                 'values': [[valor_final]]
                             })
 
                 if updates:
                     ws_datos.batch_update(updates)
-                    st.success(f"🎯 IMPACTO CONFIRMADO. Semana {semana_target} actualizada con dosis locales.")
+                    st.success(f"🎯 MULTIPLICACIÓN COMPLETADA. Revisar Semana {semana_target}.")
+                    if not dict_dosis_v7:
+                        st.warning("⚠️ OJO: No se encontraron dosis en la fila 64. Verifique la ubicación.")
                     st.balloons()
                 else:
-                    st.warning("No se encontraron productos coincidentes.")
+                    st.warning("No se encontraron productos coincidentes en la Columna D.")
 
     except Exception as e:
-        st.error(f"🚨 FALLA EN MANIOBRA: {e}")
+        st.error(f"🚨 FALLA DE CÁLCULO: {e}")
