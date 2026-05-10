@@ -1083,7 +1083,7 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
     except Exception as e:
         st.error(f"🚨 FALLA DEL SISTEMA: {e}")
 
-  # --- ✈️ MÓDULO OMEGA V13: RASTREO DOMINICALES ---
+ # --- ✈️ MÓDULO OMEGA V14: RASTREO DOMINICALES (FECHAS PURAS) ---
 import datetime
 
 st.sidebar.markdown("---")
@@ -1095,59 +1095,66 @@ def limpiar_val_dom(v):
         return float(s)
     except: return 0.0
 
-def procesar_fecha(v):
+def procesar_fecha_pura(v):
+    """Lee el número serial de la fecha en lugar del texto"""
     try:
-        # Si es número de Excel
-        if str(v).replace('.','').isdigit():
+        if not v: return None
+        # Si es un número puro (UNFORMATTED_VALUE de Sheets)
+        if isinstance(v, (int, float)):
+            return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(v))
+        # Si viene como texto numérico
+        if str(v).replace('.', '').isdigit():
             return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(float(v)))
-        # Si es texto dd/mm/aaaa
-        return datetime.datetime.strptime(str(v), "%d/%m/%Y")
+        return None
     except: return None
 
 if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
     try:
-        with st.spinner("Escaneando reportes de aviación..."):
+        with st.spinner("Escaneando radares de fechas..."):
             # --- 🛰️ COORDENADAS ---
             url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
-            url_ori = "URL_DEL_REPORTE_ORIGEN_EN_DRIVE" # <--- PEGUE AQUÍ LA OTRA URL
             
-            # 1. LEER DESTINO (Para saber qué fechas ya tenemos)
+            # 🛑 COLOQUE AQUÍ LA URL DEL REPORTE "COSTO DE AVIÓN" EN DRIVE:
+            url_ori = "PONGA_AQUI_LA_URL_DEL_ORIGEN" 
+            
+            # 1. LEER DESTINO (Pidiendo valores PUROS para las fechas)
             sh_dest = gc.open_by_url(url_dest)
-            ws_dest = sh_dest.worksheet("SOBRECOST DOMMARZO26 ") # <--- CAMBIE POR EL NOMBRE DE LA PESTAÑA
-            datos_dest = ws_dest.get_all_values()
+            # Selecciona la primera pestaña automáticamente ("SOBRECOST DOMMARZO26")
+            ws_dest = sh_dest.sheet1 
+            datos_dest = ws_dest.get_all_values(value_render_option='UNFORMATTED_VALUE')
             
             max_f = datetime.datetime(1900, 1, 1)
             dict_local = {}
             
-            # Buscamos la fecha mayor en la Columna C (índice 2)
-            for i, row in enumerate(datos_dest[1:]): # Saltamos encabezado
+            # Buscamos en Columna C (índice 2). Empezamos desde la fila 5 (índice 4) según su foto
+            for i, row in enumerate(datos_dest[4:]): 
+                n_fila = i + 5
                 if len(row) > 2:
-                    f_obj = procesar_fecha(row[2])
+                    f_obj = procesar_fecha_pura(row[2])
                     if f_obj:
                         if f_obj > max_f: max_f = f_obj
-                        # Llave: FINCA|FECHA
-                        dict_local[f"{str(row[0]).strip().upper()}|{f_obj.date()}"] = i + 2
+                        finca_dest = str(row[0]).strip().upper()
+                        dict_local[f"{finca_dest}|{f_obj.date()}"] = n_fila
 
-            st.info(f"📅 Radar: Última fecha registrada {max_f.strftime('%d/%m/%Y')}")
+            st.info(f"📅 Radar Destino: Última fecha real detectada {max_f.strftime('%d/%m/%Y')}")
 
             # 2. LEER ORIGEN (Reporte Costo Avión)
             sh_ori = gc.open_by_url(url_ori)
-            ws_ori = sh_ori.worksheet("TABLA 1")
-            datos_ori = ws_ori.get_all_values()
+            ws_ori = sh_ori.worksheet("TABLA 1") # Cambie si la pestaña de origen se llama distinto
+            datos_ori = ws_ori.get_all_values(value_render_option='UNFORMATTED_VALUE')
             
             dict_nuevos = {}
             
-            for i, row in enumerate(datos_ori[1:]): # Desde fila 2
-                if len(row) < 24: continue
+            for i, row in enumerate(datos_ori):
+                if i == 0 or len(row) < 24: continue
                 
-                f_ori = procesar_fecha(row[7]) # Columna H (Fecha)
-                surcharge = limpiar_val_dom(row[20]) # Columna U (Surcharge)
+                f_ori = procesar_fecha_pura(row[7]) # Columna H
+                surcharge = limpiar_val_dom(row[20]) # Columna U
                 
-                # REGLA ORO: Solo si es mayor a la última fecha y tiene recargo
                 if f_ori and surcharge > 0 and f_ori > max_f:
-                    finca = str(row[2]).strip().upper() # Columna C (Finca)
-                    ha = limpiar_val_dom(row[5])        # Columna F (Hectáreas)
-                    pista = str(row[23]).strip().upper() # Columna X (Pista)
+                    finca = str(row[2]).strip().upper()
+                    ha = limpiar_val_dom(row[5])
+                    pista = str(row[23]).strip().upper()
                     
                     key = f"{finca}|{f_ori.date()}"
                     
@@ -1160,7 +1167,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                             'sur': surcharge, 'pista': pista
                         }
 
-            # 3. CARGA DE DATOS
+            # 3. CARGA DE DATOS AL FINAL DE LA TABLA
             if dict_nuevos:
                 filas_nuevas = [[v['finca'], v['ha'], v['fec'], v['sur'], v['pista']] for v in dict_nuevos.values()]
                 ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
@@ -1171,4 +1178,5 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                 st.warning("⚠️ No se detectaron sobrecostos nuevos posteriores a la fecha del radar.")
 
     except Exception as e:
-        st.error(f"🚨 FALLA DE SISTEMA: {e}")
+        # Ahora el error mostrará exactamente qué está fallando (Ej: APIError, InvalidUrl, etc)
+        st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
