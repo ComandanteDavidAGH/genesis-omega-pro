@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V6 (QUIRÚRGICO) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V7 (AUDITOR FORENSE) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1244,39 +1244,40 @@ archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes de Supervisores", type
 
 def quitar_tildes(s):
     if pd.isna(s): return ""
-    s = str(s).upper().strip()
-    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    return ''.join(c for c in unicodedata.normalize('NFD', str(s).upper().strip()) if unicodedata.category(c) != 'Mn')
 
 def limpiar_texto(texto):
     if pd.isna(texto): return ""
     return str(texto).strip().upper()
 
-if st.sidebar.button("🚀 EJECUTAR ARQUEO QUIRÚRGICO", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR ARQUEO FORENSE", use_container_width=True):
     if not archivo_sap or not archivos_sup:
         st.sidebar.error("❌ Cargue los archivos para iniciar la auditoría.")
     else:
         try:
-            with st.spinner("Filtrando ruido decimal y mapeando descripciones..."):
+            with st.spinner("Desplegando Auditor Forense y blindando columnas..."):
                 
                 # --- FASE 1: SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                 df_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
                 df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
                 
-                c_prod_sap = next((c for c in df_sap.columns if "DESCRIP" in c or "MATERIAL" in c), df_sap.columns[0])
-                c_almac_sap = next((c for c in df_sap.columns if "ALMACEN" in c or "PISTA" in c), df_sap.columns[1])
-                c_lote_sap = next((c for c in df_sap.columns if "LOTE" in c), df_sap.columns[2])
-                c_saldo_sap = next((c for c in df_sap.columns if "LIBRE" in c or "SALDO" in c), df_sap.columns[3])
+                c_p_sap = next((c for c in df_sap.columns if "DESCRIP" in c or "MATERIAL" in c), df_sap.columns[0])
+                c_a_sap = next((c for c in df_sap.columns if "ALMACEN" in c or "PISTA" in c), df_sap.columns[1])
+                c_l_sap = next((c for c in df_sap.columns if "LOTE" in c), df_sap.columns[2])
+                c_s_sap = next((c for c in df_sap.columns if "LIBRE" in c or "SALDO" in c), df_sap.columns[3])
 
-                df_sap_clean = df_sap[[c_prod_sap, c_almac_sap, c_lote_sap, c_saldo_sap]].copy()
+                df_sap_clean = df_sap[[c_p_sap, c_a_sap, c_l_sap, c_s_sap]].copy()
                 df_sap_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                 df_sap_clean['LOTE'] = df_sap_clean['LOTE'].apply(limpiar_texto)
                 df_sap_clean['PISTA'] = df_sap_clean['PISTA'].apply(limpiar_texto)
-                df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'], errors='coerce').fillna(0)
+                df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).replace(',', '.'), errors='coerce').fillna(0)
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: SUPERVISORES ---
+                # --- FASE 2: SUPERVISORES (CON ESCUDO DE COLUMNAS) ---
                 lista_supervisores = []
+                log_diagnostico = []
+                
                 for file in archivos_sup:
                     df_raw = pd.read_csv(file, header=None, dtype=str) if file.name.endswith('.csv') else pd.read_excel(file, header=None, dtype=str)
                     
@@ -1289,9 +1290,16 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO QUIRÚRGICO", use_container_width=Tru
                     
                     if header_idx != -1:
                         df_sup = df_raw.iloc[header_idx + 1:].copy()
-                        df_sup.columns = [quitar_tildes(x) for x in df_raw.iloc[header_idx]]
                         
-                        c_p = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c), None)
+                        # BLINDAJE DE COLUMNAS: Hacemos que cada columna sea única para que Pandas no confunda títulos vacíos
+                        clean_headers = []
+                        for i_col, h in enumerate(df_raw.iloc[header_idx].values):
+                            h_clean = quitar_tildes(str(h))
+                            if h_clean == "NAN" or h_clean == "": h_clean = "VACIO"
+                            clean_headers.append(f"{h_clean}_{i_col}") 
+                        df_sup.columns = clean_headers
+                        
+                        c_p = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c or "MATERIAL" in c), None)
                         c_a = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
                         c_l = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
                         c_s = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c), None)
@@ -1299,35 +1307,52 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO QUIRÚRGICO", use_container_width=Tru
                         if all([c_p, c_a, c_l, c_s]):
                             df_sup_clean = df_sup[[c_p, c_a, c_l, c_s]].copy()
                             df_sup_clean.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE', 'SALDO_FISICO']
+                            
                             df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
                             df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None).ffill().bfill()
-                            df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
-                            lista_supervisores.append(df_sup_clean)
+                            df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'].astype(str).str.replace(',', '.').str.replace('$', ''), errors='coerce').fillna(0)
+                            
+                            df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
+                            
+                            if not df_sup_clean.empty:
+                                lista_supervisores.append(df_sup_clean)
+                                # REPORTE FORENSE: Mostramos la primera fila que extrajo
+                                m = df_sup_clean.iloc[0]
+                                log_diagnostico.append(f"✅ `{file.name}` -> **Extracción de prueba:** Producto=`{m['PRODUCTO_SUP']}` | Pista=`{m['PISTA']}` | Lote=`{m['LOTE']}`")
+                            else:
+                                log_diagnostico.append(f"⚠️ `{file.name}` -> Se leyeron títulos, pero la tabla está vacía.")
+                        else:
+                            log_diagnostico.append(f"❌ `{file.name}` -> Títulos encontrados pero incompletos.")
+                    else:
+                        log_diagnostico.append(f"❌ `{file.name}` -> No se detectaron títulos (LOTE y SALDO).")
+
+                # MOSTRAR EL RADAR FORENSE AL COMANDANTE
+                with st.expander("🔍 RADAR FORENSE (Revise si los archivos de los supervisores están descuadrados)", expanded=True):
+                    st.write("Si nota que en la *Extracción de prueba* la **Pista** es un número o el **Lote** es la letra 'L', significa que el Excel de ese supervisor tiene las columnas corridas o celdas combinadas. ¡Exija la corrección de ese archivo!")
+                    for log in log_diagnostico:
+                        st.markdown(log)
+
+                if not lista_supervisores:
+                    st.error("🚨 Misión Abortada: Ningún archivo pudo leerse correctamente.")
+                    st.stop()
 
                 # --- FASE 3: EL CRUCE ---
                 df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
                 df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE', 'PRODUCTO_SUP'], as_index=False)['SALDO_FISICO'].sum()
 
-                # Unimos por Pista y Lote
                 cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
-                
-                # REGLA DE ORO: Si no hay nombre en SAP, usar el nombre del supervisor
                 cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("DESCONOCIDO")
-                
                 cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(2)
                 cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
                 cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
                 
-                # --- FILTRO DE TOLERANCIA ---
-                # Solo consideramos diferencia real si es mayor a 0.05
+                # Tolerancia: Ignorar diferencias menores a 0.05
                 cruce['TIENE_ERROR'] = cruce['DIFERENCIA'].abs() > 0.05
-                
-                # Ordenar para ver la descripción primero
                 cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'TIENE_ERROR']]
                 cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
 
                 # --- FASE 4: PANEL DE MANDO ---
-                st.success("🎯 Arqueo Finalizado con Filtro de Tolerancia.")
+                st.success("🎯 Arqueo Forense Finalizado. Los decimales minúsculos ya no generan alarmas rojas.")
                 
                 tab1, tab2 = st.tabs(["⚠️ Discrepancias Reales", "📋 Auditoría Total"])
                 
@@ -1335,17 +1360,13 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO QUIRÚRGICO", use_container_width=Tru
                     alertas = cruce[cruce['TIENE_ERROR']].drop(columns=['TIENE_ERROR'])
                     if alertas.empty:
                         st.balloons()
-                        st.info("✅ TODO CUADRA. No hay diferencias superiores a 0.05.")
+                        st.info("✅ TODO CUADRA. No hay diferencias mayores a 0.05.")
                     else:
-                        st.warning(f"Se detectaron {len(alertas)} diferencias importantes.")
                         st.dataframe(alertas.style.map(
-                            lambda x: 'color: #ff4b4b; font-weight: bold' if isinstance(x, (int, float)) and x < 0 
-                            else ('color: #28a745; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
+                            lambda x: 'color: #ff4b4b; font-weight: bold' if isinstance(x, (int, float)) and x < 0 else ('color: #28a745; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
                             subset=['DIFERENCIA']
                         ), use_container_width=True)
-                
                 with tab2:
-                    # En la vista total, pintamos de verde lo que está "OK" (dentro de la tolerancia)
                     st.dataframe(cruce.drop(columns=['TIENE_ERROR']).style.map(
                         lambda x: 'background-color: #d4edda; color: #155724' if x == 0 else '',
                         subset=['DIFERENCIA']
@@ -1356,7 +1377,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO QUIRÚRGICO", use_container_width=Tru
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     cruce[cruce['TIENE_ERROR']].to_excel(writer, index=False, sheet_name='Diferencias')
                     cruce.to_excel(writer, index=False, sheet_name='Total')
-                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), "Arqueo_V6.xlsx")
+                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), "Arqueo_V7.xlsx")
 
         except Exception as e:
             st.error(f"🚨 ERROR: {e}")
