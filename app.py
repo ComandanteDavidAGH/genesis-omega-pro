@@ -228,7 +228,7 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                         if val < 0: return 'background-color: #ccffcc; color: #006600; font-weight: bold' # Bajó
                         return ''
 
-                    st.dataframe(cambios.style.applymap(color_cambio, subset=['DIFERENCIA']), use_container_width=True)
+                    st.dataframe(cambios.style.map(color_cambio, subset=['DIFERENCIA']), use_container_width=True)
                     
                     st.session_state['datos_para_sincronizar'] = True
 
