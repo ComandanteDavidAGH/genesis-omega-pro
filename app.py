@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V8 (ESCÁNER MULTI-PESTAÑA) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V9 (EL FRANCOTIRADOR) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1240,7 +1240,10 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("⚖️ Arqueo de Inventarios")
 
 archivo_sap = st.sidebar.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
-archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes de Supervisores", type=['xlsx', 'csv'], accept_multiple_files=True)
+archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
+
+# 🎯 NUEVA ARMA: Casilla del Francotirador
+semana_objetivo = st.sidebar.text_input("🎯 Semana a Auditar (Ej: 17 o 18):", placeholder="Solo el número...")
 
 def quitar_tildes(s):
     if pd.isna(s): return ""
@@ -1250,22 +1253,23 @@ def limpiar_texto(texto):
     if pd.isna(texto): return ""
     return str(texto).strip().upper()
 
-if st.sidebar.button("🚀 EJECUTAR ARQUEO MULTI-PESTAÑA", use_container_width=True):
-    if not archivo_sap or not archivos_sup:
-        st.sidebar.error("❌ Cargue los archivos para iniciar la auditoría.")
+if st.sidebar.button("🚀 EJECUTAR DISPARO DE FRANCOTIRADOR", use_container_width=True):
+    if not archivo_sap or not archivos_sup or not semana_objetivo:
+        st.sidebar.error("❌ Cargue los archivos y escriba el número de semana a auditar.")
     else:
         try:
-            with st.spinner("Escaneando todas las pestañas de los archivos..."):
+            with st.spinner(f"Apuntando a la Semana {semana_objetivo}..."):
                 
-                # --- FASE 1: SAP ---
+                # --- FASE 1: SAP (CON REGLAS ESTRICTAS) ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                 df_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
                 df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
                 
-                c_p_sap = next((c for c in df_sap.columns if "DESCRIP" in c or "MATERIAL" in c), df_sap.columns[0])
+                # Búsqueda estricta de las columnas de SAP
+                c_p_sap = next((c for c in df_sap.columns if "MATERIAL" in c or "DESCRIP" in c), df_sap.columns[0])
                 c_a_sap = next((c for c in df_sap.columns if "ALMACEN" in c or "PISTA" in c), df_sap.columns[1])
                 c_l_sap = next((c for c in df_sap.columns if "LOTE" in c), df_sap.columns[2])
-                c_s_sap = next((c for c in df_sap.columns if "LIBRE" in c or "SALDO" in c), df_sap.columns[3])
+                c_s_sap = next((c for c in df_sap.columns if "LIBRE" in c or "UTILIZACION" in c), df_sap.columns[3])
 
                 df_sap_clean = df_sap[[c_p_sap, c_a_sap, c_l_sap, c_s_sap]].copy()
                 df_sap_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
@@ -1274,82 +1278,77 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO MULTI-PESTAÑA", use_container_width=
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).replace(',', '.'), errors='coerce').fillna(0)
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: SUPERVISORES (BÚSQUEDA EN TODAS LAS PESTAÑAS) ---
+                # --- FASE 2: SUPERVISORES (MODO FRANCOTIRADOR) ---
                 lista_supervisores = []
                 log_diagnostico = []
                 
+                # Nombres posibles de la pestaña basados en lo que usted escribió
+                sem_num = str(semana_objetivo).strip()
+                nombres_posibles = [sem_num, f"SEM {sem_num}", f"SEM{sem_num}", f"SEMANA {sem_num}"]
+                
                 for file in archivos_sup:
-                    # Leemos TODAS las pestañas del archivo (Devuelve un diccionario)
-                    if file.name.endswith('.csv'):
-                        dict_dfs = {"CSV_UNICO": pd.read_csv(file, header=None, dtype=str)}
-                    else:
-                        dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
+                    dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
                     
-                    best_score = -1
-                    best_header_idx = -1
-                    best_sheet_name = ""
-                    best_df_raw = None
-
-                    # Evaluamos pestaña por pestaña
-                    for sheet_name, df_raw in dict_dfs.items():
+                    pestaña_objetivo = None
+                    for nombre_real in dict_dfs.keys():
+                        if str(nombre_real).upper().strip() in [n.upper() for n in nombres_posibles]:
+                            pestaña_objetivo = nombre_real
+                            break
+                    
+                    if pestaña_objetivo:
+                        df_raw = dict_dfs[pestaña_objetivo]
+                        
+                        # Escaneo inteligente de la fila de encabezados
+                        best_header_idx = -1
                         for i in range(min(30, len(df_raw))):
                             row_vals = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
-                            score = 0
-                            # Puntos clave de un inventario real
-                            if any("LOTE" in val for val in row_vals): score += 2
-                            if any("SALDO" in val for val in row_vals): score += 2
-                            if any("PRODUC" in val or "DESCRI" in val or "MATERIAL" in val for val in row_vals): score += 1
-                            if any("INGRES" in val or "SALID" in val for val in row_vals): score += 1 # Esto descarta los reportes de SAP
-                            
-                            if score > best_score:
-                                best_score = score
+                            if any("LOTE" in val for val in row_vals) and any("SALDO" in val for val in row_vals):
                                 best_header_idx = i
-                                best_sheet_name = sheet_name
-                                best_df_raw = df_raw
-
-                    if best_score >= 4: # Encontró la pestaña ganadora
-                        df_sup = best_df_raw.iloc[best_header_idx + 1:].copy()
-                        
-                        clean_headers = []
-                        for i_col, h in enumerate(best_df_raw.iloc[best_header_idx].values):
-                            h_clean = quitar_tildes(str(h))
-                            if h_clean in ["NAN", ""]: h_clean = "VACIO"
-                            clean_headers.append(f"{h_clean}_{i_col}") 
-                        df_sup.columns = clean_headers
-                        
-                        c_p = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c or "MATERIAL" in c), None)
-                        c_a = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
-                        c_l = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
-                        c_s = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c and "SAP" not in c), None)
-                        
-                        if all([c_p, c_a, c_l, c_s]):
-                            df_sup_clean = df_sup[[c_p, c_a, c_l, c_s]].copy()
-                            df_sup_clean.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE', 'SALDO_FISICO']
+                                break
+                                
+                        if best_header_idx != -1:
+                            df_sup = df_raw.iloc[best_header_idx + 1:].copy()
                             
-                            df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
-                            df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None).ffill().bfill()
-                            df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'].astype(str).str.replace(',', '.').str.replace('$', ''), errors='coerce').fillna(0)
+                            clean_headers = []
+                            for i_col, h in enumerate(df_raw.iloc[best_header_idx].values):
+                                h_clean = quitar_tildes(str(h))
+                                if h_clean in ["NAN", ""]: h_clean = "VACIO"
+                                clean_headers.append(f"{h_clean}_{i_col}") 
+                            df_sup.columns = clean_headers
                             
-                            df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
+                            c_p = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c or "MATERIAL" in c), None)
+                            c_a = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
+                            c_l = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
+                            c_s = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c and "SAP" not in c), None)
                             
-                            if not df_sup_clean.empty:
-                                lista_supervisores.append(df_sup_clean)
-                                m = df_sup_clean.iloc[0]
-                                log_diagnostico.append(f"✅ `{file.name}` -> **Pestaña elegida:** `{best_sheet_name}` | Prueba: Prod=`{m['PRODUCTO_SUP']}` | Lote=`{m['LOTE']}`")
+                            if all([c_p, c_a, c_l, c_s]):
+                                df_sup_clean = df_sup[[c_p, c_a, c_l, c_s]].copy()
+                                df_sup_clean.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE', 'SALDO_FISICO']
+                                
+                                df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
+                                df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None).ffill().bfill()
+                                df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'].astype(str).str.replace(',', '.').str.replace('$', ''), errors='coerce').fillna(0)
+                                
+                                df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
+                                
+                                if not df_sup_clean.empty:
+                                    lista_supervisores.append(df_sup_clean)
+                                    log_diagnostico.append(f"✅ `{file.name}` -> Impacto en pestaña `{pestaña_objetivo}`.")
+                                else:
+                                    log_diagnostico.append(f"⚠️ `{file.name}` -> Pestaña `{pestaña_objetivo}` vacía.")
                             else:
-                                log_diagnostico.append(f"⚠️ `{file.name}` -> Pestaña `{best_sheet_name}` detectada, pero sin datos.")
+                                log_diagnostico.append(f"❌ `{file.name}` -> Faltaron columnas (Producto, Pista, Lote o Saldo) en la pestaña `{pestaña_objetivo}`.")
                         else:
-                            log_diagnostico.append(f"❌ `{file.name}` -> Faltaron columnas en la pestaña `{best_sheet_name}`.")
+                            log_diagnostico.append(f"❌ `{file.name}` -> No se detectaron encabezados en la pestaña `{pestaña_objetivo}`.")
                     else:
-                        log_diagnostico.append(f"❌ `{file.name}` -> Ninguna pestaña parece un inventario válido.")
+                        log_diagnostico.append(f"🛑 `{file.name}` -> **NO SE ENCONTRÓ NINGUNA PESTAÑA LLAMADA '{semana_objetivo}'**.")
 
-                # MOSTRAR EL RADAR FORENSE
-                with st.expander("🔍 RADAR FORENSE (Multi-Pestaña)", expanded=True):
+                with st.expander("🔍 RADAR DE IMPACTO", expanded=True):
                     for log in log_diagnostico:
                         st.markdown(log)
 
                 if not lista_supervisores:
-                    st.error("🚨 Misión Abortada: Ningún archivo pudo leerse correctamente.")
+                    st.error("🚨 Misión Abortada: No se encontraron datos para cruzar en la semana indicada.")
                     st.stop()
 
                 # --- FASE 3: EL CRUCE ---
@@ -1367,7 +1366,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO MULTI-PESTAÑA", use_container_width=
                 cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
 
                 # --- FASE 4: PANEL DE MANDO ---
-                st.success("🎯 Arqueo Finalizado. El escáner ignoró las pestañas falsas de SAP.")
+                st.success(f"🎯 Arqueo de la Semana {semana_objetivo} Finalizado.")
                 
                 tab1, tab2 = st.tabs(["⚠️ Discrepancias Reales", "📋 Auditoría Total"])
                 
@@ -1375,7 +1374,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO MULTI-PESTAÑA", use_container_width=
                     alertas = cruce[cruce['TIENE_ERROR']].drop(columns=['TIENE_ERROR'])
                     if alertas.empty:
                         st.balloons()
-                        st.info("✅ TODO CUADRA. No hay diferencias mayores a 0.05.")
+                        st.info("✅ TODO CUADRA PERFECTAMENTE. Buen trabajo de las pistas.")
                     else:
                         st.dataframe(alertas.style.map(
                             lambda x: 'color: #ff4b4b; font-weight: bold' if isinstance(x, (int, float)) and x < 0 else ('color: #28a745; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
@@ -1391,7 +1390,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO MULTI-PESTAÑA", use_container_width=
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     cruce[cruce['TIENE_ERROR']].to_excel(writer, index=False, sheet_name='Diferencias')
                     cruce.to_excel(writer, index=False, sheet_name='Total')
-                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), "Arqueo_V8.xlsx")
+                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), f"Arqueo_Semana_{semana_objetivo}.xlsx")
 
         except Exception as e:
             st.error(f"🚨 ERROR: {e}")
