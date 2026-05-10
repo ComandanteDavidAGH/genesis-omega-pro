@@ -976,85 +976,80 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO OMEGA V5: PRECISIÓN QUIRÚRGICA ---
+# --- 🔄 MÓDULO OMEGA V6: PRECISIÓN CON DOSIS LOCALES ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
-def limpiar_valor_quirurgico(valor):
-    """Limpia el formato de moneda de Excel para que Python pueda operar"""
+def limpiar_valor_v6(valor):
     if not valor or str(valor).strip() == "": return 0.0
-    # Eliminamos puntos de miles y dejamos solo el decimal
     s = str(valor).replace('$', '').replace(' ', '').strip()
-    if '.' in s and ',' in s: # Caso 4.892,03
-        s = s.replace('.', '').replace(',', '.')
-    elif s.count('.') >= 1 and ',' not in s: # Caso 4.892.03
+    if '.' in s and ',' in s: s = s.replace('.', '').replace(',', '.')
+    elif s.count('.') >= 1 and ',' not in s:
         partes = s.split('.')
         s = "".join(partes[:-1]) + "." + partes[-1]
-    elif ',' in s: # Caso 4892,03
-        s = s.replace(',', '.')
+    elif ',' in s: s = s.replace(',', '.')
     try: return float(s)
     except: return 0.0
 
-if st.sidebar.button("🚀 EJECUTAR TRASPLANTE", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR TRASPLANTE V6", use_container_width=True):
     try:
-        with st.spinner(f"Inyectando datos en Semana {semana_target}..."):
-            # 1. CONEXIÓN ORIGEN: Solo Columnas I (Producto) y J (Costo)
+        with st.spinner(f"Sincronizando Semana {semana_target}..."):
+            # 1. ORIGEN: Precios de Configuración (Columnas I y J)
             url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_gen)
-            ws_config = sh_gen.worksheet("Configuración")
-            
-            # Leemos solo el rango necesario para no saturar
-            raw_config = ws_config.get_all_values()
-            dict_precios = {}
-            for row in raw_config:
-                if len(row) > 9:
-                    # Columna I es índice 8, Columna J es índice 9
-                    nombre_prod = str(row[8]).strip().upper()
-                    if nombre_prod and nombre_prod != "PRODUCTO":
-                        dict_precios[nombre_prod] = limpiar_valor_quirurgico(row[9])
+            raw_config = sh_gen.worksheet("Configuración").get_all_values()
+            dict_precios = {str(r[8]).strip().upper(): limpiar_valor_v6(r[9]) for r in raw_config if len(r) > 9 and r[8]}
 
-            # 2. CONEXIÓN DESTINO: Bóveda de Precios
+            # 2. DESTINO: Lectura de Estructura y Dosis Locales
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
-            
-            # Obtenemos la estructura actual para no romperla
             datos_destino = ws_datos.get_all_values()
+            
+            # --- MAPEO DE DOSIS (Desde Fila 64, asumiendo Col A=Producto, Col B=Dosis) ---
+            dict_dosis_local = {}
+            for r_idx, row in enumerate(datos_destino):
+                if (r_idx + 1) >= 64 and len(row) > 1:
+                    prod_d = str(row[0]).strip().upper() # Columna A
+                    dosis_v = limpiar_valor_v6(row[1])   # Columna B
+                    if prod_d: dict_dosis_local[prod_d] = dosis_v
+
             col_semana = next((i + 1 for i, v in enumerate(datos_destino[6]) if str(v).strip() == str(semana_target)), -1)
 
             if col_semana == -1:
-                st.error(f"❌ No se encontró la columna de la Semana {semana_target}.")
+                st.error(f"❌ No se halló la columna de la Semana {semana_target}.")
             else:
                 updates = []
-                # Recorremos la hoja de destino fila por fila
                 for r_idx, row in enumerate(datos_destino):
-                    fila_google = r_idx + 1
-                    # Solo operamos en las zonas de datos (8-14 y 16 en adelante)
-                    if fila_google < 8 or fila_google == 15: continue
+                    fila_g = r_idx + 1
+                    if fila_g < 8 or fila_g == 15 or fila_g >= 64: continue # Protegemos encabezados y la zona de dosis
                     
                     if len(row) > 3:
-                        prod_target = str(row[3]).strip().upper() # Columna D en destino
+                        prod_target = str(row[3]).strip().upper() # Columna D
                         
                         if prod_target in dict_precios:
-                            valor_final = dict_precios[prod_target]
+                            precio_unit = dict_precios[prod_target]
                             
-                            # Si es la tabla de DOSIS-HA (fila 16+), se podría aplicar la dosis aquí 
-                            # Pero para esta prueba, solo inyectaremos el costo directo para asegurar estabilidad
+                            # Lógica Quirúrgica:
+                            if fila_g >= 16: # Estamos en la segunda tabla (Dosis-HA)
+                                dosis = dict_dosis_local.get(prod_target, 1.0) # Si no hay dosis, asume 1
+                                valor_final = precio_unit * dosis
+                            else: # Estamos en la primera tabla (Unitarios)
+                                valor_final = precio_unit
                             
                             updates.append({
-                                'range': gspread.utils.rowcol_to_a1(fila_google, col_semana),
+                                'range': gspread.utils.rowcol_to_a1(fila_g, col_semana),
                                 'values': [[valor_final]]
                             })
 
-                # 3. IMPACTO CONTROLADO
                 if updates:
                     ws_datos.batch_update(updates)
-                    st.success(f"🎯 TRASPLANTE EXITOSO. Estructura preservada. Solo se actualizaron los costos de la semana {semana_target}.")
+                    st.success(f"🎯 IMPACTO CONFIRMADO. Semana {semana_target} actualizada con dosis locales.")
                     st.balloons()
                 else:
-                    st.warning("No se hallaron coincidencias de productos para actualizar.")
+                    st.warning("No se encontraron productos coincidentes.")
 
     except Exception as e:
         st.error(f"🚨 FALLA EN MANIOBRA: {e}")
