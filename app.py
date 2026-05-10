@@ -1230,27 +1230,41 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V10 (EL ESTRATEGA) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V10.1 (EL ESTRATEGA BLINDADO) ---
 import pandas as pd
 import streamlit as st
 import io
 import unicodedata
 import re
 
+# 🕶️ Gafas de Visión Nocturna: CSS para forzar colores visibles en las casillas
+st.markdown(
+    """
+    <style>
+    div[data-baseweb="input"] input {
+        color: black !important;
+        background-color: white !important;
+        font-weight: bold;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚖️ Arqueo de Inventarios V10")
+st.sidebar.subheader("⚖️ Arqueo de Inventarios V10.1")
 
 archivo_sap = st.sidebar.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
 archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
-semana_obj = st.sidebar.text_input("🎯 Semana a Auditar (Ej: 17):")
+semana_obj = st.sidebar.text_input("🎯 Semana a Auditar (Ej: 17):", placeholder="Escriba aquí...")
 
 def purificar_lote(lote):
     """Quita guiones, espacios y puntos para un cruce ciego"""
-    if pd.isna(lote): return ""
+    if pd.isna(lote) or lote is None: return ""
     return re.sub(r'[^A-Z0-9]', '', str(lote).upper().strip())
 
 def quitar_tildes(s):
-    if pd.isna(s): return ""
+    if pd.isna(s) or s is None: return ""
     return ''.join(c for c in unicodedata.normalize('NFD', str(s).upper().strip()) if unicodedata.category(c) != 'Mn')
 
 if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=True):
@@ -1274,9 +1288,9 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                 df_sap_clean = df_sap[[c_item, c_desc, c_pista, c_lote, c_saldo]].copy()
                 df_sap_clean.columns = ['ITEM', 'PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                 
-                # Normalización de Lotes SAP
+                # Normalización de Lotes SAP y Pistas (CORREGIDO EL BUG DEL .UPPER)
                 df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
-                df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().upper()
+                df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().str.upper()
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).replace(',', '.'), errors='coerce').fillna(0)
                 
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
@@ -1305,38 +1319,40 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                             c_p = next((c for c in df_s.columns if "PRODUC" in c or "DESCRI" in c), None)
                             c_a = next((c for c in df_s.columns if "ALMAC" in c or "PISTA" in c), None)
                             c_l = next((c for c in df_s.columns if "LOTE" in c and "SALDO" not in c), None)
-                            c_v = next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c), None)
+                            c_v = next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c and "SAP" not in c), None)
                             
                             if all([c_p, c_a, c_l, c_v]):
                                 df_s_c = df_s[[c_p, c_a, c_l, c_v]].copy()
                                 df_s_c.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE_SUP', 'SALDO_FISICO']
-                                df_s_c['PISTA'] = df_s_c['PISTA'].str.strip().upper().replace('NAN', None).ffill().bfill()
+                                
+                                # Limpieza de pistas (CORREGIDO EL BUG DEL .UPPER)
+                                df_s_c['PISTA'] = df_s_c['PISTA'].astype(str).str.strip().str.upper().replace('NAN', None).replace('NONE', None).replace('', None).ffill().bfill()
                                 df_s_c['LOTE_KEY'] = df_s_c['LOTE_SUP'].apply(purificar_lote)
                                 df_s_c['SALDO_FISICO'] = pd.to_numeric(df_s_c['SALDO_FISICO'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                                
                                 lista_sup.append(df_s_c)
 
                 if not lista_sup:
-                    st.error("🚨 No se encontraron datos válidos. Revise los nombres de las pestañas.")
+                    st.error("🚨 No se encontraron datos válidos. Revise los nombres de las pestañas en los archivos.")
                 else:
                     df_sup_total = pd.concat(lista_sup, ignore_index=True)
                     df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
 
                     # --- FASE 3: CRUCE INTELIGENTE ---
-                    # Cruzamos por PISTA y LOTE_KEY (el lote sin guiones)
                     cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE_KEY'], how='outer')
                     
                     # Rellenar vacíos
                     cruce['ITEM'] = cruce['ITEM'].fillna("---")
                     cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("N/A")
-                    cruce['LOTE'] = cruce['LOTE'].fillna(cruce['LOTE_SUP']) # Prioridad SAP si existe
+                    cruce['LOTE'] = cruce['LOTE'].fillna(cruce['LOTE_SUP'])
                     cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(2)
                     cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
                     cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
                     
                     cruce['ESTADO'] = cruce['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
                     
-                    # Organizar columnas para el Comandante
                     cruce = cruce[['PISTA', 'ITEM', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'ESTADO']]
+                    cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
 
                     # --- FASE 4: PANEL DE MANDO INTERACTIVO ---
                     st.success(f"🎯 Auditoría Semana {semana_obj} Completada.")
@@ -1345,7 +1361,7 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                     
                     with tab1:
                         st.subheader("Resultados del Cruce (SAP vs Físico)")
-                        st.dataframe(cruce.style.applymap(
+                        st.dataframe(cruce.style.map(
                             lambda x: 'background-color: #ff4b4b; color: white' if x == "❌ DISCREPANCIA" else ('background-color: #28a745; color: white' if x == "✅ OK" else ''),
                             subset=['ESTADO']
                         ), use_container_width=True)
@@ -1353,13 +1369,7 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                     with tab2:
                         st.markdown("### 🔍 ¿Lotes desfasados?")
                         st.info("Si un producto sale con diferencia porque el supervisor escribió mal el lote, usted puede editar esta tabla para forzar el cruce. Modifique la columna 'LOTE' para que coincida con el de SAP.")
-                        # Tabla editable para que el comandante haga magia
                         edited_df = st.data_editor(cruce[cruce['ESTADO'] == "❌ DISCREPANCIA"], use_container_width=True, num_rows="dynamic")
-                        
-                        if st.button("🔄 RECALCULAR CON CAMBIOS"):
-                            st.warning("Recalculando saldos con los lotes corregidos manualmente...")
-                            # (Aquí se dispararía la lógica de re-agrupación si fuera necesario, 
-                            # pero para hoy, el editor ya le permite ver y descargar la tabla corregida).
 
                     # Exportación
                     buffer = io.BytesIO()
@@ -1368,4 +1378,4 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                     st.download_button("📥 Descargar Reporte Estratégico", buffer.getvalue(), f"Arqueo_Sem{semana_obj}.xlsx")
 
         except Exception as e:
-            st.error(f"🚨 FALLA EN EL SISTEMA: {e}")
+            st.error(f"🚨 FALLA EN EL SISTEMA: {type(e).__name__} - {e}")
