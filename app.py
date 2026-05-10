@@ -1083,17 +1083,16 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
     except Exception as e:
         st.error(f"🚨 FALLA DEL SISTEMA: {e}")
 
- # --- ✈️ MÓDULO OMEGA V17: RADAR DEFINITIVO (TABLA 1, COL U, FILA 6) ---
+ # --- ✈️ MÓDULO OMEGA V18: ESCÁNER PROFUNDO Y MEMORIA DE FECHA ---
 import datetime
 import re
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("✈️ Rastreo Dominicales")
 
-# Caja de URL mejorada para evitar confusiones
 url_ori = st.sidebar.text_input(
     "🔗 Pegue URL de GÉNESIS_OMEGA_V2_ESTABLE:", 
-    placeholder="Pegue aquí el link y presione Enter..."
+    placeholder="Pegue el link y presione Enter..."
 )
 
 def limpiar_val_dom(v):
@@ -1103,10 +1102,8 @@ def limpiar_val_dom(v):
     except: return 0.0
 
 def procesar_fecha_pesada(v):
-    """Convierte la fecha y rechaza cualquier cosa anterior al año 2020 (Filtro Anti-1901)"""
-    if not v: return None
+    if not v or str(v).strip() == "": return None
     try:
-        # 1. Si es número puro (formato interno de Sheets)
         if isinstance(v, (int, float)):
             f = datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(v))
             return f if f.year > 2020 else None
@@ -1116,11 +1113,7 @@ def procesar_fecha_pesada(v):
             f = datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(float(v_str)))
             return f if f.year > 2020 else None
         
-        # 2. Lector de texto en español (Ej: "domingo, abril 26, 2026")
-        meses = {
-            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
-            "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
-        }
+        meses = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
         for mes, num_mes in meses.items():
             if mes in v_str:
                 match_ano = re.search(r'\d{4}', v_str)
@@ -1129,7 +1122,6 @@ def procesar_fecha_pesada(v):
                     f = datetime.datetime(int(match_ano.group()), num_mes, int(match_dia.group()))
                     return f if f.year > 2020 else None
                     
-        # 3. Formato clásico (dd/mm/yyyy)
         if "/" in v_str or "-" in v_str:
             import dateutil.parser
             f = dateutil.parser.parse(v_str, dayfirst=True)
@@ -1139,13 +1131,13 @@ def procesar_fecha_pesada(v):
 
 if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
     if not url_ori or "http" not in url_ori:
-        st.sidebar.error("❌ Por favor, pegue una URL válida en la caja de arriba y presione Enter.")
+        st.sidebar.error("❌ Pegue una URL válida y presione Enter.")
     else:
         try:
-            with st.spinner("Calibrando radares (Inicio en Fila 6, Columna U)..."):
-                
-                # --- 1. LEER DESTINO (Dominicales) ---
+            with st.spinner("Modo Escáner Profundo Activado..."):
                 url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
+                
+                # --- 1. LEER DESTINO ---
                 sh_dest = gc.open_by_url(url_dest)
                 ws_dest = sh_dest.sheet1
                 datos_dest = ws_dest.get_all_values(value_render_option='UNFORMATTED_VALUE')
@@ -1153,83 +1145,76 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                 max_f = datetime.datetime(1900, 1, 1)
                 dict_local = {}
                 
-                # Col A (0) vacía, Col B (1) Finca, Col C (2) Ha, Col D (3) Fecha
                 for i, row in enumerate(datos_dest):
-                    n_fila = i + 1
-                    if n_fila >= 5 and len(row) > 3:
-                        f_obj = procesar_fecha_pesada(row[3]) # Columna D
+                    if i + 1 >= 5 and len(row) > 3:
+                        f_obj = procesar_fecha_pesada(row[3])
                         if f_obj:
                             if f_obj > max_f: max_f = f_obj
-                            finca_dest = str(row[1]).strip().upper()
-                            dict_local[f"{finca_dest}|{f_obj.date()}"] = n_fila
+                            dict_local[f"{str(row[1]).strip().upper()}|{f_obj.date()}"] = i + 1
 
                 st.info(f"📅 Radar Destino: Última fecha validada -> {max_f.strftime('%d/%m/%Y')}")
 
-                # --- 2. LEER ORIGEN (GÉNESIS_OMEGA_V2_ESTABLE) ---
+                # --- 2. LEER ORIGEN ---
                 sh_ori = gc.open_by_url(url_ori)
-                
-                # Búsqueda inteligente de la pestaña "tabla 1" (ignora mayúsculas/minúsculas)
-                ws_ori = None
-                for sheet in sh_ori.worksheets():
-                    if "TABLA 1" in sheet.title.upper():
-                        ws_ori = sheet
-                        break
-                # Si por alguna razón no la encuentra, toma la primera por defecto
-                if not ws_ori: ws_ori = sh_ori.sheet1 
-                
+                ws_ori = next((s for s in sh_ori.worksheets() if "TABLA 1" in s.title.upper()), sh_ori.sheet1)
                 datos_ori = ws_ori.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
                 dict_nuevos = {}
+                memoria_fecha = None # <--- EL CEREBRO DE MEMORIA
                 
-                # REGLAS DEL COMANDANTE: Empieza en Fila 6.
+                # Variables de auditoría
+                recargos_encontrados = 0
+                recargos_ignorados_por_fecha = 0
+                
                 for i, row in enumerate(datos_ori):
                     n_fila = i + 1
-                    # Si no ha llegado a la 6 o la fila no llega hasta la Columna U (índice 20), saltar
-                    if n_fila < 6 or len(row) < 21: continue 
+                    if n_fila < 6: continue
                     
-                    # Columna U = índice 20
-                    surcharge = limpiar_val_dom(row[20]) 
+                    # 1. Intentar atrapar la fecha (Col H / idx 7)
+                    f_leida = procesar_fecha_pesada(row[7] if len(row) > 7 else None)
+                    if f_leida: 
+                        memoria_fecha = f_leida # Guarda la fecha en memoria
                     
-                    # Si el día no tiene recargo (espacios vacíos), lo saltamos inmediatamente
-                    if surcharge <= 0: continue
+                    # 2. Atrapar recargo (Col U / idx 20)
+                    surcharge = limpiar_val_dom(row[20]) if len(row) > 20 else 0.0
                     
-                    # Columna H = índice 7 (Fecha)
-                    f_ori = procesar_fecha_pesada(row[7] if len(row) > 7 else None) 
-                    
-                    if f_ori and f_ori > max_f:
-                        finca = str(row[2]).strip().upper() if len(row) > 2 else "" # Col C
-                        ha = limpiar_val_dom(row[5]) if len(row) > 5 else 0.0 # Col F
-                        pista = str(row[23]).strip().upper() if len(row) > 23 else "" # Col X
+                    if surcharge > 0:
+                        recargos_encontrados += 1
                         
-                        key = f"{finca}|{f_ori.date()}"
+                        # Usar la fecha leída o la guardada en memoria
+                        f_operacion = f_leida if f_leida else memoria_fecha
                         
-                        # Consolidación: Sumar hectáreas de la misma finca el mismo día
-                        if key in dict_nuevos:
-                            dict_nuevos[key]['ha'] += ha
-                            if not dict_nuevos[key]['pista'] and pista: 
-                                dict_nuevos[key]['pista'] = pista
-                        else:
-                            semana_num = f_ori.isocalendar()[1]
-                            meses_nom = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
-                            dias_nom = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
-                            # Construimos la fecha para que se vea igual que su tabla
-                            f_formato = f"{dias_nom[f_ori.weekday()]}, {meses_nom[f_ori.month-1]} {f_ori.day}, {f_ori.year}"
+                        if f_operacion and f_operacion > max_f:
+                            finca = str(row[2]).strip().upper() if len(row) > 2 else "SIN FINCA"
+                            ha = limpiar_val_dom(row[5]) if len(row) > 5 else 0.0
+                            pista = str(row[23]).strip().upper() if len(row) > 23 else ""
                             
-                            dict_nuevos[key] = {
-                                'finca': finca, 'ha': ha, 'fec': f_formato,
-                                'sur': surcharge, 'pista': pista, 'semana': semana_num
-                            }
+                            key = f"{finca}|{f_operacion.date()}"
+                            
+                            if key in dict_nuevos:
+                                dict_nuevos[key]['ha'] += ha
+                                if not dict_nuevos[key]['pista'] and pista: dict_nuevos[key]['pista'] = pista
+                            else:
+                                f_formato = f"{['lunes','martes','miércoles','jueves','viernes','sábado','domingo'][f_operacion.weekday()]}, {['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][f_operacion.month-1]} {f_operacion.day}, {f_operacion.year}"
+                                dict_nuevos[key] = {
+                                    'finca': finca, 'ha': ha, 'fec': f_formato,
+                                    'sur': surcharge, 'pista': pista, 'semana': f_operacion.isocalendar()[1]
+                                }
+                        else:
+                            recargos_ignorados_por_fecha += 1
 
-                # --- 3. INYECCIÓN DE FALTANTES ---
+                # --- 3. INYECCIÓN O REPORTE TÁCTICO ---
                 if dict_nuevos:
-                    # Incluimos el "" al inicio para respetar la Columna A vacía de su destino
                     filas_nuevas = [["", v['finca'], v['ha'], v['fec'], v['sur'], v['pista'], v['semana']] for v in dict_nuevos.values()]
                     ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
-                    
-                    st.success(f"🎯 ¡IMPACTO CONFIRMADO! Se inyectaron {len(filas_nuevas)} registros dominicales.")
+                    st.success(f"🎯 ¡IMPACTO CONFIRMADO! {len(filas_nuevas)} registros dominicales inyectados.")
                     st.balloons()
                 else:
-                    st.warning("⚠️ No se detectaron recargos dominicales nuevos posteriores a la última fecha del radar.")
+                    st.warning("⚠️ Sin datos nuevos para inyectar.")
+                    # Reporte de daños si falla
+                    st.write("📊 **REPORTE DEL RADAR DE ORIGEN:**")
+                    st.write(f"- Recargos dominicales (>0) encontrados en total: **{recargos_encontrados}**")
+                    st.write(f"- Recargos ignorados por ser de fechas antiguas (<= 26/04/2026): **{recargos_ignorados_por_fecha}**")
 
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
