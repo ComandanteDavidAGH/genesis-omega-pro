@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V2 (RADAR DE PESTAÑAS) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V2 ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1251,48 +1251,40 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
         st.sidebar.error("❌ Faltan archivos en los buzones para el cruce.")
     else:
         try:
-            with st.spinner("Procesando SAP y rastreando pestañas 'INVENTARIO'..."):
+            with st.spinner("Procesando millones de datos en milisegundos..."):
                 
-                # --- FASE 1: LEER SAP ---
-                if archivo_sap.name.endswith('.csv'):
-                    df_sap = pd.read_csv(archivo_sap)
+                # --- FASE 1: LEER SAP (BLINDADO) ---
+                # Si el sistema lo lee como lista, forzamos a que tome el primer elemento
+                sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
+                
+                if sap_file.name.endswith('.csv'):
+                    df_sap = pd.read_csv(sap_file)
                 else:
-                    df_sap = pd.read_excel(archivo_sap)
+                    df_sap = pd.read_excel(sap_file)
                 
                 # Filtramos y renombramos las columnas vitales de SAP
                 df_sap_clean = df_sap[['Descripción del material', 'Almacén', 'Lote', 'Libre utilización']].copy()
                 df_sap_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                 
-                # Limpiamos textos para que coincidan perfecto
+                # Limpiamos el Lote y la Pista para que el cruce sea perfecto
                 df_sap_clean['LOTE'] = df_sap_clean['LOTE'].apply(limpiar_texto)
                 df_sap_clean['PISTA'] = df_sap_clean['PISTA'].apply(limpiar_texto)
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'], errors='coerce').fillna(0)
                 
-                # Agrupamos por si SAP tiene el mismo lote dividido
+                # Agrupamos por si SAP tiene el mismo lote en dos filas
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: LEER SUPERVISORES (CON RADAR DE PESTAÑAS) ---
+                # --- FASE 2: LEER SUPERVISORES ---
                 lista_supervisores = []
                 for file in archivos_sup:
                     if file.name.endswith('.csv'):
                         df_sup = pd.read_csv(file, header=3)
                     else:
-                        # 📡 RUTINA DE DETECCIÓN INTELIGENTE DE PESTAÑAS
-                        xl = pd.ExcelFile(file)
-                        hoja_objetivo = xl.sheet_names[0] # Por defecto, toma la primera
-                        
-                        # Escanea todas las pestañas buscando la clave
-                        for sheet in xl.sheet_names:
-                            if "INVENTARIO" in sheet.upper():
-                                hoja_objetivo = sheet
-                                break # ¡Encontró el objetivo! Fija las coordenadas aquí.
-                        
-                        # Lee exclusivamente esa pestaña, saltando las 3 primeras filas de títulos
-                        df_sup = pd.read_excel(file, sheet_name=hoja_objetivo, header=3)
+                        df_sup = pd.read_excel(file, header=3)
                     
-                    # Extraer coordenadas exactas: Col A(0), Col D(3), Col E(4), Col P(15)
                     cols = df_sup.columns
                     if len(cols) >= 16:
+                        # Col 0: Producto, Col 3: Pista, Col 4: Lote, Col 15: Saldo Físico
                         df_sup_clean = df_sup.iloc[:, [0, 3, 4, 15]].copy()
                         df_sup_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_FISICO']
                         
@@ -1300,34 +1292,38 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                         df_sup_clean['PISTA'] = df_sup_clean['PISTA'].apply(limpiar_texto)
                         df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
                         
-                        # Eliminamos filas basuras (donde no hay lote)
+                        # Filtramos filas vacías
                         df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
                         lista_supervisores.append(df_sup_clean)
 
                 if not lista_supervisores:
-                    st.error("🚨 El radar no encontró datos válidos en los archivos de los supervisores.")
+                    st.error("🚨 Los archivos de supervisores no tienen el formato esperado (Datos desde la Fila 4, Columna P para saldo).")
                     st.stop()
 
-                # Unimos todos los supervisores en una súper-tabla
+                # Unimos todos los reportes de los supervisores en una súper-tabla
                 df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
+                # Agrupamos por Pista y Lote (Ignoramos el nombre del producto aquí para evitar fallos si el supervisor lo escribe diferente)
                 df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE'], as_index=False)['SALDO_FISICO'].sum()
 
                 # --- FASE 3: EL CRUCE MAESTRO ---
-                # Unimos SAP con Supervisores
+                # Unimos SAP con Supervisores usando la PISTA y el LOTE como llave (ADN)
                 cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
                 
+                # Rellenamos vacíos con 0
                 cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0)
                 cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0)
                 
-                # Si un producto de la pista no estaba en SAP, rellenamos el nombre para que no salga vacío
-                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna('NO REGISTRADO EN SAP')
-                
-                # LA MATEMÁTICA
+                # LA MATEMÁTICA DEL ARQUEO
                 cruce['DIFERENCIA'] = cruce['SALDO_FISICO'] - cruce['SALDO_SAP']
                 
-                # Filtro final: Mostrar SOLO los que tienen diferencia (ni 0, ni 0.0)
-                alertas = cruce[round(cruce['DIFERENCIA'], 4) != 0].copy()
+                # Filtramos: Solo nos importan los que tengan diferencia (usamos round para evitar micro-decimales como 0.0000001)
+                cruce['DIFERENCIA'] = cruce['DIFERENCIA'].round(3)
+                alertas = cruce[cruce['DIFERENCIA'] != 0].copy()
                 
+                # Arreglamos si un producto existía en supervisor pero no en SAP (y viceversa)
+                alertas['PRODUCTO'] = alertas['PRODUCTO'].fillna("NO ESTÁ EN SAP / REVISAR LOTE")
+                
+                # Ordenamos y arreglamos para mostrar en pantalla
                 alertas = alertas[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA']]
                 alertas = alertas.sort_values(by=['PISTA', 'PRODUCTO'])
 
@@ -1338,10 +1334,12 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                     st.balloons()
                     st.info("✅ NO HAY DIFERENCIAS. Todo el inventario físico cuadra perfectamente con SAP.")
                 else:
-                    st.warning(f"⚠️ Atención: Se detectaron {len(alertas)} discrepancias de saldo o lotes.")
+                    st.warning(f"⚠️ Atención: Se detectaron {len(alertas)} discrepancias entre SAP y las Pistas.")
                     
-                    st.dataframe(alertas.style.applymap(
-                        lambda x: 'color: red; font-weight: bold' if x < 0 else ('color: green; font-weight: bold' if x > 0 else ''), 
+                    # Mostramos la tabla en la aplicación
+                    st.dataframe(alertas.style.map(
+                        lambda x: 'color: red; font-weight: bold' if isinstance(x, (int, float)) and x < 0 
+                        else ('color: green; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
                         subset=['DIFERENCIA']
                     ), use_container_width=True)
                     
@@ -1358,4 +1356,4 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                     )
 
         except Exception as e:
-            st.error(f"🚨 FALLA DE SISTEMA: {e}")
+            st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {e}")
