@@ -171,20 +171,26 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
         if st.button("🔍 ESCANEAR CAMBIOS DE PRECIO", type="primary", use_container_width=True):
             with st.spinner("Comparando SAP vs Bóveda de Configuración..."):
                 try:
-                    # 1. LEER SAP
-                    df_sap = pd.read_excel(f_sap_raw) if f_sap_raw.name.endswith(('.xlsx', '.xls')) else pd.read_csv(f_sap_raw)
-                    df_sap = df_sap.dropna(subset=[df_sap.columns[0]])
-                    df_sap = df_sap[df_sap.iloc[:, 0].astype(str).str.strip() != ""]
-                    df_sap = df_sap[~df_sap.iloc[:, 0].astype(str).str.contains('\*')]
-                    if len(df_sap.columns) >= 11:
-                        df_sap = df_sap.sort_values(by=df_sap.columns[10], ascending=True)
+                    # --- 1. LECTOR BLINDADO (Anti-Mayúsculas y Anti-Codificación SAP) ---
+                    nombre_archivo = f_sap_raw.name.lower()
+                    
+                    if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
+                        df = pd.read_excel(f_sap_raw)
+                    else:
+                        try:
+                            # Intenta leerlo como texto normal
+                            df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='utf-8')
+                        except UnicodeDecodeError:
+                            # Si SAP le metió tildes raras (Latin-1), el escudo lo atrapa y lo lee bien
+                            f_sap_raw.seek(0) # Reinicia el puntero de lectura
+                            df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
 
-                    # Buscar columnas clave en SAP
-                    idx_prod_sap = 10 # Asumiendo Columna K (10)
-                    idx_precio_sap = -1
-                    for j, col in enumerate(df_sap.columns):
-                        if 'MAYOR' in str(col).upper() or 'PRECIO' in str(col).upper(): 
-                            idx_precio_sap = j; break
+                            # Buscar columnas clave en SAP
+                            idx_prod_sap = 10 # Asumiendo Columna K (10)
+                            idx_precio_sap = -1
+                            for j, col in enumerate(df_sap.columns):
+                                if 'MAYOR' in str(col).upper() or 'PRECIO' in str(col).upper(): 
+                                    idx_precio_sap = j; break
 
                     # 2. LEER BÓVEDA (CONFIGURACIÓN)
                     if "gcp_credentials" in st.secrets:
