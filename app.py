@@ -134,79 +134,140 @@ if menu == "🏠 Centro de Mando":
     """, unsafe_allow_html=True)
 
 # =====================================================================
-# 🛠️ 1. MANTENIMIENTO PLANTILLA SAP (LA NUEVA ARMA)
+# 🛠️ 1. MANTENIMIENTO PLANTILLA SAP (CON SINCRONIZADOR INTELIGENTE)
 # =====================================================================
 elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
-    st.markdown("<h1 class='titulo-principal'>Teletransporte SAP -> Génesis</h1>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class='tarjeta-info'>
-        <b>Misión:</b> Purificar la Sábana cruda de SAP, ordenarla y actualizar la base de datos maestra en la pestaña <b>PLANTILLA</b>.
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Inteligencia de Precios SAP</h1>", unsafe_allow_html=True)
     
-    f_sap_raw = st.file_uploader("📥 Suba la Sábana Cruda de SAP", type=["xlsx", "xls", "csv"])
+    f_sap_raw = st.file_uploader("📥 1. Suba la Sábana Cruda de SAP", type=["xlsx", "xls", "csv"])
     
-    if st.button("🚀 EJECUTAR LIMPIEZA Y CARGA A PLANTILLA", type="primary", use_container_width=True):
-        if f_sap_raw:
-            with st.spinner("Ejecutando protocolo Samurai: Limpiando y Ordenando..."):
+    if f_sap_raw:
+        if st.button("🚀 PASO A: PURIFICAR Y CARGAR A PLANTILLA", type="primary", use_container_width=True):
+            with st.spinner("Ejecutando protocolo Samurai..."):
                 try:
-                    # 1. LEER ORIGEN (LECTOR BLINDADO ANTI-ERRORES UTF8)
+                    # 1. LEER ORIGEN
                     nombre_archivo = f_sap_raw.name.lower()
                     if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
                         df = pd.read_excel(f_sap_raw)
                     else:
                         try:
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='utf-8')
-                        except UnicodeDecodeError:
+                        except:
                             f_sap_raw.seek(0)
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
                     
-                    # 2. FASE DE LIMPIEZA
+                    # 2. LIMPIEZA
                     df = df.dropna(subset=[df.columns[0]])
-                    df = df[df.iloc[:, 0].astype(str).str.strip() != ""]
                     df = df[~df.iloc[:, 0].astype(str).str.contains('\*')]
-                    
-                    # 3. ORDENAMIENTO ESTRICTO (Columna K es el índice 10)
                     if len(df.columns) >= 11:
                         df = df.sort_values(by=df.columns[10], ascending=True)
                     
-                    # 4. PREPARAR TRASPASO DE DATOS
-                    df_final = df.iloc[:, 0:9].copy() # Columnas A a I
-                    df_final['J'] = df.iloc[:, 10].values # Columna K de SAP pasa a J de Plantilla
-                    
-                    # 5. GENERACIÓN DE ÚNICOS
+                    df_final = df.iloc[:, 0:9].copy()
+                    df_final['J'] = df.iloc[:, 10].values
                     unicos = sorted(df.iloc[:, 10].astype(str).unique().tolist())
                     
-                    # 6. CONEXIÓN Y CARGA A GOOGLE SHEETS
+                    # 3. CARGA A GOOGLE SHEETS (PLANTILLA)
                     if "gcp_credentials" in st.secrets:
-                        cred_dict = dict(st.secrets["gcp_credentials"])
-                        gc = gspread.service_account_from_dict(cred_dict)
+                        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                     else:
                         gc = gspread.service_account(filename='credenciales.json')
                         
                     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                     boveda = gc.open_by_url(url_boveda)
                     hoja_plantilla = boveda.worksheet("Plantilla")
-                    
-                    # Limpiar destino (A3:K5000)
                     hoja_plantilla.batch_clear(["A3:K5000"])
+                    hoja_plantilla.update("A3", df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
+                    hoja_plantilla.update("K3", [[x] for x in unicos], value_input_option='USER_ENTERED')
                     
-                    # Subir Datos A-J
-                    datos_main = df_final.fillna("").values.tolist()
-                    hoja_plantilla.update("A3", datos_main, value_input_option='USER_ENTERED')
-                    
-                    # Subir Únicos en Columna K
-                    datos_unicos = [[x] for x in unicos]
-                    hoja_plantilla.update("K3", datos_unicos, value_input_option='USER_ENTERED')
-                    
-                    st.balloons()
-                    st.success(f"🎯 ¡OPERACIÓN EXITOSA! Se procesaron {len(datos_main)} filas y {len(unicos)} productos únicos.")
-                    
+                    st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla.")
+                    st.session_state['paso_a_listo'] = True
                 except Exception as e:
-                    st.error(f"🚨 Falla en el teletransporte: {e}")
-        else:
-            st.warning("⚠️ Cargue el archivo SAP primero.")
+                    st.error(f"🚨 Error en Paso A: {e}")
 
+        # --- ⚡ NUEVA FUNCIONALIDAD: EL COMPARADOR DE PRECIOS ---
+        st.markdown("---")
+        st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (BARRIDO VISIBLE)")
+        
+        if st.button("🔍 ESCANEAR DIFERENCIAS DE PRECIOS", use_container_width=True):
+            try:
+                if "gcp_credentials" in st.secrets:
+                    gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                else:
+                    gc = gspread.service_account(filename='credenciales.json')
+                
+                url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                sh = gc.open_by_url(url_boveda)
+                ws_conf = sh.worksheet("Configuración")
+                
+                # Leer columnas I, J y K (Indices 8, 9, 10)
+                data = ws_conf.get_all_values()
+                df_conf = pd.DataFrame(data[1:], columns=data[0])
+                
+                # Seleccionamos las columnas de interés para el radar
+                # I: PRODUCTO, J: PRECIO OFICIAL, K: PRECIO SAP ACTUAL
+                radar = df_conf.iloc[:, [8, 9, 10]].copy()
+                radar.columns = ['PRODUCTO', 'ACTUAL_GENESIS', 'NUEVO_SAP']
+                
+                # Limpiar números
+                radar['ACTUAL_GENESIS'] = radar['ACTUAL_GENESIS'].apply(extraer_numero)
+                radar['NUEVO_SAP'] = radar['NUEVO_SAP'].apply(extraer_numero)
+                
+                # Identificar cambios
+                radar['DIFERENCIA'] = radar['NUEVO_SAP'] - radar['ACTUAL_GENESIS']
+                
+                cambios = radar[radar['DIFERENCIA'] != 0].copy()
+                
+                if cambios.empty:
+                    st.info("✅ No se detectaron variaciones de precio. Todo está sincronizado.")
+                else:
+                    st.warning(f"⚠️ Se detectaron {len(cambios)} productos con cambio de precio.")
+                    
+                    # Formato condicional para el barrido visible
+                    def color_cambio(val):
+                        if val > 0: return 'background-color: #ffcccc; color: #990000; font-weight: bold' # Subió
+                        if val < 0: return 'background-color: #ccffcc; color: #006600; font-weight: bold' # Bajó
+                        return ''
+
+                    st.dataframe(cambios.style.applymap(color_cambio, subset=['DIFERENCIA']), use_container_width=True)
+                    
+                    st.session_state['datos_para_sincronizar'] = True
+
+            except Exception as e:
+                st.error(f"Error al escanear: {e}")
+
+        # Botón final de ejecución en la nube
+        if st.session_state.get('datos_para_sincronizar'):
+            if st.button("✅ APROBAR Y ACTUALIZAR PRECIOS EN LA BÓVEDA", type="primary", use_container_width=True):
+                with st.spinner("Sincronizando K -> J y Organizando alfabéticamente..."):
+                    try:
+                        # 1. Traer toda la hoja
+                        if "gcp_credentials" in st.secrets:
+                            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                        else:
+                            gc = gspread.service_account(filename='credenciales.json')
+                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                        ws_conf = sh.worksheet("Configuración")
+                        
+                        data_full = ws_conf.get_all_values()
+                        df_full = pd.DataFrame(data_full[1:], columns=data_full[0])
+                        
+                        # 2. LA MANIOBRA MAESTRA: Copiar K a J internamente
+                        # Columna J es índice 9, Columna K es índice 10
+                        df_full.iloc[:, 9] = df_full.iloc[:, 10]
+                        
+                        # 3. ORGANIZAR ALFABÉTICAMENTE por Producto (Columna I - índice 8)
+                        # Esto resuelve el problema del ZINTRAC huerfano
+                        df_full = df_full.sort_values(by=df_full.columns[8])
+                        
+                        # 4. SUBIR DE VUELTA LIMPIO
+                        ws_conf.batch_clear(["A2:AZ500"]) # Limpia el área de datos
+                        ws_conf.update("A2", df_full.fillna("").values.tolist(), value_input_option='USER_ENTERED')
+                        
+                        st.balloons()
+                        st.success("🎯 MISIÓN CUMPLIDA. Precios actualizados y archivo organizado alfabéticamente.")
+                        del st.session_state['datos_para_sincronizar']
+                    except Exception as e:
+                        st.error(f"Falla en sincronización final: {e}")
 # =====================================================================
 # 📥 2. CARGA FACTURACIÓN
 # =====================================================================
