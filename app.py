@@ -976,34 +976,66 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (VERSIÓN VISIBLE) ---
+# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (VERSIÓN FINAL NATIVA) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
-# Cambiamos number_input por un slider o un selectbox para que sea imposible no verlo
 semana_target = st.sidebar.select_slider(
     "Seleccione Semana a actualizar:",
     options=list(range(1, 53)),
-    value=1
+    value=19 # He puesto 19 como predeterminado por su captura
 )
 
-# Mostramos la semana seleccionada en grande para confirmar
-st.sidebar.markdown(f"### 📍 Semana: **{semana_target}**")
+st.sidebar.markdown(f"### 📍 Semana Seleccionada: **{semana_target}**")
 
 if st.sidebar.button("🚀 EJECUTAR OMEGA", use_container_width=True):
     try:
-        with st.spinner(f"Sincronizando Semana {semana_target}..."):
-            # IMPORTANTE: Use aquí la URL del archivo que "Guardó como Google Sheets"
-            url_comp = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4uIt9rRNB40pPBt8d/edit" 
+        with st.spinner(f"Sincronizando Semana {semana_target} en la Bóveda..."):
+            # 🛑 PEGUE AQUÍ LA URL DEL NUEVO ARCHIVO (EL QUE NO TIENE .XLSM)
+            url_comp = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit?gid=1363658316#gid=1363658316" 
             sh_comp = gc.open_by_url(url_comp)
             ws_datos = sh_comp.worksheet("DATOS")
             
-            # El resto del proceso de actualización...
-            # (Mantenga aquí el resto del código que le pasé antes)
-            st.success(f"✅ ¡Semana {semana_target} sincronizada!")
+            todo_datos = ws_datos.get_all_values()
+            fila_7 = todo_datos[6]
             
+            col_semana = -1
+            for i, val in enumerate(fila_7):
+                if str(val).strip() == str(semana_target):
+                    col_semana = i + 1
+                    break
+            
+            if col_semana == -1:
+                st.error(f"❌ La columna de la semana {semana_target} no existe en la Fila 7.")
+            else:
+                # Diccionarios de búsqueda (limpiando nombres)
+                dict_precios = {str(r['PRODUCTO']).strip().upper(): r['PRECIO_FINAL'] for _, r in df_config.iterrows()}
+                dict_dosis = {str(r['PRODUCTO']).strip().upper(): r['DOSIS'] for _, r in df_mezclas.iterrows()}
+                
+                updates = []
+                for r_idx, row in enumerate(todo_datos):
+                    if r_idx < 7: continue 
+                    
+                    prod_dest = str(row[3]).strip().upper() # Columna D
+                    if prod_dest in dict_precios:
+                        p_unit = float(dict_precios[prod_dest])
+                        tipo_tabla = str(row[1]).strip().upper() # Columna B
+                        
+                        valor_final = p_unit
+                        if "DOSIS-HA" in tipo_tabla and prod_dest in dict_dosis:
+                            valor_final = p_unit * float(dict_dosis[prod_dest])
+                        
+                        updates.append({
+                            'range': gspread.utils.rowcol_to_a1(r_idx + 1, col_semana),
+                            'values': [[valor_final]]
+                        })
+                
+                if updates:
+                    ws_datos.batch_update(updates)
+                    st.success(f"🎯 ¡TRASPLANTE OMEGA EXITOSO! Semana {semana_target} actualizada.")
+                    st.balloons()
+                else:
+                    st.warning("No se encontraron productos para actualizar. Revise los nombres.")
+
     except Exception as e:
-        if "Office file" in str(e):
-            st.error("🚨 ERROR TÁCTICO: El archivo sigue siendo Excel (.xlsm). Por favor, en Drive vaya a 'Archivo > Guardar como hoja de cálculo de Google' y use esa nueva URL.")
-        else:
-            st.error(f"🚨 Error en la maniobra: {e}")
+        st.error(f"🚨 Falla en el sistema: {e}")
