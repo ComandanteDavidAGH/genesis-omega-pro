@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V7 (AUDITOR FORENSE) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V8 (ESCÁNER MULTI-PESTAÑA) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1250,12 +1250,12 @@ def limpiar_texto(texto):
     if pd.isna(texto): return ""
     return str(texto).strip().upper()
 
-if st.sidebar.button("🚀 EJECUTAR ARQUEO FORENSE", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR ARQUEO MULTI-PESTAÑA", use_container_width=True):
     if not archivo_sap or not archivos_sup:
         st.sidebar.error("❌ Cargue los archivos para iniciar la auditoría.")
     else:
         try:
-            with st.spinner("Desplegando Auditor Forense y blindando columnas..."):
+            with st.spinner("Escaneando todas las pestañas de los archivos..."):
                 
                 # --- FASE 1: SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
@@ -1274,35 +1274,53 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO FORENSE", use_container_width=True):
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).replace(',', '.'), errors='coerce').fillna(0)
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: SUPERVISORES (CON ESCUDO DE COLUMNAS) ---
+                # --- FASE 2: SUPERVISORES (BÚSQUEDA EN TODAS LAS PESTAÑAS) ---
                 lista_supervisores = []
                 log_diagnostico = []
                 
                 for file in archivos_sup:
-                    df_raw = pd.read_csv(file, header=None, dtype=str) if file.name.endswith('.csv') else pd.read_excel(file, header=None, dtype=str)
+                    # Leemos TODAS las pestañas del archivo (Devuelve un diccionario)
+                    if file.name.endswith('.csv'):
+                        dict_dfs = {"CSV_UNICO": pd.read_csv(file, header=None, dtype=str)}
+                    else:
+                        dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
                     
-                    header_idx = -1
-                    for i in range(min(30, len(df_raw))):
-                        row_vals = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
-                        if any("LOTE" in val for val in row_vals) and any("SALDO" in val for val in row_vals):
-                            header_idx = i
-                            break
-                    
-                    if header_idx != -1:
-                        df_sup = df_raw.iloc[header_idx + 1:].copy()
+                    best_score = -1
+                    best_header_idx = -1
+                    best_sheet_name = ""
+                    best_df_raw = None
+
+                    # Evaluamos pestaña por pestaña
+                    for sheet_name, df_raw in dict_dfs.items():
+                        for i in range(min(30, len(df_raw))):
+                            row_vals = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
+                            score = 0
+                            # Puntos clave de un inventario real
+                            if any("LOTE" in val for val in row_vals): score += 2
+                            if any("SALDO" in val for val in row_vals): score += 2
+                            if any("PRODUC" in val or "DESCRI" in val or "MATERIAL" in val for val in row_vals): score += 1
+                            if any("INGRES" in val or "SALID" in val for val in row_vals): score += 1 # Esto descarta los reportes de SAP
+                            
+                            if score > best_score:
+                                best_score = score
+                                best_header_idx = i
+                                best_sheet_name = sheet_name
+                                best_df_raw = df_raw
+
+                    if best_score >= 4: # Encontró la pestaña ganadora
+                        df_sup = best_df_raw.iloc[best_header_idx + 1:].copy()
                         
-                        # BLINDAJE DE COLUMNAS: Hacemos que cada columna sea única para que Pandas no confunda títulos vacíos
                         clean_headers = []
-                        for i_col, h in enumerate(df_raw.iloc[header_idx].values):
+                        for i_col, h in enumerate(best_df_raw.iloc[best_header_idx].values):
                             h_clean = quitar_tildes(str(h))
-                            if h_clean == "NAN" or h_clean == "": h_clean = "VACIO"
+                            if h_clean in ["NAN", ""]: h_clean = "VACIO"
                             clean_headers.append(f"{h_clean}_{i_col}") 
                         df_sup.columns = clean_headers
                         
                         c_p = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c or "MATERIAL" in c), None)
                         c_a = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
                         c_l = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
-                        c_s = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c), None)
+                        c_s = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c and "SAP" not in c), None)
                         
                         if all([c_p, c_a, c_l, c_s]):
                             df_sup_clean = df_sup[[c_p, c_a, c_l, c_s]].copy()
@@ -1316,19 +1334,17 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO FORENSE", use_container_width=True):
                             
                             if not df_sup_clean.empty:
                                 lista_supervisores.append(df_sup_clean)
-                                # REPORTE FORENSE: Mostramos la primera fila que extrajo
                                 m = df_sup_clean.iloc[0]
-                                log_diagnostico.append(f"✅ `{file.name}` -> **Extracción de prueba:** Producto=`{m['PRODUCTO_SUP']}` | Pista=`{m['PISTA']}` | Lote=`{m['LOTE']}`")
+                                log_diagnostico.append(f"✅ `{file.name}` -> **Pestaña elegida:** `{best_sheet_name}` | Prueba: Prod=`{m['PRODUCTO_SUP']}` | Lote=`{m['LOTE']}`")
                             else:
-                                log_diagnostico.append(f"⚠️ `{file.name}` -> Se leyeron títulos, pero la tabla está vacía.")
+                                log_diagnostico.append(f"⚠️ `{file.name}` -> Pestaña `{best_sheet_name}` detectada, pero sin datos.")
                         else:
-                            log_diagnostico.append(f"❌ `{file.name}` -> Títulos encontrados pero incompletos.")
+                            log_diagnostico.append(f"❌ `{file.name}` -> Faltaron columnas en la pestaña `{best_sheet_name}`.")
                     else:
-                        log_diagnostico.append(f"❌ `{file.name}` -> No se detectaron títulos (LOTE y SALDO).")
+                        log_diagnostico.append(f"❌ `{file.name}` -> Ninguna pestaña parece un inventario válido.")
 
-                # MOSTRAR EL RADAR FORENSE AL COMANDANTE
-                with st.expander("🔍 RADAR FORENSE (Revise si los archivos de los supervisores están descuadrados)", expanded=True):
-                    st.write("Si nota que en la *Extracción de prueba* la **Pista** es un número o el **Lote** es la letra 'L', significa que el Excel de ese supervisor tiene las columnas corridas o celdas combinadas. ¡Exija la corrección de ese archivo!")
+                # MOSTRAR EL RADAR FORENSE
+                with st.expander("🔍 RADAR FORENSE (Multi-Pestaña)", expanded=True):
                     for log in log_diagnostico:
                         st.markdown(log)
 
@@ -1346,13 +1362,12 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO FORENSE", use_container_width=True):
                 cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
                 cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
                 
-                # Tolerancia: Ignorar diferencias menores a 0.05
                 cruce['TIENE_ERROR'] = cruce['DIFERENCIA'].abs() > 0.05
                 cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'TIENE_ERROR']]
                 cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
 
                 # --- FASE 4: PANEL DE MANDO ---
-                st.success("🎯 Arqueo Forense Finalizado. Los decimales minúsculos ya no generan alarmas rojas.")
+                st.success("🎯 Arqueo Finalizado. El escáner ignoró las pestañas falsas de SAP.")
                 
                 tab1, tab2 = st.tabs(["⚠️ Discrepancias Reales", "📋 Auditoría Total"])
                 
@@ -1372,12 +1387,11 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO FORENSE", use_container_width=True):
                         subset=['DIFERENCIA']
                     ), use_container_width=True)
 
-                # Exportación
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     cruce[cruce['TIENE_ERROR']].to_excel(writer, index=False, sheet_name='Diferencias')
                     cruce.to_excel(writer, index=False, sheet_name='Total')
-                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), "Arqueo_V7.xlsx")
+                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), "Arqueo_V8.xlsx")
 
         except Exception as e:
             st.error(f"🚨 ERROR: {e}")
