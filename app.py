@@ -1230,10 +1230,11 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V4 (ESCÁNER DINÁMICO) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V5 (ARTILLERÍA PESADA) ---
 import pandas as pd
 import streamlit as st
 import io
+import unicodedata
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚖️ Arqueo de Inventarios")
@@ -1241,16 +1242,22 @@ st.sidebar.subheader("⚖️ Arqueo de Inventarios")
 archivo_sap = st.sidebar.file_uploader("1️⃣ Suba la Sábana de SAP (.xlsx o .csv)", type=['xlsx', 'csv'])
 archivos_sup = st.sidebar.file_uploader("2️⃣ Suba los Archivos de Supervisores", type=['xlsx', 'csv'], accept_multiple_files=True)
 
+def quitar_tildes(s):
+    """Purifica el texto quitando tildes, espacios extra y dejándolo en mayúsculas"""
+    if pd.isna(s): return ""
+    s = str(s).upper().strip()
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
 def limpiar_texto(texto):
     if pd.isna(texto): return ""
     return str(texto).strip().upper()
 
-if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR ARQUEO (MODO PESADO)", use_container_width=True):
     if not archivo_sap or not archivos_sup:
         st.sidebar.error("❌ Faltan archivos en los buzones para el cruce.")
     else:
         try:
-            with st.spinner("Escáner Dinámico Activado: Buscando coordenadas de saldos..."):
+            with st.spinner("Desplegando Artillería Pesada: Escaneando ADN de archivos..."):
                 
                 # --- FASE 1: LEER SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
@@ -1259,7 +1266,15 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                 else:
                     df_sap = pd.read_excel(sap_file)
                 
-                df_sap_clean = df_sap[['Descripción del material', 'Almacén', 'Lote', 'Libre utilización']].copy()
+                # Normalizamos las columnas de SAP por si acaso
+                df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
+                
+                c_prod_sap = next((c for c in df_sap.columns if "MATERIAL" in c or "DESCRIP" in c or "PRODUC" in c), df_sap.columns[0])
+                c_almac_sap = next((c for c in df_sap.columns if "ALMACEN" in c or "PISTA" in c), df_sap.columns[1])
+                c_lote_sap = next((c for c in df_sap.columns if "LOTE" in c), df_sap.columns[2])
+                c_saldo_sap = next((c for c in df_sap.columns if "LIBRE" in c or "UTILIZACION" in c or "SALDO" in c), df_sap.columns[3])
+
+                df_sap_clean = df_sap[[c_prod_sap, c_almac_sap, c_lote_sap, c_saldo_sap]].copy()
                 df_sap_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                 
                 df_sap_clean['LOTE'] = df_sap_clean['LOTE'].apply(limpiar_texto)
@@ -1268,34 +1283,47 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                 
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: LEER SUPERVISORES (CON ESCÁNER DINÁMICO DE FILAS) ---
+                # --- FASE 2: LEER SUPERVISORES (ESCÁNER DE PUNTAJE) ---
                 lista_supervisores = []
+                log_diagnostico = [] # Guardará el reporte de cómo leyó cada archivo
+                
                 for file in archivos_sup:
-                    # Leemos TODO el archivo sin encabezados para buscar dónde empieza la tabla
                     if file.name.endswith('.csv'):
                         df_raw = pd.read_csv(file, header=None, dtype=str)
                     else:
                         df_raw = pd.read_excel(file, header=None, dtype=str)
                     
                     header_idx = -1
-                    # El dron escanea las primeras 25 filas buscando las palabras clave
-                    for i in range(min(25, len(df_raw))):
-                        row_text = " ".join([str(x).upper() for x in df_raw.iloc[i].dropna()])
-                        if "LOTE" in row_text and "SALDO" in row_text:
-                            header_idx = i
-                            break
+                    max_score = 0
                     
-                    if header_idx != -1:
-                        # Cortamos la basura de arriba y establecemos los encabezados reales
-                        df_sup = df_raw.iloc[header_idx + 1:].copy()
-                        df_sup.columns = [str(x).upper().strip() for x in df_raw.iloc[header_idx]]
+                    # Escanear las primeras 30 filas y darles puntaje
+                    for i in range(min(30, len(df_raw))):
+                        row_vals = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
+                        score = 0
+                        if any("LOTE" in val for val in row_vals): score += 1
+                        if any("PRODUC" in val or "DESCRI" in val or "MATERIAL" in val for val in row_vals): score += 1
+                        if any("ALMAC" in val or "PISTA" in val for val in row_vals): score += 1
+                        if any("SALDO" in val or "EXISTEN" in val or "TOTAL" in val for val in row_vals): score += 1
                         
-                        # Buscamos los nombres de las columnas sin importar en qué posición estén
-                        c_prod = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c), None)
+                        if score > max_score:
+                            max_score = score
+                            header_idx = i
+                    
+                    if max_score >= 3:
+                        # 🎯 Encontró la fila objetivo
+                        df_sup = df_raw.iloc[header_idx + 1:].copy()
+                        df_sup.columns = [quitar_tildes(x) for x in df_raw.iloc[header_idx]]
+                        
+                        # Buscar coordenadas exactas (Sin importar dónde estén)
+                        c_prod = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c or "MATERIAL" in c), None)
                         c_almac = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
-                        c_lote = next((c for c in df_sup.columns if "LOTE" in c), None)
-                        # Buscamos la columna SALDO (evitando la que dice "SALDO INICIAL")
-                        c_saldo = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c), None)
+                        
+                        # Para Lote, evitamos que agarre la columna de Saldo por Lote por error
+                        c_lote = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
+                        if not c_lote: c_lote = next((c for c in df_sup.columns if "LOTE" in c), None)
+                        
+                        # Para Saldo, evitamos el "Saldo Inicial" o "SAP"
+                        c_saldo = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c and "SAP" not in c), None)
                         
                         if c_prod and c_almac and c_lote and c_saldo:
                             df_sup_clean = df_sup[[c_prod, c_almac, c_lote, c_saldo]].copy()
@@ -1303,16 +1331,32 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                             
                             df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
                             
-                            # Limpieza y auto-relleno de Pistas vacías
+                            # Magia de Auto-Relleno para pistas en blanco
                             df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None)
                             df_sup_clean['PISTA'] = df_sup_clean['PISTA'].ffill().bfill()
                             
                             df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
                             df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
                             lista_supervisores.append(df_sup_clean)
+                            
+                            log_diagnostico.append(f"✅ `{file.name}`: Fila {header_idx + 1} | Columnas mapeadas perfecto.")
+                        else:
+                            faltantes = []
+                            if not c_prod: faltantes.append("Producto")
+                            if not c_almac: faltantes.append("Almacén")
+                            if not c_lote: faltantes.append("Lote")
+                            if not c_saldo: faltantes.append("Saldo")
+                            log_diagnostico.append(f"❌ `{file.name}`: Fila {header_idx + 1} detectada, pero faltaron columnas: {', '.join(faltantes)}")
+                    else:
+                        log_diagnostico.append(f"❌ `{file.name}`: No se detectó ninguna fila que parezca un encabezado de inventario.")
+
+                # Mostrar diagnóstico al Comandante
+                with st.expander("🔍 Radar de Archivos (Detalles Técnicos)"):
+                    for log in log_diagnostico:
+                        st.write(log)
 
                 if not lista_supervisores:
-                    st.error("🚨 El escáner no encontró la fila de encabezados (LOTE, SALDO) en los archivos de supervisores.")
+                    st.error("🚨 Misión Abortada: Ningún archivo de supervisor pudo ser procesado. Revise el 'Radar de Archivos' arriba.")
                     st.stop()
 
                 # --- FASE 3: EL CRUCE MAESTRO ---
@@ -1335,7 +1379,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                 alertas = cruce[cruce['DIFERENCIA'] != 0].copy()
 
                 # --- FASE 4: PANEL DE MANDO ---
-                st.success("🎯 ¡Arqueo Finalizado! El escáner detectó todas las filas de inicio automáticamente.")
+                st.success("🎯 ¡Arqueo Finalizado! Artillería Pesada impacto en los objetivos.")
                 
                 tab1, tab2 = st.tabs(["⚠️ Diferencias (Alertas)", "📋 Ver Todo el Inventario"])
                 
@@ -1356,7 +1400,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                     
                 st.write("---")
                 
-                # ESCUDO ANTI-FALLAS DE EXCEL: Si no tiene la librería, genera un CSV.
+                # Descarga infalible (Usando openpyxl o CSV de respaldo)
                 try:
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -1369,8 +1413,8 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                         file_name="Arqueo_Inventarios.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                except Exception as e_excel:
-                    st.warning("⚠️ Su sistema no tiene instalado el motor de Excel. Generando reporte de alertas en CSV...")
+                except Exception:
+                    st.warning("⚠️ Generando reporte en formato CSV (Máxima Compatibilidad)...")
                     csv_data = alertas.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="📥 Descargar Diferencias (CSV)",
