@@ -1083,11 +1083,15 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
     except Exception as e:
         st.error(f"🚨 FALLA DEL SISTEMA: {e}")
 
- # --- ✈️ MÓDULO OMEGA V14: RASTREO DOMINICALES (FECHAS PURAS) ---
+ # --- ✈️ MÓDULO OMEGA V15: ARTILLERÍA PESADA (DOMINICALES) ---
 import datetime
+import re
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("✈️ Rastreo Dominicales")
+
+# 1. Nueva caja para pegar la URL del origen sin tocar el código
+url_ori = st.sidebar.text_input("🔗 Pegue URL del Reporte de Avión (Origen):", type="default")
 
 def limpiar_val_dom(v):
     try:
@@ -1095,88 +1099,118 @@ def limpiar_val_dom(v):
         return float(s)
     except: return 0.0
 
-def procesar_fecha_pura(v):
-    """Lee el número serial de la fecha en lugar del texto"""
-    try:
-        if not v: return None
-        # Si es un número puro (UNFORMATTED_VALUE de Sheets)
-        if isinstance(v, (int, float)):
-            return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(v))
-        # Si viene como texto numérico
-        if str(v).replace('.', '').isdigit():
-            return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(float(v)))
-        return None
-    except: return None
+def procesar_fecha_pesada(v):
+    """Lector de fechas con inteligencia artificial básica para español"""
+    if not v: return None
+    
+    # 1. Si Google Sheets lo lee como número serial (Formato numérico)
+    if isinstance(v, (int, float)):
+        return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(v))
+    
+    v_str = str(v).lower().strip()
+    
+    # 2. Si viene como número pero en formato de texto
+    if v_str.replace('.', '').isdigit():
+        return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(float(v)))
+    
+    # 3. ARTILLERÍA PESADA: Leer texto en español (Ej: "domingo, abril 26, 2026")
+    meses = {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+        "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+    }
+    
+    for mes, num_mes in meses.items():
+        if mes in v_str:
+            # Buscar el año (4 dígitos juntos)
+            match_ano = re.search(r'\d{4}', v_str)
+            # Buscar el día (1 o 2 dígitos aislados)
+            match_dia = re.search(r'\b\d{1,2}\b', v_str)
+            
+            if match_ano and match_dia:
+                try:
+                    return datetime.datetime(int(match_ano.group()), num_mes, int(match_dia.group()))
+                except: pass
+
+    # 4. Plan de contingencia (dd/mm/yyyy)
+    if "/" in v_str or "-" in v_str:
+        try:
+            import dateutil.parser
+            return dateutil.parser.parse(v_str, dayfirst=True)
+        except: pass
+        
+    return None
 
 if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
-    try:
-        with st.spinner("Escaneando radares de fechas..."):
-            # --- 🛰️ COORDENADAS ---
-            url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
-            
-            # 🛑 COLOQUE AQUÍ LA URL DEL REPORTE "COSTO DE AVIÓN" EN DRIVE:
-            url_ori = "PONGA_AQUI_LA_URL_DEL_ORIGEN" 
-            
-            # 1. LEER DESTINO (Pidiendo valores PUROS para las fechas)
-            sh_dest = gc.open_by_url(url_dest)
-            # Selecciona la primera pestaña automáticamente ("SOBRECOST DOMMARZO26")
-            ws_dest = sh_dest.sheet1 
-            datos_dest = ws_dest.get_all_values(value_render_option='UNFORMATTED_VALUE')
-            
-            max_f = datetime.datetime(1900, 1, 1)
-            dict_local = {}
-            
-            # Buscamos en Columna C (índice 2). Empezamos desde la fila 5 (índice 4) según su foto
-            for i, row in enumerate(datos_dest[4:]): 
-                n_fila = i + 5
-                if len(row) > 2:
-                    f_obj = procesar_fecha_pura(row[2])
-                    if f_obj:
-                        if f_obj > max_f: max_f = f_obj
-                        finca_dest = str(row[0]).strip().upper()
-                        dict_local[f"{finca_dest}|{f_obj.date()}"] = n_fila
-
-            st.info(f"📅 Radar Destino: Última fecha real detectada {max_f.strftime('%d/%m/%Y')}")
-
-            # 2. LEER ORIGEN (Reporte Costo Avión)
-            sh_ori = gc.open_by_url(url_ori)
-            ws_ori = sh_ori.worksheet("TABLA 1") # Cambie si la pestaña de origen se llama distinto
-            datos_ori = ws_ori.get_all_values(value_render_option='UNFORMATTED_VALUE')
-            
-            dict_nuevos = {}
-            
-            for i, row in enumerate(datos_ori):
-                if i == 0 or len(row) < 24: continue
+    if not url_ori or "http" not in url_ori:
+        st.sidebar.error("❌ Pegue una URL válida en la caja de arriba.")
+    else:
+        try:
+            with st.spinner("Escaneando radares con artillería pesada..."):
+                # URL Fija de Destino (Dominicales)
+                url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
                 
-                f_ori = procesar_fecha_pura(row[7]) # Columna H
-                surcharge = limpiar_val_dom(row[20]) # Columna U
+                # 1. LEER DESTINO
+                sh_dest = gc.open_by_url(url_dest)
+                ws_dest = sh_dest.sheet1 # Selecciona la primera pestaña sin importar el nombre
+                datos_dest = ws_dest.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
-                if f_ori and surcharge > 0 and f_ori > max_f:
-                    finca = str(row[2]).strip().upper()
-                    ha = limpiar_val_dom(row[5])
-                    pista = str(row[23]).strip().upper()
+                max_f = datetime.datetime(1900, 1, 1)
+                dict_local = {}
+                
+                # Buscar fecha en Columna C (índice 2)
+                for i, row in enumerate(datos_dest[4:]): # Empieza a leer desde la fila 5
+                    if len(row) > 2:
+                        f_obj = procesar_fecha_pesada(row[2])
+                        if f_obj:
+                            if f_obj > max_f: max_f = f_obj
+                            finca_dest = str(row[0]).strip().upper()
+                            dict_local[f"{finca_dest}|{f_obj.date()}"] = i + 5
+
+                st.info(f"📅 Radar Destino: Última fecha descifrada -> {max_f.strftime('%d/%m/%Y')}")
+
+                # 2. LEER ORIGEN
+                sh_ori = gc.open_by_url(url_ori)
+                ws_ori = sh_ori.worksheet("TABLA 1") 
+                datos_ori = ws_ori.get_all_values(value_render_option='UNFORMATTED_VALUE')
+                
+                dict_nuevos = {}
+                
+                for i, row in enumerate(datos_ori):
+                    if i == 0 or len(row) < 24: continue
                     
-                    key = f"{finca}|{f_ori.date()}"
+                    f_ori = procesar_fecha_pesada(row[7]) # Columna H
+                    surcharge = limpiar_val_dom(row[20])  # Columna U
                     
-                    if key in dict_nuevos:
-                        dict_nuevos[key]['ha'] += ha
-                        if not dict_nuevos[key]['pista']: dict_nuevos[key]['pista'] = pista
-                    else:
-                        dict_nuevos[key] = {
-                            'finca': finca, 'ha': ha, 'fec': f_ori.strftime("%d/%m/%Y"),
-                            'sur': surcharge, 'pista': pista
-                        }
+                    if f_ori and surcharge > 0 and f_ori > max_f:
+                        finca = str(row[2]).strip().upper()
+                        ha = limpiar_val_dom(row[5])
+                        pista = str(row[23]).strip().upper()
+                        
+                        key = f"{finca}|{f_ori.date()}"
+                        
+                        if key in dict_nuevos:
+                            dict_nuevos[key]['ha'] += ha
+                            if not dict_nuevos[key]['pista']: dict_nuevos[key]['pista'] = pista
+                        else:
+                            # Calculamos la semana del año usando ISO calendar (Como hace la macro)
+                            semana_num = f_ori.isocalendar()[1]
+                            
+                            dict_nuevos[key] = {
+                                'finca': finca, 'ha': ha, 
+                                'fec': f"domingo, {f_ori.strftime('%B')} {f_ori.day}, {f_ori.year}".replace("January","enero").replace("February","febrero").replace("March","marzo").replace("April","abril").replace("May","mayo"), # Formateo rápido para la foto
+                                'sur': surcharge, 'pista': pista, 'semana': semana_num
+                            }
 
-            # 3. CARGA DE DATOS AL FINAL DE LA TABLA
-            if dict_nuevos:
-                filas_nuevas = [[v['finca'], v['ha'], v['fec'], v['sur'], v['pista']] for v in dict_nuevos.values()]
-                ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
-                
-                st.success(f"🎯 ¡RASTREO EXITOSO! Se inyectaron {len(filas_nuevas)} registros nuevos.")
-                st.balloons()
-            else:
-                st.warning("⚠️ No se detectaron sobrecostos nuevos posteriores a la fecha del radar.")
+                # 3. CARGA DE DATOS
+                if dict_nuevos:
+                    # Estructura: Finca(A) | ha(B) | Fecha(C) | Sobrecosto(D) | Pista(E) | Semana(F)
+                    filas_nuevas = [[v['finca'], v['ha'], v['fec'], v['sur'], v['pista'], v['semana']] for v in dict_nuevos.values()]
+                    ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
+                    
+                    st.success(f"🎯 ¡IMPACTO DE ARTILLERÍA! Se inyectaron {len(filas_nuevas)} registros dominicales nuevos.")
+                    st.balloons()
+                else:
+                    st.warning("⚠️ No se detectaron vuelos con sobrecosto posteriores a la fecha del radar.")
 
-    except Exception as e:
-        # Ahora el error mostrará exactamente qué está fallando (Ej: APIError, InvalidUrl, etc)
-        st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
+        except Exception as e:
+            st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
