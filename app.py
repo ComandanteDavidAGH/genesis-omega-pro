@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V2 ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V3 ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1238,7 +1238,6 @@ import io
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚖️ Arqueo de Inventarios")
 
-# 1. Buzones de Recepción
 archivo_sap = st.sidebar.file_uploader("1️⃣ Suba la Sábana de SAP (.xlsx o .csv)", type=['xlsx', 'csv'])
 archivos_sup = st.sidebar.file_uploader("2️⃣ Suba los Archivos de Supervisores", type=['xlsx', 'csv'], accept_multiple_files=True)
 
@@ -1251,27 +1250,22 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
         st.sidebar.error("❌ Faltan archivos en los buzones para el cruce.")
     else:
         try:
-            with st.spinner("Procesando millones de datos en milisegundos..."):
+            with st.spinner("Calibrando cruce de saldos y rellenando vacíos..."):
                 
-                # --- FASE 1: LEER SAP (BLINDADO) ---
-                # Si el sistema lo lee como lista, forzamos a que tome el primer elemento
+                # --- FASE 1: LEER SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
-                
                 if sap_file.name.endswith('.csv'):
                     df_sap = pd.read_csv(sap_file)
                 else:
                     df_sap = pd.read_excel(sap_file)
                 
-                # Filtramos y renombramos las columnas vitales de SAP
                 df_sap_clean = df_sap[['Descripción del material', 'Almacén', 'Lote', 'Libre utilización']].copy()
                 df_sap_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                 
-                # Limpiamos el Lote y la Pista para que el cruce sea perfecto
                 df_sap_clean['LOTE'] = df_sap_clean['LOTE'].apply(limpiar_texto)
                 df_sap_clean['PISTA'] = df_sap_clean['PISTA'].apply(limpiar_texto)
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'], errors='coerce').fillna(0)
                 
-                # Agrupamos por si SAP tiene el mismo lote en dos filas
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
                 # --- FASE 2: LEER SUPERVISORES ---
@@ -1284,76 +1278,81 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                     
                     cols = df_sup.columns
                     if len(cols) >= 16:
-                        # Col 0: Producto, Col 3: Pista, Col 4: Lote, Col 15: Saldo Físico
                         df_sup_clean = df_sup.iloc[:, [0, 3, 4, 15]].copy()
                         df_sup_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_FISICO']
                         
                         df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
                         df_sup_clean['PISTA'] = df_sup_clean['PISTA'].apply(limpiar_texto)
+                        
+                        # 🛡️ EL ESCUDO AUTO-RELLENO: Si el supervisor no puso la pista, la copiamos de la celda vecina
+                        df_sup_clean['PISTA'] = df_sup_clean['PISTA'].replace('', None).ffill().bfill()
+                        
                         df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
                         
-                        # Filtramos filas vacías
                         df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
                         lista_supervisores.append(df_sup_clean)
 
                 if not lista_supervisores:
-                    st.error("🚨 Los archivos de supervisores no tienen el formato esperado (Datos desde la Fila 4, Columna P para saldo).")
+                    st.error("🚨 Formato no reconocido. Asegúrese de que los archivos de supervisores empiecen en la fila 4.")
                     st.stop()
 
-                # Unimos todos los reportes de los supervisores en una súper-tabla
                 df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
-                # Agrupamos por Pista y Lote (Ignoramos el nombre del producto aquí para evitar fallos si el supervisor lo escribe diferente)
                 df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE'], as_index=False)['SALDO_FISICO'].sum()
 
                 # --- FASE 3: EL CRUCE MAESTRO ---
-                # Unimos SAP con Supervisores usando la PISTA y el LOTE como llave (ADN)
                 cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
                 
-                # Rellenamos vacíos con 0
                 cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0)
                 cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0)
                 
-                # LA MATEMÁTICA DEL ARQUEO
                 cruce['DIFERENCIA'] = cruce['SALDO_FISICO'] - cruce['SALDO_SAP']
+                cruce['DIFERENCIA'] = cruce['DIFERENCIA'].round(3) # Evitar micro-decimales
                 
-                # Filtramos: Solo nos importan los que tengan diferencia (usamos round para evitar micro-decimales como 0.0000001)
-                cruce['DIFERENCIA'] = cruce['DIFERENCIA'].round(3)
+                # Arreglar nombres de productos vacíos para los que sobraron
+                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna("NO ESTÁ EN SAP / REVISAR")
+                
+                # Ordenar
+                cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA']]
+                cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
+                
+                # Separar las alertas
                 alertas = cruce[cruce['DIFERENCIA'] != 0].copy()
-                
-                # Arreglamos si un producto existía en supervisor pero no en SAP (y viceversa)
-                alertas['PRODUCTO'] = alertas['PRODUCTO'].fillna("NO ESTÁ EN SAP / REVISAR LOTE")
-                
-                # Ordenamos y arreglamos para mostrar en pantalla
-                alertas = alertas[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA']]
-                alertas = alertas.sort_values(by=['PISTA', 'PRODUCTO'])
 
-                # --- FASE 4: PANEL DE MANDO ---
-                st.success("🎯 ¡Arqueo Finalizado con Éxito!")
+                # --- FASE 4: PANEL DE MANDO DIVIDIDO ---
+                st.success("🎯 ¡Arqueo Finalizado! Se rellenaron las pistas faltantes.")
                 
-                if alertas.empty:
-                    st.balloons()
-                    st.info("✅ NO HAY DIFERENCIAS. Todo el inventario físico cuadra perfectamente con SAP.")
-                else:
-                    st.warning(f"⚠️ Atención: Se detectaron {len(alertas)} discrepancias entre SAP y las Pistas.")
+                # Creamos dos pestañas en la pantalla
+                tab1, tab2 = st.tabs(["⚠️ Diferencias (Alertas)", "📋 Ver Todo el Inventario (Completo)"])
+                
+                with tab1:
+                    if alertas.empty:
+                        st.balloons()
+                        st.info("✅ NO HAY DIFERENCIAS. Todo cuadra perfectamente.")
+                    else:
+                        st.warning(f"Se detectaron {len(alertas)} discrepancias.")
+                        st.dataframe(alertas.style.map(
+                            lambda x: 'color: red; font-weight: bold' if isinstance(x, (int, float)) and x < 0 
+                            else ('color: green; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
+                            subset=['DIFERENCIA']
+                        ), use_container_width=True)
+                
+                with tab2:
+                    st.info(f"Mostrando todos los {len(cruce)} registros procesados.")
+                    st.dataframe(cruce, use_container_width=True)
                     
-                    # Mostramos la tabla en la aplicación
-                    st.dataframe(alertas.style.map(
-                        lambda x: 'color: red; font-weight: bold' if isinstance(x, (int, float)) and x < 0 
-                        else ('color: green; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
-                        subset=['DIFERENCIA']
-                    ), use_container_width=True)
-                    
-                    # Botón para descargar a Excel
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                        alertas.to_excel(writer, index=False, sheet_name='Diferencias_Arqueo')
-                    
-                    st.download_button(
-                        label="📥 Descargar Reporte de Diferencias (Excel)",
-                        data=buffer.getvalue(),
-                        file_name="Reporte_Arqueo_SAP_vs_Pistas.xlsx",
-                        mime="application/vnd.ms-excel"
-                    )
+                # Botón de descarga general
+                st.write("---")
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    alertas.to_excel(writer, index=False, sheet_name='Solo_Diferencias')
+                    cruce.to_excel(writer, index=False, sheet_name='Inventario_Total')
+                
+                st.download_button(
+                    label="📥 Descargar Reporte Completo (Excel)",
+                    data=buffer.getvalue(),
+                    file_name="Reporte_Arqueo_SAP_vs_Pistas.xlsx",
+                    mime="application/vnd.ms-excel"
+                )
 
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {e}")
