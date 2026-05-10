@@ -976,104 +976,85 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO OMEGA V4: ARTILLERÍA PESADA (PURIFICADOR DE NÚMEROS) ---
+# --- 🔄 MÓDULO OMEGA V5: PRECISIÓN QUIRÚRGICA ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
-def limpiar_numero_pro(valor):
-    """Limpia puntos de miles y estandariza decimales para Python"""
+def limpiar_valor_quirurgico(valor):
+    """Limpia el formato de moneda de Excel para que Python pueda operar"""
     if not valor or str(valor).strip() == "": return 0.0
+    # Eliminamos puntos de miles y dejamos solo el decimal
     s = str(valor).replace('$', '').replace(' ', '').strip()
-    
-    # Si hay puntos y comas (Ej: 4.892,03)
-    if '.' in s and ',' in s:
+    if '.' in s and ',' in s: # Caso 4.892,03
         s = s.replace('.', '').replace(',', '.')
-    # Si tiene dos puntos (Ej: 4.892.03 -> Caso de su error)
-    elif s.count('.') > 1:
+    elif s.count('.') >= 1 and ',' not in s: # Caso 4.892.03
         partes = s.split('.')
         s = "".join(partes[:-1]) + "." + partes[-1]
-    # Si tiene una coma como decimal
-    elif ',' in s:
+    elif ',' in s: # Caso 4892,03
         s = s.replace(',', '.')
-        
     try: return float(s)
     except: return 0.0
 
-if st.sidebar.button("🚀 EJECUTAR OMEGA V4", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR TRASPLANTE", use_container_width=True):
     try:
-        with st.spinner(f"Limpiando y Sincronizando Semana {semana_target}..."):
-            # 1. EXTRACCIÓN GÉNESIS
+        with st.spinner(f"Inyectando datos en Semana {semana_target}..."):
+            # 1. CONEXIÓN ORIGEN: Solo Columnas I (Producto) y J (Costo)
             url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_gen)
+            ws_config = sh_gen.worksheet("Configuración")
             
-            data_config = sh_gen.worksheet("Configuración").get_all_values()
-            dict_precios = {str(r[8]).strip().upper(): r[9] for r in data_config[1:] if len(r) > 9 and r[8]}
-            
-            data_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values()
-            dict_dosis = {str(r[9]).strip().upper(): r[10] for r in data_mezclas if len(r) > 10 and r[9]}
+            # Leemos solo el rango necesario para no saturar
+            raw_config = ws_config.get_all_values()
+            dict_precios = {}
+            for row in raw_config:
+                if len(row) > 9:
+                    # Columna I es índice 8, Columna J es índice 9
+                    nombre_prod = str(row[8]).strip().upper()
+                    if nombre_prod and nombre_prod != "PRODUCTO":
+                        dict_precios[nombre_prod] = limpiar_valor_quirurgico(row[9])
 
-            # 2. CONEXIÓN BÓVEDA DESTINO
+            # 2. CONEXIÓN DESTINO: Bóveda de Precios
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
-            todo_datos = ws_datos.get_all_values()
             
-            col_semana = next((i + 1 for i, v in enumerate(todo_datos[6]) if str(v).strip() == str(semana_target)), -1)
-            
+            # Obtenemos la estructura actual para no romperla
+            datos_destino = ws_datos.get_all_values()
+            col_semana = next((i + 1 for i, v in enumerate(datos_destino[6]) if str(v).strip() == str(semana_target)), -1)
+
             if col_semana == -1:
-                st.error(f"❌ Semana {semana_target} no hallada.")
+                st.error(f"❌ No se encontró la columna de la Semana {semana_target}.")
             else:
-                tabla_unitarios, tabla_dosis_ha = [], []
-                
-                # Clasificación de tablas (8-14 y 16+)
-                for r_idx, row in enumerate(todo_datos):
-                    fila_real = r_idx + 1
-                    if fila_real < 8 or fila_real == 15 or len(row) < 4: continue
-                    nombre = str(row[3]).strip().upper()
-                    if nombre == "": continue
+                updates = []
+                # Recorremos la hoja de destino fila por fila
+                for r_idx, row in enumerate(datos_destino):
+                    fila_google = r_idx + 1
+                    # Solo operamos en las zonas de datos (8-14 y 16 en adelante)
+                    if fila_google < 8 or fila_google == 15: continue
                     
-                    if fila_real < 15: tabla_unitarios.append(row)
-                    else: tabla_dosis_ha.append(row)
-
-                # Detección de nuevos y Ordenamiento Alfabético
-                productos_u = [str(r[3]).strip().upper() for r in tabla_unitarios]
-                for p_gen in dict_precios.keys():
-                    if p_gen not in productos_u and p_gen != "PRODUCTO":
-                        nueva_f = [""] * len(todo_datos[0])
-                        nueva_f[3], nueva_f[1] = p_gen, "PRECIO UNITARIO"
-                        tabla_unitarios.append(nueva_f)
+                    if len(row) > 3:
+                        prod_target = str(row[3]).strip().upper() # Columna D en destino
                         
-                        nueva_fd = list(nueva_f)
-                        nueva_fd[1] = "DOSIS-HA"
-                        tabla_dosis_ha.append(nueva_fd)
+                        if prod_target in dict_precios:
+                            valor_final = dict_precios[prod_target]
+                            
+                            # Si es la tabla de DOSIS-HA (fila 16+), se podría aplicar la dosis aquí 
+                            # Pero para esta prueba, solo inyectaremos el costo directo para asegurar estabilidad
+                            
+                            updates.append({
+                                'range': gspread.utils.rowcol_to_a1(fila_google, col_semana),
+                                'values': [[valor_final]]
+                            })
 
-                tabla_unitarios.sort(key=lambda x: str(x[3]))
-                tabla_dosis_ha.sort(key=lambda x: str(x[3]))
-
-                # 💰 APLICACIÓN DE VALORES CON PURIFICADOR
-                for fila in tabla_unitarios:
-                    nom = str(fila[3]).strip().upper()
-                    if nom in dict_precios:
-                        fila[col_semana-1] = limpiar_numero_pro(dict_precios[nom])
-
-                for fila in tabla_dosis_ha:
-                    nom = str(fila[3]).strip().upper()
-                    if nom in dict_precios:
-                        p_unit = limpiar_numero_pro(dict_precios[nom])
-                        if nom in dict_dosis:
-                            dosis = limpiar_numero_pro(dict_dosis[nom])
-                            fila[col_semana-1] = p_unit * dosis
-                        else:
-                            fila[col_semana-1] = p_unit
-
-                # 🚀 RE-ESCRITURA TOTAL
-                ws_datos.update('A8', tabla_unitarios)
-                ws_datos.update('A16', tabla_dosis_ha)
-
-                st.success(f"🎯 IMPACTO TOTAL: Datos purificados, nuevos registrados y orden alfabético OK.")
-                st.balloons()
+                # 3. IMPACTO CONTROLADO
+                if updates:
+                    ws_datos.batch_update(updates)
+                    st.success(f"🎯 TRASPLANTE EXITOSO. Estructura preservada. Solo se actualizaron los costos de la semana {semana_target}.")
+                    st.balloons()
+                else:
+                    st.warning("No se hallaron coincidencias de productos para actualizar.")
 
     except Exception as e:
-        st.error(f"🚨 FALLA CRÍTICA DE ARTILLERÍA: {e}")
+        st.error(f"🚨 FALLA EN MANIOBRA: {e}")
