@@ -1082,3 +1082,93 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
 
     except Exception as e:
         st.error(f"🚨 FALLA DEL SISTEMA: {e}")
+
+  # --- ✈️ MÓDULO OMEGA V13: RASTREO DOMINICALES ---
+import datetime
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("✈️ Rastreo Dominicales")
+
+def limpiar_val_dom(v):
+    try:
+        s = str(v).replace('$', '').replace(' ', '').replace(',', '.').strip()
+        return float(s)
+    except: return 0.0
+
+def procesar_fecha(v):
+    try:
+        # Si es número de Excel
+        if str(v).replace('.','').isdigit():
+            return datetime.datetime(1899, 12, 30) + datetime.timedelta(days=int(float(v)))
+        # Si es texto dd/mm/aaaa
+        return datetime.datetime.strptime(str(v), "%d/%m/%Y")
+    except: return None
+
+if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
+    try:
+        with st.spinner("Escaneando reportes de aviación..."):
+            # --- 🛰️ COORDENADAS ---
+            url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
+            url_ori = "URL_DEL_REPORTE_ORIGEN_EN_DRIVE" # <--- PEGUE AQUÍ LA OTRA URL
+            
+            # 1. LEER DESTINO (Para saber qué fechas ya tenemos)
+            sh_dest = gc.open_by_url(url_dest)
+            ws_dest = sh_dest.worksheet("Hoja1") # <--- CAMBIE POR EL NOMBRE DE LA PESTAÑA
+            datos_dest = ws_dest.get_all_values()
+            
+            max_f = datetime.datetime(1900, 1, 1)
+            dict_local = {}
+            
+            # Buscamos la fecha mayor en la Columna C (índice 2)
+            for i, row in enumerate(datos_dest[1:]): # Saltamos encabezado
+                if len(row) > 2:
+                    f_obj = procesar_fecha(row[2])
+                    if f_obj:
+                        if f_obj > max_f: max_f = f_obj
+                        # Llave: FINCA|FECHA
+                        dict_local[f"{str(row[0]).strip().upper()}|{f_obj.date()}"] = i + 2
+
+            st.info(f"📅 Radar: Última fecha registrada {max_f.strftime('%d/%m/%Y')}")
+
+            # 2. LEER ORIGEN (Reporte Costo Avión)
+            sh_ori = gc.open_by_url(url_ori)
+            ws_ori = sh_ori.worksheet("TABLA 1")
+            datos_ori = ws_ori.get_all_values()
+            
+            dict_nuevos = {}
+            
+            for i, row in enumerate(datos_ori[1:]): # Desde fila 2
+                if len(row) < 24: continue
+                
+                f_ori = procesar_fecha(row[7]) # Columna H (Fecha)
+                surcharge = limpiar_val_dom(row[20]) # Columna U (Surcharge)
+                
+                # REGLA ORO: Solo si es mayor a la última fecha y tiene recargo
+                if f_ori and surcharge > 0 and f_ori > max_f:
+                    finca = str(row[2]).strip().upper() # Columna C (Finca)
+                    ha = limpiar_val_dom(row[5])        # Columna F (Hectáreas)
+                    pista = str(row[23]).strip().upper() # Columna X (Pista)
+                    
+                    key = f"{finca}|{f_ori.date()}"
+                    
+                    if key in dict_nuevos:
+                        dict_nuevos[key]['ha'] += ha
+                        if not dict_nuevos[key]['pista']: dict_nuevos[key]['pista'] = pista
+                    else:
+                        dict_nuevos[key] = {
+                            'finca': finca, 'ha': ha, 'fec': f_ori.strftime("%d/%m/%Y"),
+                            'sur': surcharge, 'pista': pista
+                        }
+
+            # 3. CARGA DE DATOS
+            if dict_nuevos:
+                filas_nuevas = [[v['finca'], v['ha'], v['fec'], v['sur'], v['pista']] for v in dict_nuevos.values()]
+                ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
+                
+                st.success(f"🎯 ¡RASTREO EXITOSO! Se inyectaron {len(filas_nuevas)} registros nuevos.")
+                st.balloons()
+            else:
+                st.warning("⚠️ No se detectaron sobrecostos nuevos posteriores a la fecha del radar.")
+
+    except Exception as e:
+        st.error(f"🚨 FALLA DE SISTEMA: {e}")
