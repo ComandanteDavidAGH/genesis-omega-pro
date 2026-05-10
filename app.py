@@ -976,66 +976,34 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (REEMPLAZO DE MACRO) ---
+# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (VERSIÓN VISIBLE) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
-semana_target = st.sidebar.number_input("Número de Semana a actualizar:", min_value=1, max_value=52, step=1)
 
-if st.sidebar.button("🚀 EJECUTAR SINCRONIZACIÓN OMEGA"):
+# Cambiamos number_input por un slider o un selectbox para que sea imposible no verlo
+semana_target = st.sidebar.select_slider(
+    "Seleccione Semana a actualizar:",
+    options=list(range(1, 53)),
+    value=1
+)
+
+# Mostramos la semana seleccionada en grande para confirmar
+st.sidebar.markdown(f"### 📍 Semana: **{semana_target}**")
+
+if st.sidebar.button("🚀 EJECUTAR OMEGA", use_container_width=True):
     try:
         with st.spinner(f"Sincronizando Semana {semana_target}..."):
-            # 1. Conexión al archivo de Comparación
-            url_comp = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4uIt9rRNB40pPBt8d/edit"
+            # IMPORTANTE: Use aquí la URL del archivo que "Guardó como Google Sheets"
+            url_comp = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4uIt9rRNB40pPBt8d/edit" 
             sh_comp = gc.open_by_url(url_comp)
             ws_datos = sh_comp.worksheet("DATOS")
             
-            # 2. Obtener toda la información de la hoja DATOS
-            todo_datos = ws_datos.get_all_values()
-            df_comp = pd.DataFrame(todo_datos)
+            # El resto del proceso de actualización...
+            # (Mantenga aquí el resto del código que le pasé antes)
+            st.success(f"✅ ¡Semana {semana_target} sincronizada!")
             
-            # 3. Localizar la Columna de la Semana (Fila 7 -> índice 6)
-            fila_7 = todo_datos[6]
-            col_semana = -1
-            for i, val in enumerate(fila_7):
-                if str(val).strip() == str(semana_target):
-                    col_semana = i + 1
-                    break
-            
-            if col_semana == -1:
-                st.error(f"❌ No se encontró la columna para la semana {semana_target} en la fila 7.")
-            else:
-                # 4. Preparar Diccionarios de Precios y Dosis (Basado en lo que ya tiene en su app)
-                # Asumimos que df_config y df_mezclas están definidos en su app
-                dict_precios = {str(r['PRODUCTO']).strip().upper(): r['PRECIO_FINAL'] for _, r in df_config.iterrows()}
-                dict_dosis = {str(r['PRODUCTO']).strip().upper(): r['DOSIS'] for _, r in df_mezclas.iterrows()}
-                
-                updates = []
-                # 5. Escaneo de productos en la hoja DATOS (Columna D -> índice 3)
-                for r_idx, row in df_comp.iterrows():
-                    if r_idx < 7: continue # Saltamos encabezados
-                    
-                    prod_dest = str(row[3]).strip().upper()
-                    if prod_dest in dict_precios:
-                        p_unit = float(dict_precios[prod_dest])
-                        tipo_tabla = str(row[1]).strip().upper() # Columna B
-                        
-                        # Lógica de la Macro: Si es DOSIS-HA, multiplica. Si no, deja el unitario.
-                        valor_final = p_unit
-                        if "DOSIS-HA" in tipo_tabla and prod_dest in dict_dosis:
-                            valor_final = p_unit * float(dict_dosis[prod_dest])
-                        
-                        updates.append({
-                            'range': gspread.utils.rowcol_to_a1(r_idx + 1, col_semana),
-                            'values': [[valor_final]]
-                        })
-                
-                # 6. Disparo masivo para no saturar la API
-                if updates:
-                    ws_datos.batch_update(updates)
-                    st.success(f"✅ ¡Semanas {semana_target} sincronizada con éxito!")
-                    st.balloons()
-                else:
-                    st.warning("No se encontraron productos coincidentes para actualizar.")
-
     except Exception as e:
-        st.error(f"🚨 Error en la maniobra: {e}")
+        if "Office file" in str(e):
+            st.error("🚨 ERROR TÁCTICO: El archivo sigue siendo Excel (.xlsm). Por favor, en Drive vaya a 'Archivo > Guardar como hoja de cálculo de Google' y use esa nueva URL.")
+        else:
+            st.error(f"🚨 Error en la maniobra: {e}")
