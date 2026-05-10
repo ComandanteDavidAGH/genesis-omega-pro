@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V3 ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V4 (ESCÁNER DINÁMICO) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1250,7 +1250,7 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
         st.sidebar.error("❌ Faltan archivos en los buzones para el cruce.")
     else:
         try:
-            with st.spinner("Calibrando cruce de saldos y rellenando vacíos..."):
+            with st.spinner("Escáner Dinámico Activado: Buscando coordenadas de saldos..."):
                 
                 # --- FASE 1: LEER SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
@@ -1268,66 +1268,81 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                 
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: LEER SUPERVISORES ---
+                # --- FASE 2: LEER SUPERVISORES (CON ESCÁNER DINÁMICO DE FILAS) ---
                 lista_supervisores = []
                 for file in archivos_sup:
+                    # Leemos TODO el archivo sin encabezados para buscar dónde empieza la tabla
                     if file.name.endswith('.csv'):
-                        df_sup = pd.read_csv(file, header=3)
+                        df_raw = pd.read_csv(file, header=None, dtype=str)
                     else:
-                        df_sup = pd.read_excel(file, header=3)
+                        df_raw = pd.read_excel(file, header=None, dtype=str)
                     
-                    cols = df_sup.columns
-                    if len(cols) >= 16:
-                        df_sup_clean = df_sup.iloc[:, [0, 3, 4, 15]].copy()
-                        df_sup_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_FISICO']
+                    header_idx = -1
+                    # El dron escanea las primeras 25 filas buscando las palabras clave
+                    for i in range(min(25, len(df_raw))):
+                        row_text = " ".join([str(x).upper() for x in df_raw.iloc[i].dropna()])
+                        if "LOTE" in row_text and "SALDO" in row_text:
+                            header_idx = i
+                            break
+                    
+                    if header_idx != -1:
+                        # Cortamos la basura de arriba y establecemos los encabezados reales
+                        df_sup = df_raw.iloc[header_idx + 1:].copy()
+                        df_sup.columns = [str(x).upper().strip() for x in df_raw.iloc[header_idx]]
                         
-                        df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
-                        df_sup_clean['PISTA'] = df_sup_clean['PISTA'].apply(limpiar_texto)
+                        # Buscamos los nombres de las columnas sin importar en qué posición estén
+                        c_prod = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c), None)
+                        c_almac = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
+                        c_lote = next((c for c in df_sup.columns if "LOTE" in c), None)
+                        # Buscamos la columna SALDO (evitando la que dice "SALDO INICIAL")
+                        c_saldo = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c), None)
                         
-                        # 🛡️ EL ESCUDO AUTO-RELLENO: Si el supervisor no puso la pista, la copiamos de la celda vecina
-                        df_sup_clean['PISTA'] = df_sup_clean['PISTA'].replace('', None).ffill().bfill()
-                        
-                        df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
-                        
-                        df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
-                        lista_supervisores.append(df_sup_clean)
+                        if c_prod and c_almac and c_lote and c_saldo:
+                            df_sup_clean = df_sup[[c_prod, c_almac, c_lote, c_saldo]].copy()
+                            df_sup_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_FISICO']
+                            
+                            df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
+                            
+                            # Limpieza y auto-relleno de Pistas vacías
+                            df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None)
+                            df_sup_clean['PISTA'] = df_sup_clean['PISTA'].ffill().bfill()
+                            
+                            df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
+                            df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
+                            lista_supervisores.append(df_sup_clean)
 
                 if not lista_supervisores:
-                    st.error("🚨 Formato no reconocido. Asegúrese de que los archivos de supervisores empiecen en la fila 4.")
+                    st.error("🚨 El escáner no encontró la fila de encabezados (LOTE, SALDO) en los archivos de supervisores.")
                     st.stop()
 
+                # --- FASE 3: EL CRUCE MAESTRO ---
                 df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
                 df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE'], as_index=False)['SALDO_FISICO'].sum()
 
-                # --- FASE 3: EL CRUCE MAESTRO ---
                 cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
                 
                 cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0)
                 cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0)
                 
                 cruce['DIFERENCIA'] = cruce['SALDO_FISICO'] - cruce['SALDO_SAP']
-                cruce['DIFERENCIA'] = cruce['DIFERENCIA'].round(3) # Evitar micro-decimales
+                cruce['DIFERENCIA'] = cruce['DIFERENCIA'].round(3)
                 
-                # Arreglar nombres de productos vacíos para los que sobraron
-                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna("NO ESTÁ EN SAP / REVISAR")
+                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna("NO ESTÁ EN SAP / REVISAR LOTE")
                 
-                # Ordenar
                 cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA']]
                 cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
                 
-                # Separar las alertas
                 alertas = cruce[cruce['DIFERENCIA'] != 0].copy()
 
-                # --- FASE 4: PANEL DE MANDO DIVIDIDO ---
-                st.success("🎯 ¡Arqueo Finalizado! Se rellenaron las pistas faltantes.")
+                # --- FASE 4: PANEL DE MANDO ---
+                st.success("🎯 ¡Arqueo Finalizado! El escáner detectó todas las filas de inicio automáticamente.")
                 
-                # Creamos dos pestañas en la pantalla
-                tab1, tab2 = st.tabs(["⚠️ Diferencias (Alertas)", "📋 Ver Todo el Inventario (Completo)"])
+                tab1, tab2 = st.tabs(["⚠️ Diferencias (Alertas)", "📋 Ver Todo el Inventario"])
                 
                 with tab1:
                     if alertas.empty:
                         st.balloons()
-                        st.info("✅ NO HAY DIFERENCIAS. Todo cuadra perfectamente.")
+                        st.info("✅ NO HAY DIFERENCIAS.")
                     else:
                         st.warning(f"Se detectaron {len(alertas)} discrepancias.")
                         st.dataframe(alertas.style.map(
@@ -1337,22 +1352,32 @@ if st.sidebar.button("🚀 EJECUTAR ARQUEO", use_container_width=True):
                         ), use_container_width=True)
                 
                 with tab2:
-                    st.info(f"Mostrando todos los {len(cruce)} registros procesados.")
                     st.dataframe(cruce, use_container_width=True)
                     
-                # Botón de descarga general
                 st.write("---")
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    alertas.to_excel(writer, index=False, sheet_name='Solo_Diferencias')
-                    cruce.to_excel(writer, index=False, sheet_name='Inventario_Total')
                 
-                st.download_button(
-                    label="📥 Descargar Reporte Completo (Excel)",
-                    data=buffer.getvalue(),
-                    file_name="Reporte_Arqueo_SAP_vs_Pistas.xlsx",
-                    mime="application/vnd.ms-excel"
-                )
+                # ESCUDO ANTI-FALLAS DE EXCEL: Si no tiene la librería, genera un CSV.
+                try:
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        alertas.to_excel(writer, index=False, sheet_name='Diferencias')
+                        cruce.to_excel(writer, index=False, sheet_name='Total')
+                    
+                    st.download_button(
+                        label="📥 Descargar Reporte (Excel)",
+                        data=buffer.getvalue(),
+                        file_name="Arqueo_Inventarios.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                except Exception as e_excel:
+                    st.warning("⚠️ Su sistema no tiene instalado el motor de Excel. Generando reporte de alertas en CSV...")
+                    csv_data = alertas.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Descargar Diferencias (CSV)",
+                        data=csv_data,
+                        file_name="Alertas_Arqueo.csv",
+                        mime="text/csv"
+                    )
 
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {e}")
