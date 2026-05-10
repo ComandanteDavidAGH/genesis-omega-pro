@@ -1083,7 +1083,7 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
     except Exception as e:
         st.error(f"🚨 FALLA DEL SISTEMA: {e}")
 
- # --- ✈️ MÓDULO OMEGA V19: VISIÓN DE RAYOS X Y MEMORIA BLINDADA ---
+ # --- ✈️ MÓDULO OMEGA V20: INYECCIÓN EXACTA POR COORDENADAS ---
 import datetime
 import re
 
@@ -1098,7 +1098,7 @@ url_ori = st.sidebar.text_input(
 def limpiar_val_dom(v):
     if v is None: return 0.0
     s = str(v).strip()
-    if s in ["", "-"]: return 0.0 # Ignora celdas vacías o el guion de contabilidad
+    if s in ["", "-"]: return 0.0 
     try:
         s = s.replace('$', '').replace(' ', '').replace(',', '.')
         return float(s)
@@ -1137,7 +1137,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         st.sidebar.error("❌ Pegue una URL válida y presione ENTER.")
     else:
         try:
-            with st.spinner("Modo Visión de Rayos X Activado..."):
+            with st.spinner("Modo Inyección Exacta Activado..."):
                 url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
                 
                 # --- 1. LEER DESTINO ---
@@ -1162,7 +1162,6 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                 sh_ori = gc.open_by_url(url_ori)
                 ws_ori = next((s for s in sh_ori.worksheets() if "TABLA 1" in s.title.upper()), sh_ori.sheet1)
                 
-                # 🛑 PANEL DE DIAGNÓSTICO EN PANTALLA 🛑
                 st.write("---")
                 st.write(f"👁️ **RAYOS X ACTIVADOS:** Leyendo Archivo: `{sh_ori.title}` | Pestaña: `{ws_ori.title}`")
                 
@@ -1178,15 +1177,12 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                     n_fila = i + 1
                     if n_fila < 6: continue
                     
-                    # Blindaje: Forzar que la fila tenga al menos 25 columnas
                     row_padded = row + [""] * (25 - len(row)) if len(row) < 25 else row
                     
-                    # 1. Atrapar fecha en Col H (índice 7)
                     f_leida = procesar_fecha_pesada(row_padded[7])
                     if f_leida: 
                         memoria_fecha = f_leida 
                     
-                    # 2. Atrapar recargo en Col U (índice 20)
                     surcharge = limpiar_val_dom(row_padded[20])
                     
                     if surcharge > 0:
@@ -1212,17 +1208,24 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                         else:
                             recargos_ignorados += 1
 
-                # --- 3. REPORTE FINAL ---
-                st.write(f"📊 **MÉTRICAS DE ESCANEO:** {recargos_encontrados} Recargos totales detectados | {recargos_ignorados} Ignorados por fecha antigua.")
+                st.write(f"📊 **MÉTRICAS:** {recargos_encontrados} Recargos totales | {recargos_ignorados} Ignorados por fecha antigua.")
                 st.write("---")
 
+                # --- 3. INYECCIÓN TÁCTICA EXACTA ---
                 if dict_nuevos:
-                    filas_nuevas = [["", v['finca'], v['ha'], v['fec'], v['sur'], v['pista'], v['semana']] for v in dict_nuevos.values()]
-                    ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
-                    st.success(f"🎯 ¡IMPACTO CONFIRMADO! {len(filas_nuevas)} registros inyectados.")
+                    # Calculamos la próxima fila vacía basada en la longitud real de los datos
+                    prox_fila = len(datos_dest) + 1 
+                    
+                    # Quitamos el espacio vacío inicial. Ahora la lista empieza directamente con 'finca'
+                    filas_nuevas = [[v['finca'], v['ha'], v['fec'], v['sur'], v['pista'], v['semana']] for v in dict_nuevos.values()]
+                    
+                    # Disparamos el comando update indicando que empiece exactamente en la Columna B
+                    ws_dest.update(f'B{prox_fila}', filas_nuevas, value_input_option='USER_ENTERED')
+                    
+                    st.success(f"🎯 ¡IMPACTO PERFECTO! {len(filas_nuevas)} registros inyectados empezando en la fila {prox_fila}.")
                     st.balloons()
                 else:
-                    st.warning("⚠️ El escáner vio los recargos, pero ninguno era posterior a la fecha del radar (26/04/2026).")
+                    st.warning("⚠️ El escáner vio los recargos, pero ninguno era posterior a la fecha del radar.")
 
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
