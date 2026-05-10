@@ -1083,7 +1083,7 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
     except Exception as e:
         st.error(f"🚨 FALLA DEL SISTEMA: {e}")
 
- # --- ✈️ MÓDULO OMEGA V18: ESCÁNER PROFUNDO Y MEMORIA DE FECHA ---
+ # --- ✈️ MÓDULO OMEGA V19: VISIÓN DE RAYOS X Y MEMORIA BLINDADA ---
 import datetime
 import re
 
@@ -1092,12 +1092,15 @@ st.sidebar.subheader("✈️ Rastreo Dominicales")
 
 url_ori = st.sidebar.text_input(
     "🔗 Pegue URL de GÉNESIS_OMEGA_V2_ESTABLE:", 
-    placeholder="Pegue el link y presione Enter..."
+    placeholder="Pegue aquí el link y presione ENTER..."
 )
 
 def limpiar_val_dom(v):
+    if v is None: return 0.0
+    s = str(v).strip()
+    if s in ["", "-"]: return 0.0 # Ignora celdas vacías o el guion de contabilidad
     try:
-        s = str(v).replace('$', '').replace(' ', '').replace(',', '.').strip()
+        s = s.replace('$', '').replace(' ', '').replace(',', '.')
         return float(s)
     except: return 0.0
 
@@ -1131,10 +1134,10 @@ def procesar_fecha_pesada(v):
 
 if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
     if not url_ori or "http" not in url_ori:
-        st.sidebar.error("❌ Pegue una URL válida y presione Enter.")
+        st.sidebar.error("❌ Pegue una URL válida y presione ENTER.")
     else:
         try:
-            with st.spinner("Modo Escáner Profundo Activado..."):
+            with st.spinner("Modo Visión de Rayos X Activado..."):
                 url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
                 
                 # --- 1. LEER DESTINO ---
@@ -1146,48 +1149,54 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                 dict_local = {}
                 
                 for i, row in enumerate(datos_dest):
-                    if i + 1 >= 5 and len(row) > 3:
-                        f_obj = procesar_fecha_pesada(row[3])
+                    row_padded = row + [""] * (5 - len(row)) if len(row) < 5 else row
+                    if i + 1 >= 5 and str(row_padded[1]).strip() != "":
+                        f_obj = procesar_fecha_pesada(row_padded[3])
                         if f_obj:
                             if f_obj > max_f: max_f = f_obj
-                            dict_local[f"{str(row[1]).strip().upper()}|{f_obj.date()}"] = i + 1
+                            dict_local[f"{str(row_padded[1]).strip().upper()}|{f_obj.date()}"] = i + 1
 
                 st.info(f"📅 Radar Destino: Última fecha validada -> {max_f.strftime('%d/%m/%Y')}")
 
-                # --- 2. LEER ORIGEN ---
+                # --- 2. LEER ORIGEN CON RAYOS X ---
                 sh_ori = gc.open_by_url(url_ori)
                 ws_ori = next((s for s in sh_ori.worksheets() if "TABLA 1" in s.title.upper()), sh_ori.sheet1)
+                
+                # 🛑 PANEL DE DIAGNÓSTICO EN PANTALLA 🛑
+                st.write("---")
+                st.write(f"👁️ **RAYOS X ACTIVADOS:** Leyendo Archivo: `{sh_ori.title}` | Pestaña: `{ws_ori.title}`")
+                
                 datos_ori = ws_ori.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
                 dict_nuevos = {}
-                memoria_fecha = None # <--- EL CEREBRO DE MEMORIA
+                memoria_fecha = None 
                 
-                # Variables de auditoría
                 recargos_encontrados = 0
-                recargos_ignorados_por_fecha = 0
+                recargos_ignorados = 0
                 
                 for i, row in enumerate(datos_ori):
                     n_fila = i + 1
                     if n_fila < 6: continue
                     
-                    # 1. Intentar atrapar la fecha (Col H / idx 7)
-                    f_leida = procesar_fecha_pesada(row[7] if len(row) > 7 else None)
-                    if f_leida: 
-                        memoria_fecha = f_leida # Guarda la fecha en memoria
+                    # Blindaje: Forzar que la fila tenga al menos 25 columnas
+                    row_padded = row + [""] * (25 - len(row)) if len(row) < 25 else row
                     
-                    # 2. Atrapar recargo (Col U / idx 20)
-                    surcharge = limpiar_val_dom(row[20]) if len(row) > 20 else 0.0
+                    # 1. Atrapar fecha en Col H (índice 7)
+                    f_leida = procesar_fecha_pesada(row_padded[7])
+                    if f_leida: 
+                        memoria_fecha = f_leida 
+                    
+                    # 2. Atrapar recargo en Col U (índice 20)
+                    surcharge = limpiar_val_dom(row_padded[20])
                     
                     if surcharge > 0:
                         recargos_encontrados += 1
-                        
-                        # Usar la fecha leída o la guardada en memoria
                         f_operacion = f_leida if f_leida else memoria_fecha
                         
                         if f_operacion and f_operacion > max_f:
-                            finca = str(row[2]).strip().upper() if len(row) > 2 else "SIN FINCA"
-                            ha = limpiar_val_dom(row[5]) if len(row) > 5 else 0.0
-                            pista = str(row[23]).strip().upper() if len(row) > 23 else ""
+                            finca = str(row_padded[2]).strip().upper() if row_padded[2] else "SIN FINCA"
+                            ha = limpiar_val_dom(row_padded[5])
+                            pista = str(row_padded[23]).strip().upper() if row_padded[23] else ""
                             
                             key = f"{finca}|{f_operacion.date()}"
                             
@@ -1201,20 +1210,19 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
                                     'sur': surcharge, 'pista': pista, 'semana': f_operacion.isocalendar()[1]
                                 }
                         else:
-                            recargos_ignorados_por_fecha += 1
+                            recargos_ignorados += 1
 
-                # --- 3. INYECCIÓN O REPORTE TÁCTICO ---
+                # --- 3. REPORTE FINAL ---
+                st.write(f"📊 **MÉTRICAS DE ESCANEO:** {recargos_encontrados} Recargos totales detectados | {recargos_ignorados} Ignorados por fecha antigua.")
+                st.write("---")
+
                 if dict_nuevos:
                     filas_nuevas = [["", v['finca'], v['ha'], v['fec'], v['sur'], v['pista'], v['semana']] for v in dict_nuevos.values()]
                     ws_dest.append_rows(filas_nuevas, value_input_option='USER_ENTERED')
-                    st.success(f"🎯 ¡IMPACTO CONFIRMADO! {len(filas_nuevas)} registros dominicales inyectados.")
+                    st.success(f"🎯 ¡IMPACTO CONFIRMADO! {len(filas_nuevas)} registros inyectados.")
                     st.balloons()
                 else:
-                    st.warning("⚠️ Sin datos nuevos para inyectar.")
-                    # Reporte de daños si falla
-                    st.write("📊 **REPORTE DEL RADAR DE ORIGEN:**")
-                    st.write(f"- Recargos dominicales (>0) encontrados en total: **{recargos_encontrados}**")
-                    st.write(f"- Recargos ignorados por ser de fechas antiguas (<= 26/04/2026): **{recargos_ignorados_por_fecha}**")
+                    st.warning("⚠️ El escáner vio los recargos, pero ninguno era posterior a la fecha del radar (26/04/2026).")
 
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
