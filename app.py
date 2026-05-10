@@ -1113,7 +1113,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
             
             # 1. LEER DESTINO (Para saber qué fechas ya tenemos)
             sh_dest = gc.open_by_url(url_dest)
-            ws_dest = sh_dest.worksheet("Hoja1") # <--- CAMBIE POR EL NOMBRE DE LA PESTAÑA
+            ws_dest = sh_dest.worksheet("SOBRECOST DOMMARZO26 ") # <--- CAMBIE POR EL NOMBRE DE LA PESTAÑA
             datos_dest = ws_dest.get_all_values()
             
             max_f = datetime.datetime(1900, 1, 1)
