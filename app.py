@@ -172,72 +172,44 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
             with st.spinner("Comparando SAP vs Bóveda de Configuración..."):
                 try:
                     # --- 1. LECTOR BLINDADO (Anti-Mayúsculas y Anti-Codificación SAP) ---
-                    nombre_archivo = f_sap_raw.name.lower()
-                    
-                    if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
-                        df = pd.read_excel(f_sap_raw)
-                    else:
-                        try:
-                            # Intenta leerlo como texto normal
-                            df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='utf-8')
-                        except UnicodeDecodeError:
-                            # Si SAP le metió tildes raras (Latin-1), el escudo lo atrapa y lo lee bien
-                            f_sap_raw.seek(0) # Reinicia el puntero de lectura
-                            df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
+                nombre_archivo = f_sap_raw.name.lower()
+                
+                if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
+                    df_sap = pd.read_excel(f_sap_raw)
+                else:
+                    try:
+                        # Intenta leerlo como texto normal
+                        df_sap = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='utf-8')
+                    except UnicodeDecodeError:
+                        # Si SAP le metió tildes raras (Latin-1), el escudo lo atrapa
+                        f_sap_raw.seek(0) 
+                        df_sap = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
 
-                            # Buscar columnas clave en SAP
-                            idx_prod_sap = 10 # Asumiendo Columna K (10)
-                            idx_precio_sap = -1
-                            for j, col in enumerate(df_sap.columns):
-                                if 'MAYOR' in str(col).upper() or 'PRECIO' in str(col).upper(): 
-                                    idx_precio_sap = j; break
+                # --- 2. BÚSQUEDA TÁCTICA DE COLUMNAS ---
+                # (Esta parte debe ir fuera del if/else para que funcione con cualquier archivo)
+                idx_prod_sap = 10  # Asumiendo Columna K (índice 10)
+                idx_precio_sap = -1
+                
+                for j, col in enumerate(df_sap.columns):
+                    col_str = str(col).upper()
+                    if 'MAYOR' in col_str or 'PRECIO' in col_str: 
+                        idx_precio_sap = j
+                        break
 
-                    # 2. LEER BÓVEDA (CONFIGURACIÓN)
-                    if "gcp_credentials" in st.secrets:
-                        cred_dict = dict(st.secrets["gcp_credentials"])
-                        gc = gspread.service_account_from_dict(cred_dict)
-                    else:
-                        gc = gspread.service_account(filename='credenciales.json')
-                        
-                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                    boveda = gc.open_by_url(url_boveda)
-                    hoja_conf = boveda.worksheet("Configuración")
-                    datos_conf = hoja_conf.get_all_values()
-                    
-                    df_conf = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
-                    
-                    # 3. CRUZAR Y DETECTAR DIFERENCIAS
-                    alertas_precio = []
-                    
-                    for i, row in df_conf.iterrows():
-                        if len(row) > 9:
-                            prod_conf = limpiar_texto_vba(row.iloc[8]) # Columna I
-                            precio_conf_str = str(row.iloc[9]).replace("$", "").replace(",", "").replace(".", "").strip() # Columna J
-                            precio_conf = val_seguro(precio_conf_str)
-                            
-                            if prod_conf and prod_conf != "PRODUCTO":
-                                # Buscar en SAP
-                                match_sap = df_sap[df_sap.iloc[:, idx_prod_sap].astype(str).apply(limpiar_texto_vba) == prod_conf]
-                                if not match_sap.empty and idx_precio_sap != -1:
-                                    precio_sap = val_seguro(match_sap.iloc[0, idx_precio_sap])
-                                    
-                                    # Si hay diferencia, crear alerta
-                                    if abs(precio_conf - precio_sap) > 1: # Margen de 1 peso por decimales
-                                        alertas_precio.append({
-                                            "Fila_Sheet": i + 2, # +2 por el encabezado y el índice 0
-                                            "Producto": prod_conf,
-                                            "Precio Viejo (Bóveda)": precio_conf,
-                                            "Precio Nuevo (SAP)": precio_sap,
-                                            "Diferencia": precio_sap - precio_conf
-                                        })
-                    
-                    st.session_state['alertas_precio'] = pd.DataFrame(alertas_precio)
-                    st.session_state['df_sap_limpio'] = df_sap
-                    st.success("✅ Escaneo completado.")
-                    
-                except Exception as e:
-                    st.error(f"🚨 Error en el radar: {e}")
-
+                # --- 3. CONEXIÓN A BÓVEDA (GOOGLE SHEETS) ---
+                if "gcp_credentials" in st.secrets:
+                    cred_dict = dict(st.secrets["gcp_credentials"])
+                    gc = gspread.service_account_from_dict(cred_dict)
+                else:
+                    gc = gspread.service_account(filename='credenciales.json')
+                
+                url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                boveda = gc.open_by_url(url_boveda)
+                hoja_conf = boveda.worksheet("Configuración")
+                datos_conf = hoja_conf.get_all_values()
+                
+                # Crear DataFrame de configuración
+                df_conf = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
     # --- PANTALLA DE APROBACIÓN ---
     if 'alertas_precio' in st.session_state and 'df_sap_limpio' in st.session_state:
         df_alertas = st.session_state['alertas_precio']
@@ -1336,7 +1308,20 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
                     st.session_state.observaciones_memoria = {}
                     
                     sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
-                    df_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
+                    
+                    # --- 🛡️ LECTOR BLINDADO (Anti-Mayúsculas y Codificación SAP) ---
+                    nombre_sap = sap_file.name.lower()
+                    
+                    if nombre_sap.endswith('.xlsx') or nombre_sap.endswith('.xls'):
+                        df_sap = pd.read_excel(sap_file)
+                    else:
+                        try:
+                            df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='utf-8')
+                        except UnicodeDecodeError:
+                            sap_file.seek(0)
+                            df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
+                    # ---------------------------------------------------------------
+                    
                     df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
                     
                     c_item = next((c for c in df_sap.columns if "MATERIAL" in c and "DESC" not in c), df_sap.columns[0])
@@ -1344,7 +1329,6 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
                     c_pista = next((c for c in df_sap.columns if "ALMACEN" in c or "PISTA" in c), df_sap.columns[2])
                     c_lote = next((c for c in df_sap.columns if "LOTE" in c), df_sap.columns[3])
                     c_saldo = next((c for c in df_sap.columns if "LIBRE" in c or "UTILIZACION" in c), df_sap.columns[4])
-
                     df_sap_clean = df_sap[[c_item, c_desc, c_pista, c_lote, c_saldo]].copy()
                     df_sap_clean.columns = ['ITEM', 'PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                     df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
