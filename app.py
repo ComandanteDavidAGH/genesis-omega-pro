@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V5 (ARTILLERÍA PESADA) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V6 (QUIRÚRGICO) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1239,11 +1239,10 @@ import unicodedata
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚖️ Arqueo de Inventarios")
 
-archivo_sap = st.sidebar.file_uploader("1️⃣ Suba la Sábana de SAP (.xlsx o .csv)", type=['xlsx', 'csv'])
-archivos_sup = st.sidebar.file_uploader("2️⃣ Suba los Archivos de Supervisores", type=['xlsx', 'csv'], accept_multiple_files=True)
+archivo_sap = st.sidebar.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
+archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes de Supervisores", type=['xlsx', 'csv'], accept_multiple_files=True)
 
 def quitar_tildes(s):
-    """Purifica el texto quitando tildes, espacios extra y dejándolo en mayúsculas"""
     if pd.isna(s): return ""
     s = str(s).upper().strip()
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
@@ -1252,176 +1251,112 @@ def limpiar_texto(texto):
     if pd.isna(texto): return ""
     return str(texto).strip().upper()
 
-if st.sidebar.button("🚀 EJECUTAR ARQUEO (MODO PESADO)", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR ARQUEO QUIRÚRGICO", use_container_width=True):
     if not archivo_sap or not archivos_sup:
-        st.sidebar.error("❌ Faltan archivos en los buzones para el cruce.")
+        st.sidebar.error("❌ Cargue los archivos para iniciar la auditoría.")
     else:
         try:
-            with st.spinner("Desplegando Artillería Pesada: Escaneando ADN de archivos..."):
+            with st.spinner("Filtrando ruido decimal y mapeando descripciones..."):
                 
-                # --- FASE 1: LEER SAP ---
+                # --- FASE 1: SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
-                if sap_file.name.endswith('.csv'):
-                    df_sap = pd.read_csv(sap_file)
-                else:
-                    df_sap = pd.read_excel(sap_file)
-                
-                # Normalizamos las columnas de SAP por si acaso
+                df_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
                 df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
                 
-                c_prod_sap = next((c for c in df_sap.columns if "MATERIAL" in c or "DESCRIP" in c or "PRODUC" in c), df_sap.columns[0])
+                c_prod_sap = next((c for c in df_sap.columns if "DESCRIP" in c or "MATERIAL" in c), df_sap.columns[0])
                 c_almac_sap = next((c for c in df_sap.columns if "ALMACEN" in c or "PISTA" in c), df_sap.columns[1])
                 c_lote_sap = next((c for c in df_sap.columns if "LOTE" in c), df_sap.columns[2])
-                c_saldo_sap = next((c for c in df_sap.columns if "LIBRE" in c or "UTILIZACION" in c or "SALDO" in c), df_sap.columns[3])
+                c_saldo_sap = next((c for c in df_sap.columns if "LIBRE" in c or "SALDO" in c), df_sap.columns[3])
 
                 df_sap_clean = df_sap[[c_prod_sap, c_almac_sap, c_lote_sap, c_saldo_sap]].copy()
                 df_sap_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
-                
                 df_sap_clean['LOTE'] = df_sap_clean['LOTE'].apply(limpiar_texto)
                 df_sap_clean['PISTA'] = df_sap_clean['PISTA'].apply(limpiar_texto)
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'], errors='coerce').fillna(0)
-                
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE', 'PRODUCTO'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: LEER SUPERVISORES (ESCÁNER DE PUNTAJE) ---
+                # --- FASE 2: SUPERVISORES ---
                 lista_supervisores = []
-                log_diagnostico = [] # Guardará el reporte de cómo leyó cada archivo
-                
                 for file in archivos_sup:
-                    if file.name.endswith('.csv'):
-                        df_raw = pd.read_csv(file, header=None, dtype=str)
-                    else:
-                        df_raw = pd.read_excel(file, header=None, dtype=str)
+                    df_raw = pd.read_csv(file, header=None, dtype=str) if file.name.endswith('.csv') else pd.read_excel(file, header=None, dtype=str)
                     
                     header_idx = -1
-                    max_score = 0
-                    
-                    # Escanear las primeras 30 filas y darles puntaje
                     for i in range(min(30, len(df_raw))):
                         row_vals = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
-                        score = 0
-                        if any("LOTE" in val for val in row_vals): score += 1
-                        if any("PRODUC" in val or "DESCRI" in val or "MATERIAL" in val for val in row_vals): score += 1
-                        if any("ALMAC" in val or "PISTA" in val for val in row_vals): score += 1
-                        if any("SALDO" in val or "EXISTEN" in val or "TOTAL" in val for val in row_vals): score += 1
-                        
-                        if score > max_score:
-                            max_score = score
+                        if any("LOTE" in val for val in row_vals) and any("SALDO" in val for val in row_vals):
                             header_idx = i
+                            break
                     
-                    if max_score >= 3:
-                        # 🎯 Encontró la fila objetivo
+                    if header_idx != -1:
                         df_sup = df_raw.iloc[header_idx + 1:].copy()
                         df_sup.columns = [quitar_tildes(x) for x in df_raw.iloc[header_idx]]
                         
-                        # Buscar coordenadas exactas (Sin importar dónde estén)
-                        c_prod = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c or "MATERIAL" in c), None)
-                        c_almac = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
+                        c_p = next((c for c in df_sup.columns if "PRODUC" in c or "DESCRI" in c), None)
+                        c_a = next((c for c in df_sup.columns if "ALMAC" in c or "PISTA" in c), None)
+                        c_l = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
+                        c_s = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c), None)
                         
-                        # Para Lote, evitamos que agarre la columna de Saldo por Lote por error
-                        c_lote = next((c for c in df_sup.columns if "LOTE" in c and "SALDO" not in c), None)
-                        if not c_lote: c_lote = next((c for c in df_sup.columns if "LOTE" in c), None)
-                        
-                        # Para Saldo, evitamos el "Saldo Inicial" o "SAP"
-                        c_saldo = next((c for c in df_sup.columns if "SALDO" in c and "INIC" not in c and "SAP" not in c), None)
-                        
-                        if c_prod and c_almac and c_lote and c_saldo:
-                            df_sup_clean = df_sup[[c_prod, c_almac, c_lote, c_saldo]].copy()
-                            df_sup_clean.columns = ['PRODUCTO', 'PISTA', 'LOTE', 'SALDO_FISICO']
-                            
+                        if all([c_p, c_a, c_l, c_s]):
+                            df_sup_clean = df_sup[[c_p, c_a, c_l, c_s]].copy()
+                            df_sup_clean.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE', 'SALDO_FISICO']
                             df_sup_clean['LOTE'] = df_sup_clean['LOTE'].apply(limpiar_texto)
-                            
-                            # Magia de Auto-Relleno para pistas en blanco
-                            df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None)
-                            df_sup_clean['PISTA'] = df_sup_clean['PISTA'].ffill().bfill()
-                            
+                            df_sup_clean['PISTA'] = df_sup_clean['PISTA'].astype(str).str.strip().replace('NAN', None).replace('', None).ffill().bfill()
                             df_sup_clean['SALDO_FISICO'] = pd.to_numeric(df_sup_clean['SALDO_FISICO'], errors='coerce').fillna(0)
-                            df_sup_clean = df_sup_clean[df_sup_clean['LOTE'] != ""]
                             lista_supervisores.append(df_sup_clean)
-                            
-                            log_diagnostico.append(f"✅ `{file.name}`: Fila {header_idx + 1} | Columnas mapeadas perfecto.")
-                        else:
-                            faltantes = []
-                            if not c_prod: faltantes.append("Producto")
-                            if not c_almac: faltantes.append("Almacén")
-                            if not c_lote: faltantes.append("Lote")
-                            if not c_saldo: faltantes.append("Saldo")
-                            log_diagnostico.append(f"❌ `{file.name}`: Fila {header_idx + 1} detectada, pero faltaron columnas: {', '.join(faltantes)}")
-                    else:
-                        log_diagnostico.append(f"❌ `{file.name}`: No se detectó ninguna fila que parezca un encabezado de inventario.")
 
-                # Mostrar diagnóstico al Comandante
-                with st.expander("🔍 Radar de Archivos (Detalles Técnicos)"):
-                    for log in log_diagnostico:
-                        st.write(log)
-
-                if not lista_supervisores:
-                    st.error("🚨 Misión Abortada: Ningún archivo de supervisor pudo ser procesado. Revise el 'Radar de Archivos' arriba.")
-                    st.stop()
-
-                # --- FASE 3: EL CRUCE MAESTRO ---
+                # --- FASE 3: EL CRUCE ---
                 df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
-                df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE'], as_index=False)['SALDO_FISICO'].sum()
+                df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE', 'PRODUCTO_SUP'], as_index=False)['SALDO_FISICO'].sum()
 
+                # Unimos por Pista y Lote
                 cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
                 
-                cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0)
-                cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0)
+                # REGLA DE ORO: Si no hay nombre en SAP, usar el nombre del supervisor
+                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("DESCONOCIDO")
                 
-                cruce['DIFERENCIA'] = cruce['SALDO_FISICO'] - cruce['SALDO_SAP']
-                cruce['DIFERENCIA'] = cruce['DIFERENCIA'].round(3)
+                cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(2)
+                cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
+                cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
                 
-                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna("NO ESTÁ EN SAP / REVISAR LOTE")
+                # --- FILTRO DE TOLERANCIA ---
+                # Solo consideramos diferencia real si es mayor a 0.05
+                cruce['TIENE_ERROR'] = cruce['DIFERENCIA'].abs() > 0.05
                 
-                cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA']]
+                # Ordenar para ver la descripción primero
+                cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'TIENE_ERROR']]
                 cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
-                
-                alertas = cruce[cruce['DIFERENCIA'] != 0].copy()
 
                 # --- FASE 4: PANEL DE MANDO ---
-                st.success("🎯 ¡Arqueo Finalizado! Artillería Pesada impacto en los objetivos.")
+                st.success("🎯 Arqueo Finalizado con Filtro de Tolerancia.")
                 
-                tab1, tab2 = st.tabs(["⚠️ Diferencias (Alertas)", "📋 Ver Todo el Inventario"])
+                tab1, tab2 = st.tabs(["⚠️ Discrepancias Reales", "📋 Auditoría Total"])
                 
                 with tab1:
+                    alertas = cruce[cruce['TIENE_ERROR']].drop(columns=['TIENE_ERROR'])
                     if alertas.empty:
                         st.balloons()
-                        st.info("✅ NO HAY DIFERENCIAS.")
+                        st.info("✅ TODO CUADRA. No hay diferencias superiores a 0.05.")
                     else:
-                        st.warning(f"Se detectaron {len(alertas)} discrepancias.")
+                        st.warning(f"Se detectaron {len(alertas)} diferencias importantes.")
                         st.dataframe(alertas.style.map(
-                            lambda x: 'color: red; font-weight: bold' if isinstance(x, (int, float)) and x < 0 
-                            else ('color: green; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
+                            lambda x: 'color: #ff4b4b; font-weight: bold' if isinstance(x, (int, float)) and x < 0 
+                            else ('color: #28a745; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
                             subset=['DIFERENCIA']
                         ), use_container_width=True)
                 
                 with tab2:
-                    st.dataframe(cruce, use_container_width=True)
-                    
-                st.write("---")
-                
-                # Descarga infalible (Usando openpyxl o CSV de respaldo)
-                try:
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        alertas.to_excel(writer, index=False, sheet_name='Diferencias')
-                        cruce.to_excel(writer, index=False, sheet_name='Total')
-                    
-                    st.download_button(
-                        label="📥 Descargar Reporte (Excel)",
-                        data=buffer.getvalue(),
-                        file_name="Arqueo_Inventarios.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                except Exception:
-                    st.warning("⚠️ Generando reporte en formato CSV (Máxima Compatibilidad)...")
-                    csv_data = alertas.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Descargar Diferencias (CSV)",
-                        data=csv_data,
-                        file_name="Alertas_Arqueo.csv",
-                        mime="text/csv"
-                    )
+                    # En la vista total, pintamos de verde lo que está "OK" (dentro de la tolerancia)
+                    st.dataframe(cruce.drop(columns=['TIENE_ERROR']).style.map(
+                        lambda x: 'background-color: #d4edda; color: #155724' if x == 0 else '',
+                        subset=['DIFERENCIA']
+                    ), use_container_width=True)
+
+                # Exportación
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    cruce[cruce['TIENE_ERROR']].to_excel(writer, index=False, sheet_name='Diferencias')
+                    cruce.to_excel(writer, index=False, sheet_name='Total')
+                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), "Arqueo_V6.xlsx")
 
         except Exception as e:
-            st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {e}")
+            st.error(f"🚨 ERROR: {e}")
