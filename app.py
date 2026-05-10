@@ -976,89 +976,98 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO OMEGA V7: MULTIPLICADOR DE PRECISIÓN ---
+# --- 🔄 MÓDULO OMEGA V8: ARTILLERÍA FINAL DE PRECISIÓN ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
-def limpiar_v7(valor):
+def purificar_v8(valor):
+    """Limpia cualquier rastro de formato Excel para convertirlo en número real"""
     if not valor or str(valor).strip() == "": return 0.0
-    s = str(valor).replace('$', '').replace(' ', '').replace('.', '').replace(',', '.').strip()
-    # Caso especial: si después de limpiar hay más de un punto (error de miles anterior)
-    if s.count('.') > 1:
-        partes = s.split('.')
-        s = "".join(partes[:-1]) + "." + partes[-1]
+    s = str(valor).replace('$', '').replace(' ', '').replace('%', '').strip()
+    # Eliminamos puntos de miles y convertimos coma en punto decimal
+    if '.' in s and ',' in s: s = s.replace('.', '').replace(',', '.')
+    elif s.count('.') > 1: s = s.replace('.', '', s.count('.') - 1)
+    elif ',' in s: s = s.replace(',', '.')
     try: return float(s)
     except: return 0.0
 
-if st.sidebar.button("🚀 EJECUTAR MULTIPLICACIÓN", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR OMEGA V8", use_container_width=True):
     try:
-        with st.spinner(f"Calculando y multiplicando Semana {semana_target}..."):
-            # 1. ORIGEN: Precios
+        with st.spinner(f"Sincronizando Semana {semana_target}..."):
+            # 1. ORIGEN: Precios de Génesis
             url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_gen)
             raw_config = sh_gen.worksheet("Configuración").get_all_values()
-            dict_precios = {str(r[8]).strip().upper(): limpiar_v7(r[9]) for r in raw_config if len(r) > 9 and r[8]}
-
-            # 2. DESTINO: Dosis y Aplicación
+            
+            # Mapeo: Columna I (Producto) y J (Costo)
+            dict_precios = {}
+            for row in raw_config:
+                if len(row) > 9:
+                    prod = str(row[8]).strip().upper()
+                    if prod and prod != "PRODUCTO":
+                        dict_precios[prod] = purificar_v8(row[9])
+            
+            # 2. DESTINO: Comparación de Precios
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
-            datos_destino = ws_datos.get_all_values()
+            datos_dest = ws_datos.get_all_values()
             
-            # --- MAPEO DE DOSIS (Fila 64 en adelante) ---
-            # Asegúrese que en la Fila 64, Columna A está el nombre y Columna B la dosis
-            dict_dosis_v7 = {}
-            for r_idx, row in enumerate(datos_destino):
+            # --- FASE 1: LEER DOSIS (Fila 64+) ---
+            dict_dosis_v8 = {}
+            for r_idx, row in enumerate(datos_dest):
                 if (r_idx + 1) >= 64 and len(row) > 1:
-                    prod_nombre = str(row[0]).strip().upper() 
-                    valor_dosis = limpiar_v7(row[1])
-                    if prod_nombre:
-                        dict_dosis_v7[prod_nombre] = valor_dosis
+                    nombre_dosis = str(row[0]).strip().upper() # Columna A
+                    valor_dosis = purificar_v8(row[1])         # Columna B
+                    if nombre_dosis: dict_dosis_v8[nombre_dosis] = valor_dosis
 
-            col_semana = next((i + 1 for i, v in enumerate(datos_destino[6]) if str(v).strip() == str(semana_target)), -1)
-
+            # --- FASE 2: LOCALIZAR SEMANA ---
+            col_semana = next((i + 1 for i, v in enumerate(datos_dest[6]) if str(v).strip() == str(semana_target)), -1)
+            
             if col_semana == -1:
-                st.error(f"❌ No se encontró la columna de la semana {semana_target}.")
+                st.error(f"❌ La semana {semana_target} no existe en la Fila 7.")
             else:
                 updates = []
-                for r_idx, row in enumerate(datos_destino):
-                    n_fila = r_idx + 1
-                    # Filtro Quirúrgico: Solo filas de datos, saltando encabezados y zona de dosis
-                    if n_fila < 8 or n_fila == 15 or n_fila >= 64: continue
+                conteo_tabla1 = 0
+                conteo_tabla2 = 0
+                
+                # --- FASE 3: PROCESAR FILAS (8 en adelante) ---
+                for r_idx, row in enumerate(datos_dest):
+                    fila_real = r_idx + 1
+                    if fila_real < 8 or fila_real == 15 or fila_real >= 64: continue
                     
                     if len(row) > 3:
-                        p_nombre = str(row[3]).strip().upper()
+                        prod_nombre = str(row[3]).strip().upper() # Columna D
                         
-                        if p_nombre in dict_precios:
-                            precio_base = dict_precios[p_nombre]
+                        if prod_nombre in dict_precios:
+                            precio_unit = dict_precios[prod_nombre]
                             
-                            # --- EL CORAZÓN DEL CÁLCULO ---
-                            if n_fila >= 16: # SEGUNDA TABLA (COSTO/HA)
-                                # Buscamos la dosis. Si no está en la fila 64, multiplicará por 0 (error visible)
-                                dosis_aplicar = dict_dosis_v7.get(p_nombre, 0.0)
-                                if dosis_aplicar == 0.0:
-                                    # Si no hay dosis, intentamos buscarla en la Columna E de la misma fila (si existiera)
-                                    # Pero por ahora, forzamos el cálculo con la tabla de abajo
-                                    pass 
-                                valor_final = precio_base * dosis_aplicar
-                            else: # PRIMERA TABLA (UNITARIOS)
-                                valor_final = precio_base
+                            # ¿Estamos en Tabla 1 o Tabla 2?
+                            if fila_real >= 16: # TABLA DE DOSIS-HA
+                                dosis = dict_dosis_v8.get(prod_nombre, 1.0) # Si no hay dosis, usa 1 para no borrar
+                                valor_final = precio_unit * dosis
+                                conteo_tabla2 += 1
+                            else: # TABLA DE PRECIOS UNITARIOS
+                                valor_final = precio_unit
+                                conteo_tabla1 += 1
                             
                             updates.append({
-                                'range': gspread.utils.rowcol_to_a1(n_fila, col_semana),
+                                'range': gspread.utils.rowcol_to_a1(fila_real, col_semana),
                                 'values': [[valor_final]]
                             })
 
+                # 3. IMPACTO FINAL
                 if updates:
                     ws_datos.batch_update(updates)
-                    st.success(f"🎯 MULTIPLICACIÓN COMPLETADA. Revisar Semana {semana_target}.")
-                    if not dict_dosis_v7:
-                        st.warning("⚠️ OJO: No se encontraron dosis en la fila 64. Verifique la ubicación.")
+                    st.success(f"🎯 IMPACTO TOTAL CONFIRMADO!")
+                    st.write(f"✅ Tabla 1: {conteo_tabla1} productos actualizados.")
+                    st.write(f"✅ Tabla 2: {conteo_tabla2} multiplicaciones realizadas.")
+                    st.write(f"📊 Dosis detectadas en fila 64: {len(dict_dosis_v8)}")
                     st.balloons()
                 else:
-                    st.warning("No se encontraron productos coincidentes en la Columna D.")
+                    st.warning("⚠️ No se encontró NINGUNA coincidencia. Verifique que los productos en la Columna D de 'DATOS' sean iguales a la Columna I de 'Configuración'.")
 
     except Exception as e:
-        st.error(f"🚨 FALLA DE CÁLCULO: {e}")
+        st.error(f"🚨 FALLA CRÍTICA EN EL ÚLTIMO INTENTO: {e}")
