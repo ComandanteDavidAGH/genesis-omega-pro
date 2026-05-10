@@ -976,29 +976,51 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (VERSIÓN FINAL NATIVA) ---
+# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (CALIBRADO FINAL) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider(
     "Seleccione Semana a actualizar:",
     options=list(range(1, 53)),
-    value=19 # He puesto 19 como predeterminado por su captura
+    value=19
 )
 
 st.sidebar.markdown(f"### 📍 Semana Seleccionada: **{semana_target}**")
 
 if st.sidebar.button("🚀 EJECUTAR OMEGA", use_container_width=True):
     try:
-        with st.spinner(f"Sincronizando Semana {semana_target} en la Bóveda..."):
-            # 🛑 PEGUE AQUÍ LA URL DEL NUEVO ARCHIVO (EL QUE NO TIENE .XLSM)
-            url_comp = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit?gid=1363658316#gid=1363658316" 
-            sh_comp = gc.open_by_url(url_comp)
-            ws_datos = sh_comp.worksheet("DATOS")
+        with st.spinner(f"Sincronizando Semana {semana_target}..."):
+            # 1. CONEXIÓN A LOS DATOS DE ORIGEN (Génesis Principal)
+            url_genesis = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+            sh_gen = gc.open_by_url(url_genesis)
+            
+            # Extraemos Precios de "Configuración"
+            ws_config = sh_gen.worksheet("Configuración")
+            data_precios = ws_config.get_all_records()
+            # Mapeo: Columna 'PRODUCTO' -> 'PRECIO FINAL'
+            dict_precios = {str(r['PRODUCTO']).strip().upper(): r['PRECIO FINAL'] for r in data_precios if r.get('PRODUCTO')}
+
+            # Extraemos Dosis de "DD_Mesclas"
+            ws_mezclas = sh_gen.worksheet("DD_Mesclas")
+            data_mezclas = ws_mezclas.get_all_values()
+            dict_dosis = {}
+            for row in data_mezclas:
+                # Según la lógica de la macro, Producto en Col J (índice 9) y Dosis en Col K (índice 10)
+                if len(row) > 10:
+                    prod_m = str(row[9]).strip().upper()
+                    dosis_m = row[10]
+                    if prod_m: dict_dosis[prod_m] = dosis_m
+
+            # 2. CONEXIÓN AL DESTINO (Comparación de Precios - Nueva URL)
+            url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+            sh_dest = gc.open_by_url(url_dest)
+            ws_datos = sh_dest.worksheet("DATOS")
             
             todo_datos = ws_datos.get_all_values()
-            fila_7 = todo_datos[6]
+            fila_7 = todo_datos[6] # Fila de las semanas
             
+            # Localizar columna de la semana
             col_semana = -1
             for i, val in enumerate(fila_7):
                 if str(val).strip() == str(semana_target):
@@ -1006,36 +1028,42 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA", use_container_width=True):
                     break
             
             if col_semana == -1:
-                st.error(f"❌ La columna de la semana {semana_target} no existe en la Fila 7.")
+                st.error(f"❌ No se encontró la semana {semana_target} en la Fila 7 de la pestaña DATOS.")
             else:
-                # Diccionarios de búsqueda (limpiando nombres)
-                dict_precios = {str(r['PRODUCTO']).strip().upper(): r['PRECIO_FINAL'] for _, r in df_config.iterrows()}
-                dict_dosis = {str(r['PRODUCTO']).strip().upper(): r['DOSIS'] for _, r in df_mezclas.iterrows()}
-                
                 updates = []
                 for r_idx, row in enumerate(todo_datos):
-                    if r_idx < 7: continue 
+                    if r_idx < 7: continue # Saltamos encabezados
                     
-                    prod_dest = str(row[3]).strip().upper() # Columna D
+                    prod_dest = str(row[3]).strip().upper() # Columna D (Producto)
                     if prod_dest in dict_precios:
-                        p_unit = float(dict_precios[prod_dest])
-                        tipo_tabla = str(row[1]).strip().upper() # Columna B
-                        
-                        valor_final = p_unit
-                        if "DOSIS-HA" in tipo_tabla and prod_dest in dict_dosis:
-                            valor_final = p_unit * float(dict_dosis[prod_dest])
-                        
-                        updates.append({
-                            'range': gspread.utils.rowcol_to_a1(r_idx + 1, col_semana),
-                            'values': [[valor_final]]
-                        })
+                        try:
+                            # Limpieza de formatos numéricos (comas por puntos)
+                            val_precio = str(dict_precios[prod_dest]).replace(',', '.')
+                            p_unit = float(val_precio) if val_precio else 0.0
+                            
+                            tipo_tabla = str(row[1]).strip().upper() # Columna B (Tipo)
+                            
+                            valor_final = p_unit
+                            # Si es costo por hectárea, multiplicamos por la dosis de DD_Mesclas
+                            if "DOSIS-HA" in tipo_tabla and prod_dest in dict_dosis:
+                                val_dosis = str(dict_dosis[prod_dest]).replace(',', '.')
+                                d_val = float(val_dosis) if val_dosis else 0.0
+                                valor_final = p_unit * d_val
+                            
+                            updates.append({
+                                'range': gspread.utils.rowcol_to_a1(r_idx + 1, col_semana),
+                                'values': [[valor_final]]
+                            })
+                        except Exception as e_row:
+                            continue # Si hay error en una fila, seguimos con la siguiente
                 
+                # Envío masivo de datos
                 if updates:
                     ws_datos.batch_update(updates)
-                    st.success(f"🎯 ¡TRASPLANTE OMEGA EXITOSO! Semana {semana_target} actualizada.")
+                    st.success(f"🎯 IMPACTO EXITOSO. Semana {semana_target} actualizada en la Bóveda de Precios.")
                     st.balloons()
                 else:
-                    st.warning("No se encontraron productos para actualizar. Revise los nombres.")
+                    st.warning("No se encontraron coincidencias entre los productos de Génesis y la tabla de destino.")
 
     except Exception as e:
-        st.error(f"🚨 Falla en el sistema: {e}")
+        st.error(f"🚨 FALLA DE SISTEMA: {e}")
