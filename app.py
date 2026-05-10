@@ -976,7 +976,7 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (CALIBRACIÓN FILA 16) ---
+# --- 🔄 MÓDULO DE SINCRONIZACIÓN OMEGA (DIAGNÓSTICO PROFUNDO) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
@@ -986,37 +986,44 @@ semana_target = st.sidebar.select_slider(
     value=19
 )
 
-st.sidebar.markdown(f"### 📍 Semana Seleccionada: **{semana_target}**")
-
 if st.sidebar.button("🚀 EJECUTAR OMEGA", use_container_width=True):
     try:
         with st.spinner(f"Sincronizando Semana {semana_target}..."):
-            # 1. ORIGEN DE DATOS (Génesis)
+            # 1. ORIGEN: Génesis Principal
             url_genesis = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_genesis)
             
-            # Precios desde 'Configuración'
-            ws_config = sh_gen.worksheet("Configuración")
-            data_config = ws_config.get_all_values()
-            dict_precios = {}
-            for row in data_config[1:]:
-                if len(row) > 9:
-                    prod_c = str(row[8]).strip().upper()
-                    prec_c = row[9]
-                    if prod_c and prod_c != "PRODUCTO":
-                        dict_precios[prod_c] = prec_c
+            # --- Lectura de Precios ---
+            try:
+                ws_config = sh_gen.worksheet("Configuración")
+                data_config = ws_config.get_all_values()
+                dict_precios = {}
+                for row in data_config[1:]:
+                    if len(row) > 9:
+                        prod_c = str(row[8]).strip().upper()
+                        prec_c = row[9]
+                        if prod_c and prod_c != "PRODUCTO":
+                            dict_precios[prod_c] = prec_c
+            except Exception as e_config:
+                st.error(f"❌ Error en pestaña Configuración: {e_config}")
+                st.stop()
 
-            # Dosis desde 'DD_Mesclas'
-            ws_mezclas = sh_gen.worksheet("DD_Mesclas")
-            data_mezclas = ws_mezclas.get_all_values()
-            dict_dosis = {}
-            for row in data_mezclas:
-                if len(row) > 10:
-                    prod_m = str(row[9]).strip().upper()
-                    dosis_m = row[10]
-                    if prod_m: dict_dosis[prod_m] = dosis_m
+            # --- Lectura de Dosis ---
+            try:
+                ws_mezclas = sh_gen.worksheet("DD_Mesclas")
+                data_mezclas = ws_mezclas.get_all_values()
+                dict_dosis = {}
+                for row in data_mezclas:
+                    if len(row) > 10:
+                        prod_m = str(row[9]).strip().upper()
+                        dosis_m = row[10]
+                        if prod_m: dict_dosis[prod_m] = dosis_m
+            except Exception as e_mezclas:
+                st.error(f"❌ Error en pestaña DD_Mesclas: {e_mezclas}")
+                st.stop()
 
-            # 2. DESTINO: Comparación de Precios
+            # 2. DESTINO: Bóveda de Precios
+            # 🛑 VERIFIQUE QUE ESTA URL SEA LA DEL ARCHIVO QUE NO TIENE .XLSM
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
@@ -1031,47 +1038,46 @@ if st.sidebar.button("🚀 EJECUTAR OMEGA", use_container_width=True):
                     break
             
             if col_semana == -1:
-                st.error(f"❌ Semana {semana_target} no hallada en Fila 7.")
+                st.error(f"❌ Semana {semana_target} no encontrada en la Fila 7 de 'DATOS'.")
             else:
                 updates = []
-                # ESCANEO TOTAL: El código revisará desde la Fila 8 hasta el final
                 for r_idx, row in enumerate(todo_datos):
                     fila_real = r_idx + 1
-                    
-                    # Regla: Procesar solo si estamos en la Fila 8 o de la 16 en adelante
-                    # Esto evita sobreescribir los encabezados de la fila 15
+                    # Regla de oro: Empezar en 8, saltar 15, seguir en 16
                     if fila_real < 8 or fila_real == 15:
                         continue
                     
                     if len(row) > 3:
-                        prod_dest = str(row[3]).strip().upper() # Columna D
-                        
+                        prod_dest = str(row[3]).strip().upper()
                         if prod_dest in dict_precios:
                             try:
+                                # Convertir precio a número
                                 p_str = str(dict_precios[prod_dest]).replace(',', '.').replace('$', '').strip()
-                                p_unit = float(p_str) if p_str else 0.0
+                                p_unit = float(p_str) if p_str and p_str != '' else 0.0
                                 
-                                tipo_tabla = str(row[1]).strip().upper() # Columna B
+                                tipo_tabla = str(row[1]).strip().upper()
                                 valor_final = p_unit
                                 
-                                # Si es la tabla de DOSIS-HA (que empieza en la 16), multiplicamos
+                                # Si es la tabla inferior, aplicar dosis
                                 if "DOSIS-HA" in tipo_tabla and prod_dest in dict_dosis:
                                     d_str = str(dict_dosis[prod_dest]).replace(',', '.').strip()
-                                    d_val = float(d_str) if d_str else 0.0
+                                    d_val = float(d_str) if d_str and d_str != '' else 0.0
                                     valor_final = p_unit * d_val
                                 
                                 updates.append({
                                     'range': gspread.utils.rowcol_to_a1(fila_real, col_semana),
                                     'values': [[valor_final]]
                                 })
-                            except: continue
+                            except:
+                                continue
 
                 if updates:
                     ws_datos.batch_update(updates)
-                    st.success(f"🎯 OPERACIÓN EXITOSA. Datos inyectados desde fila 8 y fila 16.")
+                    st.success(f"🎯 IMPACTO CONFIRMADO. Semana {semana_target} actualizada.")
                     st.balloons()
                 else:
-                    st.warning("No se encontraron coincidencias de productos.")
+                    st.warning("No se encontraron productos coincidentes. Verifique que los nombres sean IGUALES en ambos archivos.")
 
     except Exception as e:
-        st.error(f"🚨 FALLA DE SISTEMA: {e}")
+        # Esto nos dirá exactamente qué tipo de error es
+        st.error(f"🚨 FALLA DE SISTEMA DETECTADA: {type(e).__name__} - {str(e)}")
