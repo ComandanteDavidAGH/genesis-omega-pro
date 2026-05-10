@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V11 (EL FUSIONADOR) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V12 (MEMORIA BLINDADA) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1252,11 +1252,15 @@ st.markdown(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚖️ Arqueo de Inventarios V11")
+st.sidebar.subheader("⚖️ Arqueo de Inventarios V12")
 
 archivo_sap = st.sidebar.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
 archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
 semana_obj = st.sidebar.text_input("🎯 Semana a Auditar (Ej: 17):", placeholder="Escriba aquí...")
+
+# --- SISTEMA DE MEMORIA FOTOGRÁFICA ---
+if "arqueo_listo" not in st.session_state:
+    st.session_state.arqueo_listo = False
 
 def purificar_lote(lote):
     if pd.isna(lote) or lote is None: return ""
@@ -1266,12 +1270,13 @@ def quitar_tildes(s):
     if pd.isna(s) or s is None: return ""
     return ''.join(c for c in unicodedata.normalize('NFD', str(s).upper().strip()) if unicodedata.category(c) != 'Mn')
 
+# BÓTON DE DISPARO (Solo procesa los archivos la primera vez y los guarda en memoria)
 if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=True):
     if not archivo_sap or not archivos_sup or not semana_obj:
         st.sidebar.error("❌ Faltan suministros (Archivos o Semana).")
     else:
         try:
-            with st.spinner("Escaneando y normalizando lotes..."):
+            with st.spinner("Procesando y guardando en Memoria Blindada..."):
                 # --- FASE 1: SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                 df_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
@@ -1291,6 +1296,9 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                 df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).replace(',', '.'), errors='coerce').fillna(0)
                 
                 df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
+                
+                # Extraer todos los lotes oficiales de SAP para la lista desplegable
+                lotes_oficiales = list(df_sap_clean['LOTE'].dropna().unique())
 
                 # --- FASE 2: SUPERVISORES ---
                 lista_sup = []
@@ -1347,74 +1355,88 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                     cruce['ESTADO'] = cruce['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
                     cruce = cruce[['PISTA', 'ITEM', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'ESTADO']]
                     
-                    # Separar los OK de los Errores
-                    df_ok = cruce[cruce['ESTADO'] == "✅ OK"]
-                    df_errores = cruce[cruce['ESTADO'] == "❌ DISCREPANCIA"]
-
-                    # --- FASE 4: MESA DE TRABAJO ---
-                    st.success(f"🎯 Escaneo completado. Pase a la Mesa de Trabajo para equilibrar saldos.")
-                    
-                    st.markdown("### 🛠️ 1. MESA DE TRABAJO (Equilibrio de Lotes)")
-                    st.info("✏️ **INSTRUCCIONES:** Haga doble clic en la casilla 'LOTE' o 'PRODUCTO' de la fila roja para corregirla. Escriba exactamente el mismo Lote de SAP y presione Enter. El sistema los fusionará automáticamente abajo.")
-                    
-                    # El Editor mágico
-                    edited_errores = st.data_editor(
-                        df_errores,
-                        use_container_width=True,
-                        hide_index=True,
-                        num_rows="dynamic",
-                        column_config={
-                            "PISTA": st.column_config.TextColumn(disabled=True),
-                            "ITEM": st.column_config.TextColumn(disabled=True),
-                            "SALDO_SAP": st.column_config.NumberColumn(disabled=True),
-                            "SALDO_FISICO": st.column_config.NumberColumn(disabled=True),
-                            "DIFERENCIA": st.column_config.NumberColumn(disabled=True),
-                            "ESTADO": st.column_config.TextColumn(disabled=True),
-                        }
-                    )
-                    
-                    # --- EL FUSIONADOR (Recálculo Matemático en tiempo real) ---
-                    # Unimos lo que estaba bien con lo que el Comandante acaba de editar
-                    cruce_combinado = pd.concat([df_ok, edited_errores], ignore_index=True)
-                    
-                    # Agrupamos de nuevo. Si el comandante le puso el mismo lote y producto, se suman y se anulan.
-                    cruce_final = cruce_combinado.groupby(['PISTA', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False).agg({
-                        'SALDO_SAP': 'sum', 
-                        'SALDO_FISICO': 'sum'
-                    })
-                    
-                    cruce_final['DIFERENCIA'] = (cruce_final['SALDO_FISICO'] - cruce_final['SALDO_SAP']).round(2)
-                    cruce_final['ESTADO'] = cruce_final['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
-                    cruce_final = cruce_final.sort_values(by=['PISTA', 'PRODUCTO'])
-
-                    st.markdown("---")
-                    st.markdown("### 📊 2. REPORTE FINAL EQUILIBRADO")
-                    
-                    tab1, tab2 = st.tabs(["⚠️ Discrepancias Restantes", "📋 Inventario Total Fusionado"])
-                    
-                    with tab1:
-                        alertas_finales = cruce_final[cruce_final['ESTADO'] == "❌ DISCREPANCIA"]
-                        if alertas_finales.empty:
-                            st.balloons()
-                            st.success("✅ ¡TODO CUADRA PERFECTAMENTE! Ha logrado el equilibrio total.")
-                        else:
-                            st.dataframe(alertas_finales.style.map(
-                                lambda x: 'background-color: #ff4b4b; color: white; font-weight: bold' if isinstance(x, (int, float)) and x < 0 else ('background-color: #28a745; color: white; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
-                                subset=['DIFERENCIA']
-                            ), use_container_width=True)
-                    
-                    with tab2:
-                        st.dataframe(cruce_final.style.map(
-                            lambda x: 'color: #155724' if x == "✅ OK" else 'color: #721c24; font-weight: bold',
-                            subset=['ESTADO']
-                        ), use_container_width=True)
-
-                    # Exportación con el resultado final
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        cruce_final[cruce_final['ESTADO'] == "❌ DISCREPANCIA"].to_excel(writer, index=False, sheet_name='Diferencias_Restantes')
-                        cruce_final.to_excel(writer, index=False, sheet_name='Arqueo_Total')
-                    st.download_button("📥 Descargar Reporte Equilibrado", buffer.getvalue(), f"Arqueo_Sem{semana_obj}_Equilibrado.xlsx")
+                    # GUARDAMOS EN LA MEMORIA DE STREAMLIT
+                    st.session_state.df_ok = cruce[cruce['ESTADO'] == "✅ OK"].copy()
+                    st.session_state.df_errores = cruce[cruce['ESTADO'] == "❌ DISCREPANCIA"].copy()
+                    st.session_state.lotes_oficiales = lotes_oficiales
+                    st.session_state.semana_actual = semana_obj
+                    st.session_state.arqueo_listo = True
 
         except Exception as e:
             st.error(f"🚨 FALLA EN EL SISTEMA: {type(e).__name__} - {e}")
+
+# --- FASE 4: PANEL DE MANDO Y EDICIÓN DESDE LA MEMORIA ---
+if st.session_state.arqueo_listo:
+    st.success(f"🎯 Auditoría Semana {st.session_state.semana_actual} Cargada en Memoria.")
+    
+    tab1, tab2 = st.tabs(["📊 Reporte de Arqueo", "🛠️ Mesa de Fusión (Lista Desplegable)"])
+    
+    with tab1:
+        st.subheader("Resultados Iniciales")
+        # Mostramos todo unido solo para visualizar
+        df_visual = pd.concat([st.session_state.df_ok, st.session_state.df_errores])
+        st.dataframe(df_visual.style.map(
+            lambda x: 'background-color: #ff4b4b; color: white' if x == "❌ DISCREPANCIA" else ('background-color: #28a745; color: white' if x == "✅ OK" else ''),
+            subset=['ESTADO']
+        ), use_container_width=True)
+    
+    with tab2:
+        st.markdown("### 🔍 Equilibrio de Lotes (Modo Fusión)")
+        st.info("Haga clic en la columna **LOTE** de los registros rojos. Se abrirá una lista con todos los lotes de SAP. Elija el correcto y el sistema fusionará los saldos.")
+        
+        # LA MAGIA DE LA LISTA DESPLEGABLE
+        edited_errores = st.data_editor(
+            st.session_state.df_errores,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "PISTA": st.column_config.TextColumn(disabled=True),
+                "ITEM": st.column_config.TextColumn(disabled=True),
+                "PRODUCTO": st.column_config.TextColumn(disabled=True),
+                "LOTE": st.column_config.SelectboxColumn(
+                    "LOTE (Clic para desplegar)",
+                    help="Seleccione el lote oficial de SAP",
+                    options=st.session_state.lotes_oficiales,
+                    required=True
+                ),
+                "SALDO_SAP": st.column_config.NumberColumn(disabled=True),
+                "SALDO_FISICO": st.column_config.NumberColumn(disabled=True),
+                "DIFERENCIA": st.column_config.NumberColumn(disabled=True),
+                "ESTADO": st.column_config.TextColumn(disabled=True),
+            }
+        )
+        
+        # --- EL FUSIONADOR AUTOMÁTICO ---
+        # Une los datos OK con los que usted acaba de editar en la lista
+        cruce_combinado = pd.concat([st.session_state.df_ok, edited_errores], ignore_index=True)
+        
+        # Recalcula matemáticamente
+        cruce_final = cruce_combinado.groupby(['PISTA', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False).agg({
+            'SALDO_SAP': 'sum', 
+            'SALDO_FISICO': 'sum'
+        })
+        
+        cruce_final['DIFERENCIA'] = (cruce_final['SALDO_FISICO'] - cruce_final['SALDO_SAP']).round(2)
+        cruce_final['ESTADO'] = cruce_final['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
+        cruce_final = cruce_final.sort_values(by=['PISTA', 'PRODUCTO'])
+
+        st.markdown("---")
+        st.markdown("### 📊 REPORTE FINAL CALCULADO EN VIVO")
+        
+        alertas_finales = cruce_final[cruce_final['ESTADO'] == "❌ DISCREPANCIA"]
+        if alertas_finales.empty:
+            st.balloons()
+            st.success("✅ ¡PERFECCIÓN ALCANZADA! Todos los lotes han sido equilibrados y cruzados.")
+        else:
+            st.warning("Aún quedan discrepancias. Siga ajustando los lotes arriba si es necesario.")
+            st.dataframe(alertas_finales.style.map(
+                lambda x: 'background-color: #ff4b4b; color: white; font-weight: bold' if isinstance(x, (int, float)) and x < 0 else ('background-color: #28a745; color: white; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
+                subset=['DIFERENCIA']
+            ), use_container_width=True)
+
+        # Botón de Descarga
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            cruce_final[cruce_final['ESTADO'] == "❌ DISCREPANCIA"].to_excel(writer, index=False, sheet_name='Diferencias_Restantes')
+            cruce_final.to_excel(writer, index=False, sheet_name='Arqueo_Equilibrado')
+        st.download_button("📥 Descargar Reporte Equilibrado", buffer.getvalue(), f"Arqueo_Sem{st.session_state.semana_actual}_OK.xlsx")
