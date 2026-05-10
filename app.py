@@ -1230,14 +1230,14 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V15 (VISIÓN 360°) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V16 (EL ANALISTA ESTRATÉGICO) ---
 import pandas as pd
 import streamlit as st
 import io
 import unicodedata
 import re
 
-# 🕶️ Gafas de Visión Nocturna y Diseño
+# 🕶️ Diseño de Interfaz
 st.markdown(
     """
     <style>
@@ -1246,20 +1246,18 @@ st.markdown(
         background-color: white !important;
         font-weight: bold;
     }
-    th { background-color: #f0f2f6 !important; color: black !important; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚖️ Arqueo de Inventarios V15")
+st.sidebar.subheader("⚖️ Arqueo de Inventarios V16")
 
 archivo_sap = st.sidebar.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
 archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
 semana_obj = st.sidebar.text_input("🎯 Semana a Auditar (Ej: 17):", placeholder="Escriba aquí...")
 
-# --- SISTEMA DE MEMORIA BLINDADA ---
 if "arqueo_procesado" not in st.session_state:
     st.session_state.arqueo_procesado = False
 if "observaciones_memoria" not in st.session_state:
@@ -1273,12 +1271,10 @@ def quitar_tildes(s):
     if pd.isna(s) or s is None: return ""
     return ''.join(c for c in unicodedata.normalize('NFD', str(s).upper().strip()) if unicodedata.category(c) != 'Mn')
 
-# --- MOTOR MATEMÁTICO DE CRUCE ---
+# --- MOTOR DE CRUCE ANALÍTICO ---
 def generar_cruce():
-    # Unimos SAP y Supervisores
     cruce = pd.merge(st.session_state.df_sap_grouped, st.session_state.df_sup_grouped, on=['PISTA', 'LOTE_KEY'], how='outer')
     
-    # Rellenar datos básicos
     cruce['ITEM'] = cruce['ITEM'].fillna("---")
     cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("N/A")
     cruce['LOTE'] = cruce['LOTE'].fillna(cruce['LOTE_SUP'])
@@ -1286,16 +1282,17 @@ def generar_cruce():
     cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
     cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
     cruce['ESTADO'] = cruce['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
+    
+    # 🧠 LÓGICA DE OBSERVACIONES AUTOMÁTICAS
     cruce['OBSERVACIONES'] = ""
-    
-    # Reordenar columnas
-    cruce = cruce[['PISTA', 'ITEM', 'PRODUCTO', 'LOTE_KEY', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'ESTADO', 'OBSERVACIONES']]
-    
-    # Inyectar observaciones guardadas
     for idx, row in cruce.iterrows():
         key = f"{row['PISTA']}_{row['LOTE_KEY']}"
+        # 1. Recuperar de memoria si ya existe algo escrito
         if key in st.session_state.observaciones_memoria:
             cruce.at[idx, 'OBSERVACIONES'] = st.session_state.observaciones_memoria[key]
+        # 2. Si está vacío y es un faltante (SAP > 0 pero Físico = 0), sugerir motivos
+        elif row['SALDO_SAP'] > 0 and row['SALDO_FISICO'] == 0:
+            cruce.at[idx, 'OBSERVACIONES'] = "SUGERIDO: Entrega / Traslado / Pendiente por Facturar"
 
     st.session_state.cruce_final = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
 
@@ -1305,10 +1302,9 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
         st.sidebar.error("❌ Faltan suministros.")
     else:
         try:
-            with st.spinner("Desplegando radares..."):
-                st.session_state.observaciones_memoria = {} # Limpiar al iniciar nuevo arqueo
+            with st.spinner("Desplegando analista de inventarios..."):
+                st.session_state.observaciones_memoria = {}
                 
-                # --- FASE 1: SAP ---
                 sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                 df_sap = pd.read_csv(sap_file) if sap_file.name.endswith('.csv') else pd.read_excel(sap_file)
                 df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
@@ -1328,7 +1324,6 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                 st.session_state.df_sap_raw = df_sap_clean 
                 st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
 
-                # --- FASE 2: SUPERVISORES ---
                 lista_sup = []
                 sem_num = str(semana_obj).strip()
                 nombres_pestaña = [sem_num, f"SEM {sem_num}", f"SEM{sem_num}", f"SEMANA {sem_num}"]
@@ -1341,19 +1336,16 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
                         df_raw = dict_dfs[target]
                         h_idx = -1
                         for i in range(min(30, len(df_raw))):
-                            row = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
-                            if any("LOTE" in val for val in row) and any("SALDO" in val for val in row):
+                            row_v = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
+                            if any("LOTE" in val for val in row_v) and any("SALDO" in val for val in row_v):
                                 h_idx = i; break
-                        
                         if h_idx != -1:
                             df_s = df_raw.iloc[h_idx + 1:].copy()
                             df_s.columns = [f"{quitar_tildes(x)}_{idx}" for idx, x in enumerate(df_raw.iloc[h_idx])]
-                            
                             c_p = next((c for c in df_s.columns if "PRODUC" in c or "DESCRI" in c), None)
                             c_a = next((c for c in df_s.columns if "ALMAC" in c or "PISTA" in c), None)
                             c_l = next((c for c in df_s.columns if "LOTE" in c and "SALDO" not in c), None)
                             c_v = next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c), None)
-                            
                             if all([c_p, c_a, c_l, c_v]):
                                 df_s_c = df_s[[c_p, c_a, c_l, c_v]].copy()
                                 df_s_c.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE_SUP', 'SALDO_FISICO']
@@ -1376,18 +1368,13 @@ if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=Tru
 
 # --- PANEL DE CONTROL ---
 if st.session_state.arqueo_procesado:
-    st.success(f"🎯 Semana {st.session_state.semana_actual} lista.")
-    
     tab1, tab2, tab3 = st.tabs(["⚠️ Discrepancias y Notas", "🛠️ Conciliador de Lotes", "📋 Inventario Completo"])
     
-    # --- TAB 1: SOLO ERRORES Y NOTAS ---
     with tab1:
         st.subheader("Registros con Diferencias")
-        # Filtramos errores y quitamos la columna técnica LOTE_KEY para mostrar
         df_err = st.session_state.cruce_final[st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA"].copy()
         
         if df_err.empty:
-            st.balloons()
             st.success("✅ ¡Inventario cuadrado!")
         else:
             edited_df = st.data_editor(
@@ -1395,67 +1382,66 @@ if st.session_state.arqueo_procesado:
                 use_container_width=True,
                 hide_index=True,
                 disabled=["PISTA", "ITEM", "PRODUCTO", "LOTE", "SALDO_SAP", "SALDO_FISICO", "DIFERENCIA", "ESTADO"],
-                column_config={"OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES", width="large")}
+                column_config={"OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES (Editable)", width="large")}
             )
             
-            # Guardar observaciones en memoria
+            # Guardar observaciones editadas
             for _, row in edited_df.iterrows():
                 key = f"{row['PISTA']}_{purificar_lote(row['LOTE'])}"
                 st.session_state.observaciones_memoria[key] = row['OBSERVACIONES']
-                # Actualizar el dataframe maestro
-                idx_maestro = st.session_state.cruce_final[
-                    (st.session_state.cruce_final['PISTA'] == row['PISTA']) & 
-                    (st.session_state.cruce_final['LOTE_KEY'] == purificar_lote(row['LOTE']))
-                ].index
-                if not idx_maestro.empty:
-                    st.session_state.cruce_final.at[idx_maestro[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
+                idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == purificar_lote(row['LOTE']))].index
+                if not idx_m.empty:
+                    st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
 
-    # --- TAB 2: CONCILIADOR ---
     with tab2:
-        st.markdown("### 🛠️ Fusión de Lotes Fantasmas")
-        errores_fantasmas = st.session_state.cruce_final[
-            (st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & 
-            (st.session_state.cruce_final['SALDO_SAP'] == 0) & (st.session_state.cruce_final['SALDO_FISICO'] > 0)
-        ]
+        st.markdown("### 🛠️ Fusión de Lotes Mal Escritos")
         
-        if errores_fantasmas.empty:
-            st.info("No hay lotes fantasmas.")
+        # Filtramos solo registros donde el supervisor reportó algo pero no está en SAP (Lotes Fantasmas)
+        err_fantasmas = st.session_state.cruce_final[(st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & (st.session_state.cruce_final['SALDO_SAP'] == 0) & (st.session_state.cruce_final['SALDO_FISICO'] > 0)]
+        
+        if err_fantasmas.empty:
+            st.success("✅ No hay lotes por corregir.")
         else:
-            opciones = errores_fantasmas.apply(lambda x: f"{x['PISTA']} | {x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).tolist()
-            sel = st.selectbox("Seleccione error a corregir:", opciones)
+            opciones = err_fantasmas.apply(lambda x: f"{x['PISTA']} | {x['PRODUCTO']} | Lote Malo: {x['LOTE']}", axis=1).tolist()
+            sel = st.selectbox("1️⃣ Seleccione el error de digitación:", opciones)
+            
             if sel:
-                idx_sel = opciones.index(sel)
-                row_sel = errores_fantasmas.iloc[idx_sel]
-                lotes_sap = st.session_state.df_sap_raw[
-                    (st.session_state.df_sap_raw['PISTA'] == row_sel['PISTA']) & 
-                    (st.session_state.df_sap_raw['PRODUCTO'] == row_sel['PRODUCTO'])
-                ]['LOTE'].unique().tolist()
+                idx_s = opciones.index(sel)
+                row_s = err_fantasmas.iloc[idx_s]
                 
-                if lotes_sap:
-                    lote_ok = st.selectbox("Lote correcto en SAP:", lotes_sap)
-                    if st.button("⚡ FUSIONAR"):
-                        mask = (st.session_state.df_sup_grouped['PISTA'] == row_sel['PISTA']) & \
-                               (st.session_state.df_sup_grouped['LOTE_KEY'] == row_sel['LOTE_KEY'])
+                # 🎯 BARRIDO QUIRÚRGICO: Solo lotes del MISMO producto en la MISMA pista
+                df_sap_filtrado = st.session_state.df_sap_raw[(st.session_state.df_sap_raw['PISTA'] == row_s['PISTA']) & (st.session_state.df_sap_raw['PRODUCTO'] == row_s['PRODUCTO'])]
+                
+                if not df_sap_filtrado.empty:
+                    lotes_validos = df_sap_filtrado['LOTE'].unique().tolist()
+                    lote_ok = st.selectbox(f"2️⃣ Seleccione el Lote Oficial de SAP para {row_s['PRODUCTO']}:", lotes_validos)
+                    
+                    if st.button("⚡ FUSIONAR Y GENERAR NOTA", type="primary"):
+                        mask = (st.session_state.df_sup_grouped['PISTA'] == row_s['PISTA']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == row_s['LOTE_KEY'])
+                        
+                        # Guardar observación automática de la fusión
+                        key_final = f"{row_s['PISTA']}_{purificar_lote(lote_ok)}"
+                        st.session_state.observaciones_memoria[key_final] = f"Lote SAP: {lote_ok} | Lote Pista corregido: {row_s['LOTE']}"
+                        
+                        # Actualizar en memoria
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_ok
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_ok)
                         st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        
                         generar_cruce()
                         st.rerun()
+                else:
+                    st.warning("⚠️ SAP no reporta este producto en esta pista. Se sugiere anotar el motivo en 'Discrepancias y Notas'.")
 
-    # --- TAB 3: VISTA TOTAL (EL REGRESO) ---
     with tab3:
         st.subheader("Inventario Consolidado")
-        st.dataframe(
-            st.session_state.cruce_final.drop(columns=['LOTE_KEY']).style.map(
-                lambda x: 'background-color: #d4edda; color: #155724' if x == "✅ OK" else '', subset=['ESTADO']
-            ), use_container_width=True, hide_index=True
-        )
+        st.dataframe(st.session_state.cruce_final.drop(columns=['LOTE_KEY']), use_container_width=True, hide_index=True)
 
     # Botón de Descarga
     st.markdown("---")
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        final_df = st.session_state.cruce_final.drop(columns=['LOTE_KEY'])
-        final_df[final_df['ESTADO'] == "❌ DISCREPANCIA"].to_excel(writer, index=False, sheet_name='Diferencias')
-        final_df.to_excel(writer, index=False, sheet_name='Total')
-    st.download_button("📥 Descargar Arqueo Final", buffer.getvalue(), f"Arqueo_Semana_{st.session_state.semana_actual}.xlsx")
+        f_df = st.session_state.cruce_final.drop(columns=['LOTE_KEY'])
+        f_df[f_df['ESTADO'] == "❌ DISCREPANCIA"].to_excel(writer, index=False, sheet_name='Diferencias')
+        f_df.to_excel(writer, index=False, sheet_name='Total')
+    st.download_button("📥 Descargar Reporte Final Analítico", buffer.getvalue(), f"Arqueo_Semana_{st.session_state.semana_actual}.xlsx")
