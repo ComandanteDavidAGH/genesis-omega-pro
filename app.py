@@ -976,98 +976,109 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO OMEGA V11: PRECISIÓN QUIRÚRGICA POR COORDENADAS ---
+# --- 🔄 MÓDULO OMEGA V12: CLON EXACTO DE LA MACRO VBA ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
-def limpiar_v11(valor):
-    if not valor or str(valor).strip() == "": return 0.0
-    # Limpiamos $, espacios y estandarizamos el punto decimal
-    s = str(valor).replace('$', '').replace(' ', '').strip()
-    if '.' in s and ',' in s: s = s.replace('.', '').replace(',', '.')
-    elif s.count('.') > 1: s = s.replace('.', '', s.count('.') - 1)
-    elif ',' in s: s = s.replace(',', '.')
-    try: return float(s)
+def limpiar_texto_vba(t):
+    """Clon exacto de la función LimpiarTexto de su Macro original"""
+    if t is None: return ""
+    # UCase y Trim
+    temp = str(t).upper().strip()
+    # Replace Chr(160) y puntos
+    temp = temp.replace(chr(160), " ").replace(".", "")
+    # Quitar dobles espacios
+    while "  " in temp:
+        temp = temp.replace("  ", " ")
+    return temp
+
+def val_seguro(v):
+    """Convierte de forma segura a número sin dañar los decimales"""
+    try: return float(v)
     except: return 0.0
 
-if st.sidebar.button("🚀 EJECUTAR V11 (COORDENADAS EXACTAS)", use_container_width=True):
+if st.sidebar.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
     try:
-        with st.spinner(f"Iniciando trasplante en Semana {semana_target}..."):
-            # 1. ORIGEN: Génesis (Pestaña Configuración y DD_Mesclas)
+        with st.spinner(f"Sincronizando Semana {semana_target} al estilo Macro..."):
+            # 1. ORIGEN: Génesis (Pidiendo los números PUROS, sin formato de texto)
             url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_gen)
             
-            # --- Lectura de Precios (Configuración: Col I y J) ---
-            raw_config = sh_gen.worksheet("Configuración").get_all_values()
+            # --- Precios (Configuración) ---
+            raw_config = sh_gen.worksheet("Configuración").get_all_values(value_render_option='UNFORMATTED_VALUE')
             dict_precios = {}
-            for row in raw_config[1:]: # Desde fila 2
+            for row in raw_config:
                 if len(row) > 9:
-                    prod_c = str(row[8]).strip().upper() # Columna I
-                    precio_c = limpiar_v11(row[9])       # Columna J
-                    if prod_c and prod_c != "PRODUCTO":
-                        dict_precios[prod_c] = precio_c
+                    prod = limpiar_texto_vba(row[8]) # Columna I
+                    if prod and prod != "PRODUCTO":
+                        dict_precios[prod] = val_seguro(row[9]) # Columna J
 
-            # --- Lectura de Dosis (DD_Mesclas: Col J y K, desde Fila 13) ---
-            raw_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values()
+            # --- Dosis (DD_Mesclas desde fila 13) ---
+            raw_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values(value_render_option='UNFORMATTED_VALUE')
             dict_dosis = {}
-            # r_idx 12 es la fila 13 real
-            for row in raw_mezclas[12:]: 
+            for row in raw_mezclas[12:]: # Empieza en Fila 13 real
                 if len(row) > 10:
-                    prod_m = str(row[9]).strip().upper() # Columna J
-                    valor_m = limpiar_v11(row[10])       # Columna K
+                    prod_m = limpiar_texto_vba(row[9]) # Columna J
                     if prod_m:
-                        dict_dosis[prod_m] = valor_m
+                        dict_dosis[prod_m] = val_seguro(row[10]) # Columna K
 
-            # 2. DESTINO: Bóveda de Comparación (Pestaña DATOS)
+            # 2. DESTINO: Bóveda de Comparación
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
-            datos_dest = ws_datos.get_all_values()
             
-            # Localizar columna de la semana (Fila 7)
-            col_semana = next((i + 1 for i, v in enumerate(datos_dest[6]) if str(v).strip() == str(semana_target)), -1)
+            # Pedimos los datos puros para no alterar la estructura
+            datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
+            
+            # Buscar semana en Fila 7
+            col_semana = -1
+            for i, v in enumerate(datos_dest[6]):
+                if str(v).strip() == str(semana_target):
+                    col_semana = i + 1
+                    break
             
             if col_semana == -1:
-                st.error(f"❌ La columna de la semana {semana_target} no está en la Fila 7.")
+                st.error(f"❌ No se halló la semana {semana_target} en la Fila 7.")
             else:
                 updates = []
-                # 3. PROCESAMIENTO QUIRÚRGICO DE FILAS
+                # 3. LÓGICA DE DETECCIÓN EXACTA (Igual a la Macro)
                 for r_idx, row in enumerate(datos_dest):
                     n_fila = r_idx + 1
-                    # Filtro de protección: Saltamos encabezados y filas vacías
-                    if n_fila < 8 or n_fila == 15 or n_fila >= 64: continue
+                    if n_fila < 8 or len(row) < 4: continue
                     
-                    if len(row) > 3:
-                        prod_nombre = str(row[3]).strip().upper() # Columna D en destino
+                    tipo_tabla = limpiar_texto_vba(row[1]) # Columna B (POR LITRO o DOSIS-HA)
+                    producto_dest = limpiar_texto_vba(row[3]) # Columna D
+                    
+                    if not producto_dest: continue
+                    
+                    if producto_dest in dict_precios:
+                        precio_unitario = dict_precios[producto_dest]
                         
-                        if prod_nombre in dict_precios:
-                            precio_unit = dict_precios[prod_nombre]
+                        # Si en la Columna B dice DOSIS-HA, multiplicamos.
+                        if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
+                            # Estamos en la Tabla 2
+                            if producto_dest in dict_dosis:
+                                dosis_valor = dict_dosis[producto_dest]
+                                valor_final = precio_unitario * dosis_valor
+                            else:
+                                valor_final = precio_unitario
+                        else:
+                            # Estamos en la Tabla 1
+                            valor_final = precio_unitario
                             
-                            # Lógica de Multiplicación
-                            if n_fila >= 16: # TABLA DE ABAJO (Costo/Ha)
-                                # Buscamos la dosis en DD_Mesclas (Mapeada en dict_dosis)
-                                dosis = dict_dosis.get(prod_nombre, 0.0)
-                                if dosis == 0.0:
-                                    # Alerta táctica si no encuentra dosis
-                                    pass
-                                valor_final = precio_unit * dosis
-                            else: # TABLA DE ARRIBA (Unitarios)
-                                valor_final = precio_unit
-                            
-                            updates.append({
-                                'range': gspread.utils.rowcol_to_a1(n_fila, col_semana),
-                                'values': [[valor_final]]
-                            })
+                        updates.append({
+                            'range': gspread.utils.rowcol_to_a1(n_fila, col_semana),
+                            'values': [[valor_final]]
+                        })
 
                 if updates:
-                    ws_datos.batch_update(updates)
-                    st.success(f"🎯 IMPACTO TOTAL. {len(updates)} celdas sincronizadas con éxito.")
-                    st.write(f"📊 Precios detectados: {len(dict_precios)} | Dosis detectadas: {len(dict_dosis)}")
+                    ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
+                    st.success(f"🎯 IMPACTO PERFECTO. {len(updates)} precios inyectados con precisión absoluta.")
                     st.balloons()
                 else:
-                    st.warning("No se hallaron coincidencias de productos en la Columna D.")
+                    st.warning("⚠️ No se encontraron productos coincidentes.")
 
     except Exception as e:
-        st.error(f"🚨 FALLA DE SISTEMA: {e}")
+        st.error(f"🚨 FALLA DEL SISTEMA: {e}")
