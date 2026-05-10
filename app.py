@@ -976,103 +976,104 @@ if 'datos_os_ia' in st.session_state:
                             
                     except Exception as e: st.error(f"Falla en guardado: {e}")
                         # =========================================================================
-# --- 🔄 MÓDULO OMEGA V3: SINCRONIZACIÓN + AUTO-ORDENAMIENTO ---
+# --- 🔄 MÓDULO OMEGA V4: ARTILLERÍA PESADA (PURIFICADOR DE NÚMEROS) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Sincronización Semanal")
 
 semana_target = st.sidebar.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
-if st.sidebar.button("🚀 EJECUTAR OMEGA V3", use_container_width=True):
+def limpiar_numero_pro(valor):
+    """Limpia puntos de miles y estandariza decimales para Python"""
+    if not valor or str(valor).strip() == "": return 0.0
+    s = str(valor).replace('$', '').replace(' ', '').strip()
+    
+    # Si hay puntos y comas (Ej: 4.892,03)
+    if '.' in s and ',' in s:
+        s = s.replace('.', '').replace(',', '.')
+    # Si tiene dos puntos (Ej: 4.892.03 -> Caso de su error)
+    elif s.count('.') > 1:
+        partes = s.split('.')
+        s = "".join(partes[:-1]) + "." + partes[-1]
+    # Si tiene una coma como decimal
+    elif ',' in s:
+        s = s.replace(',', '.')
+        
+    try: return float(s)
+    except: return 0.0
+
+if st.sidebar.button("🚀 EJECUTAR OMEGA V4", use_container_width=True):
     try:
-        with st.spinner(f"Sincronizando y Ordenando Semana {semana_target}..."):
-            # 1. EXTRACCIÓN DE DATOS GÉNESIS
+        with st.spinner(f"Limpiando y Sincronizando Semana {semana_target}..."):
+            # 1. EXTRACCIÓN GÉNESIS
             url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             sh_gen = gc.open_by_url(url_gen)
             
-            # Precios y Dosis
             data_config = sh_gen.worksheet("Configuración").get_all_values()
             dict_precios = {str(r[8]).strip().upper(): r[9] for r in data_config[1:] if len(r) > 9 and r[8]}
             
             data_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values()
             dict_dosis = {str(r[9]).strip().upper(): r[10] for r in data_mezclas if len(r) > 10 and r[9]}
 
-            # 2. CONEXIÓN BÓVEDA DE COMPARACIÓN
+            # 2. CONEXIÓN BÓVEDA DESTINO
             url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
             sh_dest = gc.open_by_url(url_dest)
             ws_datos = sh_dest.worksheet("DATOS")
             todo_datos = ws_datos.get_all_values()
             
-            # Localizar Columna de la Semana
-            fila_7 = todo_datos[6]
-            col_semana = next((i + 1 for i, v in enumerate(fila_7) if str(v).strip() == str(semana_target)), -1)
+            col_semana = next((i + 1 for i, v in enumerate(todo_datos[6]) if str(v).strip() == str(semana_target)), -1)
             
             if col_semana == -1:
                 st.error(f"❌ Semana {semana_target} no hallada.")
             else:
-                # --- 🛰️ FASE DE RE-ESTRUCTURACIÓN ---
-                # Separamos los datos existentes (Tabla 1: Filas 8-14 aprox)
-                # Basado en su descripción: Fila 8 inicia, Fila 15 es encabezado de Tabla 2
-                tabla_unitarios = []
-                tabla_dosis_ha = []
+                tabla_unitarios, tabla_dosis_ha = [], []
                 
-                # Identificamos qué tenemos en el archivo
+                # Clasificación de tablas (8-14 y 16+)
                 for r_idx, row in enumerate(todo_datos):
                     fila_real = r_idx + 1
-                    if fila_real < 8 or fila_real == 15: continue
+                    if fila_real < 8 or fila_real == 15 or len(row) < 4: continue
+                    nombre = str(row[3]).strip().upper()
+                    if nombre == "": continue
                     
-                    if len(row) > 3:
-                        nombre = str(row[3]).strip().upper()
-                        if nombre == "": continue
-                        
-                        if fila_real < 15:
-                            tabla_unitarios.append(row)
-                        else:
-                            tabla_dosis_ha.append(row)
+                    if fila_real < 15: tabla_unitarios.append(row)
+                    else: tabla_dosis_ha.append(row)
 
-                # --- 🆕 DETECCIÓN E INSERCIÓN DE PRODUCTOS NUEVOS ---
-                productos_en_u = [str(r[3]).strip().upper() for r in tabla_unitarios]
+                # Detección de nuevos y Ordenamiento Alfabético
+                productos_u = [str(r[3]).strip().upper() for r in tabla_unitarios]
                 for p_gen in dict_precios.keys():
-                    if p_gen not in productos_en_u and p_gen != "PRODUCTO":
-                        # Creamos fila vacía con el nuevo nombre para ambas tablas
-                        nueva_fila = [""] * len(todo_datos[0])
-                        nueva_fila[3] = p_gen
-                        nueva_fila[1] = "PRECIO UNITARIO"
-                        tabla_unitarios.append(nueva_fila)
+                    if p_gen not in productos_u and p_gen != "PRODUCTO":
+                        nueva_f = [""] * len(todo_datos[0])
+                        nueva_f[3], nueva_f[1] = p_gen, "PRECIO UNITARIO"
+                        tabla_unitarios.append(nueva_f)
                         
-                        nueva_fila_d = list(nueva_fila)
-                        nueva_fila_d[1] = "DOSIS-HA"
-                        tabla_dosis_ha.append(nueva_fila_d)
+                        nueva_fd = list(nueva_f)
+                        nueva_fd[1] = "DOSIS-HA"
+                        tabla_dosis_ha.append(nueva_fd)
 
-                # --- 🗂️ ORDENAMIENTO ALFABÉTICO (Igual que la Macro) ---
                 tabla_unitarios.sort(key=lambda x: str(x[3]))
                 tabla_dosis_ha.sort(key=lambda x: str(x[3]))
 
-                # --- 💰 ACTUALIZACIÓN DE VALORES SEMANALES ---
+                # 💰 APLICACIÓN DE VALORES CON PURIFICADOR
                 for fila in tabla_unitarios:
-                    p_nombre = str(fila[3]).strip().upper()
-                    if p_nombre in dict_precios:
-                        p_str = str(dict_precios[p_nombre]).replace(',', '.').replace('$', '').strip()
-                        fila[col_semana-1] = float(p_str) if p_str else 0.0
+                    nom = str(fila[3]).strip().upper()
+                    if nom in dict_precios:
+                        fila[col_semana-1] = limpiar_numero_pro(dict_precios[nom])
 
                 for fila in tabla_dosis_ha:
-                    p_nombre = str(fila[3]).strip().upper()
-                    if p_nombre in dict_precios:
-                        p_str = str(dict_precios[p_nombre]).replace(',', '.').replace('$', '').strip()
-                        val = float(p_str) if p_str else 0.0
-                        if p_nombre in dict_dosis:
-                            d_str = str(dict_dosis[p_nombre]).replace(',', '.').strip()
-                            val = val * (float(d_str) if d_str else 0.0)
-                        fila[col_semana-1] = val
+                    nom = str(fila[3]).strip().upper()
+                    if nom in dict_precios:
+                        p_unit = limpiar_numero_pro(dict_precios[nom])
+                        if nom in dict_dosis:
+                            dosis = limpiar_numero_pro(dict_dosis[nom])
+                            fila[col_semana-1] = p_unit * dosis
+                        else:
+                            fila[col_semana-1] = p_unit
 
-                # --- 🚀 RE-ESCRITURA MAESTRA ---
-                # Limpiamos las zonas de datos para escribir el nuevo orden
-                # Escribimos Tabla 1 (Desde fila 8)
-                ws_datos.update(f'A8', tabla_unitarios)
-                # Escribimos Tabla 2 (Desde fila 16)
-                ws_datos.update(f'A16', tabla_dosis_ha)
+                # 🚀 RE-ESCRITURA TOTAL
+                ws_datos.update('A8', tabla_unitarios)
+                ws_datos.update('A16', tabla_dosis_ha)
 
-                st.success(f"🎯 OMEGA V3: Sincronización, Nuevos Registros y Orden Alfabético completado.")
+                st.success(f"🎯 IMPACTO TOTAL: Datos purificados, nuevos registrados y orden alfabético OK.")
                 st.balloons()
 
     except Exception as e:
-        st.error(f"🚨 FALLA DE SISTEMA: {e}")
+        st.error(f"🚨 FALLA CRÍTICA DE ARTILLERÍA: {e}")
