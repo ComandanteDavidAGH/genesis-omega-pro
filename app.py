@@ -1230,7 +1230,7 @@ if st.sidebar.button("🚀 RASTREAR FALTANTES", use_container_width=True):
         except Exception as e:
             st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
-# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V9 (EL FRANCOTIRADOR) ---
+# --- ⚖️ MÓDULO OMEGA: ARQUEO DE INVENTARIOS V9.1 (FRANCOTIRADOR BLINDADO) ---
 import pandas as pd
 import streamlit as st
 import io
@@ -1347,50 +1347,50 @@ if st.sidebar.button("🚀 EJECUTAR DISPARO DE FRANCOTIRADOR", use_container_wid
                     for log in log_diagnostico:
                         st.markdown(log)
 
-                if not lista_supervisores:
-                    st.error("🚨 Misión Abortada: No se encontraron datos para cruzar en la semana indicada.")
-                    st.stop()
+                # --- 🛡️ EL BLINDAJE ANTI-ERRORES ---
+                if len(lista_supervisores) == 0:
+                    st.error("🚨 Misión Abortada: El Francotirador no encontró datos válidos para esta semana. Revise el 'Radar de Impacto' arriba.")
+                else:
+                    # --- FASE 3: EL CRUCE ---
+                    df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
+                    df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE', 'PRODUCTO_SUP'], as_index=False)['SALDO_FISICO'].sum()
 
-                # --- FASE 3: EL CRUCE ---
-                df_sup_total = pd.concat(lista_supervisores, ignore_index=True)
-                df_sup_grouped = df_sup_total.groupby(['PISTA', 'LOTE', 'PRODUCTO_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                    cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
+                    cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("DESCONOCIDO")
+                    cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(2)
+                    cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
+                    cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
+                    
+                    cruce['TIENE_ERROR'] = cruce['DIFERENCIA'].abs() > 0.05
+                    cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'TIENE_ERROR']]
+                    cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
 
-                cruce = pd.merge(df_sap_grouped, df_sup_grouped, on=['PISTA', 'LOTE'], how='outer')
-                cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("DESCONOCIDO")
-                cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(2)
-                cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
-                cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
-                
-                cruce['TIENE_ERROR'] = cruce['DIFERENCIA'].abs() > 0.05
-                cruce = cruce[['PISTA', 'PRODUCTO', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'TIENE_ERROR']]
-                cruce = cruce.sort_values(by=['PISTA', 'PRODUCTO'])
-
-                # --- FASE 4: PANEL DE MANDO ---
-                st.success(f"🎯 Arqueo de la Semana {semana_objetivo} Finalizado.")
-                
-                tab1, tab2 = st.tabs(["⚠️ Discrepancias Reales", "📋 Auditoría Total"])
-                
-                with tab1:
-                    alertas = cruce[cruce['TIENE_ERROR']].drop(columns=['TIENE_ERROR'])
-                    if alertas.empty:
-                        st.balloons()
-                        st.info("✅ TODO CUADRA PERFECTAMENTE. Buen trabajo de las pistas.")
-                    else:
-                        st.dataframe(alertas.style.map(
-                            lambda x: 'color: #ff4b4b; font-weight: bold' if isinstance(x, (int, float)) and x < 0 else ('color: #28a745; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
+                    # --- FASE 4: PANEL DE MANDO ---
+                    st.success(f"🎯 Arqueo de la Semana {semana_objetivo} Finalizado.")
+                    
+                    tab1, tab2 = st.tabs(["⚠️ Discrepancias Reales", "📋 Auditoría Total"])
+                    
+                    with tab1:
+                        alertas = cruce[cruce['TIENE_ERROR']].drop(columns=['TIENE_ERROR'])
+                        if alertas.empty:
+                            st.balloons()
+                            st.info("✅ TODO CUADRA PERFECTAMENTE. Buen trabajo de las pistas.")
+                        else:
+                            st.dataframe(alertas.style.map(
+                                lambda x: 'color: #ff4b4b; font-weight: bold' if isinstance(x, (int, float)) and x < 0 else ('color: #28a745; font-weight: bold' if isinstance(x, (int, float)) and x > 0 else ''), 
+                                subset=['DIFERENCIA']
+                            ), use_container_width=True)
+                    with tab2:
+                        st.dataframe(cruce.drop(columns=['TIENE_ERROR']).style.map(
+                            lambda x: 'background-color: #d4edda; color: #155724' if x == 0 else '',
                             subset=['DIFERENCIA']
                         ), use_container_width=True)
-                with tab2:
-                    st.dataframe(cruce.drop(columns=['TIENE_ERROR']).style.map(
-                        lambda x: 'background-color: #d4edda; color: #155724' if x == 0 else '',
-                        subset=['DIFERENCIA']
-                    ), use_container_width=True)
 
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    cruce[cruce['TIENE_ERROR']].to_excel(writer, index=False, sheet_name='Diferencias')
-                    cruce.to_excel(writer, index=False, sheet_name='Total')
-                st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), f"Arqueo_Semana_{semana_objetivo}.xlsx")
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        cruce[cruce['TIENE_ERROR']].to_excel(writer, index=False, sheet_name='Diferencias')
+                        cruce.to_excel(writer, index=False, sheet_name='Total')
+                    st.download_button("📥 Descargar Arqueo (Excel)", buffer.getvalue(), f"Arqueo_Semana_{semana_objetivo}.xlsx")
 
         except Exception as e:
-            st.error(f"🚨 ERROR: {e}")
+            st.error(f"🚨 ERROR: {type(e).__name__} - {e}")
