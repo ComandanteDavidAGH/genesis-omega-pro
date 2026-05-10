@@ -13,7 +13,9 @@ import gspread
 import plotly.express as px
 import google.generativeai as genai
 
+# =====================================================================
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
+# =====================================================================
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
 # --- 2. ARTILLERÍA VISUAL Y CSS ---
@@ -114,20 +116,22 @@ def procesar_fecha_pesada(v):
     except: pass
     return None
 
+# =====================================================================
 # --- 4. MENÚ MAESTRO (CUARTEL GENERAL) ---
+# =====================================================================
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h2>", unsafe_allow_html=True)
     menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
         "🏠 Centro de Mando", 
-        "📥 1. Carga Facturación", 
-        "⚙️ 2. Validación de Misión", 
-        "🤖 3. Escáner IA (OS PDF)", 
-        "📈 4. Sincronización Precios",
-        "✈️ 5. Rastreo Dominicales",
-        "⚖️ 6. Arqueo de Inventarios"
+        "🛠️ 1. Mantenimiento Plantilla SAP",
+        "📥 2. Carga Facturación", 
+        "⚙️ 3. Validación de Misión", 
+        "🤖 4. Escáner IA (OS PDF)", 
+        "📈 5. Sincronización Precios",
+        "✈️ 6. Rastreo Dominicales",
+        "⚖️ 7. Arqueo de Inventarios"
     ])
     st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
-
 
 # =====================================================================
 # 🏠 0. CENTRO DE MANDO
@@ -139,9 +143,11 @@ if menu == "🏠 Centro de Mando":
         <h3>Bienvenido Comandante al Sistema Unificado:</h3>
         <p>Seleccione en el menú lateral la operación que desea realizar hoy. Los módulos están protegidos y operan de forma independiente.</p>
         <ol>
-            <li><b>Facturación:</b> Cargue la sábana de SAP y los pedidos. Luego valide y facture en el módulo 2.</li>
+            <li><b>Mantenimiento Plantilla:</b> Suba SAP para limpiar los datos y actualizar los precios maestros en la nube.</li>
+            <li><b>Carga Facturación:</b> Cargue la sábana, los pedidos y los informes de pista.</li>
+            <li><b>Validación de Misión:</b> El núcleo liquidador de costos y hectáreas para generar facturas.</li>
             <li><b>Escáner IA:</b> Suba sus PDF de órdenes de servicio para extraer datos automáticamente.</li>
-            <li><b>Sincronización:</b> Actualice precios semanalmente simulando la Macro de VBA.</li>
+            <li><b>Sincronización:</b> Actualice precios en datos históricos (Modo Macro VBA).</li>
             <li><b>Dominicales:</b> Rastree fechas de operación y recargos con inyección directa.</li>
             <li><b>Arqueo:</b> Auditoría total de pistas contra saldos SAP, con conciliación inteligente.</li>
         </ol>
@@ -149,9 +155,149 @@ if menu == "🏠 Centro de Mando":
     """, unsafe_allow_html=True)
 
 # =====================================================================
-# 📥 1. CARGA FACTURACIÓN
+# 🛠️ 1. MANTENIMIENTO PLANTILLA SAP Y PRECIOS (ADUANA INTELIGENTE)
 # =====================================================================
-elif menu == "📥 1. Carga Facturación":
+elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
+    st.markdown("<h1 class='titulo-principal'>Aduana de Precios y Teletransporte SAP</h1>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='tarjeta-info'>
+        <b>Misión:</b> Purificar SAP, detectar cambios de precios automáticamente y actualizar la Bóveda Maestra.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    f_sap_raw = st.file_uploader("📥 Suba la Sábana Cruda de SAP", type=["xlsx", "xls", "csv"])
+    
+    if f_sap_raw:
+        if st.button("🔍 ESCANEAR CAMBIOS DE PRECIO", type="primary", use_container_width=True):
+            with st.spinner("Comparando SAP vs Bóveda de Configuración..."):
+                try:
+                    # 1. LEER SAP
+                    df_sap = pd.read_excel(f_sap_raw) if f_sap_raw.name.endswith(('.xlsx', '.xls')) else pd.read_csv(f_sap_raw)
+                    df_sap = df_sap.dropna(subset=[df_sap.columns[0]])
+                    df_sap = df_sap[df_sap.iloc[:, 0].astype(str).str.strip() != ""]
+                    df_sap = df_sap[~df_sap.iloc[:, 0].astype(str).str.contains('\*')]
+                    if len(df_sap.columns) >= 11:
+                        df_sap = df_sap.sort_values(by=df_sap.columns[10], ascending=True)
+
+                    # Buscar columnas clave en SAP
+                    idx_prod_sap = 10 # Asumiendo Columna K (10)
+                    idx_precio_sap = -1
+                    for j, col in enumerate(df_sap.columns):
+                        if 'MAYOR' in str(col).upper() or 'PRECIO' in str(col).upper(): 
+                            idx_precio_sap = j; break
+
+                    # 2. LEER BÓVEDA (CONFIGURACIÓN)
+                    if "gcp_credentials" in st.secrets:
+                        cred_dict = dict(st.secrets["gcp_credentials"])
+                        gc = gspread.service_account_from_dict(cred_dict)
+                    else:
+                        gc = gspread.service_account(filename='credenciales.json')
+                        
+                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                    boveda = gc.open_by_url(url_boveda)
+                    hoja_conf = boveda.worksheet("Configuración")
+                    datos_conf = hoja_conf.get_all_values()
+                    
+                    df_conf = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
+                    
+                    # 3. CRUZAR Y DETECTAR DIFERENCIAS
+                    alertas_precio = []
+                    
+                    for i, row in df_conf.iterrows():
+                        if len(row) > 9:
+                            prod_conf = limpiar_texto_vba(row.iloc[8]) # Columna I
+                            precio_conf_str = str(row.iloc[9]).replace("$", "").replace(",", "").replace(".", "").strip() # Columna J
+                            precio_conf = val_seguro(precio_conf_str)
+                            
+                            if prod_conf and prod_conf != "PRODUCTO":
+                                # Buscar en SAP
+                                match_sap = df_sap[df_sap.iloc[:, idx_prod_sap].astype(str).apply(limpiar_texto_vba) == prod_conf]
+                                if not match_sap.empty and idx_precio_sap != -1:
+                                    precio_sap = val_seguro(match_sap.iloc[0, idx_precio_sap])
+                                    
+                                    # Si hay diferencia, crear alerta
+                                    if abs(precio_conf - precio_sap) > 1: # Margen de 1 peso por decimales
+                                        alertas_precio.append({
+                                            "Fila_Sheet": i + 2, # +2 por el encabezado y el índice 0
+                                            "Producto": prod_conf,
+                                            "Precio Viejo (Bóveda)": precio_conf,
+                                            "Precio Nuevo (SAP)": precio_sap,
+                                            "Diferencia": precio_sap - precio_conf
+                                        })
+                    
+                    st.session_state['alertas_precio'] = pd.DataFrame(alertas_precio)
+                    st.session_state['df_sap_limpio'] = df_sap
+                    st.success("✅ Escaneo completado.")
+                    
+                except Exception as e:
+                    st.error(f"🚨 Error en el radar: {e}")
+
+    # --- PANTALLA DE APROBACIÓN ---
+    if 'alertas_precio' in st.session_state and 'df_sap_limpio' in st.session_state:
+        df_alertas = st.session_state['alertas_precio']
+        df_sap = st.session_state['df_sap_limpio']
+        
+        st.markdown("---")
+        if df_alertas.empty:
+            st.success("👍 ¡Todo en orden! SAP no reporta cambios en los precios de los productos configurados.")
+        else:
+            st.warning(f"⚠️ ¡ATENCIÓN! Se detectaron {len(df_alertas)} productos con cambio de precio.")
+            st.dataframe(df_alertas.style.format({
+                "Precio Viejo (Bóveda)": "${:,.0f}", 
+                "Precio Nuevo (SAP)": "${:,.0f}",
+                "Diferencia": "${:,.0f}"
+            }).map(lambda x: 'color: red' if x < 0 else 'color: green', subset=['Diferencia']), use_container_width=True)
+            
+            st.info("💡 *El sistema actualizará automáticamente la columna J y K de 'Configuración' con los Nuevos Precios.*")
+
+        if st.button("⚡ APROBAR Y ACTUALIZAR BÓVEDA (PLANTILLA + CONFIGURACIÓN)", type="primary"):
+            with st.spinner("Teletransportando datos e inyectando precios..."):
+                try:
+                    if "gcp_credentials" in st.secrets:
+                        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                    else:
+                        gc = gspread.service_account(filename='credenciales.json')
+                        
+                    boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    
+                    # --- 1. ACTUALIZAR PLANTILLA ---
+                    hoja_plantilla = boveda.worksheet("Plantilla")
+                    df_final = df_sap.iloc[:, 0:9].copy() 
+                    df_final['J'] = df_sap.iloc[:, 10].values 
+                    unicos = sorted(df_sap.iloc[:, 10].astype(str).unique().tolist())
+                    
+                    hoja_plantilla.batch_clear(["A3:K5000"])
+                    datos_main = df_final.fillna("").values.tolist()
+                    hoja_plantilla.update("A3", datos_main, value_input_option='USER_ENTERED')
+                    hoja_plantilla.update("K3", [[x] for x in unicos], value_input_option='USER_ENTERED')
+                    
+                    # --- 2. ACTUALIZAR PRECIOS EN CONFIGURACIÓN ---
+                    if not df_alertas.empty:
+                        hoja_conf = boveda.worksheet("Configuración")
+                        updates_precio = []
+                        for _, row in df_alertas.iterrows():
+                            fila_obj = int(row['Fila_Sheet'])
+                            precio_n = float(row['Precio Nuevo (SAP)'])
+                            
+                            # Actualizamos columna J (10) y K (11) al mismo tiempo
+                            updates_precio.append({'range': f'J{fila_obj}:K{fila_obj}', 'values': [[precio_n, precio_n]]})
+                        
+                        hoja_conf.batch_update(updates_precio, value_input_option='USER_ENTERED')
+                    
+                    st.balloons()
+                    st.success("🎯 ¡MISIÓN CUMPLIDA! Sábana actualizada y precios sincronizados.")
+                    
+                    # Limpiar memoria
+                    del st.session_state['alertas_precio']
+                    del st.session_state['df_sap_limpio']
+                    
+                except Exception as e:
+                    st.error(f"🚨 Falla en el teletransporte: {e}")
+
+# =====================================================================
+# 📥 2. CARGA FACTURACIÓN
+# =====================================================================
+elif menu == "📥 2. Carga Facturación":
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns(3)
@@ -185,9 +331,7 @@ elif menu == "📥 1. Carga Facturación":
                     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                     boveda = gc.open_by_url(url_boveda)
                     
-                    hoja_tabla2 = boveda.worksheet("TABLA 2")
-                    datos_tabla2 = hoja_tabla2.get_all_values()
-                    st.session_state['df_config'] = pd.DataFrame(datos_tabla2[1:], columns=datos_tabla2[0])
+                    st.session_state['df_config'] = pd.DataFrame(boveda.worksheet("TABLA 2").get_all_values()[1:], columns=boveda.worksheet("TABLA 2").get_all_values()[0])
                     
                     hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
                     datos_apoyo = hoja_apoyo.get_all_values()
@@ -212,16 +356,10 @@ elif menu == "📥 1. Carga Facturación":
                             encabezados_limpios.append(col_str)
                             
                     st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
+                    st.session_state['df_mezclas'] = pd.DataFrame(boveda.worksheet("DD_Mesclas").get_all_values()[1:], columns=boveda.worksheet("DD_Mesclas").get_all_values()[0])
+                    st.session_state['df_config_base'] = pd.DataFrame(boveda.worksheet("Configuración").get_all_values()[1:], columns=boveda.worksheet("Configuración").get_all_values()[0])
                     
-                    hoja_mezclas = boveda.worksheet("DD_Mesclas")
-                    datos_mezclas = hoja_mezclas.get_all_values()
-                    st.session_state['df_mezclas'] = pd.DataFrame(datos_mezclas[1:], columns=datos_mezclas[0])
-                    
-                    hoja_conf = boveda.worksheet("Configuración")
-                    datos_conf = hoja_conf.get_all_values()
-                    st.session_state['df_config_base'] = pd.DataFrame(datos_conf[1:], columns=datos_conf[0])
-                    
-                    st.success("🛰️ Enlace Satelital Establecido. Pase al Módulo 2.")
+                    st.success("🛰️ Enlace Satelital Establecido. Pase al Módulo Validación.")
                     
                     lista_pistas = []
                     for f in f_pistas:
@@ -248,13 +386,13 @@ elif menu == "📥 1. Carga Facturación":
                 except Exception as e: st.error(f"🚨 Error: {e}")
 
 # =====================================================================
-# ⚙️ 2. VALIDACIÓN DE MISIÓN
+# ⚙️ 3. VALIDACIÓN DE MISIÓN
 # =====================================================================
-elif menu == "⚙️ 2. Validación de Misión":
+elif menu == "⚙️ 3. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
-        st.warning("🚨 Cargue los archivos en el Módulo 1 e inicie el procesamiento.")
+        st.warning("🚨 Cargue los archivos en el Módulo 2 e inicie el procesamiento.")
     else:
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones")
@@ -744,18 +882,14 @@ elif menu == "⚙️ 2. Validación de Misión":
                     st.balloons()
                     st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia: {os_virtual}")
                     
-                    if 'memoria_excel' in st.session_state:
-                        del st.session_state['memoria_excel']
-
                 except Exception as e_save:
                     st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
 
-
 # =====================================================================
-# 🤖 3. ESCÁNER IA (Órdenes de Servicio PDF)
+# 🤖 4. ESCÁNER IA (Órdenes de Servicio PDF)
 # =====================================================================
-elif menu == "🤖 3. Escáner IA (OS PDF)":
-    st.header("🛰️ MÓDULO 3: SISTEMA GÉNESIS TOTAL")
+elif menu == "🤖 4. Escáner IA (OS PDF)":
+    st.header("🛰️ MÓDULO 4: ESCÁNER IA GÉNESIS")
     st.subheader("Buzón de Recepción y Puesto de Control")
 
     try:
@@ -955,14 +1089,13 @@ elif menu == "🤖 3. Escáner IA (OS PDF)":
                                 hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                                 st.balloons()
                                 st.success("✅ ¡Génesis ha completado el aterrizaje de datos!")
-                                del st.session_state['memoria_excel']
                                 
                         except Exception as e: st.error(f"Falla en guardado: {e}")
 
 # =====================================================================
-# 📈 4. SINCRONIZACIÓN PRECIOS (CLON MACRO VBA)
+# 📈 5. SINCRONIZACIÓN PRECIOS (CLON MACRO VBA)
 # =====================================================================
-elif menu == "📈 4. Sincronización Precios":
+elif menu == "📈 5. Sincronización Precios":
     st.markdown("<h1 class='titulo-principal'>Sincronización Semanal de Precios</h1>", unsafe_allow_html=True)
     semana_target = st.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
@@ -1045,9 +1178,9 @@ elif menu == "📈 4. Sincronización Precios":
             st.error(f"🚨 FALLA DEL SISTEMA: {e}")
 
 # =====================================================================
-# ✈️ 5. RASTREO DOMINICALES
+# ✈️ 6. RASTREO DOMINICALES
 # =====================================================================
-elif menu == "✈️ 5. Rastreo Dominicales":
+elif menu == "✈️ 6. Rastreo Dominicales":
     st.markdown("<h1 class='titulo-principal'>Rastreo e Inyección de Recargos</h1>", unsafe_allow_html=True)
     
     url_ori = st.text_input(
@@ -1149,9 +1282,9 @@ elif menu == "✈️ 5. Rastreo Dominicales":
                 st.error(f"🚨 FALLA DE SISTEMA: {type(e).__name__} - {str(e)}")
 
 # =====================================================================
-# ⚖️ 6. ARQUEO DE INVENTARIOS (AUDITOR SUPREMO)
+# ⚖️ 7. ARQUEO DE INVENTARIOS (AUDITOR SUPREMO)
 # =====================================================================
-elif menu == "⚖️ 6. Arqueo de Inventarios":
+elif menu == "⚖️ 7. Arqueo de Inventarios":
     
     st.title("⚖️ Arqueo de Inventarios y Conciliación")
     
