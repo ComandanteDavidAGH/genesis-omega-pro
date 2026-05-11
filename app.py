@@ -943,10 +943,16 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 memoria['col_os'] = hoja_maestra.col_values(1)
                 memoria['col_cocteles'] = hoja_maestra.col_values(7)
                 
+                # 🎯 EL PARCHE TÁCTICO: Leer TABLA 2 a partir de la Fila 5
                 try:
                     d_t2 = boveda.worksheet("TABLA 2").get_all_values()
-                    memoria['df_t2'] = pd.DataFrame(d_t2[1:], columns=d_t2[0])
-                except: memoria['df_t2'] = pd.DataFrame()
+                    # Rellenar espacios vacíos para que las columnas nunca se descuadren
+                    max_cols = 15 
+                    d_t2_limpio = [r + [""] * (max_cols - len(r)) if len(r) < max_cols else r for r in d_t2]
+                    # En Python, el índice 4 equivale a la Fila 5 de Excel
+                    memoria['df_t2'] = pd.DataFrame(d_t2_limpio[4:]) 
+                except: 
+                    memoria['df_t2'] = pd.DataFrame()
 
                 try:
                     d_apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
@@ -961,7 +967,8 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         
         df_t2 = mem['df_t2']
         if not df_t2.empty:
-            lista_fincas_oficiales = sorted(list(set([str(f).strip().upper() for f in df_t2.iloc[:, 0] if str(f).strip() != ""])))
+            # Columna 0 es la A (Fincas)
+            lista_fincas_oficiales = sorted(list(set([str(f).strip().upper() for f in df_t2.iloc[:, 0] if str(f).strip() != "" and str(f).upper() != "FINCA"])))
         else:
             lista_fincas_oficiales = []
             
@@ -989,7 +996,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                     documento_bytes = archivo_os.getvalue()
                     archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
                     
-                    # 🎯 LA ORDEN SUPREMA ACTUALIZADA
                     prompt = """Extrae los datos de FUMIGARAY en formato JSON estrictamente con estas claves:
                     - fecha (en formato DD/MM/YYYY)
                     - numero_os
@@ -1029,7 +1035,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 for c in ['coctel']:
                     if c not in df_fincas.columns: df_fincas[c] = ""
                 
-                # 🎯 EL FILTRO DE SEGURIDAD (Python limpia las hectáreas)
                 if 'hectareas' in df_fincas.columns:
                     df_fincas['hectareas'] = pd.to_numeric(df_fincas['hectareas'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                 else:
@@ -1042,7 +1047,7 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                     column_config={
                         "nombre_finca": st.column_config.SelectboxColumn("Finca (Selección Oficial TABLA 2)", options=lista_fincas_oficiales),
                         "coctel": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_oficiales),
-                        "hectareas": st.column_config.NumberColumn("Hectáreas Fumigadas", format="%.2f", min_value=0.0) # Forzamos formato con 2 decimales
+                        "hectareas": st.column_config.NumberColumn("Hectáreas Fumigadas", format="%.2f", min_value=0.0)
                     }
                 )
                 datos['fincas'] = df_editado.to_dict('records')
@@ -1052,7 +1057,7 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 else:
                     if st.button(f"💾 GUARDAR TODO EN TABLA 1 (OS {os_val})", type="primary", key=f"save_{i}"):
                         try:
-                            with st.spinner("🚀 Ejecutando Protocolo de Reconstrucción Total..."):
+                            with st.spinner("🚀 Ejecutando Protocolo de Inyección Total..."):
                                 
                                 dt_obj = procesar_fecha_pesada(fecha_val)
                                 if dt_obj is None: dt_obj = datetime.now()
@@ -1070,11 +1075,12 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                 hk_limpio = str(hk_val).strip().upper().replace('-', '').replace(' ', '')
                                 
                                 if not df_t2.empty and hk_limpio:
+                                    # Columna 8 es la I (HK)
                                     col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-', '').str.replace(' ', '')
                                     match_av = df_t2[col_hk_t2.str.contains(hk_limpio, na=False)]
                                     if not match_av.empty:
-                                        modelo_avion = match_av.iloc[0, 9]
-                                        pista_avion = match_av.iloc[0, 10]
+                                        modelo_avion = match_av.iloc[0, 9] # Columna 9 es la J (Modelo)
+                                        pista_avion = match_av.iloc[0, 10] # Columna 10 es la K (Pista)
 
                                 filas = []
                                 for f in datos['fincas']:
@@ -1083,6 +1089,7 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                     bloq = ""; sect = ""; hab = 0.0; t_prod = ""; coctel_auto = str(f.get('coctel', ''))
                                     
                                     if not df_t2.empty:
+                                        # Columna 0 es la A (Finca)
                                         mt2 = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == n_finca]
                                         if not mt2.empty:
                                             sect = mt2.iloc[0, 1]; hab = extraer_numero(mt2.iloc[0, 2]); bloq = mt2.iloc[0, 3]; t_prod = mt2.iloc[0, 5]
@@ -1138,7 +1145,9 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                 hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                                 st.balloons()
                                 st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con todos los campos calculados.")
-                                del st.session_state['memoria_excel']
+                                
+                                # Para obligar a que se actualice si sube otra
+                                st.session_state.pop('memoria_excel', None)
                                 
                         except Exception as e: 
                             st.error(f"🚨 Falla en el Gatillo: {e}")
