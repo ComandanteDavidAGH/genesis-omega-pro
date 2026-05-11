@@ -922,8 +922,11 @@ elif menu == "⚙️ 3. Validación de Misión":
 # =====================================================================
 # 🤖 4. ESCÁNER IA (OS PDF)
 # =====================================================================
+# =====================================================================
+# 🤖 4. ESCÁNER IA (OS PDF)
+# =====================================================================
 elif menu == "🤖 4. Escáner IA (OS PDF)":
-    st.header("🛰️ MÓDULO 3: SISTEMA GÉNESIS TOTAL")
+    st.header("🛰️ MÓDULO 4: SISTEMA GÉNESIS TOTAL - ESCÁNER IA")
     st.subheader("Buzón de Recepción y Puesto de Control")
 
     try:
@@ -950,11 +953,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 except: memoria['df_t2'] = pd.DataFrame()
 
                 try:
-                    d_t3 = boveda.worksheet("Tabla 3").get_all_values()
-                    memoria['df_t3'] = pd.DataFrame(d_t3[1:], columns=d_t3[0])
-                except: memoria['df_t3'] = pd.DataFrame()
-
-                try:
                     d_apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
                     d_ap_limpio = [f + [""] * (15 - len(f)) if len(f) < 15 else f for f in d_apoyo]
                     memoria['df_apoyo'] = pd.DataFrame(d_ap_limpio[9:])
@@ -967,7 +965,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         lista_fincas_oficiales = sorted(list(set([str(f).strip() for f in mem['col_fincas'] if str(f).strip() != "" and str(f).upper() != "FINCA"])))
         lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in mem['col_cocteles'] if str(c).strip() != "" and str(c).upper() != "COCTEL"])))
         df_t2 = mem['df_t2']
-        df_t3 = mem['df_t3']
         df_apoyo = mem['df_apoyo']
 
     except Exception as e:
@@ -982,15 +979,26 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         st.error("🚨 Falla en llaves IA.")
         st.stop()
 
-    archivo_os = st.file_uploader("📥 Subir Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
+    archivo_os = st.file_uploader("📥 Subir Orden de Servicio (PDF o Imagen)", type=['pdf', 'jpg', 'jpeg', 'png'])
 
     if archivo_os is not None:
         if st.button("🧠 ESCANEO DE INTELIGENCIA GÉNESIS", type="primary"):
-            with st.spinner("🤖 Analizando documento..."):
+            with st.spinner("🤖 Analizando documento con visión de rayos X..."):
                 try:
                     documento_bytes = archivo_os.getvalue()
                     archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
-                    prompt = "Extrae datos de FUMIGARAY en JSON: fecha, numero_os, piloto, aeronave_hk, horometro_total, valor_hectarea, recargo, fincas:[{nombre_finca, hectareas}]."
+                    
+                    # 🎯 CORRECCIÓN 1: PROMPT MÁS ESTRICTO PARA EL RECARGO
+                    prompt = """Extrae los datos de FUMIGARAY en formato JSON estrictamente con estas claves:
+                    - fecha
+                    - numero_os
+                    - piloto
+                    - aeronave_hk
+                    - horometro_total
+                    - valor_hectarea
+                    - recargo (ATENCIÓN: extrae el recargo UNITARIO por hectárea, que suele ser un número pequeño como 3450. IGNORA TOTALMENTE el 'Valor Recargo Festivo' total grande).
+                    - fincas: lista de objetos con {nombre_finca, hectareas}."""
+                    
                     res = modelo_ia.generate_content([prompt, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
                     st.session_state['datos_os_ia'] = json.loads(res.text)
                     st.success("🎯 Lectura completada!")
@@ -1001,7 +1009,7 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         if isinstance(lista_ordenes, dict): lista_ordenes = [lista_ordenes]
         
         for i, datos in enumerate(lista_ordenes):
-            with st.expander(f"📄 OS {datos.get('numero_os')}", expanded=True):
+            with st.expander(f"📄 OS {datos.get('numero_os', 'Nueva')}", expanded=True):
                 col1, col2, col3 = st.columns(3)
                 os_val = col1.text_input("Nº Orden", value=str(datos.get('numero_os', '')), key=f"os_{i}")
                 fecha_val = col2.text_input("Fecha", value=str(datos.get('fecha', '')), key=f"fecha_{i}")
@@ -1011,45 +1019,33 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 hk_val = col4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')), key=f"hk_{i}")
                 horo_val = col5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')), key=f"horo_{i}")
                 costo_val = col6.text_input("Costo / Hectárea", value=str(datos.get('valor_hectarea', '')), key=f"costo_{i}")
-                recargo_val = st.text_input("Recargo Dominical ($)", value=str(datos.get('recargo', '0')), key=f"recargo_{i}")
+                
+                # Muestra el recargo corregido
+                recargo_val = st.text_input("Recargo Unitario/Dominical ($)", value=str(datos.get('recargo', '0')), key=f"recargo_{i}")
 
-                if st.button(f"🔍 ENRIQUECER DATOS (OS {os_val})", key=f"btn_enriquecer_{i}"):
-                    for f_item in datos.get('fincas', []):
-                        nombre = str(f_item['nombre_finca']).strip().upper()
-                        if not df_t2.empty:
-                            match_t2 = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == nombre]
-                            if not match_t2.empty:
-                                f_item['bloque'] = match_t2.iloc[0, 3]
-                                f_item['sector'] = match_t2.iloc[0, 1]
-                                f_item['ha_bruta'] = match_t2.iloc[0, 2]
-                                f_item['tipo_productor'] = match_t2.iloc[0, 5]
-                        
-                        if not df_apoyo.empty:
-                            match_ap = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == nombre]
-                            if not match_ap.empty: f_item['coctel'] = match_ap.iloc[-1, 8]
-                    
-                    st.session_state['datos_os_ia'] = lista_ordenes
-                    st.rerun()
-
+                # Tabla interactiva para corregir fincas y cócteles
                 df_fincas = pd.DataFrame(datos.get('fincas', []))
-                for c in ['bloque', 'sector', 'ha_bruta', 'coctel', 'tipo_productor']:
+                for c in ['coctel']:
                     if c not in df_fincas.columns: df_fincas[c] = ""
 
+                st.markdown("##### 📍 Fincas y Cócteles (Ajuste los nombres si es necesario)")
                 df_editado = st.data_editor(
-                    df_fincas, use_container_width=True, num_rows="dynamic", key=f"ed_{i}",
+                    df_fincas[['nombre_finca', 'hectareas', 'coctel']], 
+                    use_container_width=True, num_rows="dynamic", key=f"ed_{i}",
                     column_config={
-                        "nombre_finca": st.column_config.SelectboxColumn("Finca", options=lista_fincas_oficiales),
-                        "coctel": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_oficiales)
+                        "nombre_finca": st.column_config.SelectboxColumn("Finca (Selección Oficial)", options=lista_fincas_oficiales),
+                        "coctel": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_oficiales),
+                        "hectareas": st.column_config.NumberColumn("Hectáreas Fumigadas")
                     }
                 )
                 datos['fincas'] = df_editado.to_dict('records')
 
                 if str(os_val).strip() in lista_os_existentes:
-                    st.error("🚨 Esta OS ya existe en Excel.")
+                    st.error("🚨 Esta Orden de Servicio ya existe en la base de datos.")
                 else:
                     if st.button(f"💾 GUARDAR TODO EN TABLA 1 (OS {os_val})", type="primary", key=f"save_{i}"):
                         try:
-                            with st.spinner("🚀 Procesando cálculos y enviando a la Bóveda..."):
+                            with st.spinner("🚀 Procesando cálculos y buscando sectores..."):
                                 f_raw = str(fecha_val).lower()
                                 meses_dict = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06','julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
                                 fecha_corta = f_raw
@@ -1080,6 +1076,18 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
 
                                 filas = []
                                 for f in datos['fincas']:
+                                    nombre_f_final = str(f.get('nombre_finca', '')).strip().upper()
+                                    
+                                    # 🎯 CORRECCIÓN 2: RADAR DE FINCA FRESCO (Justo antes de guardar)
+                                    bloq = ""; sect = ""; hab = ""; t_prod = ""
+                                    if not df_t2.empty:
+                                        mt2 = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == nombre_f_final]
+                                        if not mt2.empty:
+                                            sect = mt2.iloc[0, 1]
+                                            hab = mt2.iloc[0, 2]
+                                            bloq = mt2.iloc[0, 3]
+                                            t_prod = mt2.iloc[0, 5]
+                                            
                                     ha_f = float(str(f['hectareas']).replace(',','.'))
                                     h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
                                     
@@ -1091,10 +1099,10 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                     
                                     row = [""] * 34
                                     row[0] = os_val               
-                                    row[1] = f.get('bloque','')   
-                                    row[2] = f['nombre_finca']    
-                                    row[3] = f.get('sector','')   
-                                    row[4] = f.get('ha_bruta','') 
+                                    row[1] = bloq                 # B: BLOQUE (Corregido)
+                                    row[2] = nombre_f_final       # C: FINCA
+                                    row[3] = sect                 # D: SECTOR (Corregido)
+                                    row[4] = hab                  # E: ÀREA BRUTA (Corregido)
                                     row[5] = ha_f                 
                                     row[6] = f.get('coctel','')   
                                     row[7] = fecha_corta          
@@ -1115,18 +1123,18 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                     row[22] = round(costo_avion_hora, 2) 
                                     row[28] = round(costo_total_neto, 2)
                                     row[31] = 1                   
-                                    row[32] = f.get('tipo_productor','') 
+                                    row[32] = t_prod              # AG: TIPO DE PRODUCTOR (Corregido)
                                     row[33] = "IA_GENESIS"        
 
                                     filas.append(row)
                                 
                                 hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                                 st.balloons()
-                                st.success("✅ ¡Génesis ha completado el aterrizaje de datos!")
+                                st.success(f"✅ ¡Génesis ha completado el aterrizaje! OS {os_val} guardada en TABLA 1.")
                                 del st.session_state['memoria_excel']
                                 
                         except Exception as e: st.error(f"Falla en guardado: {e}")
-
+                            
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
