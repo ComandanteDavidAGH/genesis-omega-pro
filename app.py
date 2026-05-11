@@ -781,6 +781,10 @@ elif menu == "⚙️ 3. Validación de Misión":
             costo_mezcla_total = 0.0
 
         st.markdown("---")
+        # ====================================================================
+        # 💰 LIQUIDACIÓN FINAL Y CAJAS DE COPIA SAP
+        # ====================================================================
+        st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
         tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
@@ -788,6 +792,7 @@ elif menu == "⚙️ 3. Validación de Misión":
         gran_total = costo_mezcla_total + costo_total_vuelos + subtotal_st
         costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
+        # --- MÉTRICAS DE CONTROL ---
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🚜 Hectáreas Cobro Totales", f"{total_ha_cobro_escuadron:.2f} Ha")
         
@@ -798,11 +803,23 @@ elif menu == "⚙️ 3. Validación de Misión":
         r4.metric("✈️ Multiplicador Aplicado", f"x {mult_avion_final}")
 
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- 📋 CAJAS DE COPIA RÁPIDA PARA SAP ---
+        st.markdown("#### 📋 Cajas de Copia (Importes SAP)")
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
-        with c_sap1: st.caption("🧪 Mezcla Total"); st.code(fmt_sap(costo_mezcla_total), language=None)
-        with c_sap2: st.caption("✈️ Costo Total de Vuelo"); st.code(fmt_sap(costo_total_vuelos), language=None)
-        with c_sap3: st.caption("👨‍🔬 Costo Serv. Técnico"); st.code(fmt_sap(subtotal_st), language=None)
+        with c_sap1: 
+            st.caption("🧪 Costo Mezcla Total")
+            st.code(fmt_sap(costo_mezcla_total), language="text")
+            
+        with c_sap2: 
+            st.caption("✈️ POSICIÓN 429 (Servicio Vuelo)")
+            st.code(fmt_sap(costo_total_vuelos), language="text")
+            
+        with c_sap3: 
+            st.caption("👨‍🔬 POSICIÓN 459 (Serv. Técnico)")
+            st.code(fmt_sap(subtotal_st), language="text")
+            
         with c_sap4:
             st.markdown(f"""
             <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
@@ -814,6 +831,9 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("<br>", unsafe_allow_html=True)
         st.metric("🔥 TOTAL FACTURACIÓN FINCA (GRAN TOTAL)", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
 
+        # ====================================================================
+        # 🛰️ COORDENADAS DE LANZAMIENTO (NO BORRAR)
+        # ====================================================================
         st.markdown("---")
         st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
         
@@ -826,7 +846,7 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         with c_p2:
             st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
-
+            
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             with st.spinner("🚀 Inyectando datos en TABLA 1 y APOYO..."):
                 try:
