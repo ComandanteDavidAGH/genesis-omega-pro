@@ -1551,10 +1551,12 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
                 st.markdown(f"#### 🚜 Rendimiento de Fumigación: **{pista_sel}** ({año_sel})")
                 st.info("💡 La tabla muestra las Hectáreas Fumigadas (Netas) organizadas por mes (filas) y semana del año (columnas).")
                 
+                # Renderizar tabla (Versión estándar sin mapa de calor)
                 st.dataframe(
-                    matriz.style.format("{:.2f}").background_gradient(cmap="YlGn", axis=None), 
+                    matriz.style.format("{:.2f}"), 
                     use_container_width=True
                 )
+                
                 
                 st.markdown("---")
                 st.markdown("#### 📈 Proyección Gráfica de Hectáreas Fumigadas (Por Mes)")
