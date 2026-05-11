@@ -58,7 +58,7 @@ def limpiar_texto_vba(t):
     if t is None: return ""
     temp = str(t).upper().strip()
     temp = temp.replace(chr(160), " ").replace(".", "")
-    while "  " in temp: temp = temp.replace("  ", " ")
+    while "  " in temp: temp = temp.replace(" ", " ")
     return temp
 
 def val_seguro(v):
@@ -106,7 +106,7 @@ with st.sidebar:
         "🛠️ 1. Mantenimiento Plantilla SAP",
         "📥 2. Carga Facturación", 
         "⚙️ 3. Validación de Misión", 
-        "🤖 4. Escáner IA (OS PDF)", 
+        "⌨️ 4. Ingreso Manual Acelerado (OS)", 
         "📈 5. Sincronización Precios",
         "✈️ 6. Rastreo Dominicales",
         "⚖️ 7. Arqueo de Inventarios"
@@ -125,7 +125,7 @@ if menu == "🏠 Centro de Mando":
         <ol>
             <li><b>Mantenimiento:</b> Purifique y suba la Sábana SAP a la Bóveda (Plantilla).</li>
             <li><b>Facturación:</b> Cargue la sábana de SAP y los pedidos. Luego valide y facture en el módulo 3.</li>
-            <li><b>Escáner IA:</b> Suba sus PDF de órdenes de servicio para extraer datos automáticamente.</li>
+            <li><b>Ingreso Manual Acelerado:</b> Digite los datos base de sus OS y el sistema calculará e inyectará el resto.</li>
             <li><b>Sincronización:</b> Actualice precios semanalmente simulando la Macro de VBA.</li>
             <li><b>Dominicales:</b> Rastree fechas de operación y recargos con inyección directa.</li>
             <li><b>Arqueo:</b> Auditoría total de pistas contra saldos SAP, con conciliación inteligente.</li>
@@ -292,21 +292,15 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                         ws_conf = sh.worksheet("Configuración")
                         
                         # 2. Leer los datos actuales (sin borrar nada)
-                        # Pedimos los valores tal cual están para identificar las filas
                         data_full = ws_conf.get_all_values()
                         
-                        # 3. Preparar el cargador del francotirador (Solo valores de Columna K)
+                        # 3. Preparar el cargador del francotirador
                         valores_para_j = []
-                        
-                        # Recorremos desde la fila 2 (índice 1) para no tocar los encabezados
                         for fila in data_full[1:]:
-                            # La columna K es el índice 10. Si la fila es corta, ponemos vacío.
                             valor_k = fila[10] if len(fila) > 10 else ""
                             valores_para_j.append([valor_k])
                         
-                        # 4. DISPARO QUIRÚRGICO: 
-                        # Actualizamos SOLAMENTE el rango de la columna J (amarilla)
-                        # No usamos batch_clear ni tocamos las columnas A, B, C... ni la imagen.
+                        # 4. DISPARO QUIRÚRGICO
                         if valores_para_j:
                             rango_destino = f"J2:J{len(valores_para_j) + 1}"
                             ws_conf.update(rango_destino, valores_para_j, value_input_option='USER_ENTERED')
@@ -314,7 +308,6 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                         st.balloons()
                         st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J.")
                         
-                        # Limpiamos la memoria para que el botón no se quede pegado
                         del st.session_state['datos_para_sincronizar']
                         
                     except Exception as e:
@@ -476,7 +469,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                 mask_finca = df_apoyo[col_finca[0]].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia
                 hist_finca = df_apoyo[mask_finca].copy()
                 if not hist_finca.empty:
-                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(parse_fecha_pesada)
+                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(procesar_fecha_pesada)
                     hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
                     if not hist_finca.empty:
                         fecha_ref = pd.to_datetime(fecha_operacion)
@@ -920,17 +913,16 @@ elif menu == "⚙️ 3. Validación de Misión":
                     st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
 
 # =====================================================================
-# 🤖 4. ESCÁNER IA (OS PDF)
+# ⌨️ 4. INGRESO MANUAL ACELERADO (OS) - MODO BLINDADO
 # =====================================================================
-elif menu == "🤖 4. Escáner IA (OS PDF)":
-    st.header("🛰️ MÓDULO 4: SISTEMA GÉNESIS TOTAL - ESCÁNER IA")
+elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
+    st.header("🛰️ MÓDULO 4: INGRESO MANUAL ACELERADO")
     
-    # 🔄 BOTÓN DE EMERGENCIA PARA RECARGAR MEMORIA
     col_ref1, col_ref2 = st.columns([3, 1])
     with col_ref1:
-        st.subheader("Buzón de Recepción y Puesto de Control")
+        st.subheader("Puesto de Control y Digitación Rápida")
     with col_ref2:
-        if st.button("🔄 RECARGAR BASES", use_container_width=True, help="Refresca los datos de la Tabla 2 y Fincas"):
+        if st.button("🔄 RECARGAR BASES", use_container_width=True):
             st.session_state.pop('memoria_excel', None)
             st.rerun()
 
@@ -951,13 +943,10 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 memoria['col_os'] = hoja_maestra.col_values(1)
                 memoria['col_cocteles'] = hoja_maestra.col_values(7)
                 
-                # 🎯 CALIBRACIÓN FILA 5: Leemos toda la hoja y recortamos
                 try:
                     ws_t2 = boveda.worksheet("TABLA 2")
                     d_t2 = ws_t2.get_all_values()
-                    # Aseguramos que todas las filas tengan al menos 11 columnas (hasta la K)
                     d_t2_limpio = [r + [""] * (12 - len(r)) if len(r) < 12 else r for r in d_t2]
-                    # Python cuenta desde 0, así que d_t2[4:] es la Fila 5 de Excel
                     memoria['df_t2'] = pd.DataFrame(d_t2_limpio[4:]) 
                 except: memoria['df_t2'] = pd.DataFrame()
 
@@ -973,7 +962,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         lista_os_existentes = [str(os).strip() for os in mem['col_os'] if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
         df_t2 = mem['df_t2']
         
-        # Lista de fincas oficial de la Columna A (índice 0) de la Tabla 2
         lista_fincas_oficiales = []
         if not df_t2.empty:
             lista_fincas_oficiales = sorted(list(set([str(f).strip().upper() for f in df_t2.iloc[:, 0] if str(f).strip() != ""])))
@@ -985,126 +973,111 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         st.error(f"🚨 Error de enlace: {e}")
         st.stop()
 
-    # --- MOTOR GEMINI ---
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        genai.configure(api_key=api_key)
-        # 🎯 EL TRUCO: Usamos el motor 1.5 que tiene 1500 escaneos GRATIS al día
-        modelo_ia = genai.GenerativeModel('gemini-1.5-flash')
+    # --- FORMULARIO MANUAL ACELERADO ---
+    st.markdown("---")
+    with st.expander("📝 1. DATOS PRINCIPALES DE LA ORDEN", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        os_val = c1.text_input("Nº Orden (Ej: 318)")
+        fecha_val = c2.text_input("Fecha (Ej: 10/05/2026)")
+        piloto_val = c3.text_input("Piloto")
         
-    except:
-        st.error("🚨 Llave IA no configurada.")
-        st.stop()
+        c4, c5, c6 = st.columns(3)
+        hk_val = c4.text_input("HK Aeronave (Ej: 5163 o HK5163)")
+        horo_val = c5.text_input("Horómetro TOTAL (Ej: 1.5)")
+        costo_val = c6.text_input("Tarifa / Ha (Ej: 28000)")
+        
+        recargo_val = st.text_input("Recargo Unitario ($) (Ej: 3450 o dejar en 0 si no hay)", value="0")
 
-    archivo_os = st.file_uploader("📥 Subir Orden de Servicio", type=['pdf', 'jpg', 'jpeg', 'png'])
+    st.markdown("### 📍 2. FINCAS FUMIGADAS Y HECTÁREAS")
+    st.info("💡 Seleccione la finca, ponga las hectáreas y agregue filas si son varias fincas en la misma orden.")
+    
+    df_fincas_vacio = pd.DataFrame([{"nombre_finca": "", "hectareas": 0.0, "coctel": ""}])
+    
+    df_editado = st.data_editor(
+        df_fincas_vacio, use_container_width=True, num_rows="dynamic",
+        column_config={
+            "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
+            "coctel": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_oficiales),
+            "hectareas": st.column_config.NumberColumn("Ha", format="%.2f", required=True)
+        }
+    )
 
-    if archivo_os is not None:
-        if st.button("🧠 ESCANEO DE INTELIGENCIA GÉNESIS", type="primary"):
-            with st.spinner("🤖 Analizando..."):
-                try:
-                    documento_bytes = archivo_os.getvalue()
-                    archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
-                    prompt = """Extrae de FUMIGARAY en JSON:
-                    {fecha (DD/MM/YYYY), numero_os, piloto, aeronave_hk, horometro_total, valor_hectarea, 
-                    recargo (busca el número escrito a mano 3450 u 8500), fincas: [{nombre_finca, hectareas}]}
-                    🚨 REGLA DECIMAL: Convierte comas a puntos en hectáreas (207,70 -> 207.70)."""
+    # --- BOTÓN DE INYECCIÓN ---
+    st.markdown("---")
+    if st.button("🚀 PROCESAR Y GUARDAR EN TABLA 1", type="primary", use_container_width=True):
+        if not os_val or not fecha_val or not hk_val:
+            st.error("🚨 Faltan datos principales (Nº Orden, Fecha o HK).")
+        elif str(os_val).strip() in lista_os_existentes:
+            st.error("🚨 Esta OS ya existe en la Base de Datos.")
+        else:
+            try:
+                with st.spinner("🚀 Ejecutando Cálculos y Búsquedas Automáticas..."):
+                    dt = procesar_fecha_pesada(fecha_val) or datetime.now()
+                    f_corta = dt.strftime("%d/%m/%Y")
                     
-                    res = modelo_ia.generate_content([prompt, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
-                    st.session_state['datos_os_ia'] = json.loads(res.text)
-                except Exception as e: st.error(f"Error IA: {e}")
+                    # RADAR DE AVIÓN INTELIGENTE
+                    mod_av = ""; pist_av = ""
+                    hk_limpio = str(hk_val).upper().replace('-','').replace(' ','').replace('HK','')
+                    
+                    if not df_t2.empty and hk_limpio:
+                        col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-','').str.replace(' ','').str.replace('HK','')
+                        match = df_t2[col_hk_t2.str.contains(hk_limpio) | (hk_limpio == col_hk_t2)]
+                        if not match.empty:
+                            mod_av = match.iloc[0, 9]  
+                            pist_av = match.iloc[0, 10] 
+                        else:
+                            st.warning(f"⚠️ Aeronave '{hk_val}' no encontrada. Se inyectará en blanco.")
 
-    if 'datos_os_ia' in st.session_state:
-        datos = st.session_state['datos_os_ia']
-        if isinstance(datos, list): datos = datos[0]
-        
-        with st.expander(f"📄 REVISIÓN OS {datos.get('numero_os')}", expanded=True):
-            # CAMPOS PRINCIPALES
-            c1, c2, c3 = st.columns(3)
-            os_val = c1.text_input("Nº Orden", value=str(datos.get('numero_os', '')))
-            fecha_val = c2.text_input("Fecha", value=str(datos.get('fecha', '')))
-            piloto_val = c3.text_input("Piloto", value=str(datos.get('piloto', '')))
-            
-            c4, c5, c6 = st.columns(3)
-            hk_val = c4.text_input("HK Aeronave", value=str(datos.get('aeronave_hk', '')))
-            horo_val = c5.text_input("Horómetro TOTAL", value=str(datos.get('horometro_total', '')))
-            costo_val = c6.text_input("Tarifa / Ha", value=str(datos.get('valor_hectarea', '')))
-            
-            recargo_val = st.text_input("Recargo ($)", value=str(datos.get('recargo', '0')))
+                    # PREPARAR FILAS (Regla de Oro Aplicada aquí en los replace)
+                    filas_finales = []
+                    h_total = float(str(horo_val).replace(',','.')) if str(horo_val).strip() else 0.0
+                    p_tarifa = float(str(costo_val).replace(',','.')) if str(costo_val).strip() else 0.0
+                    p_recargo = float(str(recargo_val).replace(',','.')) if str(recargo_val).strip() else 0.0
+                    total_ha_os = sum(df_editado['hectareas'])
 
-            # TABLA DE FINCAS
-            df_fincas = pd.DataFrame(datos.get('fincas', []))
-            if 'hectareas' in df_fincas.columns:
-                df_fincas['hectareas'] = pd.to_numeric(df_fincas['hectareas'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-            
-            df_editado = st.data_editor(
-                df_fincas, use_container_width=True, num_rows="dynamic",
-                column_config={
-                    "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales),
-                    "hectareas": st.column_config.NumberColumn("Ha", format="%.2f")
-                }
-            )
-
-            # --- BOTÓN DE GUARDADO CON LÓGICA DE BÚSQUEDA 360 ---
-            if st.button("💾 GUARDAR EN TABLA 1", type="primary", use_container_width=True):
-                if str(os_val).strip() in lista_os_existentes:
-                    st.error("🚨 Esta OS ya existe.")
-                else:
-                    try:
-                        # 1. Procesar Fecha
-                        dt = procesar_fecha_pesada(fecha_val) or datetime.now()
-                        f_corta = dt.strftime("%d/%m/%Y")
+                    for _, f in df_editado.iterrows():
+                        n_finca = str(f.get('nombre_finca', '')).upper().strip()
+                        if not n_finca: continue # Saltar filas vacías
                         
-                        # 2. RADAR DE AVIÓN (Búsqueda Definitiva Anti-HK)
-                        mod_av = ""; pist_av = ""
-                        # Limpiamos todo: quitamos guiones, espacios y la palabra "HK"
-                        hk_limpio = str(hk_val).upper().replace('-','').replace(' ','').replace('HK','')
+                        bloq = ""; sect = ""; hab = 0; t_prod = ""; coctel_auto = str(f.get('coctel', ''))
+                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == n_finca]
+                        if not match_f.empty:
+                            sect = match_f.iloc[0, 1]; hab = extraer_numero(match_f.iloc[0, 2])
+                            bloq = match_f.iloc[0, 3]; t_prod = match_f.iloc[0, 5]
                         
-                        if not df_t2.empty and hk_limpio:
-                            # Columna I es índice 8. También le quitamos espacios o letras HK por si acaso
-                            col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-','').str.replace(' ','').str.replace('HK','')
-                            
-                            # Buscamos la coincidencia exacta del número
-                            match = df_t2[col_hk_t2.str.contains(hk_limpio, na=False) | (hk_limpio == col_hk_t2)]
-                            if not match.empty:
-                                mod_av = match.iloc[0, 9]  # Columna J
-                                pist_av = match.iloc[0, 10] # Columna K
-                            else:
-                                st.warning(f"⚠️ Aeronave '{hk_limpio}' no encontrada en la Columna I de la Tabla 2.")
-                                
-                        # 3. Preparar Filas
-                        filas_finales = []
-                        h_total = float(str(horo_val).replace(',','.'))
-                        p_tarifa = float(str(costo_val).replace(',','.'))
-                        p_recargo = float(str(recargo_val).replace(',','.'))
-                        total_ha_os = sum(df_editado['hectareas'])
+                        if not coctel_auto and not df_apoyo.empty:
+                            m_ap = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == n_finca]
+                            if not m_ap.empty: coctel_auto = m_ap.iloc[-1, 8]
 
-                        for _, f in df_editado.iterrows():
-                            n_finca = str(f['nombre_finca']).upper().strip()
-                            # Buscar datos de finca en Tabla 2
-                            bloq = ""; sect = ""; hab = 0; t_prod = ""
-                            match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == n_finca]
-                            if not match_f.empty:
-                                sect = match_f.iloc[0, 1]; hab = extraer_numero(match_f.iloc[0, 2])
-                                bloq = match_f.iloc[0, 3]; t_prod = match_f.iloc[0, 5]
-                            
-                            ha_neta = float(f['hectareas'])
-                            h_prop = (ha_neta / total_ha_os) * h_total if total_ha_os > 0 else 0
-                            c_total = (ha_neta * p_tarifa) + (ha_neta * p_recargo)
-                            
-                            row = [""] * 34
-                            row[0], row[1], row[2], row[3], row[4], row[5] = os_val, bloq, n_finca, sect, hab, ha_neta
-                            row[7], row[8], row[10], row[13], row[15], row[16] = f_corta, dt.strftime("%A"), h_total, round(h_prop,2), piloto_val, hk_val
-                            row[17], row[18], row[19], row[20], row[21], row[23] = mod_av, round(c_total,2), p_tarifa, p_recargo, round(c_total,2), pist_av
-                            row[32], row[33] = t_prod, "GENESIS_V20_PRO"
-                            filas_finales.append(row)
+                        # Regla de Oro en hectáreas
+                        ha_neta = float(str(f['hectareas']).replace(',', '.'))
+                        h_prop = (ha_neta / total_ha_os) * h_total if total_ha_os > 0 else 0
+                        vol_gln = ha_neta * 6
+                        rend_min = h_prop * 60
                         
+                        c_total_finca = (ha_neta * p_tarifa) + (ha_neta * p_recargo)
+                        costo_neto_sr = ha_neta * p_tarifa
+                        v_hora = c_total_finca / h_prop if h_prop > 0 else 0
+                        porc_var = (ha_neta / hab) if hab > 0 else 0
+                        
+                        row = [""] * 34
+                        row[0], row[1], row[2], row[3], row[4], row[5] = os_val, bloq, n_finca, sect, hab, ha_neta
+                        row[6], row[7], row[8], row[9] = coctel_auto, f_corta, dt.strftime("%A"), dt.isocalendar()[1]
+                        row[10], row[11], row[12], row[13], row[14] = h_total, 6, round(vol_gln,2), round(h_prop,2), round(rend_min,2)
+                        row[15], row[16], row[17], row[18], row[19] = piloto_val, hk_val, mod_av, round(c_total_finca,2), p_tarifa
+                        row[20], row[21], row[22], row[23] = p_recargo, round(c_total_finca,2), round(v_hora,2), pist_av
+                        row[28], row[30], row[31], row[32], row[33] = round(costo_neto_sr,2), round(porc_var,4), 1, t_prod, "GENESIS_MANUAL"
+                        
+                        filas_finales.append(row)
+                    
+                    if filas_finales:
                         hoja_maestra.append_rows(filas_finales, value_input_option='USER_ENTERED')
                         st.balloons()
-                        st.success("🎯 ¡Inyección Exitosa!")
-                        st.session_state.pop('memoria_excel', None) # Limpiar para la próxima
-                        
-                    except Exception as e: st.error(f"Error: {e}")
-                        
+                        st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada en la Bóveda.")
+                        st.session_state.pop('memoria_excel', None) 
+                    
+            except Exception as e: st.error(f"Error en inyección: {e}")
+
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
