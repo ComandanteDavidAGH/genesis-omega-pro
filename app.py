@@ -451,7 +451,16 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo['DATOS_FILA']
-        num_pedido = str(datos_raw.get(20, datos_raw.get(21, "S/N"))).split('.')[0]
+        
+        # 🎯 RADAR DE AMPLIO ESPECTRO PARA NÚMEROS DE PEDIDO SAP
+        num_pedido = "S/N"
+        # Escaneamos desde la columna 18 (T) hasta la 35 (AJ)
+        for idx in range(18, 35):
+            val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
+            # Si encontramos un número puro y tiene 7 dígitos o más, es 100% seguro que es el Pedido SAP
+            if val_celda.isdigit() and len(val_celda) >= 7:
+                num_pedido = val_celda
+                break
         
         lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
         pista_detectada = "PLUC"
