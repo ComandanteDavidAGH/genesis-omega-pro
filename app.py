@@ -913,7 +913,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
 
 # =====================================================================
-# ⌨️ 4. INGRESO MANUAL ACELERADO (OS) - MODO BLINDADO
+# ⌨️ 4. INGRESO MANUAL ACELERADO (OS) - MODO BLINDADO V2
 # =====================================================================
 elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
     st.header("🛰️ MÓDULO 4: INGRESO MANUAL ACELERADO")
@@ -938,17 +938,26 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
         hoja_maestra = boveda.worksheet("TABLA 1")
         
         if 'memoria_excel' not in st.session_state:
-            with st.spinner("📡 Sincronizando desde Fila 5..."):
+            with st.spinner("📡 Sincronizando Pilotos, Aviones y Fincas..."):
                 memoria = {}
                 memoria['col_os'] = hoja_maestra.col_values(1)
                 memoria['col_cocteles'] = hoja_maestra.col_values(7)
+                
+                # 🎯 EXTRAER PILOTOS (Columna P = 16)
+                pilotos_raw = hoja_maestra.col_values(16)
+                memoria['lista_pilotos'] = sorted(list(set([str(p).strip().upper() for p in pilotos_raw if p and str(p).upper() not in ["PILOTO", "PILOTO AVIÓN"]])))
                 
                 try:
                     ws_t2 = boveda.worksheet("TABLA 2")
                     d_t2 = ws_t2.get_all_values()
                     d_t2_limpio = [r + [""] * (12 - len(r)) if len(r) < 12 else r for r in d_t2]
                     memoria['df_t2'] = pd.DataFrame(d_t2_limpio[4:]) 
-                except: memoria['df_t2'] = pd.DataFrame()
+                    
+                    # 🎯 EXTRAER AERONAVES (Columna I de Tabla 2 = Índice 8)
+                    memoria['lista_hks'] = sorted(list(set([str(r[8]).strip().upper() for r in d_t2_limpio[4:] if r[8]])))
+                except: 
+                    memoria['df_t2'] = pd.DataFrame()
+                    memoria['lista_hks'] = []
 
                 try:
                     ws_ap = boveda.worksheet("TABLA DE APOYO2023")
@@ -973,23 +982,26 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
         st.error(f"🚨 Error de enlace: {e}")
         st.stop()
 
-    # --- FORMULARIO MANUAL ACELERADO ---
+    # --- FORMULARIO MANUAL ACELERADO (INTERFAZ MEJORADA) ---
     st.markdown("---")
     with st.expander("📝 1. DATOS PRINCIPALES DE LA ORDEN", expanded=True):
         c1, c2, c3 = st.columns(3)
         os_val = c1.text_input("Nº Orden (Ej: 318)")
-        fecha_val = c2.text_input("Fecha (Ej: 10/05/2026)")
-        piloto_val = c3.text_input("Piloto")
+        # 📅 CALENDARIO INTELIGENTE
+        fecha_dt = c2.date_input("Fecha de Operación", format="DD/MM/YYYY")
+        # 👨‍✈️ BUSCADOR DE PILOTOS
+        piloto_val = c3.selectbox("Seleccione Piloto", ["---"] + mem['lista_pilotos'])
         
         c4, c5, c6 = st.columns(3)
-        hk_val = c4.text_input("HK Aeronave (Ej: 5163 o HK5163)")
+        # ✈️ BUSCADOR DE AERONAVES
+        hk_val = c4.selectbox("Seleccione HK Aeronave", ["---"] + mem['lista_hks'])
         horo_val = c5.text_input("Horómetro TOTAL (Ej: 1.5)")
         costo_val = c6.text_input("Tarifa / Ha (Ej: 28000)")
         
-        recargo_val = st.text_input("Recargo Unitario ($) (Ej: 3450 o dejar en 0 si no hay)", value="0")
+        recargo_val = st.text_input("Recargo Unitario ($) (Ej: 3450)", value="0")
 
     st.markdown("### 📍 2. FINCAS FUMIGADAS Y HECTÁREAS")
-    st.info("💡 Seleccione la finca, ponga las hectáreas y agregue filas si son varias fincas en la misma orden.")
+    st.info("💡 Seleccione la finca y ponga las hectáreas. El sistema buscará el resto automáticamente.")
     
     df_fincas_vacio = pd.DataFrame([{"nombre_finca": "", "hectareas": 0.0, "coctel": ""}])
     
@@ -1004,32 +1016,28 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
 
     # --- BOTÓN DE INYECCIÓN ---
     st.markdown("---")
-    if st.button("🚀 PROCESAR Y GUARDAR EN TABLA 1", type="primary", use_container_width=True):
-        if not os_val or not fecha_val or not hk_val:
-            st.error("🚨 Faltan datos principales (Nº Orden, Fecha o HK).")
+    if st.button("🚀 DETONAR Y GUARDAR EN TABLA 1", type="primary", use_container_width=True):
+        if not os_val or piloto_val == "---" or hk_val == "---":
+            st.error("🚨 Faltan datos principales (OS, Piloto o HK).")
         elif str(os_val).strip() in lista_os_existentes:
             st.error("🚨 Esta OS ya existe en la Base de Datos.")
         else:
             try:
-                with st.spinner("🚀 Ejecutando Cálculos y Búsquedas Automáticas..."):
-                    dt = procesar_fecha_pesada(fecha_val) or datetime.now()
-                    f_corta = dt.strftime("%d/%m/%Y")
+                with st.spinner("🚀 Transportando y calculando datos..."):
+                    f_corta = fecha_dt.strftime("%d/%m/%Y")
                     
-                    # RADAR DE AVIÓN INTELIGENTE
+                    # 1. RADAR DE AVIÓN (Ya viene filtrado por el selectbox)
                     mod_av = ""; pist_av = ""
-                    hk_limpio = str(hk_val).upper().replace('-','').replace(' ','').replace('HK','')
-                    
-                    if not df_t2.empty and hk_limpio:
-                        col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-','').str.replace(' ','').str.replace('HK','')
-                        match = df_t2[col_hk_t2.str.contains(hk_limpio) | (hk_limpio == col_hk_t2)]
+                    if not df_t2.empty:
+                        # Buscamos el match exacto del HK seleccionado
+                        match = df_t2[df_t2.iloc[:, 8].str.strip() == hk_val]
                         if not match.empty:
-                            mod_av = match.iloc[0, 9]  
-                            pist_av = match.iloc[0, 10] 
-                        else:
-                            st.warning(f"⚠️ Aeronave '{hk_val}' no encontrada. Se inyectará en blanco.")
+                            mod_av = match.iloc[0, 9]  # Columna J
+                            pist_av = match.iloc[0, 10] # Columna K
 
-                    # PREPARAR FILAS (Regla de Oro Aplicada aquí en los replace)
+                    # 2. PREPARAR FILAS
                     filas_finales = []
+                    # REGLA DE ORO APLICADA
                     h_total = float(str(horo_val).replace(',','.')) if str(horo_val).strip() else 0.0
                     p_tarifa = float(str(costo_val).replace(',','.')) if str(costo_val).strip() else 0.0
                     p_recargo = float(str(recargo_val).replace(',','.')) if str(recargo_val).strip() else 0.0
@@ -1037,19 +1045,21 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
 
                     for _, f in df_editado.iterrows():
                         n_finca = str(f.get('nombre_finca', '')).upper().strip()
-                        if not n_finca: continue # Saltar filas vacías
+                        if not n_finca: continue 
                         
                         bloq = ""; sect = ""; hab = 0; t_prod = ""; coctel_auto = str(f.get('coctel', ''))
+                        
+                        # 🛰️ EL TRANSPORTE DE DATOS DE FINCA
                         match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == n_finca]
                         if not match_f.empty:
                             sect = match_f.iloc[0, 1]; hab = extraer_numero(match_f.iloc[0, 2])
                             bloq = match_f.iloc[0, 3]; t_prod = match_f.iloc[0, 5]
                         
-                        if not coctel_auto and not df_apoyo.empty:
+                        # 🛰️ EL TRANSPORTE DEL CÓCTEL HISTÓRICO
+                        if (not coctel_auto or coctel_auto == "None") and not df_apoyo.empty:
                             m_ap = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == n_finca]
                             if not m_ap.empty: coctel_auto = m_ap.iloc[-1, 8]
 
-                        # Regla de Oro en hectáreas
                         ha_neta = float(str(f['hectareas']).replace(',', '.'))
                         h_prop = (ha_neta / total_ha_os) * h_total if total_ha_os > 0 else 0
                         vol_gln = ha_neta * 6
@@ -1062,7 +1072,7 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                         
                         row = [""] * 34
                         row[0], row[1], row[2], row[3], row[4], row[5] = os_val, bloq, n_finca, sect, hab, ha_neta
-                        row[6], row[7], row[8], row[9] = coctel_auto, f_corta, dt.strftime("%A"), dt.isocalendar()[1]
+                        row[6], row[7], row[8], row[9] = coctel_auto, f_corta, fecha_dt.strftime("%A"), fecha_dt.isocalendar()[1]
                         row[10], row[11], row[12], row[13], row[14] = h_total, 6, round(vol_gln,2), round(h_prop,2), round(rend_min,2)
                         row[15], row[16], row[17], row[18], row[19] = piloto_val, hk_val, mod_av, round(c_total_finca,2), p_tarifa
                         row[20], row[21], row[22], row[23] = p_recargo, round(c_total_finca,2), round(v_hora,2), pist_av
@@ -1073,11 +1083,11 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                     if filas_finales:
                         hoja_maestra.append_rows(filas_finales, value_input_option='USER_ENTERED')
                         st.balloons()
-                        st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada en la Bóveda.")
+                        st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} transportada y guardada.")
                         st.session_state.pop('memoria_excel', None) 
                     
             except Exception as e: st.error(f"Error en inyección: {e}")
-
+                
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
