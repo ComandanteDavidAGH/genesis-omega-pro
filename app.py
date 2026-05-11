@@ -989,17 +989,19 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
         os_val = c1.text_input("Nº Orden (Ej: 318)")
         # 📅 CALENDARIO INTELIGENTE
         fecha_dt = c2.date_input("Fecha de Operación", format="DD/MM/YYYY")
-        # 👨‍✈️ BUSCADOR DE PILOTOS
-        piloto_val = c3.selectbox("Seleccione Piloto", ["---"] + mem['lista_pilotos'])
+        # 👨‍✈️ BUSCADOR DE PILOTOS (BLINDADO)
+        pilotos_disponibles = mem.get('lista_pilotos', [])
+        piloto_val = c3.selectbox("Seleccione Piloto", ["---"] + pilotos_disponibles)
         
         c4, c5, c6 = st.columns(3)
-        # ✈️ BUSCADOR DE AERONAVES
-        hk_val = c4.selectbox("Seleccione HK Aeronave", ["---"] + mem['lista_hks'])
+        # ✈️ BUSCADOR DE AERONAVES (BLINDADO)
+        hks_disponibles = mem.get('lista_hks', [])
+        hk_val = c4.selectbox("Seleccione HK Aeronave", ["---"] + hks_disponibles)
         horo_val = c5.text_input("Horómetro TOTAL (Ej: 1.5)")
         costo_val = c6.text_input("Tarifa / Ha (Ej: 28000)")
         
         recargo_val = st.text_input("Recargo Unitario ($) (Ej: 3450)", value="0")
-
+        
     st.markdown("### 📍 2. FINCAS FUMIGADAS Y HECTÁREAS")
     st.info("💡 Seleccione la finca y ponga las hectáreas. El sistema buscará el resto automáticamente.")
     
