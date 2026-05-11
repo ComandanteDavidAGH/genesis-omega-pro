@@ -109,10 +109,11 @@ with st.sidebar:
         "⌨️ 4. Ingreso Manual Acelerado (OS)", 
         "📈 5. Sincronización Precios",
         "✈️ 6. Rastreo Dominicales",
-        "⚖️ 7. Arqueo de Inventarios"
+        "⚖️ 7. Arqueo de Inventarios",
+        "📊 8. Reporte Hectáreas (Pistas)" # <--- EL NUEVO RADAR
     ])
     st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
-
+    
 # =====================================================================
 # 🏠 0. CENTRO DE MANDO
 # =====================================================================
@@ -1476,3 +1477,104 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
                     worksheet.column_dimensions[column].width = adjusted_width
 
         st.download_button("📥 Descargar Reporte Ejecutivo", buffer.getvalue(), f"Arqueo_Ejecutivo_Semana_{st.session_state.semana_actual}.xlsx")
+
+# =====================================================================
+# 📊 8. REPORTE TÁCTICO DE HECTÁREAS FUMIGADAS
+# =====================================================================
+elif menu == "📊 8. Reporte Hectáreas (Pistas)":
+    st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas Fumigadas</h1>", unsafe_allow_html=True)
+    
+    try:
+        with st.spinner("🛰️ Escaneando la Bóveda Maestra (TABLA 1)..."):
+            if "gcp_credentials" in st.secrets:
+                gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+            else:
+                gc = gspread.service_account(filename='credenciales.json')
+            
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            hoja_maestra = boveda.worksheet("TABLA 1")
+            datos_brutos = hoja_maestra.get_all_values()
+            
+        if len(datos_brutos) > 5:
+            columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
+            
+            filas_limpias = [r + [""]*(24 - len(r)) for r in datos_brutos[5:]]
+            df_rep = pd.DataFrame([r[:24] for r in filas_limpias], columns=columnas)
+            
+            df_rep['HA_NETAS'] = df_rep['HA_NETAS'].apply(extraer_numero)
+            df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
+            df_rep['PISTA'] = df_rep['PISTA'].astype(str).str.strip().str.upper()
+            
+            df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
+            
+            meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
+            
+            def extraer_mes_año(fecha_str):
+                dt = procesar_fecha_pesada(fecha_str)
+                if dt: return meses_nom.get(dt.month, "Desconocido"), str(dt.year)
+                return "Desconocido", "Desconocido"
+            
+            df_rep[['MES', 'AÑO']] = df_rep['FECHA'].apply(lambda x: pd.Series(extraer_mes_año(x)))
+            df_rep = df_rep[df_rep['AÑO'] != "Desconocido"] 
+            
+            st.markdown("### 🎛️ Filtros de Operación")
+            c1, c2 = st.columns(2)
+            pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
+            años_disp = sorted(df_rep['AÑO'].unique().tolist(), reverse=True)
+            
+            pista_sel = c1.selectbox("📍 Base de Operación (Pista)", ["TODAS"] + pistas_disp)
+            año_sel = c2.selectbox("📅 Año Fiscal", años_disp if años_disp else [str(datetime.now().year)])
+            
+            df_filt = df_rep[df_rep['AÑO'] == año_sel]
+            if pista_sel != "TODAS":
+                df_filt = df_filt[df_filt['PISTA'] == pista_sel]
+            
+            if df_filt.empty:
+                st.warning("⚠️ El radar no detecta operaciones para esos parámetros.")
+            else:
+                matriz = pd.pivot_table(
+                    df_filt, 
+                    values='HA_NETAS', 
+                    index='MES', 
+                    columns='SEMANA', 
+                    aggfunc='sum', 
+                    fill_value=0
+                )
+                
+                matriz = matriz.sort_index()
+                cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
+                matriz = matriz[cols_ordenadas]
+                
+                matriz['TOTAL MES'] = matriz.sum(axis=1)
+                matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
+                
+                st.markdown(f"#### 🚜 Rendimiento de Fumigación: **{pista_sel}** ({año_sel})")
+                st.info("💡 La tabla muestra las Hectáreas Fumigadas (Netas) organizadas por mes (filas) y semana del año (columnas).")
+                
+                st.dataframe(
+                    matriz.style.format("{:.2f}").background_gradient(cmap="YlGn", axis=None), 
+                    use_container_width=True
+                )
+                
+                st.markdown("---")
+                st.markdown("#### 📈 Proyección Gráfica de Hectáreas Fumigadas (Por Mes)")
+                
+                df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
+                
+                if not df_grafico.empty:
+                    fig = px.bar(
+                        df_grafico, 
+                        x='MES', 
+                        y='TOTAL MES',
+                        text='TOTAL MES',
+                        labels={'TOTAL MES': 'Hectáreas Fumigadas', 'MES': 'Mes de Operación'},
+                        color='TOTAL MES',
+                        color_continuous_scale='Greens'
+                    )
+                    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                    fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False)
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                
+    except Exception as e:
+        st.error(f"🚨 Falla en el sistema de radares: {e}")
