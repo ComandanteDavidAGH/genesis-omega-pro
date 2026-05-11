@@ -184,11 +184,11 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                 except Exception as e:
                     st.error(f"🚨 Error en Paso A: {e}")
 
-        # --- ⚡ NUEVA FUNCIONALIDAD: EL COMPARADOR DE PRECIOS ---
+        # --- ⚡ NUEVA FUNCIONALIDAD: EL COMPARADOR DE PRECIOS CON INDICADORES VISUALES ---
         st.markdown("---")
-        st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (BARRIDO VISIBLE)")
+        st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (ESTADO DEL ARSENAL)")
         
-        if st.button("🔍 ESCANEAR DIFERENCIAS DE PRECIOS", use_container_width=True):
+        if st.button("🔍 ESCANEAR ESTADO ACTUAL", use_container_width=True):
             try:
                 if "gcp_credentials" in st.secrets:
                     gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
@@ -199,42 +199,83 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                 sh = gc.open_by_url(url_boveda)
                 ws_conf = sh.worksheet("Configuración")
                 
-                # Leer columnas I, J y K (Indices 8, 9, 10)
                 data = ws_conf.get_all_values()
                 df_conf = pd.DataFrame(data[1:], columns=data[0])
                 
-                # Seleccionamos las columnas de interés para el radar
-                # I: PRODUCTO, J: PRECIO OFICIAL, K: PRECIO SAP ACTUAL
+                # Radar de precios
                 radar = df_conf.iloc[:, [8, 9, 10]].copy()
-                radar.columns = ['PRODUCTO', 'ACTUAL_GENESIS', 'NUEVO_SAP']
+                radar.columns = ['PRODUCTO', 'PRECIO_ACTUAL', 'PRECIO_SAP']
                 
-                # Limpiar números
-                radar['ACTUAL_GENESIS'] = radar['ACTUAL_GENESIS'].apply(extraer_numero)
-                radar['NUEVO_SAP'] = radar['NUEVO_SAP'].apply(extraer_numero)
+                radar['PRECIO_ACTUAL'] = radar['PRECIO_ACTUAL'].apply(extraer_numero)
+                radar['PRECIO_SAP'] = radar['PRECIO_SAP'].apply(extraer_numero)
+                radar['DIFERENCIA'] = (radar['PRECIO_SAP'] - radar['PRECIO_ACTUAL']).round(2)
                 
-                # Identificar cambios
-                radar['DIFERENCIA'] = radar['NUEVO_SAP'] - radar['ACTUAL_GENESIS']
+                # 🟢 LA CASILLA DE ESTADO QUE USTED PIDIÓ
+                radar['ESTADO'] = radar['DIFERENCIA'].apply(lambda x: "✅ OK" if x == 0 else "❌ DESFASE")
                 
-                cambios = radar[radar['DIFERENCIA'] != 0].copy()
+                # Reordenar para que lo que hay que ajustar salga arriba
+                radar = radar.sort_values(by="ESTADO", ascending=False)
                 
-                if cambios.empty:
-                    st.info("✅ No se detectaron variaciones de precio. Todo está sincronizado.")
-                else:
-                    st.warning(f"⚠️ Se detectaron {len(cambios)} productos con cambio de precio.")
-                    
-                    # Formato condicional para el barrido visible
-                    def color_cambio(val):
-                        if val > 0: return 'background-color: #ffcccc; color: #990000; font-weight: bold' # Subió
-                        if val < 0: return 'background-color: #ccffcc; color: #006600; font-weight: bold' # Bajó
-                        return ''
+                st.markdown("#### 🛰️ Reporte de Situación:")
+                
+                # Estilo de la tabla
+                def color_estado(val):
+                    if val == "✅ OK": return 'background-color: #d4edda; color: #155724; font-weight: bold; text-align: center;'
+                    if val == "❌ DESFASE": return 'background-color: #f8d7da; color: #721c24; font-weight: bold; text-align: center;'
+                    return ''
 
-                    st.dataframe(cambios.style.map(color_cambio, subset=['DIFERENCIA']), use_container_width=True)
-                    
+                st.dataframe(
+                    radar.style.map(color_estado, subset=['ESTADO']),
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                hay_desfase = (radar['ESTADO'] == "❌ DESFASE").any()
+                if not hay_desfase:
+                    st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes.")
+                else:
+                    st.warning("⚠️ SE DETECTARON DESFASES. Proceda a la inyección para nivelar.")
                     st.session_state['datos_para_sincronizar'] = True
 
             except Exception as e:
                 st.error(f"Error al escanear: {e}")
 
+        # Botón de Inyección con confirmación final
+        if st.session_state.get('datos_para_sincronizar'):
+            if st.button("🚀 DETONAR INYECCIÓN QUIRÚRGICA", type="primary", use_container_width=True):
+                with st.spinner("Nivelando precios..."):
+                    try:
+                        if "gcp_credentials" in st.secrets:
+                            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                        else:
+                            gc = gspread.service_account(filename='credenciales.json')
+                        
+                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                        ws_conf = sh.worksheet("Configuración")
+                        data_full = ws_conf.get_all_values()
+                        
+                        valores_para_j = []
+                        for fila in data_full[1:]:
+                            valor_k = fila[10] if len(fila) > 10 else ""
+                            valores_para_j.append([valor_k])
+                            
+                        if valores_para_j:
+                            rango_j = f"J2:J{len(valores_para_j) + 1}"
+                            ws_conf.update(rango_j, valores_para_j, value_input_option='USER_ENTERED')
+                        
+                        st.balloons()
+                        # --- 🟢 INDICADOR VISUAL FINAL ---
+                        st.markdown("""
+                            <div style='background-color: #d4edda; padding: 20px; border-radius: 10px; border: 2px solid #155724; text-align: center;'>
+                                <h1 style='color: #155724; margin: 0;'>🟢 ESTADO: OK</h1>
+                                <p style='color: #155724;'>Todos los precios han sido nivelados con SAP exitosamente.</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        del st.session_state['datos_para_sincronizar']
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                        
         # --- ⚡ BOTÓN FINAL DE EJECUCIÓN SEGURA (QUIRÚRGICA) ---
         if st.session_state.get('datos_para_sincronizar'):
             st.markdown("---")
