@@ -922,12 +922,6 @@ elif menu == "⚙️ 3. Validación de Misión":
 # =====================================================================
 # 🤖 4. ESCÁNER IA (OS PDF)
 # =====================================================================
-# =====================================================================
-# 🤖 4. ESCÁNER IA (OS PDF)
-# =====================================================================
-# =====================================================================
-# 🤖 4. ESCÁNER IA (OS PDF)
-# =====================================================================
 elif menu == "🤖 4. Escáner IA (OS PDF)":
     st.header("🛰️ MÓDULO 4: SISTEMA GÉNESIS TOTAL - ESCÁNER IA")
     st.subheader("Buzón de Recepción y Puesto de Control")
@@ -965,7 +959,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
         mem = st.session_state['memoria_excel']
         lista_os_existentes = [str(os).strip() for os in mem['col_os'] if str(os).strip() != "" and str(os).upper() != "Nº ORDEN"]
         
-        # 🎯 CORRECCIÓN 2: La lista de fincas AHORA viene de la TABLA 2 (Maestra) para que el Match sea perfecto
         df_t2 = mem['df_t2']
         if not df_t2.empty:
             lista_fincas_oficiales = sorted(list(set([str(f).strip().upper() for f in df_t2.iloc[:, 0] if str(f).strip() != ""])))
@@ -996,16 +989,18 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                     documento_bytes = archivo_os.getvalue()
                     archivo_ia = [{"mime_type": archivo_os.type, "data": documento_bytes}]
                     
-                    # 🎯 CORRECCIÓN 3: PROMPT SÚPER DETECTIVE PARA EL RECARGO ESCRITO A MANO
+                    # 🎯 LA ORDEN SUPREMA ACTUALIZADA
                     prompt = """Extrae los datos de FUMIGARAY en formato JSON estrictamente con estas claves:
                     - fecha (en formato DD/MM/YYYY)
                     - numero_os
                     - piloto
                     - aeronave_hk
-                    - horometro_total
-                    - valor_hectarea
-                    - recargo (ATENCIÓN: IGNORA el 'Valor Recargo Festivo' grande impreso de 6 cifras. Busca un número ESCRITO A MANO, usualmente 3450 u 8500, cerca del cuadro de totales o firmas. Ese es el verdadero recargo unitario).
-                    - fincas: lista de objetos con {nombre_finca, hectareas}."""
+                    - horometro_total 
+                    - valor_hectarea 
+                    - recargo (ATENCIÓN: IGNORA el 'Valor Recargo Festivo' grande impreso. Busca un número ESCRITO A MANO, usualmente 3450 u 8500).
+                    - fincas: lista de objetos con {nombre_finca, hectareas}.
+                    
+                    🚨 REGLA DE ORO NUMÉRICA: Convierte TODAS las comas decimales que leas en el papel a PUNTOS. Si lees '207,70', DEBES entregar el número 207.70. Si lees '3.450', entrega 3450 sin puntos de miles."""
                     
                     res = modelo_ia.generate_content([prompt, archivo_ia[0]], generation_config={"response_mime_type": "application/json"})
                     st.session_state['datos_os_ia'] = json.loads(res.text)
@@ -1033,6 +1028,12 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 df_fincas = pd.DataFrame(datos.get('fincas', []))
                 for c in ['coctel']:
                     if c not in df_fincas.columns: df_fincas[c] = ""
+                
+                # 🎯 EL FILTRO DE SEGURIDAD (Python limpia las hectáreas)
+                if 'hectareas' in df_fincas.columns:
+                    df_fincas['hectareas'] = pd.to_numeric(df_fincas['hectareas'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+                else:
+                    df_fincas['hectareas'] = 0.0
 
                 st.markdown("##### 📍 Fincas y Cócteles (Ajuste los nombres si es necesario)")
                 df_editado = st.data_editor(
@@ -1041,7 +1042,7 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                     column_config={
                         "nombre_finca": st.column_config.SelectboxColumn("Finca (Selección Oficial TABLA 2)", options=lista_fincas_oficiales),
                         "coctel": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_oficiales),
-                        "hectareas": st.column_config.NumberColumn("Hectáreas Fumigadas")
+                        "hectareas": st.column_config.NumberColumn("Hectáreas Fumigadas", format="%.2f", min_value=0.0) # Forzamos formato con 2 decimales
                     }
                 )
                 datos['fincas'] = df_editado.to_dict('records')
@@ -1053,7 +1054,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                         try:
                             with st.spinner("🚀 Ejecutando Protocolo de Reconstrucción Total..."):
                                 
-                                # 1. PARSEADOR DE FECHA Y TIEMPO
                                 dt_obj = procesar_fecha_pesada(fecha_val)
                                 if dt_obj is None: dt_obj = datetime.now()
                                 
@@ -1061,30 +1061,25 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                 dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][dt_obj.weekday()]
                                 num_sem = dt_obj.isocalendar()[1]
 
-                                # 2. CÁLCULOS DE MUNICIÓN (DINERO Y HECTÁREAS)
                                 h_total = float(str(horo_val).replace(',','.')) if str(horo_val).strip() else 0.0
                                 p_ha = float(str(costo_val).replace('.','').replace(',','.')) if str(costo_val).strip() else 0.0
                                 rec_ha = float(str(recargo_val).replace('.','').replace(',','.')) if str(recargo_val).strip() else 0.0
                                 t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas'] if str(f.get('hectareas','')).strip()])
 
-                                # 3. RADAR DE AVIONES (Búsqueda Flexible)
                                 modelo_avion = ""; pista_avion = ""
                                 hk_limpio = str(hk_val).strip().upper().replace('-', '').replace(' ', '')
                                 
                                 if not df_t2.empty and hk_limpio:
-                                    # Buscamos en la columna 8 (I) de la Tabla 2
                                     col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-', '').str.replace(' ', '')
                                     match_av = df_t2[col_hk_t2.str.contains(hk_limpio, na=False)]
                                     if not match_av.empty:
                                         modelo_avion = match_av.iloc[0, 9]
                                         pista_avion = match_av.iloc[0, 10]
 
-                                # 4. ARMADO QUIRÚRGICO DE FILAS
                                 filas = []
                                 for f in datos['fincas']:
                                     n_finca = str(f.get('nombre_finca', '')).strip().upper()
                                     
-                                    # BÚSQUEDA DE BLOQUE, SECTOR Y CÓCTEL
                                     bloq = ""; sect = ""; hab = 0.0; t_prod = ""; coctel_auto = str(f.get('coctel', ''))
                                     
                                     if not df_t2.empty:
@@ -1092,7 +1087,6 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                         if not mt2.empty:
                                             sect = mt2.iloc[0, 1]; hab = extraer_numero(mt2.iloc[0, 2]); bloq = mt2.iloc[0, 3]; t_prod = mt2.iloc[0, 5]
                                             
-                                    # Si el cóctel está vacío, lo buscamos en la tabla de apoyo (Historial)
                                     if not coctel_auto and not df_apoyo.empty:
                                         m_ap = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == n_finca]
                                         if not m_ap.empty: coctel_auto = m_ap.iloc[-1, 8]
@@ -1102,50 +1096,45 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                     vol_gln = ha_f * 6
                                     rend_min = h_pro * 60
                                     
-                                    # LÓGICA DE COSTOS (La pieza que faltaba)
                                     costo_total_finca = (ha_f * p_ha) + (ha_f * rec_ha)
                                     costo_neto_sin_recargo = ha_f * p_ha
                                     v_hora_avion = costo_total_finca / h_pro if h_pro > 0 else 0
                                     
-                                    # VARIACIÓN (Pieza solicitada)
                                     porc_variacion = (ha_f / hab) if hab > 0 else 0
 
                                     row = [""] * 34
-                                    row[0] = os_val               # A: OS
-                                    row[1] = bloq                 # B: BLOQUE
-                                    row[2] = n_finca              # C: FINCA
-                                    row[3] = sect                 # D: SECTOR
-                                    row[4] = hab                  # E: ÁREA BRUTA
-                                    row[5] = ha_f                 # F: HA NETAS
-                                    row[6] = coctel_auto          # G: COCTEL
-                                    row[7] = fecha_corta          # H: FECHA
-                                    row[8] = dia_sem              # I: DÍA
-                                    row[9] = num_sem              # J: SEMANA
-                                    row[10] = h_total             # K: H. TOTAL
-                                    row[11] = 6                   # L: GLN/HA
-                                    row[12] = round(vol_gln, 2)    # M: VOL TOTAL
-                                    row[13] = round(h_pro, 2)      # N: H. PROPORCIONAL
-                                    row[14] = round(rend_min, 2)   # O: REND. MINUTOS
-                                    row[15] = piloto_val          # P: PILOTO
-                                    row[16] = hk_val              # Q: HK
-                                    row[17] = modelo_avion        # R: MODELO AVION
-                                    row[18] = round(costo_total_finca, 2) # S: COSTO TOTAL AVION ($)
-                                    row[19] = p_ha                # T: TARIFA $/HA
-                                    row[20] = rec_ha              # U: RECARGO $/HA
-                                    row[21] = round(costo_total_finca, 2) # V: SUBTOTAL
-                                    row[22] = round(v_hora_avion, 2) # W: COSTO HORA AVION
-                                    row[23] = pista_avion         # X: PISTA
-                                    
-                                    # Columnas de cierre
-                                    row[28] = round(costo_neto_sin_recargo, 2) # AC: PAGO NETO
-                                    row[30] = round(porc_variacion, 4)         # AE: % VARIACIÓN
-                                    row[31] = 1                                # AF: CONTEO
-                                    row[32] = t_prod                           # AG: TIPO PRODUCTOR
-                                    row[33] = "GÉNESIS_V19_PRO"                # AH: ORIGEN
+                                    row[0] = os_val               
+                                    row[1] = bloq                 
+                                    row[2] = n_finca              
+                                    row[3] = sect                 
+                                    row[4] = hab                  
+                                    row[5] = ha_f                 
+                                    row[6] = coctel_auto          
+                                    row[7] = fecha_corta          
+                                    row[8] = dia_sem              
+                                    row[9] = num_sem              
+                                    row[10] = h_total             
+                                    row[11] = 6                   
+                                    row[12] = round(vol_gln, 2)    
+                                    row[13] = round(h_pro, 2)      
+                                    row[14] = round(rend_min, 2)   
+                                    row[15] = piloto_val          
+                                    row[16] = hk_val              
+                                    row[17] = modelo_avion        
+                                    row[18] = round(costo_total_finca, 2) 
+                                    row[19] = p_ha                
+                                    row[20] = rec_ha              
+                                    row[21] = round(costo_total_finca, 2) 
+                                    row[22] = round(v_hora_avion, 2) 
+                                    row[23] = pista_avion         
+                                    row[28] = round(costo_neto_sin_recargo, 2) 
+                                    row[30] = round(porc_variacion, 4)         
+                                    row[31] = 1                                
+                                    row[32] = t_prod                           
+                                    row[33] = "GÉNESIS_V19_PRO"                
 
                                     filas.append(row)
                                 
-                                # Inyección en la Bóveda
                                 hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                                 st.balloons()
                                 st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con todos los campos calculados.")
