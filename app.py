@@ -1051,102 +1051,109 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 else:
                     if st.button(f"💾 GUARDAR TODO EN TABLA 1 (OS {os_val})", type="primary", key=f"save_{i}"):
                         try:
-                            with st.spinner("🚀 Procesando cálculos y alineando columnas..."):
+                            with st.spinner("🚀 Ejecutando Protocolo de Reconstrucción Total..."):
                                 
-                                # 🎯 1. PARSEADOR DE FECHA TODO TERRENO (Adiós error rojo)
+                                # 1. PARSEADOR DE FECHA Y TIEMPO
                                 dt_obj = procesar_fecha_pesada(fecha_val)
-                                if dt_obj is None:
-                                    dt_obj = datetime.now() # Si todo falla, usa la fecha de hoy
+                                if dt_obj is None: dt_obj = datetime.now()
                                 
                                 fecha_corta = dt_obj.strftime("%d/%m/%Y")
                                 dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][dt_obj.weekday()]
                                 num_sem = dt_obj.isocalendar()[1]
 
-                                # 2. LIMPIEZA DE NÚMEROS
+                                # 2. CÁLCULOS DE MUNICIÓN (DINERO Y HECTÁREAS)
                                 h_total = float(str(horo_val).replace(',','.')) if str(horo_val).strip() else 0.0
                                 p_ha = float(str(costo_val).replace('.','').replace(',','.')) if str(costo_val).strip() else 0.0
                                 rec_ha = float(str(recargo_val).replace('.','').replace(',','.')) if str(recargo_val).strip() else 0.0
                                 t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas'] if str(f.get('hectareas','')).strip()])
 
-                                # 🎯 3. RADAR INTELIGENTE DE AVIONES (Ignora espacios y guiones)
-                                modelo_avion = ""
-                                pista_avion = ""
-                                hk_busqueda = str(hk_val).strip().upper().replace('-', '').replace(' ', '')
+                                # 3. RADAR DE AVIONES (Búsqueda Flexible)
+                                modelo_avion = ""; pista_avion = ""
+                                hk_limpio = str(hk_val).strip().upper().replace('-', '').replace(' ', '')
                                 
-                                if not df_t2.empty and hk_busqueda:
-                                    col_hk = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-', '').str.replace(' ', '')
-                                    match_avion = df_t2[col_hk.str.contains(hk_busqueda, na=False)]
-                                    if not match_avion.empty:
-                                        modelo_avion = match_avion.iloc[0, 9]
-                                        pista_avion = match_avion.iloc[0, 10]
+                                if not df_t2.empty and hk_limpio:
+                                    # Buscamos en la columna 8 (I) de la Tabla 2
+                                    col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-', '').str.replace(' ', '')
+                                    match_av = df_t2[col_hk_t2.str.contains(hk_limpio, na=False)]
+                                    if not match_av.empty:
+                                        modelo_avion = match_av.iloc[0, 9]
+                                        pista_avion = match_av.iloc[0, 10]
 
-                                # 4. ARMADO DE FILAS Y ALINEACIÓN DE COLUMNAS
+                                # 4. ARMADO QUIRÚRGICO DE FILAS
                                 filas = []
                                 for f in datos['fincas']:
-                                    nombre_f_final = str(f.get('nombre_finca', '')).strip().upper()
+                                    n_finca = str(f.get('nombre_finca', '')).strip().upper()
                                     
-                                    # RADAR DE FINCAS A PRUEBA DE FALLOS
-                                    bloq = ""; sect = ""; hab = ""; t_prod = ""
+                                    # BÚSQUEDA DE BLOQUE, SECTOR Y CÓCTEL
+                                    bloq = ""; sect = ""; hab = 0.0; t_prod = ""; coctel_auto = str(f.get('coctel', ''))
+                                    
                                     if not df_t2.empty:
-                                        nombres_limpios_t2 = df_t2.iloc[:, 0].astype(str).str.upper().str.strip()
-                                        mt2 = df_t2[nombres_limpios_t2 == nombre_f_final]
+                                        mt2 = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == n_finca]
                                         if not mt2.empty:
-                                            sect = mt2.iloc[0, 1]
-                                            hab = mt2.iloc[0, 2]
-                                            bloq = mt2.iloc[0, 3]
-                                            t_prod = mt2.iloc[0, 5]
+                                            sect = mt2.iloc[0, 1]; hab = extraer_numero(mt2.iloc[0, 2]); bloq = mt2.iloc[0, 3]; t_prod = mt2.iloc[0, 5]
                                             
+                                    # Si el cóctel está vacío, lo buscamos en la tabla de apoyo (Historial)
+                                    if not coctel_auto and not df_apoyo.empty:
+                                        m_ap = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == n_finca]
+                                        if not m_ap.empty: coctel_auto = m_ap.iloc[-1, 8]
+
                                     ha_f = float(str(f['hectareas']).replace(',','.')) if str(f.get('hectareas','')).strip() else 0.0
                                     h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
+                                    vol_gln = ha_f * 6
+                                    rend_min = h_pro * 60
                                     
-                                    vol_total_gln = ha_f * 6
-                                    rend_minutos = h_pro * 60
-                                    costo_finca = (ha_f * p_ha) + (ha_f * rec_ha)
-                                    costo_avion_hora = costo_finca / h_pro if h_pro > 0 else 0 
-                                    costo_total_neto = p_ha * ha_f 
+                                    # LÓGICA DE COSTOS (La pieza que faltaba)
+                                    costo_total_finca = (ha_f * p_ha) + (ha_f * rec_ha)
+                                    costo_neto_sin_recargo = ha_f * p_ha
+                                    v_hora_avion = costo_total_finca / h_pro if h_pro > 0 else 0
                                     
+                                    # VARIACIÓN (Pieza solicitada)
+                                    porc_variacion = (ha_f / hab) if hab > 0 else 0
+
                                     row = [""] * 34
-                                    row[0] = os_val               
-                                    row[1] = bloq                 
-                                    row[2] = nombre_f_final       
-                                    row[3] = sect                 
-                                    row[4] = hab                  
-                                    row[5] = ha_f                 
-                                    row[6] = f.get('coctel','')   
-                                    row[7] = fecha_corta          
-                                    row[8] = dia_sem              
-                                    row[9] = num_sem              
-                                    row[10] = h_total             
-                                    row[11] = 6                   
-                                    row[12] = round(vol_total_gln, 2) 
-                                    row[13] = round(h_pro, 2)      
-                                    row[14] = round(rend_minutos, 2) 
-                                    row[15] = piloto_val          
-                                    row[16] = hk_val              
+                                    row[0] = os_val               # A: OS
+                                    row[1] = bloq                 # B: BLOQUE
+                                    row[2] = n_finca              # C: FINCA
+                                    row[3] = sect                 # D: SECTOR
+                                    row[4] = hab                  # E: ÁREA BRUTA
+                                    row[5] = ha_f                 # F: HA NETAS
+                                    row[6] = coctel_auto          # G: COCTEL
+                                    row[7] = fecha_corta          # H: FECHA
+                                    row[8] = dia_sem              # I: DÍA
+                                    row[9] = num_sem              # J: SEMANA
+                                    row[10] = h_total             # K: H. TOTAL
+                                    row[11] = 6                   # L: GLN/HA
+                                    row[12] = round(vol_gln, 2)    # M: VOL TOTAL
+                                    row[13] = round(h_pro, 2)      # N: H. PROPORCIONAL
+                                    row[14] = round(rend_min, 2)   # O: REND. MINUTOS
+                                    row[15] = piloto_val          # P: PILOTO
+                                    row[16] = hk_val              # Q: HK
+                                    row[17] = modelo_avion        # R: MODELO AVION
+                                    row[18] = round(costo_total_finca, 2) # S: COSTO TOTAL AVION ($)
+                                    row[19] = p_ha                # T: TARIFA $/HA
+                                    row[20] = rec_ha              # U: RECARGO $/HA
+                                    row[21] = round(costo_total_finca, 2) # V: SUBTOTAL
+                                    row[22] = round(v_hora_avion, 2) # W: COSTO HORA AVION
+                                    row[23] = pista_avion         # X: PISTA
                                     
-                                    # 🎯 4. CORRECCIÓN DEL DESFASE DE COLUMNAS
-                                    row[17] = modelo_avion                  # R: MODELO
-                                    row[18] = ""                            # S: COSTO AVIÓN ($) (Vacío si no hay cálculo específico aquí)
-                                    row[19] = p_ha                          # T: COSTO AVIÓN ($/ha)
-                                    row[20] = rec_ha                        # U: DOMINIC. ($/ha)
-                                    row[21] = round(costo_finca, 2)         # V: COSTO AVIÓN ($/finca)
-                                    row[22] = round(costo_avion_hora, 2)    # W: VALOR A FACTURAR A ($/ha-ciclo)
-                                    row[23] = pista_avion                   # X: PISTA (¡Aquí era donde debía ir la pista!)
-                                    
-                                    row[28] = round(costo_total_neto, 2)
-                                    row[31] = 1                   
-                                    row[32] = t_prod              
-                                    row[33] = "IA_GENESIS"        
+                                    # Columnas de cierre
+                                    row[28] = round(costo_neto_sin_recargo, 2) # AC: PAGO NETO
+                                    row[30] = round(porc_variacion, 4)         # AE: % VARIACIÓN
+                                    row[31] = 1                                # AF: CONTEO
+                                    row[32] = t_prod                           # AG: TIPO PRODUCTOR
+                                    row[33] = "GÉNESIS_V19_PRO"                # AH: ORIGEN
 
                                     filas.append(row)
                                 
+                                # Inyección en la Bóveda
                                 hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                                 st.balloons()
-                                st.success(f"✅ ¡Aterrizaje Perfecto! OS {os_val} inyectada en las columnas correctas.")
+                                st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con todos los campos calculados.")
                                 del st.session_state['memoria_excel']
                                 
                         except Exception as e: 
-                            st.error(f"Falla en guardado: {e}")                            
+                            st.error(f"🚨 Falla en el Gatillo: {e}")
+                            
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
