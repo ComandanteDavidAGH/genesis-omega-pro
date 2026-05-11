@@ -11,7 +11,13 @@ import dateutil.parser
 import openpyxl
 import gspread
 import plotly.express as px
-import google.generativeai as genai
+
+# Intentar importar matplotlib para el mapa de calor, si falla, el sistema sigue
+try:
+    import matplotlib
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
@@ -110,10 +116,10 @@ with st.sidebar:
         "📈 5. Sincronización Precios",
         "✈️ 6. Rastreo Dominicales",
         "⚖️ 7. Arqueo de Inventarios",
-        "📊 8. Reporte Hectáreas (Pistas)" # <--- EL NUEVO RADAR
+        "📊 8. Reporte Hectáreas (Pistas)"
     ])
     st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
-    
+
 # =====================================================================
 # 🏠 0. CENTRO DE MANDO
 # =====================================================================
@@ -130,6 +136,7 @@ if menu == "🏠 Centro de Mando":
             <li><b>Sincronización:</b> Actualice precios semanalmente simulando la Macro de VBA.</li>
             <li><b>Dominicales:</b> Rastree fechas de operación y recargos con inyección directa.</li>
             <li><b>Arqueo:</b> Auditoría total de pistas contra saldos SAP, con conciliación inteligente.</li>
+            <li><b>Radar Hectáreas:</b> Visor dinámico semana a semana y mes a mes para gerencia.</li>
         </ol>
     </div>
     """, unsafe_allow_html=True)
@@ -146,7 +153,6 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
         if st.button("🚀 PASO A: PURIFICAR Y CARGAR A PLANTILLA", type="primary", use_container_width=True):
             with st.spinner("Ejecutando protocolo Samurai..."):
                 try:
-                    # 1. LEER ORIGEN
                     nombre_archivo = f_sap_raw.name.lower()
                     if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
                         df = pd.read_excel(f_sap_raw)
@@ -157,7 +163,6 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                             f_sap_raw.seek(0)
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
                     
-                    # 2. LIMPIEZA
                     df = df.dropna(subset=[df.columns[0]])
                     df = df[~df.iloc[:, 0].astype(str).str.contains('\*')]
                     if len(df.columns) >= 11:
@@ -167,7 +172,6 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                     df_final['J'] = df.iloc[:, 10].values
                     unicos = sorted(df.iloc[:, 10].astype(str).unique().tolist())
                     
-                    # 3. CARGA A GOOGLE SHEETS (PLANTILLA)
                     if "gcp_credentials" in st.secrets:
                         gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                     else:
@@ -185,7 +189,6 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                 except Exception as e:
                     st.error(f"🚨 Error en Paso A: {e}")
 
-        # --- ⚡ NUEVA FUNCIONALIDAD: EL COMPARADOR DE PRECIOS CON INDICADORES VISUALES ---
         st.markdown("---")
         st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (ESTADO DEL ARSENAL)")
         
@@ -203,33 +206,22 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                 data = ws_conf.get_all_values()
                 df_conf = pd.DataFrame(data[1:], columns=data[0])
                 
-                # Radar de precios
                 radar = df_conf.iloc[:, [8, 9, 10]].copy()
                 radar.columns = ['PRODUCTO', 'PRECIO_ACTUAL', 'PRECIO_SAP']
                 
                 radar['PRECIO_ACTUAL'] = radar['PRECIO_ACTUAL'].apply(extraer_numero)
                 radar['PRECIO_SAP'] = radar['PRECIO_SAP'].apply(extraer_numero)
                 radar['DIFERENCIA'] = (radar['PRECIO_SAP'] - radar['PRECIO_ACTUAL']).round(2)
-                
-                # 🟢 LA CASILLA DE ESTADO QUE USTED PIDIÓ
                 radar['ESTADO'] = radar['DIFERENCIA'].apply(lambda x: "✅ OK" if x == 0 else "❌ DESFASE")
-                
-                # Reordenar para que lo que hay que ajustar salga arriba
                 radar = radar.sort_values(by="ESTADO", ascending=False)
                 
                 st.markdown("#### 🛰️ Reporte de Situación:")
-                
-                # Estilo de la tabla
                 def color_estado(val):
                     if val == "✅ OK": return 'background-color: #d4edda; color: #155724; font-weight: bold; text-align: center;'
                     if val == "❌ DESFASE": return 'background-color: #f8d7da; color: #721c24; font-weight: bold; text-align: center;'
                     return ''
 
-                st.dataframe(
-                    radar.style.map(color_estado, subset=['ESTADO']),
-                    use_container_width=True,
-                    hide_index=True
-                )
+                st.dataframe(radar.style.map(color_estado, subset=['ESTADO']), use_container_width=True, hide_index=True)
                 
                 hay_desfase = (radar['ESTADO'] == "❌ DESFASE").any()
                 if not hay_desfase:
@@ -241,49 +233,11 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
             except Exception as e:
                 st.error(f"Error al escanear: {e}")
 
-        # Botón de Inyección con confirmación final
-        if st.session_state.get('datos_para_sincronizar'):
-            if st.button("🚀 DETONAR INYECCIÓN QUIRÚRGICA", type="primary", use_container_width=True):
-                with st.spinner("Nivelando precios..."):
-                    try:
-                        if "gcp_credentials" in st.secrets:
-                            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-                        else:
-                            gc = gspread.service_account(filename='credenciales.json')
-                        
-                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-                        ws_conf = sh.worksheet("Configuración")
-                        data_full = ws_conf.get_all_values()
-                        
-                        valores_para_j = []
-                        for fila in data_full[1:]:
-                            valor_k = fila[10] if len(fila) > 10 else ""
-                            valores_para_j.append([valor_k])
-                            
-                        if valores_para_j:
-                            rango_j = f"J2:J{len(valores_para_j) + 1}"
-                            ws_conf.update(rango_j, valores_para_j, value_input_option='USER_ENTERED')
-                        
-                        st.balloons()
-                        # --- 🟢 INDICADOR VISUAL FINAL ---
-                        st.markdown("""
-                            <div style='background-color: #d4edda; padding: 20px; border-radius: 10px; border: 2px solid #155724; text-align: center;'>
-                                <h1 style='color: #155724; margin: 0;'>🟢 ESTADO: OK</h1>
-                                <p style='color: #155724;'>Todos los precios han sido nivelados con SAP exitosamente.</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                        del st.session_state['datos_para_sincronizar']
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-                        
-        # --- ⚡ BOTÓN FINAL DE EJECUCIÓN SEGURA (QUIRÚRGICA) ---
         if st.session_state.get('datos_para_sincronizar'):
             st.markdown("---")
             if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
                 with st.spinner("Inyectando quirúrgicamente Columna K en Columna J..."):
                     try:
-                        # 1. Conexión Satelital
                         if "gcp_credentials" in st.secrets:
                             gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                         else:
@@ -291,26 +245,20 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
                         
                         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                         ws_conf = sh.worksheet("Configuración")
-                        
-                        # 2. Leer los datos actuales (sin borrar nada)
                         data_full = ws_conf.get_all_values()
                         
-                        # 3. Preparar el cargador del francotirador
                         valores_para_j = []
                         for fila in data_full[1:]:
                             valor_k = fila[10] if len(fila) > 10 else ""
                             valores_para_j.append([valor_k])
                         
-                        # 4. DISPARO QUIRÚRGICO
                         if valores_para_j:
                             rango_destino = f"J2:J{len(valores_para_j) + 1}"
                             ws_conf.update(rango_destino, valores_para_j, value_input_option='USER_ENTERED')
                         
                         st.balloons()
                         st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J.")
-                        
                         del st.session_state['datos_para_sincronizar']
-                        
                     except Exception as e:
                         st.error(f"🚨 FALLA EN LA INYECCIÓN: {e}")
 
@@ -914,164 +862,9 @@ elif menu == "⚙️ 3. Validación de Misión":
                     st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
 
 # =====================================================================
-# ⌨️ 4. INGRESO MANUAL ACELERADO (OS) - MODO INTELIGENTE V3
+# ⌨️ 4. INGRESO MANUAL ACELERADO (ESTÁ ARRIBA EN EL ORDEN LÓGICO)
 # =====================================================================
-elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
-    st.header("🛰️ MÓDULO 4: INGRESO MANUAL ACELERADO")
-    
-    col_ref1, col_ref2 = st.columns([3, 1])
-    with col_ref1:
-        st.subheader("Puesto de Control y Digitación Rápida")
-    with col_ref2:
-        if st.button("🔄 RECARGAR BASES", use_container_width=True):
-            st.session_state.pop('memoria_excel', None)
-            st.rerun()
 
-    try:
-        if "gcp_credentials" in st.secrets:
-            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-        else:
-            gc = gspread.service_account(filename='credenciales.json')
-        
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        hoja_maestra = boveda.worksheet("TABLA 1")
-        
-        if 'memoria_excel' not in st.session_state:
-            with st.spinner("📡 Sincronizando Cerebro (Pilotos, Aviones y Apoyo)..."):
-                memoria = {}
-                memoria['col_os'] = hoja_maestra.col_values(1)
-                
-                # 🎯 LISTA DE PILOTOS (Columna P)
-                pilotos_raw = hoja_maestra.col_values(16)
-                memoria['lista_pilotos'] = sorted(list(set([str(p).strip().upper() for p in pilotos_raw if p and str(p).upper() not in ["PILOTO", "PILOTO AVIÓN"]])))
-                
-                # 🎯 TABLA 2 (AVIONES Y FINCAS)
-                ws_t2 = boveda.worksheet("TABLA 2")
-                d_t2 = ws_t2.get_all_values()
-                d_t2_limpio = [r + [""] * (12 - len(r)) if len(r) < 12 else r for r in d_t2]
-                memoria['df_t2'] = pd.DataFrame(d_t2_limpio[4:]) 
-                memoria['lista_hks'] = sorted(list(set([str(r[8]).strip().upper() for r in d_t2_limpio[4:] if r[8]])))
-
-                # 🎯 TABLA DE APOYO (Para búsqueda de cócteles)
-                ws_ap = boveda.worksheet("TABLA DE APOYO2023")
-                d_ap = ws_ap.get_all_values()
-                memoria['df_apoyo'] = pd.DataFrame(d_ap) # Guardamos toda la tabla
-                
-                st.session_state['memoria_excel'] = memoria
-
-        mem = st.session_state['memoria_excel']
-        lista_os_existentes = [str(os).strip() for os in mem['col_os'] if str(os).strip() != ""]
-        df_t2 = mem['df_t2']
-        df_apoyo = mem['df_apoyo']
-        
-        lista_fincas_oficiales = sorted(list(set([str(f).strip().upper() for f in df_t2.iloc[:, 0] if f])))
-        lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in hoja_maestra.col_values(7) if c and c != "COCTEL"])))
-
-    except Exception as e:
-        st.error(f"🚨 Error de enlace: {e}")
-        st.stop()
-
-    # --- FORMULARIO DE MANDO ---
-    st.markdown("---")
-    with st.expander("📝 1. DATOS DE LA ORDEN", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        os_val = c1.text_input("Nº Orden (Ej: 318)")
-        fecha_dt = c2.date_input("📅 Fecha de Operación", format="DD/MM/YYYY")
-        piloto_val = c3.selectbox("👨‍✈️ Piloto", ["---"] + mem.get('lista_pilotos', []))
-        
-        c4, c5, c6 = st.columns(3)
-        hk_val = c4.selectbox("✈️ Matrícula (HK)", ["---"] + mem.get('lista_hks', []))
-        horo_val = st.text_input("⏱️ Horómetro TOTAL (Ej: 1.5)", value="0")
-        costo_val = st.text_input("💵 Tarifa / Ha", value="0")
-        recargo_val = st.text_input("➕ Recargo Unitario ($)", value="0")
-
-    st.markdown("### 📍 2. FINCAS Y HECTÁREAS")
-    st.info("💡 Si deja el Cóctel en blanco, Génesis lo buscará por FECHA y FINCA en la Tabla de Apoyo.")
-    
-    df_fincas_vacio = pd.DataFrame([{"nombre_finca": "", "hectareas": 0.0, "coctel": ""}])
-    df_editado = st.data_editor(
-        df_fincas_vacio, use_container_width=True, num_rows="dynamic",
-        column_config={
-            "nombre_finca": st.column_config.SelectboxColumn("Finca Oficial", options=lista_fincas_oficiales, required=True),
-            "coctel": st.column_config.SelectboxColumn("Cóctel (Opcional)", options=lista_cocteles_oficiales),
-            "hectareas": st.column_config.NumberColumn("Ha", format="%.2f", required=True)
-        }
-    )
-
-    # --- BOTÓN DE DISPARO (INYECCIÓN) ---
-    if st.button("🚀 PROCESAR E INYECTAR DATOS", type="primary", use_container_width=True):
-        if not os_val or piloto_val == "---" or hk_val == "---":
-            st.error("🚨 Faltan datos críticos.")
-        elif str(os_val).strip() in lista_os_existentes:
-            st.error("🚨 Esta OS ya fue inyectada anteriormente.")
-        else:
-            try:
-                with st.spinner("🧠 El Transportador está cruzando datos..."):
-                    f_str = fecha_dt.strftime("%d/%m/%Y")
-                    
-                    # 1. Datos del Avión
-                    mod_av = ""; pist_av = ""
-                    match_av = df_t2[df_t2.iloc[:, 8].str.strip() == hk_val]
-                    if not match_av.empty:
-                        mod_av, pist_av = match_av.iloc[0, 9], match_av.iloc[0, 10]
-
-                    filas_finales = []
-                    t_ha_os = sum(df_editado['hectareas'])
-                    
-                    # REGLA DE ORO: Limpieza de números
-                    h_tot = float(str(horo_val).replace(',','.'))
-                    p_tar = float(str(costo_val).replace(',','.'))
-                    p_rec = float(str(recargo_val).replace(',','.'))
-
-                    for _, f in df_editado.iterrows():
-                        n_finca = str(f['nombre_finca']).upper().strip()
-                        if not n_finca: continue
-                        
-                        # --- 🚀 EL CORAZÓN DEL TRANSPORTADOR (Cruce de Datos) ---
-                        bloq = ""; sect = ""; hab = 0; t_prod = ""
-                        # Buscar Bloque y Sector en Tabla 2
-                        m_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == n_finca]
-                        if not m_f.empty:
-                            sect, hab, bloq, t_prod = m_f.iloc[0, 1], extraer_numero(m_f.iloc[0, 2]), m_f.iloc[0, 3], m_f.iloc[0, 5]
-                        
-                        # --- 🧪 BÚSQUEDA AUTOMÁTICA DE CÓCTEL ---
-                        coctel_final = str(f.get('coctel', '')).strip()
-                        if not coctel_final or coctel_final == "None" or coctel_final == "":
-                            # Intentar match por FECHA + FINCA en Apoyo
-                            # En Apoyo: Col 1 (B) es Finca, Col 5 (F) es Fecha, Col 8 (I) es Coctel
-                            mask = (df_apoyo.iloc[:, 1].str.upper().str.strip() == n_finca) & \
-                                   (df_apoyo.iloc[:, 5].str.strip() == f_str)
-                            match_ap = df_apoyo[mask]
-                            
-                            if not match_ap.empty:
-                                coctel_final = match_ap.iloc[0, 8]
-                            else:
-                                # Fallback: Traer el último cóctel histórico de esa finca
-                                match_hist = df_apoyo[df_apoyo.iloc[:, 1].str.upper().str.strip() == n_finca]
-                                if not match_hist.empty: coctel_final = match_hist.iloc[-1, 8]
-
-                        # --- CÁLCULOS TÁCTICOS ---
-                        ha_n = float(f['hectareas'])
-                        h_prop = (ha_n / t_ha_os) * h_tot if t_ha_os > 0 else 0
-                        costo_f = (ha_n * p_tar) + (ha_n * p_rec)
-                        
-                        row = [""] * 34
-                        row[0], row[1], row[2], row[3], row[4], row[5] = os_val, bloq, n_finca, sect, hab, ha_n
-                        row[6], row[7], row[8], row[9] = coctel_final, f_str, fecha_dt.strftime("%A"), fecha_dt.isocalendar()[1]
-                        row[10], row[11], row[13], row[15], row[16] = h_tot, 6, round(h_prop,2), piloto_val, hk_val
-                        row[17], row[18], row[19], row[20], row[21], row[23] = mod_av, round(costo_f,2), p_tar, p_rec, round(costo_f,2), pist_av
-                        row[28], row[32], row[33] = round(ha_n * p_tar,2), t_prod, "GENESIS_INTELIGENTE"
-                        
-                        filas_finales.append(row)
-                    
-                    if filas_finales:
-                        hoja_maestra.append_rows(filas_finales, value_input_option='USER_ENTERED')
-                        st.balloons()
-                        st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con Cóctel Automático.")
-                        st.session_state.pop('memoria_excel', None) 
-                    
-            except Exception as e: st.error(f"Error en inyección: {e}")
-                
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
@@ -1309,7 +1102,6 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
                 with st.spinner("Desplegando analista de inventarios..."):
                     st.session_state.observaciones_memoria = {}
                     
-                    # LECTOR BLINDADO ANTI-UTF8 PARA SAP
                     sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                     nombre_sap = sap_file.name.lower()
                     if nombre_sap.endswith('.xlsx') or nombre_sap.endswith('.xls'):
@@ -1482,7 +1274,7 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
 # 📊 8. REPORTE TÁCTICO DE HECTÁREAS FUMIGADAS
 # =====================================================================
 elif menu == "📊 8. Reporte Hectáreas (Pistas)":
-    st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas Fumigadas</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
     try:
         with st.spinner("🛰️ Escaneando la Bóveda Maestra (TABLA 1)..."):
@@ -1502,81 +1294,160 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
             df_rep = pd.DataFrame([r[:24] for r in filas_limpias], columns=columnas)
             
             df_rep['HA_NETAS'] = df_rep['HA_NETAS'].apply(extraer_numero)
+            df_rep['H_PROPORCIONAL'] = df_rep['H_PROPORCIONAL'].apply(extraer_numero)
             df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
             df_rep['PISTA'] = df_rep['PISTA'].astype(str).str.strip().str.upper()
             
             df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
             
-            meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
+            meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
             
             def extraer_mes_año(fecha_str):
                 dt = procesar_fecha_pesada(fecha_str)
-                if dt: return meses_nom.get(dt.month, "Desconocido"), str(dt.year)
-                return "Desconocido", "Desconocido"
+                if dt: return meses_nom.get(dt.month, "00-Desc"), str(dt.year)
+                return "00-Desc", "00-Desc"
             
             df_rep[['MES', 'AÑO']] = df_rep['FECHA'].apply(lambda x: pd.Series(extraer_mes_año(x)))
-            df_rep = df_rep[df_rep['AÑO'] != "Desconocido"] 
+            df_rep = df_rep[df_rep['AÑO'] != "00-Desc"]
             
-            st.markdown("### 🎛️ Filtros de Operación")
-            c1, c2 = st.columns(2)
+            # --- PANEL DE CONTROL ---
+            st.markdown("### 🎛️ Centro de Comando y Filtros")
+            c1, c2, c3 = st.columns([2, 1, 1])
+            
+            vista_seleccionada = c1.radio(
+                "👁️ Seleccione la Vista del Radar:", 
+                ["📊 Resumen Gerencial (Hectáreas)", "📅 Mapa Semanal (Detalle)"], 
+                horizontal=True
+            )
+            
             pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
             años_disp = sorted(df_rep['AÑO'].unique().tolist(), reverse=True)
             
-            pista_sel = c1.selectbox("📍 Base de Operación (Pista)", ["TODAS"] + pistas_disp)
             año_sel = c2.selectbox("📅 Año Fiscal", años_disp if años_disp else [str(datetime.now().year)])
+            pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp)
             
+            # ⚡ BOTÓN SECRETO PARA MOSTRAR HORAS
+            mostrar_horas = False
+            if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
+                mostrar_horas = st.checkbox("⏱️ Mostrar también el Rendimiento (Horas de Vuelo)")
+
             df_filt = df_rep[df_rep['AÑO'] == año_sel]
             if pista_sel != "TODAS":
                 df_filt = df_filt[df_filt['PISTA'] == pista_sel]
             
             if df_filt.empty:
-                st.warning("⚠️ El radar no detecta operaciones para esos parámetros.")
+                st.warning("⚠️ No hay operaciones registradas para estos parámetros.")
             else:
-                matriz = pd.pivot_table(
-                    df_filt, 
-                    values='HA_NETAS', 
-                    index='MES', 
-                    columns='SEMANA', 
-                    aggfunc='sum', 
-                    fill_value=0
-                )
+                st.markdown("---")
                 
-                matriz = matriz.sort_index()
-                cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
-                matriz = matriz[cols_ordenadas]
+                # =========================================================
+                # VISTA 1: RESUMEN GERENCIAL
+                # =========================================================
+                if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
+                    st.markdown(f"#### 📑 Consolidado Gerencial - {año_sel}")
+                    
+                    df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
+                        REND_HR=('H_PROPORCIONAL', 'sum'),
+                        AREA_FUMIG=('HA_NETAS', 'sum')
+                    ).reset_index()
+                    
+                    tabla_final = []
+                    total_hr_gral = 0
+                    total_ha_gral = 0
+                    
+                    for pista in sorted(df_gerencia['PISTA'].unique()):
+                        datos_pista = df_gerencia[df_gerencia['PISTA'] == pista].sort_values(by='MES')
+                        sum_hr = datos_pista['REND_HR'].sum()
+                        sum_ha = datos_pista['AREA_FUMIG'].sum()
+                        
+                        fila_sub = {'NIVEL': f"➖ {pista}", 'MES': ''}
+                        if mostrar_horas: fila_sub['REND (hr)'] = sum_hr
+                        fila_sub['ÁREA FUMIG (ha)'] = sum_ha
+                        tabla_final.append(fila_sub)
+                        
+                        for _, row in datos_pista.iterrows():
+                            mes_limpio = row['MES'].split('-')[1] if '-' in row['MES'] else row['MES']
+                            fila_mes = {'NIVEL': '', 'MES': mes_limpio}
+                            if mostrar_horas: fila_mes['REND (hr)'] = row['REND_HR']
+                            fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
+                            tabla_final.append(fila_mes)
+                            
+                        total_hr_gral += sum_hr
+                        total_ha_gral += sum_ha
+                        
+                    fila_tot = {'NIVEL': 'TOTAL GENERAL', 'MES': ''}
+                    if mostrar_horas: fila_tot['REND (hr)'] = total_hr_gral
+                    fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
+                    tabla_final.append(fila_tot)
+                    
+                    df_visual = pd.DataFrame(tabla_final)
+                    
+                    def estilizar_filas(row):
+                        if "➖" in row['NIVEL'] or "TOTAL" in row['NIVEL']:
+                            return ['background-color: #e2e6ea; font-weight: bold;'] * len(row)
+                        return [''] * len(row)
+                    
+                    formato_columnas = {'ÁREA FUMIG (ha)': "{:.2f}"}
+                    if mostrar_horas: formato_columnas['REND (hr)'] = "{:.2f}"
+                    
+                    st.dataframe(
+                        df_visual.style.apply(estilizar_filas, axis=1).format(formato_columnas),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                # =========================================================
+                # VISTA 2: MAPA SEMANAL (EL CALOR)
+                # =========================================================
+                else:
+                    matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
+                    matriz = matriz.sort_index()
+                    cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
+                    matriz = matriz[cols_ordenadas]
+                    
+                    matriz.index = [m.split('-')[1] if '-' in m else m for m in matriz.index]
+                    matriz['TOTAL MES'] = matriz.sum(axis=1)
+                    matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
+                    
+                    st.markdown(f"#### 🚜 Rendimiento Semana a Semana: **{pista_sel}**")
+                    if HAS_MATPLOTLIB:
+                        st.dataframe(matriz.style.format("{:.2f}").background_gradient(cmap="YlGn", axis=None), use_container_width=True)
+                    else:
+                        st.dataframe(matriz.style.format("{:.2f}"), use_container_width=True)
+                    
+                    st.markdown("---")
+                    df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
+                    if not df_grafico.empty:
+                        fig = px.bar(
+                            df_grafico, x='index', y='TOTAL MES', text='TOTAL MES',
+                            labels={'TOTAL MES': 'Hectáreas Fumigadas', 'index': 'Mes de Operación'},
+                            color='TOTAL MES', color_continuous_scale='Greens'
+                        )
+                        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                        fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes")
+                        st.plotly_chart(fig, use_container_width=True)
+
+                # --- BOTÓN DE EXPORTACIÓN ---
+                st.markdown("---")
+                buffer_rep = io.BytesIO()
+                with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
+                    if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
+                        df_visual.to_excel(writer, sheet_name='Resumen_Gerencial', index=False)
+                    else:
+                        matriz.to_excel(writer, sheet_name='Reporte_Semanal')
+                        
+                    workbook = writer.book
+                    worksheet = writer.sheets[writer.sheetnames[0]]
+                    for col in worksheet.columns:
+                        worksheet.column_dimensions[col[0].column_letter].width = 18
                 
-                matriz['TOTAL MES'] = matriz.sum(axis=1)
-                matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
-                
-                st.markdown(f"#### 🚜 Rendimiento de Fumigación: **{pista_sel}** ({año_sel})")
-                st.info("💡 La tabla muestra las Hectáreas Fumigadas (Netas) organizadas por mes (filas) y semana del año (columnas).")
-                
-                # Renderizar tabla (Versión estándar sin mapa de calor)
-                st.dataframe(
-                    matriz.style.format("{:.2f}"), 
+                st.download_button(
+                    label="💾 DESCARGAR REPORTE EN EXCEL",
+                    data=buffer_rep.getvalue(),
+                    file_name=f"Reporte_Hectareas_{'Gerencial' if 'Gerencial' in vista_seleccionada else 'Semanal'}_{año_sel}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
-                
-                
-                st.markdown("---")
-                st.markdown("#### 📈 Proyección Gráfica de Hectáreas Fumigadas (Por Mes)")
-                
-                df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
-                
-                if not df_grafico.empty:
-                    fig = px.bar(
-                        df_grafico, 
-                        x='MES', 
-                        y='TOTAL MES',
-                        text='TOTAL MES',
-                        labels={'TOTAL MES': 'Hectáreas Fumigadas', 'MES': 'Mes de Operación'},
-                        color='TOTAL MES',
-                        color_continuous_scale='Greens'
-                    )
-                    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-                    fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False)
-                    
-                    st.plotly_chart(fig, use_container_width=True)
                 
     except Exception as e:
         st.error(f"🚨 Falla en el sistema de radares: {e}")
