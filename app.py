@@ -740,6 +740,8 @@ elif menu == "⚙️ 3. Validación de Misión":
                     "H: Saldo Real SAP": round(saldo_sap, 3),
                     "I: Sugerido SAP (Total)": round(cant_total_pedido, 3)
                 })
+            # 🚀 ESTA ES LA LÍNEA QUE SE BORRÓ O QUEDÓ MAL TABULADA:
+            df_matriz = pd.DataFrame(matriz_datos)
                 
             if 'editor_valid' in st.session_state:
                 ediciones = st.session_state['editor_valid'].get('edited_rows', {})
