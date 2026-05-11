@@ -1052,21 +1052,23 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                         dt = procesar_fecha_pesada(fecha_val) or datetime.now()
                         f_corta = dt.strftime("%d/%m/%Y")
                         
-                        # 2. RADAR DE AVIÓN (Búsqueda mejorada)
+                        # 2. RADAR DE AVIÓN (Búsqueda Definitiva Anti-HK)
                         mod_av = ""; pist_av = ""
-                        hk_limpio = str(hk_val).upper().replace('-','').replace(' ','')
+                        # Limpiamos todo: quitamos guiones, espacios y la palabra "HK"
+                        hk_limpio = str(hk_val).upper().replace('-','').replace(' ','').replace('HK','')
                         
                         if not df_t2.empty and hk_limpio:
-                            # Columna I es índice 8
-                            col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-','').str.replace(' ','')
-                            # Buscamos si el HK del papel está en el Excel o viceversa
-                            match = df_t2[col_hk_t2.str.contains(hk_limpio) | (hk_limpio == col_hk_t2)]
+                            # Columna I es índice 8. También le quitamos espacios o letras HK por si acaso
+                            col_hk_t2 = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-','').str.replace(' ','').str.replace('HK','')
+                            
+                            # Buscamos la coincidencia exacta del número
+                            match = df_t2[col_hk_t2.str.contains(hk_limpio, na=False) | (hk_limpio == col_hk_t2)]
                             if not match.empty:
                                 mod_av = match.iloc[0, 9]  # Columna J
                                 pist_av = match.iloc[0, 10] # Columna K
                             else:
-                                st.warning(f"⚠️ HK '{hk_limpio}' no encontrado en Columna I de Tabla 2.")
-
+                                st.warning(f"⚠️ Aeronave '{hk_limpio}' no encontrada en la Columna I de la Tabla 2.")
+                                
                         # 3. Preparar Filas
                         filas_finales = []
                         h_total = float(str(horo_val).replace(',','.'))
