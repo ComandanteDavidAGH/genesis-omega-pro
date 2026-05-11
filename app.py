@@ -235,39 +235,50 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
             except Exception as e:
                 st.error(f"Error al escanear: {e}")
 
-        # Botón final de ejecución en la nube
+        # --- ⚡ BOTÓN FINAL DE EJECUCIÓN SEGURA (QUIRÚRGICA) ---
         if st.session_state.get('datos_para_sincronizar'):
-            if st.button("✅ APROBAR Y ACTUALIZAR PRECIOS EN LA BÓVEDA", type="primary", use_container_width=True):
-                with st.spinner("Sincronizando K -> J y Organizando alfabéticamente..."):
+            st.markdown("---")
+            if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
+                with st.spinner("Inyectando quirúrgicamente Columna K en Columna J..."):
                     try:
-                        # 1. Traer toda la hoja
+                        # 1. Conexión Satelital
                         if "gcp_credentials" in st.secrets:
                             gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                         else:
                             gc = gspread.service_account(filename='credenciales.json')
+                        
                         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                         ws_conf = sh.worksheet("Configuración")
                         
+                        # 2. Leer los datos actuales (sin borrar nada)
+                        # Pedimos los valores tal cual están para identificar las filas
                         data_full = ws_conf.get_all_values()
-                        df_full = pd.DataFrame(data_full[1:], columns=data_full[0])
                         
-                        # 2. LA MANIOBRA MAESTRA: Copiar K a J internamente
-                        # Columna J es índice 9, Columna K es índice 10
-                        df_full.iloc[:, 9] = df_full.iloc[:, 10]
+                        # 3. Preparar el cargador del francotirador (Solo valores de Columna K)
+                        valores_para_j = []
                         
-                        # 3. ORGANIZAR ALFABÉTICAMENTE por Producto (Columna I - índice 8)
-                        # Esto resuelve el problema del ZINTRAC huerfano
-                        df_full = df_full.sort_values(by=df_full.columns[8])
+                        # Recorremos desde la fila 2 (índice 1) para no tocar los encabezados
+                        for fila in data_full[1:]:
+                            # La columna K es el índice 10. Si la fila es corta, ponemos vacío.
+                            valor_k = fila[10] if len(fila) > 10 else ""
+                            valores_para_j.append([valor_k])
                         
-                        # 4. SUBIR DE VUELTA LIMPIO
-                        ws_conf.batch_clear(["A2:AZ500"]) # Limpia el área de datos
-                        ws_conf.update("A2", df_full.fillna("").values.tolist(), value_input_option='USER_ENTERED')
+                        # 4. DISPARO QUIRÚRGICO: 
+                        # Actualizamos SOLAMENTE el rango de la columna J (amarilla)
+                        # No usamos batch_clear ni tocamos las columnas A, B, C... ni la imagen.
+                        if valores_para_j:
+                            rango_destino = f"J2:J{len(valores_para_j) + 1}"
+                            ws_conf.update(rango_destino, valores_para_j, value_input_option='USER_ENTERED')
                         
                         st.balloons()
-                        st.success("🎯 MISIÓN CUMPLIDA. Precios actualizados y archivo organizado alfabéticamente.")
+                        st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J.")
+                        
+                        # Limpiamos la memoria para que el botón no se quede pegado
                         del st.session_state['datos_para_sincronizar']
+                        
                     except Exception as e:
-                        st.error(f"Falla en sincronización final: {e}")
+                        st.error(f"🚨 FALLA EN LA INYECCIÓN: {e}")
+
 # =====================================================================
 # 📥 2. CARGA FACTURACIÓN
 # =====================================================================
