@@ -424,15 +424,16 @@ elif menu == "⚙️ 3. Validación de Misión":
                 tipo_productor = str(fila_t2.iloc[5]).strip().upper()
                 tipo_de_tope_finca = str(fila_t2.iloc[6]).strip().upper()
 
-        mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_avion_base = 1.112
+        mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_st = 1.112; mult_avion_base = 1.112
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
                 fila_c = match_cfg.iloc[0]
                 mult_material = extraer_numero(fila_c.iloc[3])
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
+                mult_st = extraer_numero(fila_c.iloc[5]) # 🎯 MARGEN DE ST AGREGADO AQUÍ
                 mult_avion_base = extraer_numero(fila_c.iloc[6])
-
+                
         dias_ciclo_calc = 0
         if not df_apoyo.empty:
             col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
@@ -782,35 +783,35 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         st.markdown("---")
         # ====================================================================
-        # 💰 LIQUIDACIÓN FINAL Y CAJAS DE COPIA SAP
+        # 💰 LIQUIDACIÓN FINAL CON MÁRGENES APLICADOS (SISTEMA VIVO)
         # ====================================================================
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 1. Cálculos de Totales
-        tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
-        subtotal_st = tarifa_st_final * ha_dosis_final
+        # 🎯 CÁLCULOS UNITARIOS CON MARGEN (Regla de Oro)
+        # Servicio Técnico: (Ciclo * Base) * Margen ST
+        unitario_st = (d_ciclo_factura * tarifa_serv_tec_base) * mult_st
+        
+        # Servicio Vuelo: (Tarifa Aplicada según Tope/Pista) * Multiplicador Avión
+        # Nota: costo_total_vuelos ya trae el multiplicador aplicado en el bloque anterior
+        unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
+
+        # Totales para control interno
+        subtotal_st = unitario_st * ha_dosis_final
         gran_total = costo_mezcla_total + costo_total_vuelos + subtotal_st
         costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
-        # 2. Cálculos UNITARIOS (Las fórmulas exactas para SAP)
-        unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
-        unitario_st = tarifa_st_final
-
-        # --- MÉTRICAS DE CONTROL (Intocables) ---
+        # --- MÉTRICAS DE CONTROL ---
         r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🚜 Hectáreas Cobro Totales", f"{total_ha_cobro_escuadron:.2f} Ha")
-        
-        if mision_solo_dron: r2.metric("🛣️ Condición Pista", "NO APLICA (Dron)")
-        else: r2.metric("🛣️ Condición Pista", tipo_de_tope_finca, f"Límite: $ {fmt_sap(val_tope)}")
-            
-        r3.metric("👨‍🔬 Tarifa Serv. Tec (Base)", f"$ {fmt_sap(tarifa_serv_tec_base)}")
-        r4.metric("✈️ Multiplicador Aplicado", f"x {mult_avion_final}")
+        r1.metric("🚜 Hectáreas Cobro", f"{total_ha_cobro_escuadron:.2f} Ha")
+        r2.metric("👨‍🔬 Margen ST Aplicado", f"x {mult_st}")
+        r3.metric("👨‍🔬 Tarifa ST Base", f"$ {fmt_sap(tarifa_serv_tec_base)}")
+        r4.metric("✈️ Multiplicador Avión", f"x {mult_avion_final}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- 📋 CAJAS DE COPIA RÁPIDA (VALORES UNITARIOS PARA SAP) ---
-        st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
+        # --- 📋 CAJAS DE COPIA RÁPIDA (UNITARIOS CON MARGEN PARA SAP) ---
+        st.markdown("#### 📋 Cajas de Copia para Digitación en SAP (Unitarios con Margen)")
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
@@ -828,7 +829,7 @@ elif menu == "⚙️ 3. Validación de Misión":
         with c_sap4:
             st.markdown(f"""
             <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
-                <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA (Global)</p>
+                <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA (Final)</p>
                 <h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4>
             </div>
             """, unsafe_allow_html=True)
@@ -838,10 +839,10 @@ elif menu == "⚙️ 3. Validación de Misión":
         # --- TOTALES INFORMATIVOS ---
         st.markdown("##### 💵 Totales de Posiciones (Informativo)")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Total Servicio Vuelo (429)", f"$ {fmt_sap(costo_total_vuelos)}")
-        c_tot2.metric("Total Servicio Técnico (459)", f"$ {fmt_sap(subtotal_st)}")
+        c_tot1.metric("Total Servicio Vuelo", f"$ {fmt_sap(costo_total_vuelos)}")
+        c_tot2.metric("Total Asistencia Técnica", f"$ {fmt_sap(subtotal_st)}")
         c_tot3.metric("🔥 GRAN TOTAL FACTURA", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
-
+        
         # ====================================================================
         # 🛰️ COORDENADAS DE LANZAMIENTO (NO BORRAR)
         # ====================================================================
