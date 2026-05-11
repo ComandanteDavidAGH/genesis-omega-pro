@@ -337,7 +337,30 @@ elif menu == "📥 2. Carga Facturación":
                     
                     lista_pistas = []
                     for f in f_pistas:
-                        dict_p = pd.read_excel(io.BytesIO(f.getvalue()), sheet_name=None, header=None)
+                        nombre_archivo = f.name.lower()
+                        bytes_f = io.BytesIO(f.getvalue())
+                        dict_p = {}
+                        
+                        # 🛡️ REGLA DE ORO: Detectar y esquivar pestañas ocultas
+                        if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
+                            wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
+                            # Extraemos SOLO los nombres de las hojas que están visibles
+                            hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
+                            bytes_f.seek(0) # Reiniciamos el lector
+                            
+                            if hojas_visibles:
+                                dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
+                        
+                        elif nombre_archivo.endswith('.xls'):
+                            dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
+                        else:
+                            try:
+                                dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
+                            except:
+                                bytes_f.seek(0)
+                                dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
+                            
+                        # Procesamos solo lo que pasó el filtro
                         for n, df in dict_p.items():
                             df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
                             filas_c = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index.tolist()
@@ -354,7 +377,7 @@ elif menu == "📥 2. Carga Facturación":
                                         fv = str(df.iloc[r, c_idx]).strip()
                                         if fv.lower() in ['nan', '', 'none'] or "TOTAL" in fv.upper(): break
                                         lista_pistas.append({"ORIGEN": f"{f.name} | {n}", "COCTEL": coctel, "FINCA_INFORME": fv, "DATOS_FILA": df.iloc[r].to_dict()})
-                    
+                                        
                     st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
                     st.balloons()
                 except Exception as e: st.error(f"🚨 Error: {e}")
