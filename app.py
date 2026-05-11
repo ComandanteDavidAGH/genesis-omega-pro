@@ -1051,46 +1051,52 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                 else:
                     if st.button(f"💾 GUARDAR TODO EN TABLA 1 (OS {os_val})", type="primary", key=f"save_{i}"):
                         try:
-                            with st.spinner("🚀 Procesando cálculos y buscando sectores..."):
+                            with st.spinner("🚀 Procesando cálculos y alineando columnas..."):
                                 
-                                # 🎯 CORRECCIÓN 1: PARSEADOR DE FECHA TODO TERRENO
+                                # 🎯 1. PARSEADOR DE FECHA TODO TERRENO (Adiós error rojo)
                                 dt_obj = procesar_fecha_pesada(fecha_val)
                                 if dt_obj is None:
-                                    dt_obj = datetime.now() # Si falla todo, usa hoy
+                                    dt_obj = datetime.now() # Si todo falla, usa la fecha de hoy
                                 
                                 fecha_corta = dt_obj.strftime("%d/%m/%Y")
                                 dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][dt_obj.weekday()]
                                 num_sem = dt_obj.isocalendar()[1]
 
-                                h_total = float(str(horo_val).replace(',','.'))
-                                p_ha = float(str(costo_val).replace('.','').replace(',','.'))
-                                rec_ha = float(str(recargo_val).replace('.','').replace(',','.'))
-                                t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas']])
+                                # 2. LIMPIEZA DE NÚMEROS
+                                h_total = float(str(horo_val).replace(',','.')) if str(horo_val).strip() else 0.0
+                                p_ha = float(str(costo_val).replace('.','').replace(',','.')) if str(costo_val).strip() else 0.0
+                                rec_ha = float(str(recargo_val).replace('.','').replace(',','.')) if str(recargo_val).strip() else 0.0
+                                t_ha_os = sum([float(str(f['hectareas']).replace(',','.')) for f in datos['fincas'] if str(f.get('hectareas','')).strip()])
 
-                                modelo_avion = "NO ENCONTRADO"
-                                pista_avion = "NO ENCONTRADO"
-                                hk_busqueda = str(hk_val).strip().upper()
+                                # 🎯 3. RADAR INTELIGENTE DE AVIONES (Ignora espacios y guiones)
+                                modelo_avion = ""
+                                pista_avion = ""
+                                hk_busqueda = str(hk_val).strip().upper().replace('-', '').replace(' ', '')
                                 
-                                if not df_t2.empty:
-                                    match_avion = df_t2[df_t2.iloc[:, 8].str.upper().str.strip() == hk_busqueda]
+                                if not df_t2.empty and hk_busqueda:
+                                    col_hk = df_t2.iloc[:, 8].astype(str).str.upper().str.replace('-', '').str.replace(' ', '')
+                                    match_avion = df_t2[col_hk.str.contains(hk_busqueda, na=False)]
                                     if not match_avion.empty:
                                         modelo_avion = match_avion.iloc[0, 9]
                                         pista_avion = match_avion.iloc[0, 10]
 
+                                # 4. ARMADO DE FILAS Y ALINEACIÓN DE COLUMNAS
                                 filas = []
                                 for f in datos['fincas']:
                                     nombre_f_final = str(f.get('nombre_finca', '')).strip().upper()
                                     
+                                    # RADAR DE FINCAS A PRUEBA DE FALLOS
                                     bloq = ""; sect = ""; hab = ""; t_prod = ""
                                     if not df_t2.empty:
-                                        mt2 = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == nombre_f_final]
+                                        nombres_limpios_t2 = df_t2.iloc[:, 0].astype(str).str.upper().str.strip()
+                                        mt2 = df_t2[nombres_limpios_t2 == nombre_f_final]
                                         if not mt2.empty:
                                             sect = mt2.iloc[0, 1]
                                             hab = mt2.iloc[0, 2]
                                             bloq = mt2.iloc[0, 3]
                                             t_prod = mt2.iloc[0, 5]
                                             
-                                    ha_f = float(str(f['hectareas']).replace(',','.'))
+                                    ha_f = float(str(f['hectareas']).replace(',','.')) if str(f.get('hectareas','')).strip() else 0.0
                                     h_pro = (ha_f / t_ha_os) * h_total if t_ha_os > 0 else 0
                                     
                                     vol_total_gln = ha_f * 6
@@ -1117,12 +1123,16 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                     row[14] = round(rend_minutos, 2) 
                                     row[15] = piloto_val          
                                     row[16] = hk_val              
-                                    row[17] = modelo_avion        
-                                    row[18] = pista_avion         
-                                    row[19] = p_ha                
-                                    row[20] = rec_ha              
-                                    row[21] = round(costo_finca, 2) 
-                                    row[22] = round(costo_avion_hora, 2) 
+                                    
+                                    # 🎯 4. CORRECCIÓN DEL DESFASE DE COLUMNAS
+                                    row[17] = modelo_avion                  # R: MODELO
+                                    row[18] = ""                            # S: COSTO AVIÓN ($) (Vacío si no hay cálculo específico aquí)
+                                    row[19] = p_ha                          # T: COSTO AVIÓN ($/ha)
+                                    row[20] = rec_ha                        # U: DOMINIC. ($/ha)
+                                    row[21] = round(costo_finca, 2)         # V: COSTO AVIÓN ($/finca)
+                                    row[22] = round(costo_avion_hora, 2)    # W: VALOR A FACTURAR A ($/ha-ciclo)
+                                    row[23] = pista_avion                   # X: PISTA (¡Aquí era donde debía ir la pista!)
+                                    
                                     row[28] = round(costo_total_neto, 2)
                                     row[31] = 1                   
                                     row[32] = t_prod              
@@ -1132,11 +1142,11 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
                                 
                                 hoja_maestra.append_rows(filas, value_input_option='USER_ENTERED')
                                 st.balloons()
-                                st.success(f"✅ ¡Génesis ha completado el aterrizaje! OS {os_val} guardada en TABLA 1.")
+                                st.success(f"✅ ¡Aterrizaje Perfecto! OS {os_val} inyectada en las columnas correctas.")
                                 del st.session_state['memoria_excel']
                                 
-                        except Exception as e: st.error(f"Falla en guardado: {e}")
-                            
+                        except Exception as e: 
+                            st.error(f"Falla en guardado: {e}")                            
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
