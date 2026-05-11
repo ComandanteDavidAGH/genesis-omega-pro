@@ -1427,121 +1427,127 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
                         fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes")
                         st.plotly_chart(fig, use_container_width=True)
 
-                # --- BOTÓN DE EXPORTACIÓN CON FORMATO ULTRA-PREMIUM ---
+                # --- BOTÓN DE EXPORTACIÓN: SISTEMA 100% VIVO Y DINÁMICO ---
                 st.markdown("---")
                 buffer_rep = io.BytesIO()
                 with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
                     nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
                     
-                    # 1. Inyectamos la tabla visible
                     if "Gerencial" in vista_seleccionada:
+                        # Escribimos la estructura base (los nombres)
                         df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
-                        
-                        # 🎯 TÁCTICA SECRETA: Creamos una data limpia solo para el gráfico (y la ocultamos en la col U y V)
-                        df_chart = df_filt.groupby('MES')['HA_NETAS'].sum().reset_index()
-                        df_chart['MES'] = df_chart['MES'].apply(lambda x: x.split('-')[1] if '-' in x else x)
-                        df_chart.to_excel(writer, sheet_name=nombre_hoja, startcol=20, index=False) # Escribe en Col U y V
                     else:
                         matriz.to_excel(writer, sheet_name=nombre_hoja)
                         
                     workbook = writer.book
                     worksheet = writer.sheets[nombre_hoja]
-                    
-                    # 💡 APAGAR LAS LÍNEAS DE CUADRÍCULA (Efecto Dashboard Moderno)
                     worksheet.sheet_view.showGridLines = False
                     
                     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
                     from openpyxl.chart import BarChart, Reference
-                    from openpyxl.chart.label import DataLabelList
                     from openpyxl.utils import get_column_letter
-                    
-                    # Paleta de Colores Corporativos
-                    borde_fino = Border(left=Side(style='thin', color='BFBFBF'), right=Side(style='thin', color='BFBFBF'), 
-                                        top=Side(style='thin', color='BFBFBF'), bottom=Side(style='thin', color='BFBFBF'))
+
+                    # --- ESTILOS ---
+                    borde = Border(left=Side(style='thin', color='BFBFBF'), right=Side(style='thin', color='BFBFBF'), 
+                                   top=Side(style='thin', color='BFBFBF'), bottom=Side(style='thin', color='BFBFBF'))
                     fondo_enc = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                     fuente_enc = Font(color="FFFFFF", bold=True)
-                    
-                    fondo_subtotal = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid") # Azul/Gris claro
-                    fuente_subtotal = Font(bold=True, color="000000")
-                    
-                    fondo_total = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid") # Azul fuerte
-                    fuente_total = Font(bold=True, color="FFFFFF")
-                    
-                    max_row = worksheet.max_row if "Gerencial" not in vista_seleccionada else len(df_visual) + 1
-                    max_col = worksheet.max_column if "Gerencial" not in vista_seleccionada else len(df_visual.columns)
-                    
-                    # Vestir la tabla celda por celda
+                    fondo_sub = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+                    fondo_tot = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
+                    fuente_w = Font(bold=True, color="FFFFFF")
+
+                    max_row = worksheet.max_row
+                    max_col = worksheet.max_column
+
+                    # --- 🔄 INYECCIÓN DE FÓRMULAS VIVAS (Solo en Vista Gerencial) ---
+                    if "Gerencial" in vista_seleccionada:
+                        rango_total_ha = []
+                        rango_total_hr = []
+                        inicio_bloque = 0
+                        
+                        for i in range(2, max_row + 1):
+                            nivel = str(worksheet.cell(row=i, column=1).value)
+                            
+                            if "➖" in nivel:
+                                # Es una fila de Subtotal: Buscamos cuántos meses siguen
+                                inicio_bloque = i + 1
+                                j = i + 1
+                                while j <= max_row and str(worksheet.cell(row=j, column=1).value) == "None":
+                                    j += 1
+                                fin_bloque = j - 1
+                                
+                                # Inyectamos Fórmulas de Suma para la Pista
+                                col_ha = "C" if not mostrar_horas else "D"
+                                col_hr = "C" if mostrar_horas else None
+                                
+                                # Fórmula para Hectáreas
+                                worksheet.cell(row=i, column=3 if not mostrar_horas else 4).value = f"=SUM({col_ha}{inicio_bloque}:{col_ha}{fin_bloque})"
+                                rango_total_ha.append(f"{col_ha}{i}")
+                                
+                                if mostrar_horas:
+                                    worksheet.cell(row=i, column=3).value = f"=SUM({col_hr}{inicio_bloque}:{col_hr}{fin_bloque})"
+                                    rango_total_hr.append(f"{col_hr}{i}")
+                                    
+                            elif "TOTAL GENERAL" in nivel:
+                                # Fórmula de Gran Total (Suma los subtotales)
+                                col_ha = "C" if not mostrar_horas else "D"
+                                worksheet.cell(row=i, column=3 if not mostrar_horas else 4).value = f"=SUM({','.join(rango_total_ha)})"
+                                if mostrar_horas:
+                                    worksheet.cell(row=i, column=3).value = f"=SUM({','.join(rango_total_hr)})"
+
+                    # --- APLICAR DISEÑO Y FORMATO ---
                     for row in worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
                         for cell in row:
-                            cell.border = borde_fino
-                            if isinstance(cell.value, (int, float)):
-                                cell.number_format = '#,##0.00'
-                                
+                            cell.border = borde
                             if cell.row == 1:
-                                cell.fill = fondo_enc
-                                cell.font = fuente_enc
-                                cell.alignment = Alignment(horizontal='center', vertical='center')
-                            else:
-                                cell.alignment = Alignment(vertical='center')
-                                
-                            # Pintar los Subtotales y Totales
-                            if "Gerencial" in vista_seleccionada and cell.row > 1:
-                                valor_nivel = str(worksheet.cell(row=cell.row, column=1).value)
-                                if "➖" in valor_nivel:
-                                    cell.fill = fondo_subtotal
-                                    cell.font = fuente_subtotal
-                                elif "TOTAL" in valor_nivel:
-                                    cell.fill = fondo_total
-                                    cell.font = fuente_total
+                                cell.fill = fondo_enc; cell.font = fuente_enc; cell.alignment = Alignment(horizontal='center')
+                            if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
+                                cell.number_format = '#,##0.00'
+                            
+                            if "Gerencial" in vista_seleccionada:
+                                nivel_v = str(worksheet.cell(row=cell.row, column=1).value)
+                                if "➖" in nivel_v: cell.fill = fondo_sub; cell.font = Font(bold=True)
+                                if "TOTAL GENERAL" in nivel_v: cell.fill = fondo_tot; cell.font = fuente_w
 
-                    # Ajustar ancho de las columnas
-                    for col_idx in range(1, max_col + 1):
-                        worksheet.column_dimensions[get_column_letter(col_idx)].width = 18
-                    worksheet.freeze_panes = "A2"
-                    
-                    # 📈 CREACIÓN DEL GRÁFICO PERFECTO
+                    # --- 📈 GRÁFICO VIVO (AMARRADO A LAS CELDAS) ---
                     chart = BarChart()
-                    chart.type = "col"
-                    chart.style = 10 # Estilo limpio y moderno de Excel
-                    chart.title = "Rendimiento Mensual"
-                    chart.y_axis.title = "Hectáreas"
-                    chart.x_axis.title = "Mes"
-                    chart.legend = None # Quitamos la leyenda inútil
-                    
-                    # Ponemos los números arriba de cada barra
-                    chart.dataLabels = DataLabelList()
-                    chart.dataLabels.showVal = True
-                    
-                    chart.height = 13
-                    chart.width = 22
+                    chart.title = "Rendimiento Vivo"
+                    chart.style = 10
+                    chart.height = 13; chart.width = 22
                     
                     if "Gerencial" in vista_seleccionada:
-                        # Amarramos el gráfico a la data limpia y oculta
-                        num_rows_chart = len(df_chart) + 1
-                        data = Reference(worksheet, min_col=22, min_row=1, max_row=num_rows_chart) # Columna V
-                        cats = Reference(worksheet, min_col=21, min_row=2, max_row=num_rows_chart) # Columna U
+                        # El gráfico usará los datos de los meses (filas donde la col A está vacía)
+                        # Para simplificar y que sea 100% vivo, creamos un rango dinámico en col U y V
+                        for m_idx, m_row in enumerate(df_filt.groupby('MES')['HA_NETAS'].sum().reset_index().itertuples()):
+                            worksheet.cell(row=m_idx+2, column=21).value = m_row.MES.split('-')[1]
+                            # ESTA ES LA CLAVE: El gráfico apunta a una celda que apunta a la tabla
+                            # Buscamos la fila del mes en la tabla principal para hacer el link
+                            mes_buscado = m_row.MES.split('-')[1]
+                            fila_origen = 2
+                            for r_busq in range(2, max_row):
+                                if str(worksheet.cell(row=r_busq, column=2).value) == mes_buscado:
+                                    fila_origen = r_busq; break
+                            
+                            col_ha_letra = "C" if not mostrar_horas else "D"
+                            worksheet.cell(row=m_idx+2, column=22).value = f"={col_ha_letra}{fila_origen}"
+                        
+                        data = Reference(worksheet, min_col=22, min_row=1, max_row=len(df_filt['MES'].unique())+1)
+                        cats = Reference(worksheet, min_col=21, min_row=2, max_row=len(df_filt['MES'].unique())+1)
                         chart.add_data(data, titles_from_data=True)
                         chart.set_categories(cats)
-                        
-                        # Ocultamos las columnas feas para que nadie las vea
                         worksheet.column_dimensions['U'].hidden = True
                         worksheet.column_dimensions['V'].hidden = True
-                        
-                        worksheet.add_chart(chart, "E2") # Pegamos el gráfico justo al lado de la tabla
-                    else:
-                        data = Reference(worksheet, min_col=max_col, min_row=1, max_row=max_row-1)
-                        cats = Reference(worksheet, min_col=1, min_row=2, max_row=max_row-1)
-                        chart.add_data(data, titles_from_data=True)
-                        chart.set_categories(cats)
-                        worksheet.add_chart(chart, f"{get_column_letter(max_col + 2)}2")
-                
+                        worksheet.add_chart(chart, "F2")
+                    
+                    for col_idx in range(1, max_col + 1):
+                        worksheet.column_dimensions[get_column_letter(col_idx)].width = 20
+
                 st.download_button(
-                    label="💾 DESCARGAR EXCEL (VERSIÓN TOP GERENCIAL)",
+                    label="💾 DESCARGAR EXCEL (SISTEMA 100% VIVO)",
                     data=buffer_rep.getvalue(),
-                    file_name=f"Reporte_Hectareas_{'Gerencial' if 'Gerencial' in vista_seleccionada else 'Semanal'}_{año_sel}.xlsx",
+                    file_name=f"Reporte_Dinámico_{año_sel}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
-                )
-                
+                )                
     except Exception as e:
         st.error(f"🚨 Falla en el sistema de radares: {e}")
