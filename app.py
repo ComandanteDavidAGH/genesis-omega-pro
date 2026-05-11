@@ -599,20 +599,86 @@ elif menu == "⚙️ 3. Validación de Misión":
                 sap_dict_pista[nombre_limpio] = dosis_pista
                 datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
-            # 🎯 1. REGLA DE ORO RESTAURADA: LEER EL CÓCTEL REAL DEL PILOTO
-            coctel_piloto = str(datos_vuelo.get('COCTEL', 'S/N')).strip().upper()
-            coctel_ganador = coctel_piloto 
-            
-            # 🎯 2. INTELIGENCIA DE DOSIS: Extraer el Aceite (Primer número del cóctel)
-            nums_coctel = re.findall(r'\d', coctel_ganador)
-            dosis_aceite_teorico = float(nums_coctel[0]) if nums_coctel else 0.0
-            
-            # Detectar si hay necesidad de acondicionador alto (Zinc, Boro, etc.)
-            claves_boro_zinc = ["BT", "BANATREL", "ZN", "ZINTRAC", "ZITRON"]
-            tiene_acond_alto = any(any(clave in p for p in sap_dict_pista.keys()) for clave in claves_boro_zinc) or "+ZN" in coctel_ganador or "+BT" in coctel_ganador
-            
-            st.success(f"🤖 **MOTOR IA RESTAURADO:** Cóctel Oficial Detectado: **{coctel_ganador}** | 🛢️ Aceite: **{dosis_aceite_teorico}**")
+            # ====================================================================
+            # 🧠 MOTOR IA MAESTRO: LÓGICA DE LA MACRO ORIGINAL (DD_Mesclas)
+            # ====================================================================
+            dict_recetas = {}
+            dict_lideres = {}
+            dict_fertilizantes = {}
 
+            if not df_mez.empty:
+                for idx, row in df_mez.iterrows():
+                    # 1. Leer Recetas Base (Columnas A, B, C, D)
+                    if len(row) > 3:
+                        cid = str(row.iloc[0]).strip().upper()
+                        p_tabla_clean = str(row.iloc[1]).strip().upper().replace(" ", "")
+                        d_tabla = extraer_numero(row.iloc[2])
+                        es_lider = str(row.iloc[3]).strip().upper() == "X"
+
+                        if cid and cid != 'NAN' and p_tabla_clean:
+                            if cid not in dict_recetas: dict_recetas[cid] = {}
+                            dict_recetas[cid][p_tabla_clean] = d_tabla
+                            if es_lider: dict_lideres[cid] = p_tabla_clean
+
+                    # 2. Leer Tabla de Fertilizantes (Columnas M y N)
+                    if len(row) > 13:
+                        fert_name = str(row.iloc[12]).strip().upper()
+                        fert_sigla = str(row.iloc[13]).strip().upper()
+                        if fert_name and fert_sigla and fert_name not in ["NAN", "FERTILIZANTES", ""]:
+                            dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
+
+            # --- FASE 1: BUSCAR EL CÓCTEL BASE (CRUCE POR PRODUCTO LÍDER) ---
+            coctel_base = "SIN COINCIDENCIA"
+            dosis_oficiales_coctel = {}
+            max_p = -999
+
+            for iter_id, receta in dict_recetas.items():
+                es_valido = True
+                puntaje = 0
+                lider_db = dict_lideres.get(iter_id, "")
+
+                # Validar que la 'X' (Producto Líder) esté presente en los materiales de SAP
+                match_lider = False
+                if lider_db:
+                    for k_sap in sap_dict_pista.keys():
+                        if lider_db == k_sap or (len(k_sap)>=4 and lider_db in k_sap) or (len(lider_db)>=4 and k_sap in lider_db):
+                            match_lider = True; break
+
+                if match_lider: puntaje += 1000
+                else: es_valido = False
+
+                # Validar los demás productos para dar con la receta exacta
+                if es_valido:
+                    for p_receta, d_esperada in receta.items():
+                        match_receta = False
+                        dose_matched = False
+                        for k_sap, d_sap in sap_dict_pista.items():
+                            if p_receta == k_sap or (len(k_sap)>=4 and p_receta in k_sap) or (len(p_receta)>=4 and k_sap in p_receta):
+                                match_receta = True
+                                if abs(d_sap - d_esperada) <= 0.2: dose_matched = True
+                                break
+                        if match_receta: puntaje += 50 if dose_matched else 10
+                        else: es_valido = False; break
+
+                if es_valido and puntaje > max_p:
+                    max_p = puntaje
+                    coctel_base = iter_id
+                    dosis_oficiales_coctel = receta.copy()
+
+            # --- FASE 2: BUSCAR EL FERTILIZANTE Y SU SIGLA ---
+            sigla_fertilizante = ""
+            for k_sap in sap_dict_pista.keys():
+                for f_name, f_sigla in dict_fertilizantes.items():
+                    if f_name == k_sap or (len(k_sap)>=4 and f_name in k_sap) or (len(f_name)>=4 and k_sap in f_name):
+                        sigla_fertilizante = f"+{f_sigla}"
+                        break
+                if sigla_fertilizante: break
+
+            coctel_ganador = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
+
+            st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}** (Base de Datos: {coctel_base} | Fertilizante: {sigla_fertilizante or 'Ninguno'})")
+
+            # --- FASE 3: CONSTRUIR LA MATRIZ DE LIQUIDACIÓN ---
             matriz_datos = []
             for item_data in datos_extraidos_sap:
                 cod_item = item_data['cod']
@@ -649,31 +715,16 @@ elif menu == "⚙️ 3. Validación de Misión":
                             if idx_lote != -1: lote_sap = str(fila_pista.iloc[idx_lote])
                             if idx_saldo != -1: saldo_sap = extraer_numero(fila_pista.iloc[idx_saldo])
 
-                # 🎯 3. REGLAS INMUTABLES DEL CÓCTEL
+                # 🎯 ASIGNAR LA DOSIS (1. De la Receta, 2. Rescate Matemático)
                 dosis_teorica = None
-                
-                if "ACONDICIONADOR" in nombre_limpio:
-                    dosis_teorica = 0.06 if tiene_acond_alto else 0.02
-                elif "ACEITE" in nombre_limpio and "DICAM" in nombre_limpio:
-                    dosis_teorica = dosis_aceite_teorico
-                elif "FOSFO" in nombre_limpio and "ESTRES" in nombre_limpio: 
-                    dosis_teorica = 1.0
-                elif "IMBIOSILO" in nombre_limpio or "INBIOMAG" in nombre_limpio:
-                    dosis_teorica = 1.5 if "+IN" in coctel_ganador else 1.0
-                elif "ZINTRAC" in nombre_limpio:
-                    dosis_teorica = 0.5
-                    
-                # Si no es regla fija, buscar en df_mez
-                if dosis_teorica is None and not df_mez.empty:
-                    for _, row_m in df_mez.iterrows():
-                        if len(row_m) > 6:
-                            prod_gral = str(row_m.iloc[5]).strip().upper().replace(" ", "")
-                            if prod_gral and prod_gral not in ['NAN', 'PRODUCTO2', '']:
-                                if prod_gral == nombre_limpio or (len(nombre_limpio)>=4 and prod_gral in nombre_limpio) or (len(prod_gral)>=4 and nombre_limpio in prod_gral):
-                                    d_val = extraer_numero(row_m.iloc[6])
-                                    if d_val > 0: dosis_teorica = d_val; break
-                
-                # Rescate final: Calcular la dosis real de SAP si no hay teoría para evitar el 0.000
+
+                # Buscar en la receta base oficial
+                for p_receta, d_oficial in dosis_oficiales_coctel.items():
+                    if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
+                        dosis_teorica = d_oficial
+                        break
+
+                # Rescate final (Si es un fertilizante o Mancol, se calcula matemáticamente)
                 if dosis_teorica is None:
                     dosis_teorica = cant_total_pedido / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
@@ -690,8 +741,6 @@ elif menu == "⚙️ 3. Validación de Misión":
                     "I: Sugerido SAP (Total)": round(cant_total_pedido, 3)
                 })
                 
-            df_matriz = pd.DataFrame(matriz_datos)
-
             if 'editor_valid' in st.session_state:
                 ediciones = st.session_state['editor_valid'].get('edited_rows', {})
                 for row_idx, edit_dict in ediciones.items():
