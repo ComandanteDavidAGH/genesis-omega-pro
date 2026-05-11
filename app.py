@@ -989,7 +989,9 @@ elif menu == "🤖 4. Escáner IA (OS PDF)":
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
-        modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
+        # 🎯 EL TRUCO: Usamos el motor 1.5 que tiene 1500 escaneos GRATIS al día
+        modelo_ia = genai.GenerativeModel('gemini-1.5-flash')
+        
     except:
         st.error("🚨 Llave IA no configurada.")
         st.stop()
