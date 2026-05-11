@@ -1427,26 +1427,65 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
                         fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes")
                         st.plotly_chart(fig, use_container_width=True)
 
-                # --- BOTÓN DE EXPORTACIÓN ---
+                # --- BOTÓN DE EXPORTACIÓN CON FORMATO PREMIUM ---
                 st.markdown("---")
                 buffer_rep = io.BytesIO()
                 with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
-                    # 1. Definimos el nombre exacto de la hoja para evitar confusiones en Excel
+                    # 1. Definimos el nombre de la hoja
                     nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
                     
-                    # 2. Guardamos la tabla correspondiente
+                    # 2. Guardamos la tabla sin índice
                     if "Gerencial" in vista_seleccionada:
                         df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
                     else:
                         matriz.to_excel(writer, sheet_name=nombre_hoja)
                         
-                    # 3. Ajustamos el ancho de las columnas (PARCHE CORREGIDO AQUÍ)
+                    # 3. 👔 ESTILIZADO PREMIUM PARA EXCEL
+                    workbook = writer.book
                     worksheet = writer.sheets[nombre_hoja]
+                    
+                    # Importamos las herramientas de diseño de Excel
+                    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                    
+                    borde_fino = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                    fondo_encabezado = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid") # Azul oscuro Génesis
+                    fuente_encabezado = Font(color="FFFFFF", bold=True) # Letra blanca y negrita
+                    fondo_subtotal = PatternFill(start_color="E2E6EA", end_color="E2E6EA", fill_type="solid") # Gris claro
+                    fuente_subtotal = Font(bold=True)
+                    
+                    # Recorremos cada celda para vestirla
+                    for row in worksheet.iter_rows():
+                        for cell in row:
+                            # Poner bordes a todas las celdas
+                            cell.border = borde_fino
+                            
+                            # Formatear números (separador de miles y 2 decimales)
+                            if isinstance(cell.value, (int, float)):
+                                cell.number_format = '#,##0.00'
+                                
+                            # Pintar el Encabezado (Fila 1)
+                            if cell.row == 1:
+                                cell.fill = fondo_encabezado
+                                cell.font = fuente_encabezado
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
+                            else:
+                                cell.alignment = Alignment(vertical='center')
+                                
+                            # Sombrear filas de Subtotales y Totales (Solo en Gerencial)
+                            if "Gerencial" in vista_seleccionada:
+                                valor_nivel = str(worksheet.cell(row=cell.row, column=1).value)
+                                if "➖" in valor_nivel or "TOTAL" in valor_nivel:
+                                    cell.fill = fondo_subtotal
+                                    cell.font = fuente_subtotal
+
+                    # Ajustar ancho de columnas y congelar la primera fila
                     for col in worksheet.columns:
                         worksheet.column_dimensions[col[0].column_letter].width = 18
+                    worksheet.freeze_panes = "A2"
                 
+                # Botón de Descarga
                 st.download_button(
-                    label="💾 DESCARGAR REPORTE EN EXCEL",
+                    label="💾 DESCARGAR REPORTE EN EXCEL (PREMIUM)",
                     data=buffer_rep.getvalue(),
                     file_name=f"Reporte_Hectareas_{'Gerencial' if 'Gerencial' in vista_seleccionada else 'Semanal'}_{año_sel}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
