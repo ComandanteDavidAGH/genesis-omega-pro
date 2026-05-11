@@ -787,12 +787,17 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
+        # 1. Cálculos de Totales
         tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
         subtotal_st = tarifa_st_final * ha_dosis_final
         gran_total = costo_mezcla_total + costo_total_vuelos + subtotal_st
         costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
-        # --- MÉTRICAS DE CONTROL ---
+        # 2. Cálculos UNITARIOS (Las fórmulas exactas para SAP)
+        unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
+        unitario_st = tarifa_st_final
+
+        # --- MÉTRICAS DE CONTROL (Intocables) ---
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🚜 Hectáreas Cobro Totales", f"{total_ha_cobro_escuadron:.2f} Ha")
         
@@ -804,32 +809,38 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- 📋 CAJAS DE COPIA RÁPIDA PARA SAP ---
-        st.markdown("#### 📋 Cajas de Copia (Importes SAP)")
+        # --- 📋 CAJAS DE COPIA RÁPIDA (VALORES UNITARIOS PARA SAP) ---
+        st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
-            st.caption("🧪 Costo Mezcla Total")
-            st.code(fmt_sap(costo_mezcla_total), language="text")
+            st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
+            st.code(fmt_sap(unitario_vuelo), language="text")
             
         with c_sap2: 
-            st.caption("✈️ POSICIÓN 429 (Servicio Vuelo)")
-            st.code(fmt_sap(costo_total_vuelos), language="text")
-            
+            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
+            st.code(fmt_sap(unitario_st), language="text")
+
         with c_sap3: 
-            st.caption("👨‍🔬 POSICIÓN 459 (Serv. Técnico)")
-            st.code(fmt_sap(subtotal_st), language="text")
+            st.caption("🧪 TOTAL Mezcla Química")
+            st.code(fmt_sap(costo_mezcla_total), language="text")
             
         with c_sap4:
             st.markdown(f"""
             <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
-                <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA</p>
+                <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA (Global)</p>
                 <h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4>
             </div>
             """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.metric("🔥 TOTAL FACTURACIÓN FINCA (GRAN TOTAL)", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
+        
+        # --- TOTALES INFORMATIVOS ---
+        st.markdown("##### 💵 Totales de Posiciones (Informativo)")
+        c_tot1, c_tot2, c_tot3 = st.columns(3)
+        c_tot1.metric("Total Servicio Vuelo (429)", f"$ {fmt_sap(costo_total_vuelos)}")
+        c_tot2.metric("Total Servicio Técnico (459)", f"$ {fmt_sap(subtotal_st)}")
+        c_tot3.metric("🔥 GRAN TOTAL FACTURA", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
 
         # ====================================================================
         # 🛰️ COORDENADAS DE LANZAMIENTO (NO BORRAR)
