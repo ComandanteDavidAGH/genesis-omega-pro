@@ -1427,90 +1427,116 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
                         fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes")
                         st.plotly_chart(fig, use_container_width=True)
 
-                # --- BOTÓN DE EXPORTACIÓN CON FORMATO PREMIUM Y GRÁFICO EXCEL ---
+                # --- BOTÓN DE EXPORTACIÓN CON FORMATO ULTRA-PREMIUM ---
                 st.markdown("---")
                 buffer_rep = io.BytesIO()
                 with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
-                    # 1. Nombre de la hoja
                     nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
                     
-                    # 2. Inyectamos la tabla
+                    # 1. Inyectamos la tabla visible
                     if "Gerencial" in vista_seleccionada:
                         df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
+                        
+                        # 🎯 TÁCTICA SECRETA: Creamos una data limpia solo para el gráfico (y la ocultamos en la col U y V)
+                        df_chart = df_filt.groupby('MES')['HA_NETAS'].sum().reset_index()
+                        df_chart['MES'] = df_chart['MES'].apply(lambda x: x.split('-')[1] if '-' in x else x)
+                        df_chart.to_excel(writer, sheet_name=nombre_hoja, startcol=20, index=False) # Escribe en Col U y V
                     else:
                         matriz.to_excel(writer, sheet_name=nombre_hoja)
                         
-                    # 3. Herramientas de Excel
                     workbook = writer.book
                     worksheet = writer.sheets[nombre_hoja]
                     
+                    # 💡 APAGAR LAS LÍNEAS DE CUADRÍCULA (Efecto Dashboard Moderno)
+                    worksheet.sheet_view.showGridLines = False
+                    
                     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
                     from openpyxl.chart import BarChart, Reference
+                    from openpyxl.chart.label import DataLabelList
                     from openpyxl.utils import get_column_letter
                     
-                    borde_fino = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                    fondo_encabezado = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    fuente_encabezado = Font(color="FFFFFF", bold=True)
-                    fondo_subtotal = PatternFill(start_color="E2E6EA", end_color="E2E6EA", fill_type="solid")
-                    fuente_subtotal = Font(bold=True)
+                    # Paleta de Colores Corporativos
+                    borde_fino = Border(left=Side(style='thin', color='BFBFBF'), right=Side(style='thin', color='BFBFBF'), 
+                                        top=Side(style='thin', color='BFBFBF'), bottom=Side(style='thin', color='BFBFBF'))
+                    fondo_enc = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    fuente_enc = Font(color="FFFFFF", bold=True)
                     
-                    max_row = worksheet.max_row
-                    max_col = worksheet.max_column
+                    fondo_subtotal = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid") # Azul/Gris claro
+                    fuente_subtotal = Font(bold=True, color="000000")
                     
-                    # Estilizar celdas
+                    fondo_total = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid") # Azul fuerte
+                    fuente_total = Font(bold=True, color="FFFFFF")
+                    
+                    max_row = worksheet.max_row if "Gerencial" not in vista_seleccionada else len(df_visual) + 1
+                    max_col = worksheet.max_column if "Gerencial" not in vista_seleccionada else len(df_visual.columns)
+                    
+                    # Vestir la tabla celda por celda
                     for row in worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
                         for cell in row:
                             cell.border = borde_fino
                             if isinstance(cell.value, (int, float)):
                                 cell.number_format = '#,##0.00'
+                                
                             if cell.row == 1:
-                                cell.fill = fondo_encabezado
-                                cell.font = fuente_encabezado
+                                cell.fill = fondo_enc
+                                cell.font = fuente_enc
                                 cell.alignment = Alignment(horizontal='center', vertical='center')
                             else:
                                 cell.alignment = Alignment(vertical='center')
                                 
-                            if "Gerencial" in vista_seleccionada:
+                            # Pintar los Subtotales y Totales
+                            if "Gerencial" in vista_seleccionada and cell.row > 1:
                                 valor_nivel = str(worksheet.cell(row=cell.row, column=1).value)
-                                if "➖" in valor_nivel or "TOTAL" in valor_nivel:
+                                if "➖" in valor_nivel:
                                     cell.fill = fondo_subtotal
                                     cell.font = fuente_subtotal
+                                elif "TOTAL" in valor_nivel:
+                                    cell.fill = fondo_total
+                                    cell.font = fuente_total
 
-                    # Ancho de columnas
+                    # Ajustar ancho de las columnas
                     for col_idx in range(1, max_col + 1):
                         worksheet.column_dimensions[get_column_letter(col_idx)].width = 18
                     worksheet.freeze_panes = "A2"
                     
-                    # 📈 4. CREACIÓN DEL GRÁFICO DINÁMICO (AMARRADO A LAS CELDAS)
+                    # 📈 CREACIÓN DEL GRÁFICO PERFECTO
                     chart = BarChart()
                     chart.type = "col"
-                    chart.style = 13 # Estilo corporativo de Excel
-                    chart.title = "Rendimiento Operativo"
-                    chart.y_axis.title = "Cantidad (Hectáreas / Horas)"
-                    chart.x_axis.title = "Período"
-                    chart.height = 12
+                    chart.style = 10 # Estilo limpio y moderno de Excel
+                    chart.title = "Rendimiento Mensual"
+                    chart.y_axis.title = "Hectáreas"
+                    chart.x_axis.title = "Mes"
+                    chart.legend = None # Quitamos la leyenda inútil
+                    
+                    # Ponemos los números arriba de cada barra
+                    chart.dataLabels = DataLabelList()
+                    chart.dataLabels.showVal = True
+                    
+                    chart.height = 13
                     chart.width = 22
                     
                     if "Gerencial" in vista_seleccionada:
-                        # Amarramos las columnas numéricas (Hectáreas y Horas si existen)
-                        data = Reference(worksheet, min_col=3, min_row=1, max_row=max_row-1, max_col=max_col)
-                        # Amarramos los meses para el eje X
-                        cats = Reference(worksheet, min_col=2, min_row=2, max_row=max_row-1)
+                        # Amarramos el gráfico a la data limpia y oculta
+                        num_rows_chart = len(df_chart) + 1
+                        data = Reference(worksheet, min_col=22, min_row=1, max_row=num_rows_chart) # Columna V
+                        cats = Reference(worksheet, min_col=21, min_row=2, max_row=num_rows_chart) # Columna U
                         chart.add_data(data, titles_from_data=True)
                         chart.set_categories(cats)
-                        worksheet.add_chart(chart, "F4") # Insertamos el gráfico en la columna F
+                        
+                        # Ocultamos las columnas feas para que nadie las vea
+                        worksheet.column_dimensions['U'].hidden = True
+                        worksheet.column_dimensions['V'].hidden = True
+                        
+                        worksheet.add_chart(chart, "E2") # Pegamos el gráfico justo al lado de la tabla
                     else:
-                        # En vista semanal, amarramos la columna "TOTAL MES"
                         data = Reference(worksheet, min_col=max_col, min_row=1, max_row=max_row-1)
                         cats = Reference(worksheet, min_col=1, min_row=2, max_row=max_row-1)
                         chart.add_data(data, titles_from_data=True)
                         chart.set_categories(cats)
-                        # Lo insertamos dos columnas a la derecha de donde termine la tabla
-                        worksheet.add_chart(chart, f"{get_column_letter(max_col + 2)}4")
+                        worksheet.add_chart(chart, f"{get_column_letter(max_col + 2)}2")
                 
-                # Botón de Descarga Final
                 st.download_button(
-                    label="💾 DESCARGAR EXCEL PREMIUM CON GRÁFICO",
+                    label="💾 DESCARGAR EXCEL (VERSIÓN TOP GERENCIAL)",
                     data=buffer_rep.getvalue(),
                     file_name=f"Reporte_Hectareas_{'Gerencial' if 'Gerencial' in vista_seleccionada else 'Semanal'}_{año_sel}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
