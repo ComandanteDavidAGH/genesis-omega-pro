@@ -1431,13 +1431,17 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
                 st.markdown("---")
                 buffer_rep = io.BytesIO()
                 with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
-                    if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
-                        df_visual.to_excel(writer, sheet_name='Resumen_Gerencial', index=False)
+                    # 1. Definimos el nombre exacto de la hoja para evitar confusiones en Excel
+                    nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
+                    
+                    # 2. Guardamos la tabla correspondiente
+                    if "Gerencial" in vista_seleccionada:
+                        df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
                     else:
-                        matriz.to_excel(writer, sheet_name='Reporte_Semanal')
+                        matriz.to_excel(writer, sheet_name=nombre_hoja)
                         
-                    workbook = writer.book
-                    worksheet = writer.sheets[writer.sheetnames[0]]
+                    # 3. Ajustamos el ancho de las columnas (PARCHE CORREGIDO AQUÍ)
+                    worksheet = writer.sheets[nombre_hoja]
                     for col in worksheet.columns:
                         worksheet.column_dimensions[col[0].column_letter].width = 18
                 
