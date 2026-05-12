@@ -833,12 +833,12 @@ elif menu == "⚙️ 3. Validación de Misión":
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
-            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)") # <- Corregida la etiqueta para que coincida con SAP
-            st.code(fmt_sap(unitario_vuelo), language="text") # El valor de 73.710 va a la 459 en SAP
+            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
+            st.code(fmt_sap(unitario_st), language="text") # El valor natural del Servicio Técnico
             
         with c_sap2: 
-            st.caption("✈️ UNITARIO Vuelo (Pos. 429)") # <- Corregida la etiqueta para que coincida con SAP
-            st.code(fmt_sap(unitario_st), language="text") # El valor de 52.850 va a la 429 en SAP
+            st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
+            st.code(fmt_sap(unitario_vuelo), language="text") # El valor natural del Vuelo
 
         with c_sap3: 
             st.caption("🧪 TOTAL Mezcla Química")
@@ -857,8 +857,8 @@ elif menu == "⚙️ 3. Validación de Misión":
         # --- TOTALES INFORMATIVOS ---
         st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Subtotal Serv. Tec (459)", f"$ {fmt_sap(subtotal_vuelo_finca)}") # Etiquetas invertidas para igualar a su pantalla
-        c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_st_finca)}")
+        c_tot1.metric("Subtotal Serv. Tec (459)", f"$ {fmt_sap(subtotal_st_finca)}")
+        c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
         c_tot3.metric("🔥 GRAN TOTAL FINCA", f"$ {fmt_sap(gran_total)}")
         
         # ====================================================================
