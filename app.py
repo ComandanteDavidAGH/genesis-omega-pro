@@ -426,9 +426,102 @@ elif menu == "⚙️ 3. Validación de Misión":
             horometro_sim = cs6.number_input("⏱️ Horómetro (Horas)", min_value=0.01, value=1.00, step=0.1)
             
             if st.button("🚀 Generar Cotización"):
-                st.success(f"Simulando operación en pista {pista_sim} para {ha_sim} Ha con el cóctel {coctel_sim}...")
-                st.warning("⚠️ Interfaz lista. Falta inyectar el motor matemático final.")
+                # 🛑 1. SEGURO DE ARMA: Verificar que la bóveda de precios esté cargada
+                if 'df_cfg' not in st.session_state or 'df_precios' not in st.session_state or 'df_recetas' not in st.session_state:
+                    st.error("🚨 Bóveda vacía: Para calcular los costos reales con precisión matemática, DEBE cargar el archivo Maestro en el Módulo 2 primero.")
+                else:
+                    try:
+                        # --- 📡 2. EXTRACCIÓN DE PARÁMETROS (Márgenes y Pistas) ---
+                        df_cfg = st.session_state['df_cfg']
+                        cfg_row = df_cfg[df_cfg.iloc[:, 0].astype(str).str.upper() == tipo_prod_sim].iloc[0]
+                        mult_material = float(cfg_row.iloc[1])
+                        mult_avion_base = float(cfg_row.iloc[2])
+                        tarifa_serv_tec_base = float(cfg_row.iloc[3])
+                        tarifa_vuelo_base = float(cfg_row.iloc[4])
+
+                        df_pistas = st.session_state['df_pistas']
+                        pista_row = df_pistas[df_pistas.iloc[:, 0].astype(str).str.upper() == pista_sim].iloc[0]
+                        val_tope = float(pista_row.iloc[2])
+                        cargo_pista = float(pista_row.iloc[3])
+
+                        # --- ✈️ 3. LIQUIDACIÓN DE VUELO Y SERVICIO TÉCNICO ---
+                        if vuelo_sim == "DRONE":
+                            unitario_vuelo = tarifa_vuelo_base * mult_avion_base
+                        else:
+                            # Cálculo de Avión con Horómetro y Tope de Pista
+                            costo_vuelo_bruto = ((tarifa_vuelo_base * horometro_sim) / ha_sim) + cargo_pista if ha_sim > 0 else 0
+                            if val_tope > 0:
+                                costo_vuelo_bruto = min(costo_vuelo_bruto, val_tope)
+                            unitario_vuelo = costo_vuelo_bruto * mult_avion_base
+
+                        subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
+                        subtotal_st = round(tarifa_serv_tec_base, 0) * ha_sim
+
+                        # --- 🧪 4. MOTOR IA DE MEZCLA QUÍMICA ---
+                        coctel_upper = coctel_sim.upper().strip()
+                        coctel_base = coctel_upper.split(" ")[0] # Separa KRMN63 de ZN
+                        
+                        df_recetas = st.session_state['df_recetas']
+                        df_precios = st.session_state['df_precios']
+                        
+                        costo_mezcla_sim = 0
+                        productos_cotizados = []
+                        
+                        # Buscar la receta en DD_Mesclas
+                        receta_filtrada = df_recetas[df_recetas.iloc[:, 0].astype(str).str.upper() == coctel_base]
+
+                        if not receta_filtrada.empty:
+                            for col_idx in range(1, receta_filtrada.shape[1]):
+                                producto = str(df_recetas.columns[col_idx]).upper()
+                                dosis = pd.to_numeric(receta_filtrada.iloc[0, col_idx], errors='coerce')
+                                
+                                if pd.notna(dosis) and dosis > 0:
+                                    # 🚀 REGLAS DE ORO EXCEL
+                                    if "ACONDICIONADOR" in producto:
+                                        dosis = 0.06 if ("ZN" in coctel_upper or "BT" in coctel_upper) else 0.02
+                                    elif "IMBIOSIL" in producto.replace(" ", "") or "INBIOMAG" in producto:
+                                        dosis = 1.5 if coctel_upper.startswith("IN") else 1.0
+                                    
+                                    # Buscar Precio exacto
+                                    precio_row = df_precios[df_precios.iloc[:, 0].astype(str).str.upper() == producto]
+                                    if not precio_row.empty:
+                                        precio_unitario = pd.to_numeric(precio_row.iloc[0, 1], errors='coerce')
+                                        if pd.notna(precio_unitario):
+                                            costo_fila = round((dosis * ha_sim) * (precio_unitario * mult_material), 0)
+                                            costo_mezcla_sim += costo_fila
+                                            productos_cotizados.append(f"{producto} ({dosis})")
+                        
+                        gran_total_sim = subtotal_vuelo + subtotal_st + costo_mezcla_sim
+                        costo_ha_sim = gran_total_sim / ha_sim if ha_sim > 0 else 0
+
+                        # --- 💰 5. RENDERIZADO DE LA COTIZACIÓN ---
+                        st.markdown("---")
+                        st.markdown("### 💰 Liquidación de Cotización")
+                        
+                        r1, r2, r3, r4 = st.columns(4)
+                        r1.metric("👨‍🔬 Subtotal Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
+                        r2.metric("✈️ Subtotal Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
+                        r3.metric("🧪 Costo Mezcla", f"$ {costo_mezcla_sim:,.0f}".replace(",", "."))
+                        r4.markdown(f"""
+                        <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
+                            <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA</p>
+                            <h4 style='margin:0; color:white;'>$ {costo_ha_sim:,.0f}</h4>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.metric("🔥 GRAN TOTAL A COBRAR", f"$ {gran_total_sim:,.0f}".replace(",", "."))
+                        
+                        # Mensajes de control
+                        if not receta_filtrada.empty:
+                            st.caption(f"🧪 **Productos detectados en la matriz:** {', '.join(productos_cotizados)}")
+                        else:
+                            st.warning(f"⚠️ El cóctel '{coctel_base}' no se encontró en la hoja DD_Mesclas. El costo de químicos es $0.")
+
+                    except Exception as e:
+                        st.error(f"Error en la maquinaria matemática: {e}")
             
+            # 🛑 ESTA ES LA MAGIA: Si el simulador está activo, detenemos la app aquí.
             st.stop()
         
           # Así no se mezcla con su código normal de SAP de abajo.
