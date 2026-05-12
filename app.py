@@ -872,7 +872,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                         break
                 if sigla_fertilizante: break
 
-            coctel_ganador = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
+            coctel_ganador = coctel_base + " + " + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
 
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
 
