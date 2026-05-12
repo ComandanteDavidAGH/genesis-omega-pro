@@ -864,15 +864,16 @@ elif menu == "⚙️ 3. Validación de Misión":
                     coctel_base = iter_id
                     dosis_oficiales_coctel = receta.copy()
 
+            # --- FASE 2: BUSCAR EL FERTILIZANTE Y SU SIGLA ---
             sigla_fertilizante = ""
             for k_sap in sap_dict_pista.keys():
                 for f_name, f_sigla in dict_fertilizantes.items():
                     if f_name == k_sap or (len(k_sap)>=4 and f_name in k_sap) or (len(f_name)>=4 and k_sap in f_name):
-                        sigla_fertilizante = f"+{f_sigla}"
+                        sigla_fertilizante = f" {f_sigla}" # 🎯 Aquí quitamos el "+" y dejamos un espacio
                         break
                 if sigla_fertilizante: break
 
-            coctel_ganador = coctel_base " + "  sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
+            coctel_ganador = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
 
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
 
