@@ -403,13 +403,21 @@ elif menu == "⚙️ 3. Validación de Misión":
                 
                 if url_drive:
                     try:
-                        # 🚀 MANIOBRA DE EXTRACCIÓN DE ID
-                        # Convertimos el link de compartir en un link de descarga directa para Pandas
-                        file_id = url_drive.split('/')[-2] if '/d/' in url_drive else None
-                        
+                        # 🚀 MANIOBRA DE EXTRACCIÓN DE ID PARA GOOGLE SHEETS Y EXCEL
+                        file_id = None
+                        if '/d/' in url_drive:
+                            # Extraemos el ID exacto sin importar qué haya después
+                            file_id = url_drive.split('/d/')[1].split('/')[0]
+                            
                         if file_id:
-                            # URL de exportación directa para Excel
-                            direct_download_url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                            # Traductor de Google Sheets a Excel en tiempo real
+                            if 'spreadsheets' in url_drive:
+                                direct_download_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx'
+                            else:
+                                direct_download_url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                                
+                            with st.spinner("Sincronizando con Google Drive..."):
+                                xls = pd.ExcelFile(direct_download_url)
                             
                             with st.spinner("Sincronizando con Google Drive..."):
                                 xls = pd.ExcelFile(direct_download_url)
