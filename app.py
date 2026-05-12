@@ -393,8 +393,8 @@ elif menu == "⚙️ 3. Validación de Misión":
     st.markdown("---")
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
 
-        if modo_simulacro:
-            st.info("💡 MODO SIMULADOR: Réplica exacta del motor de facturación para anticipos.")
+    if modo_simulacro:
+         st.info("💡 MODO SIMULADOR: Réplica exacta del motor de facturación para anticipos.")
             
             # --- 📡 LISTAS FIJAS (Inmunes a errores de lectura) ---
             lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
