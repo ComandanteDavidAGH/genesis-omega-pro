@@ -403,46 +403,178 @@ elif menu == "⚙️ 3. Validación de Misión":
                 
                 if url_drive:
                     try:
-                        # 🚀 MANIOBRA DE EXTRACCIÓN DE ID PARA GOOGLE SHEETS Y EXCEL
-                        file_id = None
-                        if '/d/' in url_drive:
-                            # Extraemos el ID exacto sin importar qué haya después
-                            file_id = url_drive.split('/d/')[1].split('/')[0]
-                            
-                        if file_id:
-                            # Traductor de Google Sheets a Excel en tiempo real
-                            if 'spreadsheets' in url_drive:
-                                direct_download_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx'
-                            else:
-                                direct_download_url = f'https://drive.google.com/uc?export=download&id={file_id}'
-                                
-                            with st.spinner("Sincronizando con Google Drive..."):
-                                xls = pd.ExcelFile(direct_download_url)
-                            
-                            with st.spinner("Sincronizando con Google Drive..."):
-                                xls = pd.ExcelFile(direct_download_url)
-                                
-                                # Absorbiendo las hojas del Maestro
-                                st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
-                                st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
-                                
-                                hojas = xls.sheet_names
-                                st.session_state['df_precios'] = pd.read_excel(xls, sheet_name="TABLA 2" if "TABLA 2" in hojas else hojas[1])
-                                
-                                try:
-                                    st.session_state['df_pistas'] = pd.read_excel(xls, sheet_name="TABLA 1" if "TABLA 1" in hojas else hojas[0])
-                                except:
-                                    st.session_state['df_pistas'] = pd.DataFrame({"Pistas": ["LUCI", "PDIV", "PLUC", "PORI", "TEHO"]})
-                                
-                                st.success("✅ Sincronización Exitosa. Bóveda cargada.")
-                                st.rerun()
-                        else:
-                            st.error("❌ El link no parece válido. Asegúrese de copiar el link de 'Compartir'.")
-                    except Exception as e:
-                        st.error(f"🚨 Error de Acceso: Verifique que el archivo en Drive tenga permisos para 'Cualquier persona con el enlace'. ({e})")
-                
-                st.stop() # Espera el link antes de seguir
+                        # --- 📡 2. EXTRACCIÓN INTELIGENTE DE DATOS (VISIÓN LÁSER) ---
+            df_cfg = st.session_state.get('df_cfg', pd.DataFrame())
+            
+            # 🧑‍🌾 A. Extraer Productores (Grupos)
+            lista_productores = []
+            try:
+                # Busca exactamente la celda que dice "GRUPOS" y extrae los de abajo
+                mask_grupos = df_cfg.iloc[:, 0].astype(str).str.upper().str.strip() == 'GRUPOS'
+                if mask_grupos.any():
+                    idx = df_cfg[mask_grupos].index[0]
+                    for i in range(idx + 1, len(df_cfg)):
+                        val = str(df_cfg.iloc[i, 0]).strip().upper()
+                        if val in ['NAN', 'NONE', '', 'TOTAL']: break
+                        lista_productores.append(val)
+            except: pass
+            if not lista_productores: lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
 
+            # 🏡 B. Extraer Fincas
+            lista_fincas = []
+            try:
+                # Busca exactamente la celda que dice "FINCA" y extrae las de abajo
+                mask_fincas = df_cfg.iloc[:, 0].astype(str).str.upper().str.strip() == 'FINCA'
+                if mask_fincas.any():
+                    idx = df_cfg[mask_fincas].index[0]
+                    for i in range(idx + 1, len(df_cfg)):
+                        val = str(df_cfg.iloc[i, 0]).strip().upper()
+                        if val in ['NAN', 'NONE', '', 'TOTAL']: break
+                        lista_fincas.append(val)
+            except: pass
+            if not lista_fincas: lista_fincas = ["DESPENSA", "MANANTIAL", "ADELAIDA", "LA FE ORGANICA"]
+
+            # 🛣️ C. Extraer Pistas y Topes (Busca las columnas AK, AL, AM dinámicamente)
+            pistas_con_tope = []
+            try:
+                pista_col, precio_col, tope_col = None, None, None
+                for i in range(min(20, len(df_cfg))): 
+                    row_vals = df_cfg.iloc[i].astype(str).str.upper().str.strip().tolist()
+                    if 'PISTA' in row_vals and 'TOPE' in row_vals:
+                        pista_col = row_vals.index('PISTA')
+                        tope_col = row_vals.index('TOPE')
+                        precio_col = row_vals.index('PRECIOS') if 'PRECIOS' in row_vals else pista_col + 1
+                        start_row = i + 1
+                        break
+                        
+                if pista_col is not None:
+                    for i in range(start_row, len(df_cfg)):
+                        p = str(df_cfg.iloc[i, pista_col]).strip().upper()
+                        if p in ['NAN', 'NONE', '']: break
+                        t_text = str(df_cfg.iloc[i, tope_col]).strip().upper()
+                        precio = pd.to_numeric(df_cfg.iloc[i, precio_col], errors='coerce')
+                        precio_str = f"{precio:,.0f}".replace(",", ".") if pd.notna(precio) else "0"
+                        
+                        # Formato visual brutal: "PLUC - TOPE MAX GENERAL ($63.325)"
+                        pistas_con_tope.append(f"{p} - {t_text} (${precio_str})")
+            except: pass
+            if not pistas_con_tope: pistas_con_tope = ["LUCI - BASE ($0)", "PLUC - TOPE MAX ($63.325)", "PORI - TOPE SUR ($71.517)", "PDIV - PORCION ($8.504)"]
+
+            # --- 🎛️ 3. PANEL DE DATOS DE ENTRADA ---
+            st.markdown("#### 📝 Parámetros de la Operación")
+            
+            # Fila 1 (Incluye Finca)
+            cs1, cs2, cs3, cs4 = st.columns(4)
+            coctel_sim = cs1.text_input("🧪 Cóctel", value="KRMN63 ZN")
+            ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=30.0)
+            finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor", lista_productores) 
+            
+            # Fila 2
+            st.markdown("<br>", unsafe_allow_html=True) 
+            cs5, cs6, cs7, cs8 = st.columns(4)
+            vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
+            pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope)
+            horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=1.00, step=0.1)
+            
+            if st.button("🚀 Generar Cotización"):
+                import re
+                try:
+                    # --- ⚙️ EXTRACCIÓN DE VARIABLES MATEMÁTICAS ---
+                    # 1. Productor (Busca la fila exacta de SOCIO, TERCERO, etc.)
+                    cfg_row = df_cfg[df_cfg.iloc[:, 0].astype(str).str.upper() == tipo_prod_sim].iloc[0]
+                    mult_material = float(cfg_row.iloc[2]) # Columna Margen Material
+                    tarifa_serv_tec_base = float(cfg_row.iloc[3]) # Columna Base ST
+                    mult_avion_base = float(cfg_row.iloc[5]) # Columna Margen Avión
+                    
+                    # 2. Vuelo Base ($/HORA ASA)
+                    try:
+                        tarifa_vuelo_base = float(df_cfg[df_cfg.iloc[:, 0].astype(str).str.upper() == '$/HORA ASA'].iloc[0, 1])
+                    except:
+                        tarifa_vuelo_base = 2100465.0
+                        
+                    # 3. Tope de Pista Seleccionada (Extrae el número de la cajita visual)
+                    val_tope = 0.0
+                    match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
+                    if match:
+                        val_tope = float(match.group(1).replace('.', ''))
+                        
+                    pista_limpia = pista_sim.split(" - ")[0].strip()
+
+                    # --- ✈️ LIQUIDACIÓN DE VUELO Y ST ---
+                    if vuelo_sim == "DRONE":
+                        unitario_vuelo = 71280 * mult_avion_base
+                    else:
+                        costo_vuelo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                        if val_tope > 0:
+                            costo_vuelo_bruto = min(costo_vuelo_bruto, val_tope)
+                        unitario_vuelo = costo_vuelo_bruto * mult_avion_base
+
+                    subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
+                    subtotal_st = round(tarifa_serv_tec_base, 0) * ha_sim
+
+                    # --- 🧪 MOTOR IA DE MEZCLA ---
+                    coctel_upper = coctel_sim.upper().strip()
+                    coctel_base = coctel_upper.split(" ")[0] 
+                    
+                    df_recetas = st.session_state.get('df_recetas', pd.DataFrame())
+                    df_precios = st.session_state.get('df_precios', pd.DataFrame())
+                    
+                    costo_mezcla_sim = 0
+                    productos_cotizados = []
+                    
+                    if not df_recetas.empty:
+                        receta_filtrada = df_recetas[df_recetas.iloc[:, 0].astype(str).str.upper() == coctel_base]
+                        if not receta_filtrada.empty:
+                            for col_idx in range(1, receta_filtrada.shape[1]):
+                                producto = str(df_recetas.columns[col_idx]).upper()
+                                dosis = pd.to_numeric(receta_filtrada.iloc[0, col_idx], errors='coerce')
+                                
+                                if pd.notna(dosis) and dosis > 0:
+                                    if "ACONDICIONADOR" in producto:
+                                        dosis = 0.06 if ("ZN" in coctel_upper or "BT" in coctel_upper) else 0.02
+                                    elif "IMBIOSIL" in producto.replace(" ", "") or "INBIOMAG" in producto:
+                                        dosis = 1.5 if coctel_upper.startswith("IN") else 1.0
+                                    
+                                    precio_row = df_precios[df_precios.iloc[:, 0].astype(str).str.upper() == producto]
+                                    if not precio_row.empty:
+                                        precio_unitario = pd.to_numeric(precio_row.iloc[0, 1], errors='coerce')
+                                        if pd.notna(precio_unitario):
+                                            costo_fila = round((dosis * ha_sim) * (precio_unitario * mult_material), 0)
+                                            costo_mezcla_sim += costo_fila
+                                            productos_cotizados.append(f"{producto} ({dosis})")
+                    
+                    gran_total_sim = subtotal_vuelo + subtotal_st + costo_mezcla_sim
+                    costo_ha_sim = gran_total_sim / ha_sim if ha_sim > 0 else 0
+
+                    # --- 💰 RENDERIZADO ---
+                    st.markdown("---")
+                    st.markdown(f"### 💰 Cotización Finca: {finca_sim}")
+                    
+                    r1, r2, r3, r4 = st.columns(4)
+                    r1.metric("👨‍🔬 Subtotal Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
+                    r2.metric("✈️ Subtotal Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
+                    r3.metric("🧪 Costo Mezcla", f"$ {costo_mezcla_sim:,.0f}".replace(",", "."))
+                    r4.markdown(f"""
+                    <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
+                        <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA</p>
+                        <h4 style='margin:0; color:white;'>$ {costo_ha_sim:,.0f}</h4>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.metric("🔥 GRAN TOTAL A COBRAR", f"$ {gran_total_sim:,.0f}".replace(",", "."))
+                    
+                    if productos_cotizados:
+                        st.caption(f"🧪 **Productos detectados:** {', '.join(productos_cotizados)}")
+                    else:
+                        st.warning("⚠️ No se encontraron productos para este cóctel. Costo químico es $0.")
+
+                except Exception as e:
+                    st.error(f"Error en la maquinaria matemática: {e}")
+            
+            st.stop() # Cierra el simulador aquí
+        
             # --- 📡 2. INTERFAZ Y CÁLCULOS (Sigue igual de potente) ---
             lista_productores = st.session_state['df_cfg'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
             lista_pistas = st.session_state['df_pistas'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
