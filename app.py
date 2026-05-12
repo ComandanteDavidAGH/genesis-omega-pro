@@ -742,9 +742,11 @@ elif menu == "⚙️ 3. Validación de Misión":
                 if dosis_teorica is None:
                     dosis_teorica = cant_total_pedido / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                costo_margen = costo_unit * mult_material
-                
+                # 🚀 BLINDAJE SAP: Redondear el costo unitario a 0 decimales antes de multiplicar
+                costo_margen = round(costo_unit * mult_material, 0)
+
                 matriz_datos.append({
+                    
                     "A: Producto": nombre_p,
                     "B: Dosis/Ha (SAP)": round(dosis_teorica, 3),
                     "C: X (Extra %)": 0.0,
