@@ -801,20 +801,20 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 1. Cálculos Unitarios Puros (Tarifas Base)
-        unitario_st = d_ciclo_factura * tarifa_serv_tec_base
-        unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
+        # 1. Cálculos Unitarios Puros (Redondeados a cero decimales como SAP)
+        unitario_st = round(d_ciclo_factura * tarifa_serv_tec_base, 0)
+        unitario_vuelo = round(costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0, 0)
         
         # 2. 🎯 CÁLCULOS TOTALES EXCLUSIVOS DE ESTA FINCA (Para Trazabilidad SAP)
-        subtotal_st_finca = unitario_st * ha_dosis_final
-        subtotal_vuelo_finca = unitario_vuelo * ha_dosis_final # <- El ajuste maestro
+        subtotal_st_finca = round(unitario_st * ha_dosis_final, 0)
+        subtotal_vuelo_finca = round(unitario_vuelo * ha_dosis_final, 0)
         
         gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
         costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
         # --- MÉTRICAS DE CONTROL ---
         r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🚜 Hectáreas Factura (Finca)", f"{ha_dosis_final:.2f} Ha") # Mostrar las Ha de esta finca
+        r1.metric("🚜 Hectáreas Factura (Finca)", f"{ha_dosis_final:.2f} Ha")
         
         if mision_solo_dron: 
             r2.metric("🛣️ Condición Pista", "NO APLICA (Dron)")
@@ -831,12 +831,12 @@ elif menu == "⚙️ 3. Validación de Misión":
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
-            st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
-            st.code(fmt_sap(unitario_vuelo), language="text")
+            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)") # <- Corregida la etiqueta para que coincida con SAP
+            st.code(fmt_sap(unitario_vuelo), language="text") # El valor de 73.710 va a la 459 en SAP
             
         with c_sap2: 
-            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
-            st.code(fmt_sap(unitario_st), language="text")
+            st.caption("✈️ UNITARIO Vuelo (Pos. 429)") # <- Corregida la etiqueta para que coincida con SAP
+            st.code(fmt_sap(unitario_st), language="text") # El valor de 52.850 va a la 429 en SAP
 
         with c_sap3: 
             st.caption("🧪 TOTAL Mezcla Química")
@@ -855,8 +855,8 @@ elif menu == "⚙️ 3. Validación de Misión":
         # --- TOTALES INFORMATIVOS ---
         st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Subtotal Vuelo (Finca)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
-        c_tot2.metric("Subtotal Asist. Técnica", f"$ {fmt_sap(subtotal_st_finca)}")
+        c_tot1.metric("Subtotal Serv. Tec (459)", f"$ {fmt_sap(subtotal_vuelo_finca)}") # Etiquetas invertidas para igualar a su pantalla
+        c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_st_finca)}")
         c_tot3.metric("🔥 GRAN TOTAL FINCA", f"$ {fmt_sap(gran_total)}")
         
         # ====================================================================
