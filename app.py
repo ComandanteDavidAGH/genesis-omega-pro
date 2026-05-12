@@ -405,10 +405,10 @@ elif menu == "⚙️ 3. Validación de Misión":
                 lista_pistas = st.session_state['df_pistas'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
                 lista_pistas = [p for p in lista_pistas if p != "NAN" and p != ""]
             else:
-                # 2. Si acaba de abrir la app y no hay memoria, usamos esta lista de emergencia (¡No bloqueamos la misión!)
+                # 2. Si acaba de abrir la app y no hay memoria, usamos las Pistas/Almacenes oficiales de SAP
                 lista_productores = ["TERCEROS", "ASOCIADO", "PROPIO"] 
-                lista_pistas = ["LA LUCHA", "PLUC", "ZONA BANANERA", "SIN PISTA"] # <-- Puede cambiar estos nombres por sus pistas más comunes
-
+                lista_pistas = ["LUCI", "PDIV", "PLUC", "PORI", "TEHO"] # <-- Ajustado a su base de datos real
+                
             # --- 🎛️ PANEL DE DATOS DE ENTRADA ---
             st.markdown("#### 📝 Parámetros de la Operación")
             
