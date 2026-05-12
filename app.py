@@ -390,7 +390,7 @@ elif menu == "⚙️ 3. Validación de Misión":
     # ====================================================================
         # 🔮 MODO SIMULADOR DE COTIZACIONES (ANTICIPOS TERCEROS)
         # ====================================================================
-        st.markdown("---")
+    st.markdown("---")
         modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
 
         if modo_simulacro:
