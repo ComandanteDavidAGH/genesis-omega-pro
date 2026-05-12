@@ -552,9 +552,9 @@ if modo_simulacro:
     pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
     horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
     
-    # 💥 AQUÍ ESTÁN LAS DOS ARMAS MEGAZORD RESTAURADAS
+    # 💥 AQUÍ ESTÁN LAS DOS ARMAS MEGAZORD (Recargo calibrado a PESOS)
     dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=12, step=1)
-    recargo_sim = st.number_input("⚠️ Recargo (%)", min_value=0.0, value=0.0, step=1.0, help="Porcentaje extra que se sumará al costo total de la operación")
+    recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=0.0, step=1000.0, help="Valor en pesos por hectárea (Ej: 5000)")
 
     if st.button("🚀 Construir Matriz de Validación"):
         import re
@@ -657,10 +657,13 @@ if modo_simulacro:
 
             df_visual = pd.DataFrame(tabla_visual)
             
-            # 💥 CÁLCULOS MEGAZORD (Aplicando Recargo)
+            # --- 💥 CÁLCULOS MEGAZORD (Matemática Exacta de Recargo) ---
+            # El recargo se multiplica por el margen del productor y luego por las hectáreas
+            recargo_unitario_margen = recargo_sim * mult_avion
+            valor_recargo_total = round(recargo_unitario_margen, 0) * ha_sim
+            
             gran_total_base = subtotal_vuelo + subtotal_st + costo_mezcla_total
-            valor_recargo = gran_total_base * (recargo_sim / 100)
-            gran_total = gran_total_base + valor_recargo
+            gran_total = gran_total_base + valor_recargo_total
             costo_ha = gran_total / ha_sim if ha_sim > 0 else 0
 
             # --- 📋 RENDERIZADO VISUAL ---
@@ -675,7 +678,7 @@ if modo_simulacro:
             r1.metric("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
             r2.metric("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
             r3.metric("🧪 Mezcla", f"$ {costo_mezcla_total:,.0f}".replace(",", "."))
-            r4.metric(f"⚠️ Recargo ({recargo_sim}%)", f"$ {valor_recargo:,.0f}".replace(",", "."))
+            r4.metric(f"⚠️ Recargo", f"$ {valor_recargo_total:,.0f}".replace(",", "."))
             r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px;'>💰 COSTO x HA</p><h4 style='margin:0; color:white;'>$ {costo_ha:,.0f}</h4></div>", unsafe_allow_html=True)
             
             st.markdown("---")
