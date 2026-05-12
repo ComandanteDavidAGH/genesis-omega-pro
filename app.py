@@ -548,7 +548,7 @@ if modo_simulacro:
                 unitario_vuelo = costo_bruto * mult_v
 
             subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
-            subtotal_st = round(st_base, 0) * ha_sim
+            subtotal_st = round(st_base, 0) * dias_ciclo_sim * ha_sim
 
             # --- 🧪 ESCÁNER DE CÓCTEL ---
             coctel_u = coctel_sim.upper().strip()
