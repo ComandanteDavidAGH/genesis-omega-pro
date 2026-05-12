@@ -515,7 +515,7 @@ if modo_simulacro:
         st.session_state.idx_prod = 3 # TERCERO por defecto
         st.session_state.idx_tope = 0
 
-    # --- 🎛️ 4. PANEL DE CONSTRUCCIÓN DINÁMICO ---
+    # --- 🎛️ 4. PANEL DE CONSTRUCCIÓN DINÁMICO (MEGAZORD + TRANSPARENCIA) ---
     st.markdown("#### 📝 Parámetros de la Operación")
     cs1, cs2, cs3, cs4 = st.columns(4)
     coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
@@ -530,11 +530,9 @@ if modo_simulacro:
         prod_auto = datos_finca.get("Productor", "TERCERO")
         tope_auto = datos_finca.get("Tope_Key", "")
         
-        # Buscar el índice del productor
         if prod_auto in lista_productores:
             st.session_state.idx_prod = lista_productores.index(prod_auto)
             
-        # Buscar el índice del tope que contenga la palabra clave
         st.session_state.idx_tope = 0
         if tope_auto:
             for i, p_t in enumerate(pistas_con_tope):
@@ -543,7 +541,7 @@ if modo_simulacro:
                     break
                     
         st.session_state.finca_anterior = finca_sim
-        st.rerun() # Recarga veloz para aplicar los índices
+        st.rerun()
 
     # 3. Mostrar campos auto-llenados PERO modificables
     tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
@@ -553,6 +551,10 @@ if modo_simulacro:
     vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
     pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
     horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+    
+    # 💥 AQUÍ ESTÁN LAS DOS ARMAS MEGAZORD RESTAURADAS
+    dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=12, step=1)
+    recargo_sim = st.number_input("⚠️ Recargo (%)", min_value=0.0, value=0.0, step=1.0, help="Porcentaje extra que se sumará al costo total de la operación")
 
     if st.button("🚀 Construir Matriz de Validación"):
         import re
@@ -611,7 +613,7 @@ if modo_simulacro:
                 elif "IMBIOSIL" in p_name.replace(" ", "") or "INBIOMAG" in p_name:
                     item["DOSIS"] = 1.0 if sigla_fert else 1.5
 
-            # --- 💰 BÚSQUEDA DE PRECIOS EN CONFIGURACIÓN ---
+            # --- 💰 BÚSQUEDA DE PRECIOS EN CONFIGURACIÓN (CON TRANSPARENCIA) ---
             tabla_visual = []
             costo_mezcla_total = 0
             
