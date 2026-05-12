@@ -388,135 +388,135 @@ elif menu == "📥 2. Carga Facturación":
 elif menu == "⚙️ 3. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     # ====================================================================
-        # 🔮 MODO SIMULADOR DE COTIZACIONES (ANTICIPOS TERCEROS)
-        # ====================================================================
-    st.markdown("---")
-    modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
+# 🔮 MODO SIMULADOR DE COTIZACIONES (ANTICIPOS TERCEROS)
+# ====================================================================
+st.markdown("---")
+modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
 
-    if modo_simulacro:
-         st.info("💡 MODO SIMULADOR: Réplica exacta del motor de facturación para anticipos.")
-            
-            # --- 📡 LISTAS FIJAS (Inmunes a errores de lectura) ---
-            lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
-            lista_fincas = ["DESPENSA", "MANANTIAL", "ADELAIDA", "LA FE ORGANICA"]
-            pistas_con_tope = [
-                "LUCI - BASE ($0)", 
-                "PLUC - TOPE MAX GENERAL ($63.325)", 
-                "PORI - TOPE SUR ($71.517)", 
-                "PDIV - PORCION TERRESTRE ($8.504)",
-                "TEHO - BASE ($0)"
-            ]
+if modo_simulacro:
+    st.info("💡 MODO SIMULADOR: Réplica exacta del motor de facturación para anticipos.")
+    
+    # --- 📡 LISTAS FIJAS (Inmunes a errores de lectura) ---
+    lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
+    lista_fincas = ["DESPENSA", "MANANTIAL", "ADELAIDA", "LA FE ORGANICA"]
+    pistas_con_tope = [
+        "LUCI - BASE ($0)", 
+        "PLUC - TOPE MAX GENERAL ($63.325)", 
+        "PORI - TOPE SUR ($71.517)", 
+        "PDIV - PORCION TERRESTRE ($8.504)",
+        "TEHO - BASE ($0)"
+    ]
 
-            # --- 🎛️ PANEL DE DATOS DE ENTRADA ---
-            st.markdown("#### 📝 Parámetros de la Operación")
-            
-            cs1, cs2, cs3, cs4 = st.columns(4)
-            coctel_sim = cs1.text_input("🧪 Cóctel", value="KRMN63 ZN")
-            ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=30.0)
-            finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
-            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor", lista_productores, index=3)
-            
-            st.markdown("<br>", unsafe_allow_html=True) 
-            cs5, cs6, cs7, cs8 = st.columns(4)
-            vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
-            pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope)
-            horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=1.00, step=0.1)
-            
-            if st.button("🚀 Generar Cotización"):
-                import re
-                if 'df_precios' not in st.session_state or 'df_recetas' not in st.session_state:
-                    st.error("🚨 Memoria vacía: Por favor, asegúrese de haber cargado el archivo en el Módulo 2 primero.")
+    # --- 🎛️ PANEL DE DATOS DE ENTRADA ---
+    st.markdown("#### 📝 Parámetros de la Operación")
+    
+    cs1, cs2, cs3, cs4 = st.columns(4)
+    coctel_sim = cs1.text_input("🧪 Cóctel", value="KRMN63 ZN")
+    ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=30.0)
+    finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+    tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor", lista_productores, index=3)
+    
+    st.markdown("<br>", unsafe_allow_html=True) 
+    cs5, cs6, cs7, cs8 = st.columns(4)
+    vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
+    pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope)
+    horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=1.00, step=0.1)
+    
+    if st.button("🚀 Generar Cotización"):
+        import re
+        if 'df_precios' not in st.session_state or 'df_recetas' not in st.session_state:
+            st.error("🚨 Memoria vacía: Por favor, asegúrese de haber cargado el archivo en el Módulo 2 primero.")
+        else:
+            try:
+                # --- ⚙️ RÉPLICA DEL MOTOR MATEMÁTICO ---
+                if tipo_prod_sim == "TERCERO":
+                    mult_material = 1.451; tarifa_st_base = 1583.0; mult_avion = 1.451
+                elif tipo_prod_sim in ["AFILIADO", "COOPERATIVA"]:
+                    mult_material = 1.164; tarifa_st_base = 1510.0; mult_avion = 1.164
+                elif tipo_prod_sim == "ORGANICO":
+                    mult_material = 1.011; tarifa_st_base = 1337.0; mult_avion = 1.011
+                else: 
+                    mult_material = 1.112; tarifa_st_base = 1337.0; mult_avion = 1.112
+                
+                tarifa_vuelo_base = 2100465.0 
+                
+                val_tope = 0.0
+                match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
+                if match:
+                    val_tope = float(match.group(1).replace('.', ''))
+
+                # --- ✈️ LIQUIDACIÓN DE VUELO Y ST ---
+                if vuelo_sim == "DRONE":
+                    unitario_vuelo = 71280 * mult_avion
                 else:
-                    try:
-                        # --- ⚙️ RÉPLICA DEL MOTOR MATEMÁTICO ---
-                        if tipo_prod_sim == "TERCERO":
-                            mult_material = 1.451; tarifa_st_base = 1583.0; mult_avion = 1.451
-                        elif tipo_prod_sim in ["AFILIADO", "COOPERATIVA"]:
-                            mult_material = 1.164; tarifa_st_base = 1510.0; mult_avion = 1.164
-                        elif tipo_prod_sim == "ORGANICO":
-                            mult_material = 1.011; tarifa_st_base = 1337.0; mult_avion = 1.011
-                        else: 
-                            mult_material = 1.112; tarifa_st_base = 1337.0; mult_avion = 1.112
-                        
-                        tarifa_vuelo_base = 2100465.0 
-                        
-                        val_tope = 0.0
-                        match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
-                        if match:
-                            val_tope = float(match.group(1).replace('.', ''))
+                    costo_vuelo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                    if val_tope > 0:
+                        costo_vuelo_bruto = min(costo_vuelo_bruto, val_tope)
+                    unitario_vuelo = costo_vuelo_bruto * mult_avion
 
-                        # --- ✈️ LIQUIDACIÓN DE VUELO Y ST ---
-                        if vuelo_sim == "DRONE":
-                            unitario_vuelo = 71280 * mult_avion
-                        else:
-                            costo_vuelo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
-                            if val_tope > 0:
-                                costo_vuelo_bruto = min(costo_vuelo_bruto, val_tope)
-                            unitario_vuelo = costo_vuelo_bruto * mult_avion
+                subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
+                subtotal_st = round(tarifa_st_base, 0) * ha_sim
 
-                        subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
-                        subtotal_st = round(tarifa_st_base, 0) * ha_sim
+                # --- 🧪 MOTOR IA DE MEZCLA ---
+                coctel_upper = coctel_sim.upper().strip()
+                coctel_base = coctel_upper.split(" ")[0] 
+                
+                df_recetas = st.session_state['df_recetas']
+                df_precios = st.session_state['df_precios']
+                costo_mezcla_sim = 0
+                productos_cotizados = []
+                
+                receta_filtrada = df_recetas[df_recetas.iloc[:, 0].astype(str).str.upper() == coctel_base]
+                if not receta_filtrada.empty:
+                    for col_idx in range(1, receta_filtrada.shape[1]):
+                        producto = str(df_recetas.columns[col_idx]).upper()
+                        dosis = pd.to_numeric(receta_filtrada.iloc[0, col_idx], errors='coerce')
+                        
+                        if pd.notna(dosis) and dosis > 0:
+                            if "ACONDICIONADOR" in producto:
+                                dosis = 0.06 if ("ZN" in coctel_upper or "BT" in coctel_upper) else 0.02
+                            elif "IMBIOSIL" in producto.replace(" ", "") or "INBIOMAG" in producto:
+                                dosis = 1.5 if coctel_upper.startswith("IN") else 1.0
+                            
+                            precio_row = df_precios[df_precios.iloc[:, 0].astype(str).str.upper() == producto]
+                            if not precio_row.empty:
+                                precio_unitario = pd.to_numeric(precio_row.iloc[0, 1], errors='coerce')
+                                if pd.notna(precio_unitario):
+                                    costo_fila = round((dosis * ha_sim) * (precio_unitario * mult_material), 0)
+                                    costo_mezcla_sim += costo_fila
+                                    productos_cotizados.append(f"{producto} ({dosis})")
+                
+                gran_total_sim = subtotal_vuelo + subtotal_st + costo_mezcla_sim
+                costo_ha_sim = gran_total_sim / ha_sim if ha_sim > 0 else 0
 
-                        # --- 🧪 MOTOR IA DE MEZCLA ---
-                        coctel_upper = coctel_sim.upper().strip()
-                        coctel_base = coctel_upper.split(" ")[0] 
-                        
-                        df_recetas = st.session_state['df_recetas']
-                        df_precios = st.session_state['df_precios']
-                        costo_mezcla_sim = 0
-                        productos_cotizados = []
-                        
-                        receta_filtrada = df_recetas[df_recetas.iloc[:, 0].astype(str).str.upper() == coctel_base]
-                        if not receta_filtrada.empty:
-                            for col_idx in range(1, receta_filtrada.shape[1]):
-                                producto = str(df_recetas.columns[col_idx]).upper()
-                                dosis = pd.to_numeric(receta_filtrada.iloc[0, col_idx], errors='coerce')
-                                
-                                if pd.notna(dosis) and dosis > 0:
-                                    if "ACONDICIONADOR" in producto:
-                                        dosis = 0.06 if ("ZN" in coctel_upper or "BT" in coctel_upper) else 0.02
-                                    elif "IMBIOSIL" in producto.replace(" ", "") or "INBIOMAG" in producto:
-                                        dosis = 1.5 if coctel_upper.startswith("IN") else 1.0
-                                    
-                                    precio_row = df_precios[df_precios.iloc[:, 0].astype(str).str.upper() == producto]
-                                    if not precio_row.empty:
-                                        precio_unitario = pd.to_numeric(precio_row.iloc[0, 1], errors='coerce')
-                                        if pd.notna(precio_unitario):
-                                            costo_fila = round((dosis * ha_sim) * (precio_unitario * mult_material), 0)
-                                            costo_mezcla_sim += costo_fila
-                                            productos_cotizados.append(f"{producto} ({dosis})")
-                        
-                        gran_total_sim = subtotal_vuelo + subtotal_st + costo_mezcla_sim
-                        costo_ha_sim = gran_total_sim / ha_sim if ha_sim > 0 else 0
+                # --- 💰 RENDERIZADO ---
+                st.markdown("---")
+                st.markdown(f"### 💰 Cotización Finca: {finca_sim}")
+                
+                r1, r2, r3, r4 = st.columns(4)
+                r1.metric("👨‍🔬 Subtotal Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
+                r2.metric("✈️ Subtotal Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
+                r3.metric("🧪 Costo Mezcla", f"$ {costo_mezcla_sim:,.0f}".replace(",", "."))
+                r4.markdown(f"""
+                <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
+                    <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA</p>
+                    <h4 style='margin:0; color:white;'>$ {costo_ha_sim:,.0f}</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.metric("🔥 GRAN TOTAL A COBRAR", f"$ {gran_total_sim:,.0f}".replace(",", "."))
+                
+                if productos_cotizados:
+                    st.caption(f"🧪 **Productos detectados:** {', '.join(productos_cotizados)}")
+                else:
+                    st.warning("⚠️ No se encontraron químicos para este cóctel en la base de datos.")
 
-                        # --- 💰 RENDERIZADO ---
-                        st.markdown("---")
-                        st.markdown(f"### 💰 Cotización Finca: {finca_sim}")
-                        
-                        r1, r2, r3, r4 = st.columns(4)
-                        r1.metric("👨‍🔬 Subtotal Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
-                        r2.metric("✈️ Subtotal Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
-                        r3.metric("🧪 Costo Mezcla", f"$ {costo_mezcla_sim:,.0f}".replace(",", "."))
-                        r4.markdown(f"""
-                        <div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'>
-                            <p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA</p>
-                            <h4 style='margin:0; color:white;'>$ {costo_ha_sim:,.0f}</h4>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.metric("🔥 GRAN TOTAL A COBRAR", f"$ {gran_total_sim:,.0f}".replace(",", "."))
-                        
-                        if productos_cotizados:
-                            st.caption(f"🧪 **Productos detectados:** {', '.join(productos_cotizados)}")
-                        else:
-                            st.warning("⚠️ No se encontraron químicos para este cóctel en la base de datos.")
-
-                    except Exception as e:
-                        st.error(f"Error en el motor de cálculo: {e}")
-            
-            st.stop()
-            
+            except Exception as e:
+                st.error(f"Error en el motor de cálculo: {e}")
+    
+    st.stop()
+    
             # --- 📡 2. INTERFAZ Y CÁLCULOS (Sigue igual de potente) ---
             lista_productores = st.session_state['df_cfg'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
             lista_pistas = st.session_state['df_pistas'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
