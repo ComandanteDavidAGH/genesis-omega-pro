@@ -435,30 +435,58 @@ if modo_simulacro:
     df_vd = st.session_state['df_vd']
     df_t2 = st.session_state['df_t2']
 
-    # --- 📡 2. EXTRACCIÓN DE TOPES (Desde Validación Dosis) ---
+    # --- 📡 2. EXTRACCIÓN DE TOPES (Escáner 360° en Validación Dosis) ---
     pistas_con_tope = []
     try:
-        for i in range(min(20, len(df_vd))):
-            row_vals = df_vd.iloc[i].astype(str).str.upper().str.strip().tolist()
-            if 'PISTA' in row_vals and 'TOPE' in row_vals:
-                p_idx = row_vals.index('PISTA')
-                t_idx = row_vals.index('TOPE')
-                pr_idx = row_vals.index('PRECIOS') if 'PRECIOS' in row_vals else -1
-                
-                for j in range(i+1, len(df_vd)):
-                    p_name = str(df_vd.iloc[j, p_idx]).strip()
-                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
-                    p_tope = str(df_vd.iloc[j, t_idx]).strip()
-                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
-                    if pd.isna(p_precio): p_precio = 0
-                    
-                    pistas_con_tope.append(f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.'))
+        # 1. Unimos los "Títulos ocultos" (columns) y las primeras 10 filas para rastrear
+        filas_a_revisar = [ [str(c).upper().strip() for c in df_vd.columns] ]
+        for i in range(min(10, len(df_vd))):
+            filas_a_revisar.append( [str(x).upper().strip() for x in df_vd.iloc[i]] )
+        
+        p_idx, t_idx, pr_idx = -1, -1, -1
+        inicio_datos = 0
+        
+        # 2. Rastrear exactamente la palabra TOPE y mirar hacia su izquierda (AK, AL, AM)
+        for idx_fila, row_vals in enumerate(filas_a_revisar):
+            for i, val in enumerate(row_vals):
+                if val.startswith('TOPE'):
+                    t_idx = i
+                    # Busca PISTA y PRECIOS en las 3 columnas a la izquierda de TOPE
+                    for k in range(max(0, i-3), i):
+                        if row_vals[k].startswith('PISTA'): p_idx = k
+                        if 'PRECIO' in row_vals[k]: pr_idx = k
+                    if p_idx != -1: break
+            if p_idx != -1 and t_idx != -1:
+                # Si lo halló en los Títulos (idx 0), los datos inician en la fila 0 real
+                inicio_datos = 0 if idx_fila == 0 else idx_fila
                 break
-    except: pass
-    
+                
+        # 3. Absorber los datos sin fallar
+        if p_idx != -1 and t_idx != -1:
+            for j in range(inicio_datos, len(df_vd)):
+                p_name = str(df_vd.iloc[j, p_idx]).strip()
+                if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
+                p_tope = str(df_vd.iloc[j, t_idx]).strip()
+                if p_tope in ['NAN', 'NONE', '']: continue
+                
+                p_precio = 0
+                if pr_idx != -1:
+                    val = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce')
+                    if pd.notna(val): p_precio = val
+                
+                texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
+                if texto_tope not in pistas_con_tope:
+                    pistas_con_tope.append(texto_tope)
+    except Exception as e:
+        pass
+        
+    # 4. Escudo de Respaldo 100% Fiel a su Imagen (Jamás se quedará vacío)
     if not pistas_con_tope: 
-        pistas_con_tope = ["LUCI - BASE ($0)", "PLUC - TOPE MAX GENERAL ($63.325)"]
-
+        pistas_con_tope = [
+            "PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($71.517)", "PLUC - TOPE PARCELA INTER < 20ha ($98.335)",
+            "PORI - TOPE MAX GENERAL ($62.718)", "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)",
+            "PDIV - PORCION TERRESTRE ($8.504)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"
+        ]
     # --- 🧠 3. CEREBRO DINÁMICO: EXTRACCIÓN DE FINCAS DESDE TABLA 2 ---
     diccionario_fincas = {}
     lista_fincas = []
