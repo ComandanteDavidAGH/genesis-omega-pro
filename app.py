@@ -388,29 +388,26 @@ elif menu == "📥 2. Carga Facturación":
 elif menu == "⚙️ 3. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     # ====================================================================
-        # 🔮 MODO SIMULADOR DE COTIZACIONES (ANTICIPOS TERCEROS)
-        # ====================================================================
+    # 🔮 MODO SIMULADOR DE COTIZACIONES (ANTICIPOS TERCEROS)
+    # ====================================================================
     st.markdown("---")
-        modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
+    modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
 
-        if modo_simulacro:
-            st.info("💡 Está operando en MODO SIMULADOR. Calcule costos sin necesidad de archivo SAP.")
-            
-            # --- PANEL DE DATOS DE ENTRADA ---
-            cs1, cs2, cs3, cs4 = st.columns(4)
-            coctel_sim = cs1.text_input("🧪 Cóctel a Aplicar", value="KRMN63 ZN")
-            ha_sim = cs2.number_input("🚜 Hectáreas a Fumigar", min_value=1.0, value=30.0)
-            tipo_prod_sim = cs3.selectbox("🧑‍🌾 Tipo de Productor", ["TERCEROS", "ASOCIADO", "PROPIO"]) 
-            vuelo_sim = cs4.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
-            
-            if st.button("🚀 Generar Cotización"):
-                st.success(f"Simulando operación para {ha_sim} Ha con el cóctel {coctel_sim}...")
-                
-                # Aquí irán los cálculos que conectaremos luego...
-                st.warning("⚠️ Faltan conectar las tuberías de la base de datos a este simulador. ¡Pronto estará listo!")
-            
-            # 🛑 ESTA ES LA MAGIA: Si el simulador está activo, detenemos la app aquí.
-            st.stop()
+    if modo_simulacro:
+        st.info("💡 Está operando en MODO SIMULADOR. Calcule costos sin necesidad de archivo SAP.")
+        
+        # --- PANEL DE DATOS DE ENTRADA ---
+        cs1, cs2, cs3, cs4 = st.columns(4)
+        coctel_sim = cs1.text_input("🧪 Cóctel a Aplicar", value="KRMN63 ZN")
+        ha_sim = cs2.number_input("🚜 Hectáreas a Fumigar", min_value=1.0, value=30.0)
+        tipo_prod_sim = cs3.selectbox("🧑‍🌾 Tipo de Productor", ["TERCEROS", "ASOCIADO", "PROPIO"]) 
+        vuelo_sim = cs4.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
+        
+        if st.button("🚀 Generar Cotización"):
+            st.success(f"Simulando operación para {ha_sim} Ha con el cóctel {coctel_sim}...")
+            st.warning("⚠️ Faltan conectar las tuberías de la base de datos a este simulador. ¡Pronto estará listo!")
+        
+        st.stop()
         
           # Así no se mezcla con su código normal de SAP de abajo.
           st.stop()
