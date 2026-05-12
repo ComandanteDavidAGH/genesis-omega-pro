@@ -769,7 +769,9 @@ elif menu == "⚙️ 3. Validación de Misión":
             df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0)
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B_Val"] * (1 + df_matriz["C_Val"]/100) * ha_dosis_final).round(3)
 
-            costo_mezcla_total = (df_matriz["D: Dosis Total (Sistema)"] * df_matriz["E: Costo Unit (+Margen)"]).sum()
+            # 🎯 CÁLCULO DE MEZCLA (Consumo Real + Redondeo estilo SAP)
+            costo_mezcla_total = (df_matriz["D: Dosis Total (Sistema)"] * df_matriz["E: Costo Unit (+Margen)"]).round(0).sum()
+            
             df_matriz = df_matriz.drop(columns=["B_Val", "C_Val"])
 
             edited_df = st.data_editor(
