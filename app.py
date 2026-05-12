@@ -390,8 +390,8 @@ elif menu == "⚙️ 3. Validación de Misión":
     # ====================================================================
         # 🔮 MODO SIMULADOR DE COTIZACIONES (ANTICIPOS TERCEROS)
         # ====================================================================
-    st.markdown("---")
-     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
+        st.markdown("---")
+        modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Cotizaciones Anticipadas)")
 
         if modo_simulacro:
             st.info("💡 MODO SIMULADOR: Réplica exacta del motor de facturación para anticipos.")
@@ -414,7 +414,7 @@ elif menu == "⚙️ 3. Validación de Misión":
             coctel_sim = cs1.text_input("🧪 Cóctel", value="KRMN63 ZN")
             ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=30.0)
             finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
-            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor", lista_productores, index=3) # Por defecto TERCERO
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor", lista_productores, index=3)
             
             st.markdown("<br>", unsafe_allow_html=True) 
             cs5, cs6, cs7, cs8 = st.columns(4)
@@ -424,25 +424,22 @@ elif menu == "⚙️ 3. Validación de Misión":
             
             if st.button("🚀 Generar Cotización"):
                 import re
-                # Verificamos si la bóveda de precios y recetas ya está cargada en la memoria global
                 if 'df_precios' not in st.session_state or 'df_recetas' not in st.session_state:
-                    st.error("🚨 Memoria vacía: Por favor, asegúrese de haber cargado el archivo en el Módulo 2 para que el simulador conozca los precios químicos de hoy.")
+                    st.error("🚨 Memoria vacía: Por favor, asegúrese de haber cargado el archivo en el Módulo 2 primero.")
                 else:
                     try:
                         # --- ⚙️ RÉPLICA DEL MOTOR MATEMÁTICO ---
-                        # 1. Asignación directa de Márgenes (Basado exactamente en su foto de Excel)
                         if tipo_prod_sim == "TERCERO":
                             mult_material = 1.451; tarifa_st_base = 1583.0; mult_avion = 1.451
                         elif tipo_prod_sim in ["AFILIADO", "COOPERATIVA"]:
                             mult_material = 1.164; tarifa_st_base = 1510.0; mult_avion = 1.164
                         elif tipo_prod_sim == "ORGANICO":
                             mult_material = 1.011; tarifa_st_base = 1337.0; mult_avion = 1.011
-                        else: # SOCIO, AGRICOLA
+                        else: 
                             mult_material = 1.112; tarifa_st_base = 1337.0; mult_avion = 1.112
                         
-                        tarifa_vuelo_base = 2100465.0 # Su tarifa base constante de $/HORA ASA
+                        tarifa_vuelo_base = 2100465.0 
                         
-                        # 2. Extraer el valor del tope seleccionado (Saca los números de la opción seleccionada)
                         val_tope = 0.0
                         match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
                         if match:
@@ -518,7 +515,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     except Exception as e:
                         st.error(f"Error en el motor de cálculo: {e}")
             
-            st.stop() # Cierra el simulador aquí
+            st.stop()
             
             # --- 📡 2. INTERFAZ Y CÁLCULOS (Sigue igual de potente) ---
             lista_productores = st.session_state['df_cfg'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
