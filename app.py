@@ -424,14 +424,14 @@ elif menu == "⚙️ 3. Validación de Misión":
                 tipo_productor = str(fila_t2.iloc[5]).strip().upper()
                 tipo_de_tope_finca = str(fila_t2.iloc[6]).strip().upper()
 
-        mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_st = 1.112; mult_avion_base = 1.112
+        # --- 🛰️ EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
+        mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_avion_base = 1.112
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
                 fila_c = match_cfg.iloc[0]
                 mult_material = extraer_numero(fila_c.iloc[3])
                 tarifa_serv_tec_base = extraer_numero(fila_c.iloc[4])
-                mult_st = extraer_numero(fila_c.iloc[5]) # 🎯 MARGEN DE ST AGREGADO AQUÍ
                 mult_avion_base = extraer_numero(fila_c.iloc[6])
                 
         dias_ciclo_calc = 0
@@ -783,35 +783,38 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         st.markdown("---")
         # ====================================================================
-        # 💰 LIQUIDACIÓN FINAL CON MÁRGENES APLICADOS (SISTEMA VIVO)
+        # 💰 LIQUIDACIÓN FINAL Y CAJAS DE COPIA SAP (RESTAURADO)
         # ====================================================================
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 🎯 CÁLCULOS UNITARIOS CON MARGEN (Regla de Oro)
-        # Servicio Técnico: (Ciclo * Base) * Margen ST
-        unitario_st = (d_ciclo_factura * tarifa_serv_tec_base) * mult_st
+        # 1. Cálculos de Totales y Unitarios Puros (Sin Margen ST)
+        tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
+        subtotal_st = tarifa_st_final * ha_dosis_final
+        unitario_st = tarifa_st_final # 🎯 Puro, tal como se cobra
         
-        # Servicio Vuelo: (Tarifa Aplicada según Tope/Pista) * Multiplicador Avión
-        # Nota: costo_total_vuelos ya trae el multiplicador aplicado en el bloque anterior
         unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
-
-        # Totales para control interno
-        subtotal_st = unitario_st * ha_dosis_final
+        
         gran_total = costo_mezcla_total + costo_total_vuelos + subtotal_st
         costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
-        # --- MÉTRICAS DE CONTROL ---
+        # --- MÉTRICAS DE CONTROL (Topes Restaurados) ---
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🚜 Hectáreas Cobro", f"{total_ha_cobro_escuadron:.2f} Ha")
-        r2.metric("👨‍🔬 Margen ST Aplicado", f"x {mult_st}")
+        
+        # 🎯 CASILLA DE TOPES RESTAURADA
+        if mision_solo_dron: 
+            r2.metric("🛣️ Condición Pista", "NO APLICA (Dron)")
+        else: 
+            r2.metric("🛣️ Condición Pista", tipo_de_tope_finca, f"Límite: $ {fmt_sap(val_tope)}")
+            
         r3.metric("👨‍🔬 Tarifa ST Base", f"$ {fmt_sap(tarifa_serv_tec_base)}")
         r4.metric("✈️ Multiplicador Avión", f"x {mult_avion_final}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- 📋 CAJAS DE COPIA RÁPIDA (UNITARIOS CON MARGEN PARA SAP) ---
-        st.markdown("#### 📋 Cajas de Copia para Digitación en SAP (Unitarios con Margen)")
+        # --- 📋 CAJAS DE COPIA RÁPIDA (UNITARIOS PARA SAP) ---
+        st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
