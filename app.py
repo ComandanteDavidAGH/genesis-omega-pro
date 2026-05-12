@@ -388,17 +388,18 @@ elif menu == "📥 2. Carga Facturación":
 elif menu == "⚙️ 3. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     # ====================================================================
+# ====================================================================
 # 🔮 MODO SIMULADOR DE COTIZACIONES (CLON DE VALIDACIÓN)
 # ====================================================================
 st.markdown("---")
 modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
 
 if modo_simulacro:
-    st.info("💡 MODO CLON: Extrayendo Topes de 'Validación Dosis' y Precios de 'Configuración' (Columna J).")
+    st.info("💡 MODO CLON: Extrayendo Cerebro Dinámico de TABLA 2, Validación Dosis y Configuración.")
     
     # --- 📡 1. CONEXIÓN A LA BÓVEDA ---
-    if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state:
-        st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar Configuración, DD_Mesclas y Validación Dosis.")
+    if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
+        st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
         url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
         if url_drive:
             try:
@@ -406,14 +407,19 @@ if modo_simulacro:
                 file_id = url_drive.split('/d/')[1].split('/')[0] if '/d/' in url_drive else None
                 if file_id:
                     dl_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx' if 'spreadsheets' in url_drive else f'https://drive.google.com/uc?export=download&id={file_id}'
-                    with st.spinner("📥 Descargando matrices exactas..."):
+                    with st.spinner("📥 Descargando matrices y TABLA 2..."):
                         resp = requests.get(dl_url, timeout=30)
                         if resp.status_code == 200:
                             xls = pd.ExcelFile(io.BytesIO(resp.content))
-                            # Leemos las tres pestañas fundamentales que usted me indicó
                             st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
                             st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
                             st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
+                            
+                            # Intentamos cargar TABLA 2, si tiene otro nombre exacto lo busca
+                            hojas = xls.sheet_names
+                            nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
+                            st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
+                            
                             st.success("✅ Matrices cargadas y listas.")
                             st.rerun()
                         else:
@@ -427,40 +433,97 @@ if modo_simulacro:
     df_cfg = st.session_state['df_cfg']
     df_recetas = st.session_state['df_recetas']
     df_vd = st.session_state['df_vd']
+    df_t2 = st.session_state['df_t2']
 
     # --- 📡 2. EXTRACCIÓN DE TOPES (Desde Validación Dosis) ---
     pistas_con_tope = []
     try:
-        # El escáner busca PISTA y TOPE en la hoja Validación Dosis tal como en su Excel
         for i in range(min(20, len(df_vd))):
-            row_vals = df_vd.iloc[i].astype(str).str.upper().tolist()
+            row_vals = df_vd.iloc[i].astype(str).str.upper().str.strip().tolist()
             if 'PISTA' in row_vals and 'TOPE' in row_vals:
                 p_idx = row_vals.index('PISTA')
                 t_idx = row_vals.index('TOPE')
-                pr_idx = row_vals.index('PRECIOS') if 'PRECIOS' in row_vals else p_idx + 1
+                pr_idx = row_vals.index('PRECIOS') if 'PRECIOS' in row_vals else -1
+                
                 for j in range(i+1, len(df_vd)):
                     p_name = str(df_vd.iloc[j, p_idx]).strip()
-                    if p_name in ['NAN', 'NONE', '']: break
+                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
                     p_tope = str(df_vd.iloc[j, t_idx]).strip()
-                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce')
-                    if pd.notna(p_precio):
-                        pistas_con_tope.append(f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.'))
+                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
+                    if pd.isna(p_precio): p_precio = 0
+                    
+                    pistas_con_tope.append(f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.'))
                 break
     except: pass
-    if not pistas_con_tope: pistas_con_tope = ["LUCI - BASE ($0)", "PLUC - TOPE MAX GENERAL ($63.325)"]
+    
+    if not pistas_con_tope: 
+        pistas_con_tope = ["LUCI - BASE ($0)", "PLUC - TOPE MAX GENERAL ($63.325)"]
 
-    # --- 🎛️ 3. PANEL DE CONSTRUCCIÓN ---
+    # --- 🧠 3. CEREBRO DINÁMICO: EXTRACCIÓN DE FINCAS DESDE TABLA 2 ---
+    diccionario_fincas = {}
+    lista_fincas = []
+    try:
+        # Busca Finca (Col A), Productor (Col F), Tope (Col G) - Índices 0, 5, 6
+        for idx, row in df_t2.iterrows():
+            f_name = str(row.iloc[0]).strip().upper()
+            if f_name not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']:
+                p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "TERCERO"
+                t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
+                
+                # Guardar en memoria
+                diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
+                if f_name not in lista_fincas:
+                    lista_fincas.append(f_name)
+    except Exception as e:
+        st.write("Error leyendo TABLA 2:", e)
+        pass
+        
+    if not lista_fincas: lista_fincas = ["NUEVO MUNDO"]
+    lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
+
+    # Inicializar memoria para el auto-llenado
+    if 'finca_anterior' not in st.session_state:
+        st.session_state.finca_anterior = lista_fincas[0]
+        st.session_state.idx_prod = 3 # TERCERO por defecto
+        st.session_state.idx_tope = 0
+
+    # --- 🎛️ 4. PANEL DE CONSTRUCCIÓN DINÁMICO ---
     st.markdown("#### 📝 Parámetros de la Operación")
     cs1, cs2, cs3, cs4 = st.columns(4)
     coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
     ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
-    finca_sim = cs3.text_input("🏡 Finca", value="NUEVO MUNDO") 
-    tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor", ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"], index=2)
+    
+    # 1. El usuario elige la finca
+    finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+    
+    # 2. Si la finca cambió, recalculamos los índices automáticos
+    if finca_sim != st.session_state.finca_anterior:
+        datos_finca = diccionario_fincas.get(finca_sim, {})
+        prod_auto = datos_finca.get("Productor", "TERCERO")
+        tope_auto = datos_finca.get("Tope_Key", "")
+        
+        # Buscar el índice del productor
+        if prod_auto in lista_productores:
+            st.session_state.idx_prod = lista_productores.index(prod_auto)
+            
+        # Buscar el índice del tope que contenga la palabra clave
+        st.session_state.idx_tope = 0
+        if tope_auto:
+            for i, p_t in enumerate(pistas_con_tope):
+                if tope_auto in p_t:
+                    st.session_state.idx_tope = i
+                    break
+                    
+        st.session_state.finca_anterior = finca_sim
+        st.rerun() # Recarga veloz para aplicar los índices
+
+    # 3. Mostrar campos auto-llenados PERO modificables
+    tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
     
     st.markdown("<br>", unsafe_allow_html=True) 
     cs5, cs6, cs7, cs8 = st.columns(4)
     vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
-    pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope)
+    pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
     horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
 
     if st.button("🚀 Construir Matriz de Validación"):
@@ -488,7 +551,7 @@ if modo_simulacro:
             subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
             subtotal_st = round(tarifa_st_base, 0) * ha_sim
 
-            # --- 🧪 ESCÁNER DE CÓCTEL EN DD_MESCLAS ---
+            # --- 🧪 ESCÁNER DE CÓCTEL ---
             coctel_upper = coctel_sim.upper().strip()
             partes_coctel = coctel_upper.split(" ")
             coctel_base = partes_coctel[0]
@@ -507,12 +570,12 @@ if modo_simulacro:
                 if pd.notna(dosis) and dosis > 0 and prod not in ['NAN', 'NONE', '']:
                     productos_finales.append({"PRODUCTO": prod, "DOSIS": dosis})
 
-            # Inyector de Fertilizantes (Regla replicada de su código)
+            # Inyector de Fertilizantes 
             if sigla_fert:
                 if "ZN" in sigla_fert: productos_finales.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
                 elif "BT" in sigla_fert: productos_finales.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
 
-            # Reglas de Oro del Acondicionador e Imbiosil
+            # Reglas de Oro
             for item in productos_finales:
                 p_name = item["PRODUCTO"]
                 if "ACONDICIONADOR" in p_name:
@@ -520,11 +583,10 @@ if modo_simulacro:
                 elif "IMBIOSIL" in p_name.replace(" ", "") or "INBIOMAG" in p_name:
                     item["DOSIS"] = 1.0 if sigla_fert else 1.5
 
-            # --- 💰 BÚSQUEDA DE PRECIOS EN CONFIGURACIÓN (COLUMNAS I Y J) ---
+            # --- 💰 BÚSQUEDA DE PRECIOS EN CONFIGURACIÓN ---
             tabla_visual = []
             costo_mezcla_total = 0
             
-            # El escáner buscará las columnas PRODUCTO y COSTO (Por defecto índices 8 y 9 que son I y J)
             col_prod_idx, col_costo_idx = 8, 9 
             for i in range(5):
                 row_cfg = df_cfg.iloc[i].astype(str).str.upper().tolist()
@@ -537,10 +599,8 @@ if modo_simulacro:
                 prod = item["PRODUCTO"]
                 dosis = item["DOSIS"]
                 
-                # Cruza el nombre del producto exacto con la columna I
                 mask_precio = df_cfg.iloc[:, col_prod_idx].astype(str).str.upper().str.strip() == prod
                 if mask_precio.any():
-                    # Extrae el precio de la columna J
                     precio_base = pd.to_numeric(df_cfg[mask_precio].iloc[0, col_costo_idx], errors='coerce')
                     if pd.notna(precio_base):
                         precio_margen = precio_base * mult_material
@@ -565,10 +625,10 @@ if modo_simulacro:
             gran_total = subtotal_vuelo + subtotal_st + costo_mezcla_total
             costo_ha = gran_total / ha_sim if ha_sim > 0 else 0
 
-            # --- 📋 RENDERIZADO VISUAL (CLON DE MATRIZ EXCEL) ---
+            # --- 📋 RENDERIZADO VISUAL ---
             st.markdown("---")
-            st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim.upper()}")
-            st.dataframe(df_visual, use_container_width=True, hide_index=True) # Dibuja la tabla negra igual a la imagen
+            st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
+            st.dataframe(df_visual, use_container_width=True, hide_index=True) 
             
             st.markdown("<br>", unsafe_allow_html=True)
             r1, r2, r3, r4 = st.columns(4)
