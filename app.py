@@ -517,32 +517,7 @@ if modo_simulacro:
     
     st.stop()
     
-            # --- 📡 2. INTERFAZ Y CÁLCULOS (Sigue igual de potente) ---
-            lista_productores = st.session_state['df_cfg'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-            lista_pistas = st.session_state['df_pistas'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-
-            st.markdown("#### 📝 Parámetros de la Operación")
-            cs1, cs2, cs3, cs4 = st.columns(4)
-            coctel_sim = cs1.text_input("🧪 Cóctel a Aplicar", value="KRMN63 ZN")
-            ha_sim = cs2.number_input("🚜 Hectáreas a Fumigar", min_value=1.0, value=30.0)
-            tipo_prod_sim = cs3.selectbox("🧑‍🌾 Tipo de Productor", lista_productores) 
-            vuelo_sim = cs4.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
             
-            st.markdown("<br>", unsafe_allow_html=True) 
-            cs5, cs6, cs7, cs8 = st.columns(4)
-            pista_sim = cs5.selectbox("🛣️ Pista de Operación", lista_pistas)
-            horometro_sim = cs6.number_input("⏱️ Horómetro (Horas)", min_value=0.01, value=1.00, step=0.1)
-            
-            if st.button("🚀 Generar Cotización"):
-                # (Aquí va toda la matemática del bloque anterior, se mantiene intacta)
-                # ... [Cálculos de Vuelo, ST y Mezcla] ...
-                st.success("Cálculo realizado con datos frescos de Drive.")
-                # [Mismo código de renderizado de métricas y Gran Total]
-            
-            st.stop()
-        
-          # Así no se mezcla con su código normal de SAP de abajo.
-    st.stop()
 
     
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
