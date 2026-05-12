@@ -769,8 +769,9 @@ elif menu == "⚙️ 3. Validación de Misión":
             df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0)
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B_Val"] * (1 + df_matriz["C_Val"]/100) * ha_dosis_final).round(3)
 
-            # 🎯 CÁLCULO DE MEZCLA (Consumo Real + Redondeo estilo SAP)
-            costo_mezcla_total = (df_matriz["D: Dosis Total (Sistema)"] * df_matriz["E: Costo Unit (+Margen)"]).round(0).sum()
+            # 🎯 CÁLCULO DE MEZCLA BASADO EN EL PEDIDO SAP (Consumo Real / Supervisores)
+            # Cambiamos "D" (nuestro cálculo) por "I" (lo que viene del Pedido SAP de supervisores)
+            costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).round(0).sum()
             
             df_matriz = df_matriz.drop(columns=["B_Val", "C_Val"])
 
