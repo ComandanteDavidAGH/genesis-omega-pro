@@ -639,6 +639,8 @@ if modo_simulacro:
                             "PRODUCTO": prod, 
                             "DOSIS": f"{dosis:.3f}", 
                             "X": "-", 
+                            "PRECIO UNIT.": f"$ {precio_base:,.0f}".replace(",", "."),
+                            "PRECIO + MARGEN": f"$ {precio_margen:,.0f}".replace(",", "."),
                             "COSTO TOTAL": f"$ {costo_total_prod:,.0f}".replace(",", ".")
                         })
                 else:
@@ -646,24 +648,33 @@ if modo_simulacro:
                         "PRODUCTO": f"⚠️ {prod} (Sin Precio)", 
                         "DOSIS": f"{dosis:.3f}", 
                         "X": "-", 
+                        "PRECIO UNIT.": "$ 0",
+                        "PRECIO + MARGEN": "$ 0",
                         "COSTO TOTAL": "$ 0"
                     })
 
             df_visual = pd.DataFrame(tabla_visual)
-            gran_total = subtotal_vuelo + subtotal_st + costo_mezcla_total
+            
+            # 💥 CÁLCULOS MEGAZORD (Aplicando Recargo)
+            gran_total_base = subtotal_vuelo + subtotal_st + costo_mezcla_total
+            valor_recargo = gran_total_base * (recargo_sim / 100)
+            gran_total = gran_total_base + valor_recargo
             costo_ha = gran_total / ha_sim if ha_sim > 0 else 0
 
             # --- 📋 RENDERIZADO VISUAL ---
             st.markdown("---")
             st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
+            st.caption(f"🗓️ **Días Ciclo:** {dias_ciclo_sim} días | 🚜 **Área:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
+            
             st.dataframe(df_visual, use_container_width=True, hide_index=True) 
             
             st.markdown("<br>", unsafe_allow_html=True)
-            r1, r2, r3, r4 = st.columns(4)
-            r1.metric("👨‍🔬 Serv. Tec (Subtotal)", f"$ {subtotal_st:,.0f}".replace(",", "."))
-            r2.metric("✈️ Vuelo (Subtotal)", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
-            r3.metric("🧪 Mezcla (Subtotal)", f"$ {costo_mezcla_total:,.0f}".replace(",", "."))
-            r4.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px;'>💰 COSTO x HECTÁREA</p><h4 style='margin:0; color:white;'>$ {costo_ha:,.0f}</h4></div>", unsafe_allow_html=True)
+            r1, r2, r3, r4, r5 = st.columns(5)
+            r1.metric("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
+            r2.metric("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
+            r3.metric("🧪 Mezcla", f"$ {costo_mezcla_total:,.0f}".replace(",", "."))
+            r4.metric(f"⚠️ Recargo ({recargo_sim}%)", f"$ {valor_recargo:,.0f}".replace(",", "."))
+            r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px;'>💰 COSTO x HA</p><h4 style='margin:0; color:white;'>$ {costo_ha:,.0f}</h4></div>", unsafe_allow_html=True)
             
             st.markdown("---")
             st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 COSTO TOTAL FINCA: $ {gran_total:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
