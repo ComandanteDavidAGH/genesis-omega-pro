@@ -783,26 +783,26 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         st.markdown("---")
         # ====================================================================
-        # 💰 LIQUIDACIÓN FINAL Y CAJAS DE COPIA SAP (RESTAURADO)
+        # 💰 LIQUIDACIÓN FINAL Y CAJAS DE COPIA SAP (TRAZABILIDAD FINCA A FINCA)
         # ====================================================================
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 1. Cálculos de Totales y Unitarios Puros (Sin Margen ST)
-        tarifa_st_final = d_ciclo_factura * tarifa_serv_tec_base
-        subtotal_st = tarifa_st_final * ha_dosis_final
-        unitario_st = tarifa_st_final # 🎯 Puro, tal como se cobra
-        
+        # 1. Cálculos Unitarios Puros (Tarifas Base)
+        unitario_st = d_ciclo_factura * tarifa_serv_tec_base
         unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        gran_total = costo_mezcla_total + costo_total_vuelos + subtotal_st
+        # 2. 🎯 CÁLCULOS TOTALES EXCLUSIVOS DE ESTA FINCA (Para Trazabilidad SAP)
+        subtotal_st_finca = unitario_st * ha_dosis_final
+        subtotal_vuelo_finca = unitario_vuelo * ha_dosis_final # <- El ajuste maestro
+        
+        gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
         costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
-        # --- MÉTRICAS DE CONTROL (Topes Restaurados) ---
+        # --- MÉTRICAS DE CONTROL ---
         r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🚜 Hectáreas Cobro", f"{total_ha_cobro_escuadron:.2f} Ha")
+        r1.metric("🚜 Hectáreas Factura (Finca)", f"{ha_dosis_final:.2f} Ha") # Mostrar las Ha de esta finca
         
-        # 🎯 CASILLA DE TOPES RESTAURADA
         if mision_solo_dron: 
             r2.metric("🛣️ Condición Pista", "NO APLICA (Dron)")
         else: 
@@ -840,11 +840,11 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("<br>", unsafe_allow_html=True)
         
         # --- TOTALES INFORMATIVOS ---
-        st.markdown("##### 💵 Totales de Posiciones (Informativo)")
+        st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Total Servicio Vuelo", f"$ {fmt_sap(costo_total_vuelos)}")
-        c_tot2.metric("Total Asistencia Técnica", f"$ {fmt_sap(subtotal_st)}")
-        c_tot3.metric("🔥 GRAN TOTAL FACTURA", f"$ {fmt_sap(gran_total)}", f"Basado en {ha_dosis_final} Ha")
+        c_tot1.metric("Subtotal Vuelo (Finca)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
+        c_tot2.metric("Subtotal Asist. Técnica", f"$ {fmt_sap(subtotal_st_finca)}")
+        c_tot3.metric("🔥 GRAN TOTAL FINCA", f"$ {fmt_sap(gran_total)}")
         
         # ====================================================================
         # 🛰️ COORDENADAS DE LANZAMIENTO (NO BORRAR)
