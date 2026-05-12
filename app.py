@@ -396,41 +396,39 @@ elif menu == "⚙️ 3. Validación de Misión":
     if modo_simulacro:
             st.info("💡 Está operando en MODO SIMULADOR. Calcule costos sin necesidad de archivo SAP.")
             
-            # --- 📡 EXTRACCIÓN DE DATOS REALES DE SAP ---
-            # Verificamos que las bases de datos estén cargadas en el radar
-            if 'df_cfg' not in st.session_state or 'df_pistas' not in st.session_state:
-                st.warning("⚠️ Debe cargar los archivos en el Módulo 2 para sincronizar Productores y Pistas reales.")
-                st.stop()
+            # --- 📡 EXTRACCIÓN INTELIGENTE DE DATOS ---
+            # 1. Intentamos beber del archivo madre en memoria (Si ya pasó por el Módulo 2)
+            if 'df_cfg' in st.session_state and 'df_pistas' in st.session_state:
+                lista_productores = st.session_state['df_cfg'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+                lista_productores = [p for p in lista_productores if p != "NAN" and p != ""]
                 
-            # Extraemos la lista exacta de productores y pistas de sus archivos
-            lista_productores = st.session_state['df_cfg'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-            lista_productores = [p for p in lista_productores if p != "NAN" and p != ""]
-            
-            lista_pistas = st.session_state['df_pistas'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-            lista_pistas = [p for p in lista_pistas if p != "NAN" and p != ""]
+                lista_pistas = st.session_state['df_pistas'].iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+                lista_pistas = [p for p in lista_pistas if p != "NAN" and p != ""]
+            else:
+                # 2. Si acaba de abrir la app y no hay memoria, usamos esta lista de emergencia (¡No bloqueamos la misión!)
+                lista_productores = ["TERCEROS", "ASOCIADO", "PROPIO"] 
+                lista_pistas = ["LA LUCHA", "PLUC", "ZONA BANANERA", "SIN PISTA"] # <-- Puede cambiar estos nombres por sus pistas más comunes
 
-            # --- 🎛️ PANEL DE DATOS DE ENTRADA (Nivel Avanzado) ---
+            # --- 🎛️ PANEL DE DATOS DE ENTRADA ---
             st.markdown("#### 📝 Parámetros de la Operación")
             
             # Fila 1: Datos Generales
             cs1, cs2, cs3, cs4 = st.columns(4)
             coctel_sim = cs1.text_input("🧪 Cóctel a Aplicar", value="KRMN63 ZN")
             ha_sim = cs2.number_input("🚜 Hectáreas a Fumigar", min_value=1.0, value=30.0)
-            tipo_prod_sim = cs3.selectbox("🧑‍🌾 Tipo de Productor", lista_productores if len(lista_productores) > 0 else ["Sin Datos"]) 
+            tipo_prod_sim = cs3.selectbox("🧑‍🌾 Tipo de Productor", lista_productores) 
             vuelo_sim = cs4.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
             
             # Fila 2: Datos Específicos de Vuelo
-            st.markdown("<br>", unsafe_allow_html=True) # Pequeño espacio visual
+            st.markdown("<br>", unsafe_allow_html=True) 
             cs5, cs6, cs7, cs8 = st.columns(4)
-            pista_sim = cs5.selectbox("🛣️ Pista de Operación", lista_pistas if len(lista_pistas) > 0 else ["Sin Datos"])
+            pista_sim = cs5.selectbox("🛣️ Pista de Operación", lista_pistas)
             horometro_sim = cs6.number_input("⏱️ Horómetro (Horas)", min_value=0.01, value=1.00, step=0.1)
-            # (Las columnas 7 y 8 quedan vacías para mantener el diseño ordenado)
             
             if st.button("🚀 Generar Cotización"):
                 st.success(f"Simulando operación en pista {pista_sim} para {ha_sim} Ha con el cóctel {coctel_sim}...")
-                st.warning("⚠️ Interfaz conectada a las bases de datos. ¡Falta inyectar el motor matemático final!")
+                st.warning("⚠️ Interfaz lista. Falta inyectar el motor matemático final.")
             
-            # 🛑 ESTA ES LA MAGIA: Si el simulador está activo, detenemos la app aquí.
             st.stop()
         
           # Así no se mezcla con su código normal de SAP de abajo.
