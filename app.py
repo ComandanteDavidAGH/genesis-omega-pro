@@ -387,17 +387,16 @@ elif menu == "📥 2. Carga Facturación":
 # =====================================================================
 elif menu == "⚙️ 3. Validación de Misión":
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
-    # ====================================================================
 # ====================================================================
-# 🔮 MODO SIMULADOR DE COTIZACIONES (CLON DE VALIDACIÓN)
+# 🔮 MODO SIMULADOR DE COTIZACIONES (CLON MEGAZORD DE VALIDACIÓN)
 # ====================================================================
 st.markdown("---")
 modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
 
 if modo_simulacro:
-    st.info("💡 MODO CLON: Extrayendo Cerebro Dinámico de TABLA 2, Validación Dosis y Configuración.")
+    st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico.")
     
-    # --- 📡 1. CONEXIÓN A LA BÓVEDA ---
+    # --- 📡 1. CONEXIÓN A LA BÓVEDA (EXTRACCIÓN COMPLETA) ---
     if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
         st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
         url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
@@ -415,7 +414,6 @@ if modo_simulacro:
                             st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
                             st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
                             
-                            # Intentamos cargar TABLA 2, si tiene otro nombre exacto lo busca
                             hojas = xls.sheet_names
                             nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
                             st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
@@ -435,115 +433,86 @@ if modo_simulacro:
     df_vd = st.session_state['df_vd']
     df_t2 = st.session_state['df_t2']
 
-    # --- 📡 2. EXTRACCIÓN DE TOPES (Escáner 360° en Validación Dosis) ---
+    # --- 📡 2. EXTRACCIÓN ROBUSTA DE TOPES (Escáner 360°) ---
     pistas_con_tope = []
     try:
-        # 1. Unimos los "Títulos ocultos" (columns) y las primeras 10 filas para rastrear
-        filas_a_revisar = [ [str(c).upper().strip() for c in df_vd.columns] ]
+        # Escaneamos títulos y filas para hallar PISTA, TOPE y PRECIO
+        filas_a_revisar = [[str(c).upper().strip() for c in df_vd.columns]]
         for i in range(min(10, len(df_vd))):
-            filas_a_revisar.append( [str(x).upper().strip() for x in df_vd.iloc[i]] )
+            filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
         
         p_idx, t_idx, pr_idx = -1, -1, -1
-        inicio_datos = 0
-        
-        # 2. Rastrear exactamente la palabra TOPE y mirar hacia su izquierda (AK, AL, AM)
         for idx_fila, row_vals in enumerate(filas_a_revisar):
             for i, val in enumerate(row_vals):
                 if val.startswith('TOPE'):
                     t_idx = i
-                    # Busca PISTA y PRECIOS en las 3 columnas a la izquierda de TOPE
                     for k in range(max(0, i-3), i):
                         if row_vals[k].startswith('PISTA'): p_idx = k
                         if 'PRECIO' in row_vals[k]: pr_idx = k
-                    if p_idx != -1: break
-            if p_idx != -1 and t_idx != -1:
-                # Si lo halló en los Títulos (idx 0), los datos inician en la fila 0 real
-                inicio_datos = 0 if idx_fila == 0 else idx_fila
-                break
+            if p_idx != -1 and t_idx != -1: break
                 
-        # 3. Absorber los datos sin fallar
         if p_idx != -1 and t_idx != -1:
-            for j in range(inicio_datos, len(df_vd)):
+            for j in range(0, len(df_vd)):
                 p_name = str(df_vd.iloc[j, p_idx]).strip()
                 if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
                 p_tope = str(df_vd.iloc[j, t_idx]).strip()
                 if p_tope in ['NAN', 'NONE', '']: continue
-                
-                p_precio = 0
-                if pr_idx != -1:
-                    val = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce')
-                    if pd.notna(val): p_precio = val
+                p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
+                if pd.isna(p_precio): p_precio = 0
                 
                 texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
-                if texto_tope not in pistas_con_tope:
-                    pistas_con_tope.append(texto_tope)
-    except Exception as e:
-        pass
-        
-    # 4. Escudo de Respaldo 100% Fiel a su Imagen (Jamás se quedará vacío)
+                if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
+    except: pass
+    
     if not pistas_con_tope: 
         pistas_con_tope = [
             "PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($71.517)", "PLUC - TOPE PARCELA INTER < 20ha ($98.335)",
             "PORI - TOPE MAX GENERAL ($62.718)", "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)",
             "PDIV - PORCION TERRESTRE ($8.504)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"
         ]
-    # --- 🧠 3. CEREBRO DINÁMICO: EXTRACCIÓN DE FINCAS DESDE TABLA 2 ---
+
+    # --- 🧠 3. CEREBRO DINÁMICO (TABLA 2) ---
     diccionario_fincas = {}
     lista_fincas = []
     try:
-        # Busca Finca (Col A), Productor (Col F), Tope (Col G) - Índices 0, 5, 6
         for idx, row in df_t2.iterrows():
             f_name = str(row.iloc[0]).strip().upper()
             if f_name not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']:
                 p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "TERCERO"
                 t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
-                
-                # Guardar en memoria
                 diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
-                if f_name not in lista_fincas:
-                    lista_fincas.append(f_name)
-    except Exception as e:
-        st.write("Error leyendo TABLA 2:", e)
-        pass
+                if f_name not in lista_fincas: lista_fincas.append(f_name)
+    except: pass
         
     if not lista_fincas: lista_fincas = ["NUEVO MUNDO"]
     lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
 
-    # Inicializar memoria para el auto-llenado
     if 'finca_anterior' not in st.session_state:
         st.session_state.finca_anterior = lista_fincas[0]
-        st.session_state.idx_prod = 3 # TERCERO por defecto
+        st.session_state.idx_prod = 3
         st.session_state.idx_tope = 0
 
-    # --- 🎛️ 4. PANEL DE CONSTRUCCIÓN DINÁMICO (MEGAZORD + TRANSPARENCIA) ---
+    # --- 🎛️ 4. PANEL DE CONSTRUCCIÓN DINÁMICO ---
     st.markdown("#### 📝 Parámetros de la Operación")
     cs1, cs2, cs3, cs4 = st.columns(4)
     coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
     ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
-    
-    # 1. El usuario elige la finca
     finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
     
-    # 2. Si la finca cambió, recalculamos los índices automáticos
     if finca_sim != st.session_state.finca_anterior:
-        datos_finca = diccionario_fincas.get(finca_sim, {})
-        prod_auto = datos_finca.get("Productor", "TERCERO")
-        tope_auto = datos_finca.get("Tope_Key", "")
-        
-        if prod_auto in lista_productores:
-            st.session_state.idx_prod = lista_productores.index(prod_auto)
-            
+        datos = diccionario_fincas.get(finca_sim, {})
+        if datos.get("Productor") in lista_productores:
+            st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
         st.session_state.idx_tope = 0
-        if tope_auto:
+        tope_k = datos.get("Tope_Key", "")
+        if tope_k:
             for i, p_t in enumerate(pistas_con_tope):
-                if tope_auto in p_t:
+                if tope_k in p_t:
                     st.session_state.idx_tope = i
                     break
-                    
         st.session_state.finca_anterior = finca_sim
         st.rerun()
 
-    # 3. Mostrar campos auto-llenados PERO modificables
     tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
     
     st.markdown("<br>", unsafe_allow_html=True) 
@@ -551,142 +520,110 @@ if modo_simulacro:
     vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
     pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
     horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-    
-    # 💥 AQUÍ ESTÁN LAS DOS ARMAS MEGAZORD (Recargo calibrado a PESOS)
     dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=12, step=1)
-    recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=0.0, step=1000.0, help="Valor en pesos por hectárea (Ej: 5000)")
+    
+    recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
-    if st.button("🚀 Construir Matriz de Validación"):
+    if st.button("🚀 Construir Matriz MEGAZORD"):
         import re
         try:
             # --- ⚙️ MÁRGENES FINANCIEROS ---
-            if tipo_prod_sim == "TERCERO": mult_material = 1.451; tarifa_st_base = 1583.0; mult_avion = 1.451
-            elif tipo_prod_sim in ["AFILIADO", "COOPERATIVA"]: mult_material = 1.164; tarifa_st_base = 1510.0; mult_avion = 1.164
-            elif tipo_prod_sim == "ORGANICO": mult_material = 1.011; tarifa_st_base = 1337.0; mult_avion = 1.011
-            else: mult_material = 1.112; tarifa_st_base = 1337.0; mult_avion = 1.112
+            if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
+            elif tipo_prod_sim in ["AFILIADO", "COOPERATIVA"]: mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
+            elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
+            else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
             
-            tarifa_vuelo_base = 2100465.0 
+            # 🚀 AVIÓN THRUS SR2
+            tarifa_vuelo_base = 4606562.0 
 
             val_tope = 0.0
             match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
             if match: val_tope = float(match.group(1).replace('.', ''))
 
-            # Liquidación Avión/Drone
-            if vuelo_sim == "DRONE": unitario_vuelo = 71280 * mult_avion
+            # Liquidación Vuelo
+            if vuelo_sim == "DRONE": unitario_vuelo = 71280 * mult_v
             else:
-                costo_vuelo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
-                if val_tope > 0: costo_vuelo_bruto = min(costo_vuelo_bruto, val_tope)
-                unitario_vuelo = costo_vuelo_bruto * mult_avion
+                costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
+                unitario_vuelo = costo_bruto * mult_v
 
             subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
-            subtotal_st = round(tarifa_st_base, 0) * ha_sim
+            subtotal_st = round(st_base, 0) * ha_sim
 
             # --- 🧪 ESCÁNER DE CÓCTEL ---
-            coctel_upper = coctel_sim.upper().strip()
-            partes_coctel = coctel_upper.split(" ")
-            coctel_base = partes_coctel[0]
-            sigla_fert = partes_coctel[1] if len(partes_coctel) > 1 else ""
+            coctel_u = coctel_sim.upper().strip()
+            partes = coctel_u.split(" ")
+            base_c = partes[0]
+            sigla_f = partes[1] if len(partes) > 1 else ""
 
-            col_cocteles = df_recetas.columns[0]
-            col_productos = df_recetas.columns[1]
-            col_dosis = df_recetas.columns[2]
-            
-            receta_cruda = df_recetas[df_recetas[col_cocteles].astype(str).str.upper() == coctel_base]
-            
-            productos_finales = []
-            for idx, row in receta_cruda.iterrows():
-                prod = str(row[col_productos]).upper().strip()
-                dosis = pd.to_numeric(row[col_dosis], errors='coerce')
-                if pd.notna(dosis) and dosis > 0 and prod not in ['NAN', 'NONE', '']:
-                    productos_finales.append({"PRODUCTO": prod, "DOSIS": dosis})
+            receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
+            prods_f = []
+            for idx, row in receta_c.iterrows():
+                p = str(row.iloc[1]).upper().strip()
+                d = pd.to_numeric(row.iloc[2], errors='coerce')
+                if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
-            # Inyector de Fertilizantes 
-            if sigla_fert:
-                if "ZN" in sigla_fert: productos_finales.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
-                elif "BT" in sigla_fert: productos_finales.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
+            if sigla_f:
+                if "ZN" in sigla_f: prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
+                elif "BT" in sigla_f: prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
 
-            # Reglas de Oro
-            for item in productos_finales:
-                p_name = item["PRODUCTO"]
-                if "ACONDICIONADOR" in p_name:
-                    item["DOSIS"] = 0.06 if ("ZN" in coctel_upper or "BT" in coctel_upper) else 0.02
-                elif "IMBIOSIL" in p_name.replace(" ", "") or "INBIOMAG" in p_name:
-                    item["DOSIS"] = 1.0 if sigla_fert else 1.5
+            for item in prods_f:
+                if "ACONDICIONADOR" in item["PRODUCTO"]:
+                    item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u) else 0.02
+                elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]:
+                    item["DOSIS"] = 1.0 if sigla_f else 1.5
 
-            # --- 💰 BÚSQUEDA DE PRECIOS EN CONFIGURACIÓN (CON TRANSPARENCIA) ---
+            # --- 💰 BÚSQUEDA DE PRECIOS CON TRANSPARENCIA ---
             tabla_visual = []
-            costo_mezcla_total = 0
+            mezcla_total = 0
             
-            col_prod_idx, col_costo_idx = 8, 9 
+            c_p_i, c_c_i = 8, 9 
             for i in range(5):
-                row_cfg = df_cfg.iloc[i].astype(str).str.upper().tolist()
-                if 'PRODUCTO' in row_cfg and 'COSTO' in row_cfg:
-                    col_prod_idx = row_cfg.index('PRODUCTO')
-                    col_costo_idx = row_cfg.index('COSTO')
-                    break
+                r_c = df_cfg.iloc[i].astype(str).str.upper().tolist()
+                if 'PRODUCTO' in r_c and 'COSTO' in r_c:
+                    c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO'); break
 
-            for item in productos_finales:
-                prod = item["PRODUCTO"]
-                dosis = item["DOSIS"]
-                
-                mask_precio = df_cfg.iloc[:, col_prod_idx].astype(str).str.upper().str.strip() == prod
-                if mask_precio.any():
-                    precio_base = pd.to_numeric(df_cfg[mask_precio].iloc[0, col_costo_idx], errors='coerce')
-                    if pd.notna(precio_base):
-                        precio_margen = precio_base * mult_material
-                        costo_total_prod = round((dosis * ha_sim) * precio_margen, 0)
-                        costo_mezcla_total += costo_total_prod
-                        
-                        tabla_visual.append({
-                            "PRODUCTO": prod, 
-                            "DOSIS": f"{dosis:.3f}", 
-                            "X": "-", 
-                            "PRECIO UNIT.": f"$ {precio_base:,.0f}".replace(",", "."),
-                            "PRECIO + MARGEN": f"$ {precio_margen:,.0f}".replace(",", "."),
-                            "COSTO TOTAL": f"$ {costo_total_prod:,.0f}".replace(",", ".")
-                        })
+            for item in prods_f:
+                p, d = item["PRODUCTO"], item["DOSIS"]
+                mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                if mask.any():
+                    p_b = pd.to_numeric(df_cfg[mask].iloc[0, c_c_i], errors='coerce')
+                    if pd.notna(p_b):
+                        p_m = p_b * mult_m
+                        c_t_p = round((d * ha_sim) * p_m, 0)
+                        mezcla_total += c_t_p
+                        tabla_visual.append({"PRODUCTO": p, "DOSIS": f"{d:.3f}", "X": "-", 
+                                             "P. UNIT.": f"$ {p_b:,.0f}".replace(",","."),
+                                             "P. + MARGEN": f"$ {p_m:,.0f}".replace(",","."),
+                                             "COSTO TOTAL": f"$ {c_t_p:,.0f}".replace(",",".")})
                 else:
-                    tabla_visual.append({
-                        "PRODUCTO": f"⚠️ {prod} (Sin Precio)", 
-                        "DOSIS": f"{dosis:.3f}", 
-                        "X": "-", 
-                        "PRECIO UNIT.": "$ 0",
-                        "PRECIO + MARGEN": "$ 0",
-                        "COSTO TOTAL": "$ 0"
-                    })
+                    tabla_visual.append({"PRODUCTO": f"⚠️ {p}", "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": "$ 0", "P. + MARGEN": "$ 0", "COSTO TOTAL": "$ 0"})
 
-            df_visual = pd.DataFrame(tabla_visual)
+            # --- 💥 MATEMÁTICA FINAL (RECARGO EN PESOS) ---
+            recargo_m = round(recargo_sim * mult_v, 0)
+            valor_recargo_t = recargo_m * ha_sim
             
-            # --- 💥 CÁLCULOS MEGAZORD (Matemática Exacta de Recargo) ---
-            # El recargo se multiplica por el margen del productor y luego por las hectáreas
-            recargo_unitario_margen = recargo_sim * mult_avion
-            valor_recargo_total = round(recargo_unitario_margen, 0) * ha_sim
-            
-            gran_total_base = subtotal_vuelo + subtotal_st + costo_mezcla_total
-            gran_total = gran_total_base + valor_recargo_total
-            costo_ha = gran_total / ha_sim if ha_sim > 0 else 0
+            total_finca = subtotal_vuelo + subtotal_st + mezcla_total + valor_recargo_t
+            costo_ha = total_finca / ha_sim if ha_sim > 0 else 0
 
-            # --- 📋 RENDERIZADO VISUAL ---
+            # --- 📋 RENDERIZADO ---
             st.markdown("---")
             st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
-            st.caption(f"🗓️ **Días Ciclo:** {dias_ciclo_sim} días | 🚜 **Área:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
-            
-            st.dataframe(df_visual, use_container_width=True, hide_index=True) 
+            st.caption(f"🗓️ **Días Ciclo:** {dias_ciclo_sim} | 🚜 **Área:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
+            st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
             
             st.markdown("<br>", unsafe_allow_html=True)
             r1, r2, r3, r4, r5 = st.columns(5)
             r1.metric("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
             r2.metric("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
-            r3.metric("🧪 Mezcla", f"$ {costo_mezcla_total:,.0f}".replace(",", "."))
-            r4.metric(f"⚠️ Recargo", f"$ {valor_recargo_total:,.0f}".replace(",", "."))
+            r3.metric("🧪 Mezcla", f"$ {mezcla_total:,.0f}".replace(",", "."))
+            r4.metric("⚠️ Recargo", f"$ {valor_recargo_t:,.0f}".replace(",", "."))
             r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px;'>💰 COSTO x HA</p><h4 style='margin:0; color:white;'>$ {costo_ha:,.0f}</h4></div>", unsafe_allow_html=True)
             
             st.markdown("---")
-            st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 COSTO TOTAL FINCA: $ {gran_total:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
+            st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
 
-        except Exception as e:
-            st.error(f"Error en la clonación de matriz: {e}")
-            
+        except Exception as e: st.error(f"Error: {e}")
     st.stop()    
             
 
