@@ -725,12 +725,25 @@ elif menu == "⚙️ 3. Validación de Misión":
                         dosis_teorica = d_oficial
                         break
 
+                # 🚀 REGLA DE ORO EXCEL: SOBREESCRITURA CONDICIONAL MULTIPLE
+                if "ACONDICIONADOR" in nombre_limpio:
+                    if "ZN" in coctel_ganador or "BT" in coctel_ganador:
+                        dosis_teorica = 0.06
+                    else:
+                        dosis_teorica = 0.02
+                elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio:
+                    # Si el cóctel empieza con "IN", es el líder (1.5). Si va de mezcla, es 1.0.
+                    if coctel_ganador.startswith("IN"):
+                        dosis_teorica = 1.5
+                    else:
+                        dosis_teorica = 1.0
+                
                 # Rescate final (Si es un fertilizante o Mancol, se calcula matemáticamente)
                 if dosis_teorica is None:
                     dosis_teorica = cant_total_pedido / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
                 costo_margen = costo_unit * mult_material
-
+                
                 matriz_datos.append({
                     "A: Producto": nombre_p,
                     "B: Dosis/Ha (SAP)": round(dosis_teorica, 3),
