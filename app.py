@@ -410,7 +410,7 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.stop()
         
           # Así no se mezcla con su código normal de SAP de abajo.
-          st.stop()
+    st.stop()
 
     
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
