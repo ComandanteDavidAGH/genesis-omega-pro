@@ -1039,88 +1039,96 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
             
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
-            with st.spinner("🚀 Inyectando datos en TABLA 1 y APOYO..."):
-                try:
-                    if "gcp_credentials" in st.secrets:
-                        cred_dict = dict(st.secrets["gcp_credentials"])
-                        gc = gspread.service_account_from_dict(cred_dict)
-                    else:
-                        gc = gspread.service_account(filename='credenciales.json')
-                    
-                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                    boveda = gc.open_by_url(url_boveda)
-                    hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
-                    hoja_maestra = boveda.worksheet("TABLA 1")
+                with st.spinner("🚀 Inyectando datos con Precisión de Francotirador..."):
+                    try:
+                        if "gcp_credentials" in st.secrets:
+                            cred_dict = dict(st.secrets["gcp_credentials"])
+                            gc = gspread.service_account_from_dict(cred_dict)
+                        else:
+                            gc = gspread.service_account(filename='credenciales.json')
+                        
+                        url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                        boveda = gc.open_by_url(url_boveda)
+                        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
+                        hoja_maestra = boveda.worksheet("TABLA 1")
 
-                    fecha_str = fecha_operacion.strftime("%d/%m/%Y")
-                    dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
-                    num_sem = fecha_operacion.isocalendar()[1]
-                    os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
-                    
-                    bloque_f = ""; sector_f = ""; ha_bruta_f = ""
-                    if not df_t2.empty:
-                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia.upper().strip()]
-                        if not match_f.empty:
-                            sector_f = match_f.iloc[0, 1]
-                            ha_bruta_f = match_f.iloc[0, 2]
-                            bloque_f = match_f.iloc[0, 3]
+                        fecha_str = fecha_operacion.strftime("%d/%m/%Y")
+                        dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
+                        num_sem = fecha_operacion.isocalendar()[1]
+                        os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
+                        
+                        bloque_f = ""; sector_f = ""; ha_bruta_f = ""
+                        if not df_t2.empty:
+                            match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia.upper().strip()]
+                            if not match_f.empty:
+                                sector_f = match_f.iloc[0, 1]
+                                ha_bruta_f = match_f.iloc[0, 2]
+                                bloque_f = match_f.iloc[0, 3]
 
-                    ha_f = float(ha_dosis_final)
-                    h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
-                    vol_total_gln = ha_f * 6
-                    rend_min = h_total_v * 60
-                    piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
-                    hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
+                        ha_f = float(ha_dosis_final)
+                        h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
+                        vol_total_gln = ha_f * 6
+                        rend_min = h_total_v * 60
+                        piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+                        hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
 
-                    row_azul = [""] * 34
-                    row_azul[0] = os_virtual
-                    row_azul[1] = bloque_f
-                    row_azul[2] = finca_limpia
-                    row_azul[3] = sector_f
-                    row_azul[4] = ha_bruta_f
-                    row_azul[5] = ha_f
-                    row_azul[6] = coctel_ganador
-                    row_azul[7] = fecha_str
-                    row_azul[8] = dia_sem
-                    row_azul[9] = num_sem
-                    row_azul[10] = h_total_v
-                    row_azul[11] = 6
-                    row_azul[12] = round(vol_total_gln, 2)
-                    row_azul[13] = round(h_total_v, 2)
-                    row_azul[14] = round(rend_min, 2)
-                    row_azul[15] = piloto_f
-                    row_azul[16] = hk_f
-                    row_azul[17] = tipo_mision
-                    row_azul[18] = float(gran_total)
-                    row_azul[19] = float(costo_por_ha)
-                    row_azul[20] = float(recargo_final)
-                    row_azul[21] = float(gran_total)
-                    row_azul[23] = pista_manual
-                    row_azul[28] = float(gran_total)
-                    row_azul[32] = tipo_productor
-                    row_azul[33] = "GÉNESIS_V2_PRO"
+                        row_azul = [""] * 34
+                        row_azul[0] = os_virtual
+                        row_azul[1] = bloque_f
+                        row_azul[2] = finca_limpia
+                        row_azul[3] = sector_f
+                        row_azul[4] = ha_bruta_f
+                        row_azul[5] = ha_f
+                        row_azul[6] = coctel_ganador
+                        row_azul[7] = fecha_str
+                        row_azul[8] = dia_sem
+                        row_azul[9] = num_sem
+                        row_azul[10] = h_total_v
+                        row_azul[11] = 6
+                        row_azul[12] = round(vol_total_gln, 2)
+                        row_azul[13] = round(h_total_v, 2)
+                        row_azul[14] = round(rend_min, 2)
+                        row_azul[15] = piloto_f
+                        row_azul[16] = hk_f
+                        row_azul[17] = tipo_mision
+                        row_azul[18] = float(gran_total)
+                        row_azul[19] = float(costo_por_ha)
+                        row_azul[20] = float(recargo_final)
+                        row_azul[21] = float(gran_total)
+                        row_azul[23] = pista_manual
+                        row_azul[28] = float(gran_total)
+                        row_azul[32] = tipo_productor
+                        row_azul[33] = "GÉNESIS_V2_PRO"
 
-                    fila_apoyo = [""] * 15
-                    fila_apoyo[0] = "=IFERROR(ROW()-3; 0)" 
-                    fila_apoyo[1] = finca_limpia
-                    fila_apoyo[2] = ha_f
-                    fila_apoyo[3] = float(costo_por_ha)
-                    fila_apoyo[5] = fecha_str
-                    fila_apoyo[8] = coctel_ganador
-                    fila_apoyo[10] = pista_manual
-                    fila_apoyo[13] = tipo_mision
-                    
-                    hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
-                    hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
+                        fila_apoyo = [""] * 15
+                        fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" # ⚠️ API de Google exige la coma aquí
+                        fila_apoyo[1] = finca_limpia
+                        fila_apoyo[2] = ha_f
+                        fila_apoyo[3] = float(costo_por_ha)
+                        fila_apoyo[5] = fecha_str
+                        fila_apoyo[8] = coctel_ganador
+                        fila_apoyo[10] = pista_manual
+                        fila_apoyo[13] = tipo_mision
+                        
+                        # 🔥 ESTRATEGIA FRANCOTIRADOR: Ignoramos la fórmula MAP y buscamos la fila real
+                        col_A_azul = [x for x in hoja_maestra.col_values(1) if str(x).strip() != ""]
+                        ultima_fila_azul = len(col_A_azul) + 1
+                        
+                        col_B_apoyo = [x for x in hoja_apoyo.col_values(2) if str(x).strip() != ""]
+                        ultima_fila_apoyo = len(col_B_apoyo) + 1
 
-                    st.balloons()
-                    st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia: {os_virtual}")
-                    
-                    if 'memoria_excel' in st.session_state:
-                        del st.session_state['memoria_excel']
+                        # Inyectamos exactamente en la celda correspondiente
+                        hoja_maestra.update(range_name=f"A{ultima_fila_azul}", values=[row_azul], value_input_option='USER_ENTERED')
+                        hoja_apoyo.update(range_name=f"A{ultima_fila_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
 
-                except Exception as e_save:
-                    st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
+                        st.balloons()
+                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada en la fila {ultima_fila_azul}.")
+                        
+                        if 'memoria_excel' in st.session_state:
+                            del st.session_state['memoria_excel']
+
+                    except Exception as e_save:
+                        st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
                     
 # =====================================================================
 # ⌨️ 4. INGRESO MANUAL ACELERADO Y LEGALIZACIÓN (OS)
