@@ -642,37 +642,54 @@ elif menu == "⚙️ 3. Validación de Misión":
     else:
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones")
-            c0, c1, c2 = st.columns([1, 2, 2])
-            fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
-            
-            df_t2 = st.session_state.get('df_config', pd.DataFrame())
-            lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist()) if not df_t2.empty else []
-            finca_sel = c1.selectbox("📍 Seleccione Finca:", ["---"] + lista_fincas)
-            
-            vuelos_informe = st.session_state['df_pistas']
-            vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + vuelos_informe['ORIGEN'].unique().tolist())
+        
+        # --- 🛰️ NUEVO RADAR SAP ---
+        c_vacio, c_radar = st.columns([2, 2])
+        pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
+
+        finca_sap = ""
+        st.session_state['ha_radar_sap'] = 0.0  # Guardamos las Ha en memoria para usarlas más abajo
+
+        if pedido_sap and 'df_pedidos' in st.session_state:
+            df_p = st.session_state['df_pedidos']
+            match_sap = df_p[df_p.astype(str).apply(lambda x: x.str.contains(pedido_sap)).any(axis=1)]
+            if not match_sap.empty:
+                try:
+                    col_finca = [c for c in df_p.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
+                    col_ha = [c for c in df_p.columns if 'HECT' in str(c).upper() or 'CANT' in str(c).upper()][0]
+                    
+                    finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
+                    st.session_state['ha_radar_sap'] = float(match_sap.iloc[0][col_ha])
+                    
+                    st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
+                except:
+                    pass
+        # ---------------------------
+
+        c0, c1, c2 = st.columns([1, 2, 2])
+        fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
+        
+        df_t2 = st.session_state.get('df_config', pd.DataFrame())
+        lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist()) if not df_t2.empty else []
+        opciones_finca = ["---"] + lista_fincas
+        
+        # 🎯 Inteligencia de auto-selección de Finca
+        idx_finca = 0
+        if finca_sap:
+            for i, f in enumerate(opciones_finca):
+                if f.upper() in finca_sap or finca_sap in f.upper():
+                    idx_finca = i
+                    break
+
+        finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
+        
+        vuelos_informe = st.session_state.get('df_pistas', pd.DataFrame())
+        lista_origenes = vuelos_informe['ORIGEN'].unique().tolist() if not vuelos_informe.empty else []
+        vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
         if finca_sel == "---" or vuelo_ref == "---":
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
-
-        df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
-        df_sab = st.session_state.get('df_sabana', pd.DataFrame())
-        df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
-        df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
-        df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
-
-        finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
-
-        tipo_productor = "REVISAR FINCA"
-        tipo_de_tope_finca = "SIN TOPE"
-        if not df_t2.empty:
-            match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
-            if not match_t2.empty:
-                fila_t2 = match_t2.iloc[0]
-                tipo_productor = str(fila_t2.iloc[5]).strip().upper()
-                tipo_de_tope_finca = str(fila_t2.iloc[6]).strip().upper()
-
         # --- 🛰️ EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
         mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_avion_base = 1.112
         if not df_cfg.empty:
@@ -739,7 +756,12 @@ elif menu == "⚙️ 3. Validación de Misión":
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             r1c1.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=f"ds_{casilla_key}")
             d_ciclo_factura = r1c2.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=f"df_{casilla_key}")
-            ha_dosis_final = r1c3.number_input("🧪 Ha Dosis (Total 459)", value=float(ha_dosis_detectada), key=f"had_{casilla_key}")
+            # --- TOMA DE DECISIÓN DE HECTÁREAS ---
+            ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
+            if ha_sugerida == 0.0:  # Si no hay datos de SAP, usamos el reporte del piloto
+                ha_sugerida = float(ha_dosis_detectada)
+                
+            ha_dosis_final = r1c3.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
             
             multi_aviones = r1c4.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
             mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
