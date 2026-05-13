@@ -401,6 +401,10 @@ elif menu == "📥 2. Carga Facturación":
                                             "FINCA_INFORME": fv, 
                                             "DATOS_FILA": datos_fila
                                         })
+                                        st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                    st.balloons()
+                except Exception as e: 
+                    st.error(f"🚨 Error: {e}")
 
 # =====================================================================
 # ⚙️ 3. VALIDACIÓN DE MISIÓN (NÚCLEO FACTURACIÓN + SIMULADOR)
