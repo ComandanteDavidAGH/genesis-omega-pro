@@ -1371,23 +1371,23 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                 else:
                     try:
                         with st.spinner("Legalizando y respetando Fórmulas MAP de Excel..."):
-                            r_idx = vuelo_sel['fila_real']
+                            # 🔥 CORRECCIÓN CLAVE: Convertimos el número a "int" puro de Python
+                            r_idx = int(vuelo_sel['fila_real'])
                             
                             Nuevas_Filas = []
                             for r_f in rows_finales:
                                 fila_orig = datos_t1[r_idx - 1]
                                 nueva = list(fila_orig) # Copiamos la fila original completa
                                 
-                                # Actualizamos solo la información del fraccionamiento
-                                nueva[0] = r_f["OS"]       # A: OS
-                                nueva[2] = r_f["Finca"]    # C: Finca
-                                nueva[5] = r_f["Ha"]       # F: Ha
-                                nueva[19] = r_f["Costo"]   # T: Costo Ha
-                                nueva[18] = round(r_f["Ha"] * r_f["Costo"], 0) # S: Total
+                                # Actualizamos asegurando que todos sean datos nativos
+                                nueva[0] = str(r_f["OS"])       # A: OS
+                                nueva[2] = str(r_f["Finca"])    # C: Finca
+                                nueva[5] = float(r_f["Ha"])       # F: Ha
+                                nueva[19] = float(r_f["Costo"])   # T: Costo Ha
+                                nueva[18] = float(round(r_f["Ha"] * r_f["Costo"], 0)) # S: Total
                                 nueva[21] = nueva[18]      # V: Subtotal
                                 
                                 # 🔥 REGLA DE ORO MAP: Dejamos completamente vacías las columnas de fórmulas
-                                # para que su láser de Excel pase sin estrellarse.
                                 # Y=24, Z=25, AA=26, AB=27, AE=30
                                 indices_vacios = [24, 25, 26, 27, 30]
                                 for idx_v in indices_vacios:
