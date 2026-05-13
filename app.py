@@ -373,14 +373,34 @@ elif menu == "📥 2. Carga Facturación":
                                 if not idx_fin.empty:
                                     f_h = idx_fin[0]
                                     c_idx = (df.iloc[f_h].astype(str).str.contains('FINCAS', case=False)).values.argmax()
+                                    # --- 🛰️ NUEVO ESCÁNER DE BARRIDO MULTI-FINCA ---
                                     for r in range(f_h + 1, lim):
-                                        fv = str(df.iloc[r, c_idx]).strip()
-                                        if fv.lower() in ['nan', '', 'none'] or "TOTAL" in fv.upper(): break
-                                        lista_pistas.append({"ORIGEN": f"{f.name} | {n}", "COCTEL": coctel, "FINCA_INFORME": fv, "DATOS_FILA": df.iloc[r].to_dict()})
+                                        # Leemos la celda principal y las dos de al lado por seguridad (celdas combinadas)
+                                        celda_principal = str(df.iloc[r, c_idx]).strip()
                                         
-                    st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                    st.balloons()
-                except Exception as e: st.error(f"🚨 Error: {e}")
+                                        # Si encontramos la palabra TOTAL, se acabó este bloque de cóctel
+                                        if "TOTAL" in celda_principal.upper(): 
+                                            break
+                                            
+                                        # Si la celda está vacía, intentamos con la de la derecha
+                                        fv = celda_principal
+                                        if fv.lower() in ['nan', '', 'none'] and (c_idx + 1) < len(df.columns):
+                                            fv = str(df.iloc[r, c_idx + 1]).strip()
+                                            
+                                        # Si sigue vacía, saltamos a la siguiente fila (buscando más fincas)
+                                        if fv.lower() in ['nan', '', 'none']:
+                                            continue
+
+                                        # Si llegamos aquí, encontramos una finca (Ej: LAS DELICIAS)
+                                        # Capturamos la fila completa para no perder las hectáreas
+                                        datos_fila = df.iloc[r].to_dict()
+                                        
+                                        lista_pistas.append({
+                                            "ORIGEN": f"{f.name} | {n}", 
+                                            "COCTEL": coctel, 
+                                            "FINCA_INFORME": fv, 
+                                            "DATOS_FILA": datos_fila
+                                        })
 
 # =====================================================================
 # ⚙️ 3. VALIDACIÓN DE MISIÓN (NÚCLEO FACTURACIÓN + SIMULADOR)
