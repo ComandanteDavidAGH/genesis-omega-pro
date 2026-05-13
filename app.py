@@ -376,8 +376,8 @@ elif menu == "📥 2. Carga Facturación":
                                     # --- 🛰️ NUEVO ESCÁNER DE BARRIDO MULTI-FINCA ---
                                     # --- 🛰️ NUEVO ESCÁNER MAESTRO: ANCLAJE POR PEDIDO SAP ---
                                     for r in range(f_h + 1, lim):
-                                        # Convertimos toda la fila a texto para escanearla
-                                        fila_textos = df.iloc[r].astype(str).str.strip().tolist()
+                                        # BLINDAJE: Convertimos cada celda a texto puro de Python para evitar choques con números/vacíos
+                                        fila_textos = [str(x).strip() for x in df.iloc[r].tolist()]
                                         
                                         # 1. Freno de emergencia: Si dice TOTAL, cerramos el bloque
                                         if any("TOTAL" in celda.upper() for celda in fila_textos):
@@ -386,18 +386,19 @@ elif menu == "📥 2. Carga Facturación":
                                         # 2. Radar de Pedido SAP: Buscamos de derecha a izquierda un número largo
                                         pedido_sap = ""
                                         for celda in reversed(fila_textos):
-                                            if celda.isdigit() and len(celda) >= 8: # Detecta números de 8, 9 o 10 dígitos
+                                            # Buscamos números de mínimo 8 dígitos (Ej: 170036035)
+                                            if celda.isdigit() and len(celda) >= 8: 
                                                 pedido_sap = celda
                                                 break
                                                 
                                         # 3. Captura Confirmada: Si hay Pedido SAP, la fila tiene datos reales
                                         if pedido_sap:
-                                            # Atrapamos la finca en su columna original o la de al lado (por si están combinadas)
+                                            # Atrapamos la finca en su columna original o la de al lado
                                             fv = str(df.iloc[r, c_idx]).strip()
-                                            if fv.lower() in ['nan', '', 'none'] and (c_idx + 1) < len(df.columns):
+                                            if fv.lower() in ['nan', '', 'none', 'nat'] and (c_idx + 1) < len(df.columns):
                                                 fv = str(df.iloc[r, c_idx + 1]).strip()
                                                 
-                                            if fv.lower() in ['nan', '', 'none']:
+                                            if fv.lower() in ['nan', '', 'none', 'nat']:
                                                 fv = "FINCA_SIN_NOMBRE" # Seguro de vida
                                                 
                                             datos_fila = df.iloc[r].to_dict()
