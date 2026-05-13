@@ -692,6 +692,19 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.stop()
         # --- 🛰️ EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
         mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_avion_base = 1.112
+# --- RECONEXIÓN DE BASES DE DATOS ---
+        df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
+        df_sab = st.session_state.get('df_sabana', pd.DataFrame())
+        df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
+        df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
+        df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
+        
+        # Debajo de esto ya debe seguir su código normal que da el error:
+        # finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
+        # ...
+        # if not df_cfg.empty:
+        # ...
+        
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
