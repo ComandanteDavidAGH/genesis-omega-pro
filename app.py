@@ -1367,44 +1367,54 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
 
             if st.button("🚀 DETONAR LEGALIZACIÓN EN TABLA 1", type="primary", use_container_width=True):
                 if abs(diferencia) > 0.05:
-                    st.error(f"❌ Error de cuadre: Aún faltan {diferencia} Ha de la finca original por asignar.")
-                elif any(r["OS"] == "" or r["Finca"] == "" for r in rows_finales):
-                    st.error("❌ Faltan números de OS o nombres de Finca.")
+                    st.error(f"❌ Error de cuadre: Aún faltan {diferencia} Ha por asignar.")
                 else:
                     try:
-                        with st.spinner("Inyectando OS reales y Fórmulas Inteligentes..."):
-                            fila_plantilla = datos_t1[vuelo_sel['fila_real'] - 1]
+                        with st.spinner("Inyectando Fórmulas Nativas (Inglés para la API)..."):
+                            r_idx = vuelo_sel['fila_real']
                             
+                            # 🎯 FÓRMULAS EN INGLÉS (Google Sheets las traducirá al español en su pantalla)
+                            f_inc = '=INDIRECT("Y"&(ROW()-1))'
+                            f_lim = '=INDIRECT("Z"&(ROW()-1))'
+                            f_alerta = '=IFERROR(INDIRECT("S"&ROW())/INDIRECT("F"&ROW()), 0)'
+                            f_var = '=IF(INDIRECT("AA"&ROW())>INDIRECT("Z"&ROW()), "SUPERIOR", "INFERIOR")'
+                            f_ae = '=INDIRECT("AE"&(ROW()-1))'
+
                             Nuevas_Filas = []
-                            for i, r_f in enumerate(rows_finales):
-                                nueva = list(fila_plantilla)
-                                nueva[0] = r_f["OS"]       
-                                nueva[2] = r_f["Finca"]    
-                                nueva[5] = r_f["Ha"]       
-                                nueva[19] = r_f["Costo"]   
-                                nueva[18] = round(r_f["Ha"] * r_f["Costo"], 0) 
-                                nueva[21] = nueva[18]      
+                            for r_f in rows_finales:
+                                # Mapeo: A=0, C=2, F=5, S=18, T=19, V=21, Y=24, Z=25, AA=26, AB=27, AE=30
+                                nueva = [""] * 34
+                                nueva[0] = r_f["OS"]
+                                nueva[2] = r_f["Finca"]
+                                nueva[5] = r_f["Ha"]
+                                nueva[18] = round(r_f["Ha"] * r_f["Costo"], 0) # Costo Total
+                                nueva[19] = r_f["Costo"]
+                                nueva[21] = nueva[18] # Subtotal
                                 
-                                # 🔥 PYTHON TOMA EL MANDO: Inyección de Fórmulas Inteligentes
-                                nueva[17] = vuelo_sel['modelo'] # Mantiene el Avión intacto
-                                nueva[24] = '=INDIRECT("Y"&(ROW()-1))'  # Incremento
-                                nueva[25] = '=INDIRECT("Z"&(ROW()-1))'  # Límite
-                                nueva[26] = '=IFERROR(INDIRECT("S"&ROW())/INDIRECT("F"&ROW()), 0)' # Alerta
-                                nueva[27] = '=IF(INDIRECT("AA"&ROW())>INDIRECT("Z"&ROW()), "SUPERIOR", "INFERIOR")' # % Var
-                                if len(nueva) > 30:
-                                    nueva[30] = '=INDIRECT("AE"&(ROW()-1))' # AE
+                                # Inyectamos las fórmulas maestras
+                                nueva[24] = f_inc    # Col Y
+                                nueva[25] = f_lim    # Col Z
+                                nueva[26] = f_alerta # Col AA
+                                nueva[27] = f_var    # Col AB
+                                nueva[30] = f_ae     # Col AE
+                                
+                                # Copiar datos vitales de la VIRT original (Fecha, Día, Semana, Piloto, HK, Modelo)
+                                fila_orig = datos_t1[r_idx - 1]
+                                nueva[7], nueva[8], nueva[9] = fila_orig[7], fila_orig[8], fila_orig[9]
+                                nueva[15], nueva[16], nueva[17] = fila_orig[15], fila_orig[16], fila_orig[17]
                                 
                                 Nuevas_Filas.append(nueva)
 
-                            ws_t1_2.delete_rows(vuelo_sel['fila_real'])
-                            ws_t1_2.insert_rows(Nuevas_Filas, vuelo_sel['fila_real'])
+                            # Reemplazo táctico: Borramos la vieja e insertamos las nuevas
+                            ws_t1_2.delete_rows(r_idx)
+                            ws_t1_2.insert_rows(Nuevas_Filas, r_idx, value_input_option='USER_ENTERED')
                             
                             st.balloons()
-                            st.success(f"🎯 MISIÓN CUMPLIDA. Fórmulas Inteligentes Inyectadas en la OS {rows_finales[0]['OS']}.")
+                            st.success(f"🎯 LEGALIZACIÓN PERFECTA. La OS entró a la matriz y el radar está en verde.")
                             del st.session_state.legalizador_rows
                             st.rerun()
                     except Exception as e:
-                        st.error(f"🚨 Falla en la inyección: {e}")
+                        st.error(f"🚨 Falla de transmisión: {e}")
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
