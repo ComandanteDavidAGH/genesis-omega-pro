@@ -1262,17 +1262,19 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                             row[17], row[18], row[19], row[20], row[21], row[23] = mod_av, round(costo_f,2), p_tar, p_rec, round(costo_f,2), pist_av
                             row[28], row[32], row[33] = round(ha_n * p_tar,2), t_prod, "GENESIS_INTELIGENTE"
                             
-                            # 🔥 REGLA DE ORO APLICADA: Limpieza de fórmulas (R=17, Y=24, Z=25, AA=26, AB=27, AE=30)
-                            indices_limpiar = [17, 24, 25, 26, 27, 30]
-                            for idx_l in indices_limpiar:
-                                if idx_l < len(row): row[idx_l] = ""
+                            # 🔥 PYTHON TOMA EL MANDO: Inyección de Fórmulas Inteligentes
+                            row[24] = '=INDIRECT("Y"&(ROW()-1))'  # Arrastra el incremento
+                            row[25] = '=INDIRECT("Z"&(ROW()-1))'  # Arrastra el límite
+                            row[26] = '=IFERROR(INDIRECT("S"&ROW())/INDIRECT("F"&ROW()), 0)' # Calcula Costo/Ha
+                            row[27] = '=IF(INDIRECT("AA"&ROW())>INDIRECT("Z"&ROW()), "SUPERIOR", "INFERIOR")' # Evalúa Alerta
+                            row[30] = '=INDIRECT("AE"&(ROW()-1))' # Arrastra Col AE
                             
                             filas_finales.append(row)
                         
                         if filas_finales:
                             hoja_maestra1.append_rows(filas_finales, value_input_option='USER_ENTERED')
                             st.balloons()
-                            st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con Cóctel Automático.")
+                            st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con Cóctel y Fórmulas Automáticas.")
                             st.session_state.pop('memoria_excel', None) 
                         
                 except Exception as e: st.error(f"Error en inyección: {e}")
@@ -1298,8 +1300,7 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
             for idx, row in enumerate(datos_t1[5:]):
                 if len(row) > 19:
                     os_val = str(row[0]).upper()
-                    equipo = str(row[17]).upper() # Columna R (Modelo)
-                    # Detecta VIRT- y si no tiene modelo, o si es AVION. (Garantizamos que lo capture)
+                    equipo = str(row[17]).upper() 
                     if os_val.startswith("VIRT-") and ("AVION" in equipo or equipo == ""):
                         pendientes.append({
                             "fila_real": idx + 6,
@@ -1307,7 +1308,8 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                             "finca": row[2],
                             "ha": extraer_numero(row[5]),
                             "costo_ha": extraer_numero(row[19]), 
-                            "total": extraer_numero(row[18])
+                            "total": extraer_numero(row[18]),
+                            "modelo": equipo
                         })
 
         if not pendientes:
@@ -1370,7 +1372,7 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                     st.error("❌ Faltan números de OS o nombres de Finca.")
                 else:
                     try:
-                        with st.spinner("Inyectando OS reales y expandiendo filas..."):
+                        with st.spinner("Inyectando OS reales y Fórmulas Inteligentes..."):
                             fila_plantilla = datos_t1[vuelo_sel['fila_real'] - 1]
                             
                             Nuevas_Filas = []
@@ -1383,10 +1385,14 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                                 nueva[18] = round(r_f["Ha"] * r_f["Costo"], 0) 
                                 nueva[21] = nueva[18]      
                                 
-                                # 🔥 REGLA DE ORO APLICADA: Limpieza de fórmulas
-                                indices_limpiar = [17, 24, 25, 26, 27, 30]
-                                for idx_l in indices_limpiar:
-                                    if idx_l < len(nueva): nueva[idx_l] = ""
+                                # 🔥 PYTHON TOMA EL MANDO: Inyección de Fórmulas Inteligentes
+                                nueva[17] = vuelo_sel['modelo'] # Mantiene el Avión intacto
+                                nueva[24] = '=INDIRECT("Y"&(ROW()-1))'  # Incremento
+                                nueva[25] = '=INDIRECT("Z"&(ROW()-1))'  # Límite
+                                nueva[26] = '=IFERROR(INDIRECT("S"&ROW())/INDIRECT("F"&ROW()), 0)' # Alerta
+                                nueva[27] = '=IF(INDIRECT("AA"&ROW())>INDIRECT("Z"&ROW()), "SUPERIOR", "INFERIOR")' # % Var
+                                if len(nueva) > 30:
+                                    nueva[30] = '=INDIRECT("AE"&(ROW()-1))' # AE
                                 
                                 Nuevas_Filas.append(nueva)
 
@@ -1394,7 +1400,7 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                             ws_t1_2.insert_rows(Nuevas_Filas, vuelo_sel['fila_real'])
                             
                             st.balloons()
-                            st.success(f"🎯 MISIÓN CUMPLIDA. La OS {rows_finales[0]['OS']} ha legalizado la operación en TABLA 1.")
+                            st.success(f"🎯 MISIÓN CUMPLIDA. Fórmulas Inteligentes Inyectadas en la OS {rows_finales[0]['OS']}.")
                             del st.session_state.legalizador_rows
                             st.rerun()
                     except Exception as e:
