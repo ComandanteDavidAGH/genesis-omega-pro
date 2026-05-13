@@ -1370,51 +1370,42 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                     st.error(f"❌ Error de cuadre: Aún faltan {diferencia} Ha por asignar.")
                 else:
                     try:
-                        with st.spinner("Inyectando Fórmulas Nativas (Inglés para la API)..."):
+                        with st.spinner("Legalizando y respetando Fórmulas MAP de Excel..."):
                             r_idx = vuelo_sel['fila_real']
                             
-                            # 🎯 FÓRMULAS EN INGLÉS (Google Sheets las traducirá al español en su pantalla)
-                            f_inc = '=INDIRECT("Y"&(ROW()-1))'
-                            f_lim = '=INDIRECT("Z"&(ROW()-1))'
-                            f_alerta = '=IFERROR(INDIRECT("S"&ROW())/INDIRECT("F"&ROW()), 0)'
-                            f_var = '=IF(INDIRECT("AA"&ROW())>INDIRECT("Z"&ROW()), "SUPERIOR", "INFERIOR")'
-                            f_ae = '=INDIRECT("AE"&(ROW()-1))'
-
                             Nuevas_Filas = []
                             for r_f in rows_finales:
-                                # Mapeo: A=0, C=2, F=5, S=18, T=19, V=21, Y=24, Z=25, AA=26, AB=27, AE=30
-                                nueva = [""] * 34
-                                nueva[0] = r_f["OS"]
-                                nueva[2] = r_f["Finca"]
-                                nueva[5] = r_f["Ha"]
-                                nueva[18] = round(r_f["Ha"] * r_f["Costo"], 0) # Costo Total
-                                nueva[19] = r_f["Costo"]
-                                nueva[21] = nueva[18] # Subtotal
-                                
-                                # Inyectamos las fórmulas maestras
-                                nueva[24] = f_inc    # Col Y
-                                nueva[25] = f_lim    # Col Z
-                                nueva[26] = f_alerta # Col AA
-                                nueva[27] = f_var    # Col AB
-                                nueva[30] = f_ae     # Col AE
-                                
-                                # Copiar datos vitales de la VIRT original (Fecha, Día, Semana, Piloto, HK, Modelo)
                                 fila_orig = datos_t1[r_idx - 1]
-                                nueva[7], nueva[8], nueva[9] = fila_orig[7], fila_orig[8], fila_orig[9]
-                                nueva[15], nueva[16], nueva[17] = fila_orig[15], fila_orig[16], fila_orig[17]
+                                nueva = list(fila_orig) # Copiamos la fila original completa
+                                
+                                # Actualizamos solo la información del fraccionamiento
+                                nueva[0] = r_f["OS"]       # A: OS
+                                nueva[2] = r_f["Finca"]    # C: Finca
+                                nueva[5] = r_f["Ha"]       # F: Ha
+                                nueva[19] = r_f["Costo"]   # T: Costo Ha
+                                nueva[18] = round(r_f["Ha"] * r_f["Costo"], 0) # S: Total
+                                nueva[21] = nueva[18]      # V: Subtotal
+                                
+                                # 🔥 REGLA DE ORO MAP: Dejamos completamente vacías las columnas de fórmulas
+                                # para que su láser de Excel pase sin estrellarse.
+                                # Y=24, Z=25, AA=26, AB=27, AE=30
+                                indices_vacios = [24, 25, 26, 27, 30]
+                                for idx_v in indices_vacios:
+                                    if idx_v < len(nueva): 
+                                        nueva[idx_v] = ""
                                 
                                 Nuevas_Filas.append(nueva)
 
-                            # Reemplazo táctico: Borramos la vieja e insertamos las nuevas
+                            # Borramos la fila VIRT- original e insertamos las nuevas (limpias)
                             ws_t1_2.delete_rows(r_idx)
                             ws_t1_2.insert_rows(Nuevas_Filas, r_idx, value_input_option='USER_ENTERED')
                             
                             st.balloons()
-                            st.success(f"🎯 LEGALIZACIÓN PERFECTA. La OS entró a la matriz y el radar está en verde.")
+                            st.success(f"🎯 LEGALIZACIÓN PERFECTA. Python se apartó y dejó que su fórmula MAP hiciera el cálculo.")
                             del st.session_state.legalizador_rows
                             st.rerun()
                     except Exception as e:
-                        st.error(f"🚨 Falla de transmisión: {e}")
+                        st.error(f"🚨 Falla en el sistema: {e}")
 # =====================================================================
 # 📈 5. SINCRONIZACIÓN PRECIOS
 # =====================================================================
