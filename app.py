@@ -374,33 +374,41 @@ elif menu == "📥 2. Carga Facturación":
                                     f_h = idx_fin[0]
                                     c_idx = (df.iloc[f_h].astype(str).str.contains('FINCAS', case=False)).values.argmax()
                                     # --- 🛰️ NUEVO ESCÁNER DE BARRIDO MULTI-FINCA ---
+                                    # --- 🛰️ NUEVO ESCÁNER MAESTRO: ANCLAJE POR PEDIDO SAP ---
                                     for r in range(f_h + 1, lim):
-                                        # Leemos la celda principal y las dos de al lado por seguridad (celdas combinadas)
-                                        celda_principal = str(df.iloc[r, c_idx]).strip()
+                                        # Convertimos toda la fila a texto para escanearla
+                                        fila_textos = df.iloc[r].astype(str).str.strip().tolist()
                                         
-                                        # Si encontramos la palabra TOTAL, se acabó este bloque de cóctel
-                                        if "TOTAL" in celda_principal.upper(): 
+                                        # 1. Freno de emergencia: Si dice TOTAL, cerramos el bloque
+                                        if any("TOTAL" in celda.upper() for celda in fila_textos):
                                             break
                                             
-                                        # Si la celda está vacía, intentamos con la de la derecha
-                                        fv = celda_principal
-                                        if fv.lower() in ['nan', '', 'none'] and (c_idx + 1) < len(df.columns):
-                                            fv = str(df.iloc[r, c_idx + 1]).strip()
+                                        # 2. Radar de Pedido SAP: Buscamos de derecha a izquierda un número largo
+                                        pedido_sap = ""
+                                        for celda in reversed(fila_textos):
+                                            if celda.isdigit() and len(celda) >= 8: # Detecta números de 8, 9 o 10 dígitos
+                                                pedido_sap = celda
+                                                break
+                                                
+                                        # 3. Captura Confirmada: Si hay Pedido SAP, la fila tiene datos reales
+                                        if pedido_sap:
+                                            # Atrapamos la finca en su columna original o la de al lado (por si están combinadas)
+                                            fv = str(df.iloc[r, c_idx]).strip()
+                                            if fv.lower() in ['nan', '', 'none'] and (c_idx + 1) < len(df.columns):
+                                                fv = str(df.iloc[r, c_idx + 1]).strip()
+                                                
+                                            if fv.lower() in ['nan', '', 'none']:
+                                                fv = "FINCA_SIN_NOMBRE" # Seguro de vida
+                                                
+                                            datos_fila = df.iloc[r].to_dict()
                                             
-                                        # Si sigue vacía, saltamos a la siguiente fila (buscando más fincas)
-                                        if fv.lower() in ['nan', '', 'none']:
-                                            continue
-
-                                        # Si llegamos aquí, encontramos una finca (Ej: LAS DELICIAS)
-                                        # Capturamos la fila completa para no perder las hectáreas
-                                        datos_fila = df.iloc[r].to_dict()
-                                        
-                                        lista_pistas.append({
-                                            "ORIGEN": f"{f.name} | {n}", 
-                                            "COCTEL": coctel, 
-                                            "FINCA_INFORME": fv, 
-                                            "DATOS_FILA": datos_fila
-                                        })
+                                            lista_pistas.append({
+                                                "ORIGEN": f"{f.name} | {n}", 
+                                                "COCTEL": coctel, 
+                                                "FINCA_INFORME": fv, 
+                                                "PEDIDO_SAP": pedido_sap, # Guardamos el ancla
+                                                "DATOS_FILA": datos_fila
+                                            })
                                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
                     st.balloons()
                 except Exception as e: 
