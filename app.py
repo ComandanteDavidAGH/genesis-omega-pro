@@ -920,6 +920,10 @@ elif menu == "⚙️ 3. Validación de Misión":
             dosis_oficiales_coctel = {}
             max_p = -999
 
+            # 🎯 INTELIGENCIA DE PILOTO: Extraemos el cóctel exacto del informe (Ej: SKMN53+GL -> SKMN53)
+            coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
+            coctel_piloto_base = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")[0]
+
             for iter_id, receta in dict_recetas.items():
                 es_valido = True
                 puntaje = 0
@@ -933,13 +937,18 @@ elif menu == "⚙️ 3. Validación de Misión":
                 else: es_valido = False
 
                 if es_valido:
+                    # 🎯 BONO FRANCOTIRADOR: Si la base coincide con lo que anotó el piloto, gana automáticamente
+                    if iter_id == coctel_piloto_base:
+                        puntaje += 10000
+
                     for p_receta, d_esperada in receta.items():
                         match_receta = False
                         dose_matched = False
                         for k_sap, d_sap in sap_dict_pista.items():
                             if p_receta == k_sap or (len(k_sap)>=4 and p_receta in k_sap) or (len(p_receta)>=4 and k_sap in p_receta):
                                 match_receta = True
-                                if abs(d_sap - d_esperada) <= 0.2: dose_matched = True
+                                # Ampliamos la tolerancia a 0.5 para que no descarte por decimales en SAP
+                                if abs(d_sap - d_esperada) <= 0.5: dose_matched = True 
                                 break
                         if match_receta: puntaje += 50 if dose_matched else 10
                         else: es_valido = False; break
@@ -948,7 +957,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     max_p = puntaje
                     coctel_base = iter_id
                     dosis_oficiales_coctel = receta.copy()
-
+                    
             # --- FASE 2: BUSCAR EL FERTILIZANTE Y SU SIGLA ---
             sigla_fertilizante = ""
             for k_sap in sap_dict_pista.keys():
