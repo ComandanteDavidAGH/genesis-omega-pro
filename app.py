@@ -878,7 +878,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     df_drones_def = pd.DataFrame([{"Drone": None, "Hectáreas": 0.0}])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys())), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
                 
-        for ... in ...:  # <-- Esta es su línea 881 (No la toque)
+        for
             
             # 🛡️ EXTRACCIÓN SEGURA (Filtro anti-celdas vacías o "None")
         av_sel = row["Avión"]
