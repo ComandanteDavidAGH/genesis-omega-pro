@@ -893,11 +893,13 @@ elif menu == "⚙️ 3. Validación de Misión":
                 horo = float(val_horo) if val_horo not in [None, "None", "", "nan"] else 0.0
             except:
                 horo = 0.0
-                    if pd.isna(av_sel) or ha_av <= 0: continue
-                    total_ha_cobro_escuadron += ha_av
-                    tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
-                    tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
-                    costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
+            
+            # 👇 RESTO DEL CÓDIGO PERFECTAMENTE ALINEADO
+            if pd.isna(av_sel) or ha_av <= 0: continue
+            total_ha_cobro_escuadron += ha_av
+            tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
+            tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
+            costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
                 
                 for _, row in escuadron_drones.iterrows():
                     dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
