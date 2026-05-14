@@ -1091,26 +1091,39 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # --- 1. CÁLCULOS ESTILO SAP (PRECISIÓN ABSOLUTA) ---
+        # =======================================================
+        # --- 1. CÁLCULOS ESTILO SAP (PRECISIÓN QUIRÚRGICA) ---
+        # =======================================================
+        import math
+
         unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
         unitario_vuelo_bruto = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        # Redondeo previo de unitarios (Regla SAP para Colombia)
+        # Redondeo de unitarios base (IGUAL QUE SAP PARA COLOMBIA)
         unitario_st_vis = round(unitario_st_bruto, 0)
         unitario_vuelo_vis = round(unitario_vuelo_bruto, 0)
         
-        # Cálculo de subtotales
+        # Subtotales de las posiciones
         subtotal_st_finca = unitario_st_vis * ha_dosis_final
         subtotal_vuelo_finca = unitario_vuelo_vis * ha_dosis_final
         
-        # GRAN TOTAL: Es la suma de los subtotales redondeados + la mezcla
+        # 🔥 GRAN TOTAL (La cifra sagrada que manda en la factura)
         gran_total = round(costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca, 0)
         
-        # COSTO POR HECTÁREA: Se calcula DESPUÉS del gran total para que sea exacto
-        # Usamos math.floor o round dependiendo de cómo lo quiera SAP, pero round(x, 0) es el estándar
-        costo_por_ha = round(gran_total / ha_dosis_final, 0) if ha_dosis_final > 0 else 0
+        # --- 🎯 EL AJUSTE DEL PESO ($1) ---
+        # Calculamos el costo por Ha derivado del Gran Total Real
+        if ha_dosis_final > 0:
+            # Forzamos que el costo_por_ha sea coherente con el Gran Total dividido el área
+            # Usamos round para visualización, pero validamos que no baile el peso
+            costo_por_ha = round(gran_total / ha_dosis_final, 0)
+            
+            # Verificación técnica: si el redondeo estándar miente, lo corregimos
+            if abs((costo_por_ha * ha_dosis_final) - gran_total) > (ha_dosis_final / 2):
+                costo_por_ha = math.floor((gran_total / ha_dosis_final) + 0.5)
+        else:
+            costo_por_ha = 0
 
-        # --- 2. MÉTRICAS VISUALES (UNA SOLA VEZ) ---
+        # --- 2. MÉTRICAS VISUALES (LIMPIEZA DE PANTALLA) ---
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
@@ -1134,18 +1147,15 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.caption("🧪 TOTAL Mezcla")
             st.code(fmt_sap(costo_mezcla_total), language="text")
         with c_sap4:
-            # Esta caja ahora mostrará el valor exacto derivado del Gran Total
             st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
-        # --- 3. TOTALES INFORMATIVOS (SOLO UNA VEZ) ---
+        # --- 3. TOTALES INFORMATIVOS ---
         st.markdown("<br>", unsafe_allow_html=True)
         st.info("📊 **Resumen de Validación para SAP**")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
         
         c_tot1.metric("Subtotal ST (459)", f"$ {fmt_sap(subtotal_st_finca)}")
         c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
-        
-        # El Gran Total que debe coincidir con el valor neto de su imagen de SAP
         c_tot3.subheader(f"🔥 TOTAL: $ {fmt_sap(gran_total)}")
         
         st.markdown("---")
