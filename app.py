@@ -561,7 +561,17 @@ elif menu == "⚙️ 3. Validación de Misión":
                 match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
                 if match: val_tope = float(match.group(1).replace('.', ''))
 
-                if vuelo_sim == "DRONE": unitario_vuelo = 71280 * mult_v
+                # 🎯 INTELIGENCIA DE DRONES EN EL SIMULADOR SEGÚN PISTA
+                if vuelo_sim == "DRONE": 
+                    if "PLUC" in pista_sim: base_dron = 84428     # DATAROT
+                    elif "PDIV" in pista_sim: base_dron = 76916   # NORTE
+                    else: base_dron = 72600                       # AVIL / GENESYS (TEHO, LUCI, etc)
+                    
+                    unitario_vuelo = base_dron * mult_v
+                else:
+                    costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                    if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
+                    unitario_vuelo = costo_bruto * mult_v
                 else:
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
@@ -849,8 +859,10 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
         val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
-        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600}
-        dict_drones = {"DRONE DATAROT": 84427, "DRONE GENESYS": 75518, "DRONE AVIL": 71280}
+        
+        # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600}
+        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 76916, "DRONE AVIL": 72600, "DRONE GENESYS": 72600}
 
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
