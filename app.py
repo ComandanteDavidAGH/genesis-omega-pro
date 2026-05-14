@@ -1096,6 +1096,7 @@ elif menu == "⚙️ 3. Validación de Misión":
         # =======================================================
         import math
 
+        # Cálculos base de las posiciones
         unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
         unitario_vuelo_bruto = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
@@ -1107,23 +1108,27 @@ elif menu == "⚙️ 3. Validación de Misión":
         subtotal_st_finca = unitario_st_vis * ha_dosis_final
         subtotal_vuelo_finca = unitario_vuelo_vis * ha_dosis_final
         
-        # 🔥 GRAN TOTAL (La cifra sagrada que manda en la factura)
+        # 🔥 GRAN TOTAL (La cifra que debe coincidir con el neto de SAP)
         gran_total = round(costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca, 0)
         
-        # --- 🎯 EL AJUSTE DEL PESO ($1) ---
-        # Calculamos el costo por Ha derivado del Gran Total Real
+        # --- 🎯 EL AJUSTE FINAL ANTI-DESCUADRE ($1) ---
         if ha_dosis_final > 0:
-            # Forzamos que el costo_por_ha sea coherente con el Gran Total dividido el área
-            # Usamos round para visualización, pero validamos que no baile el peso
-            costo_por_ha = round(gran_total / ha_dosis_final, 0)
+            # Calculamos el unitario teórico
+            val_teorico = gran_total / ha_dosis_final
+            costo_por_ha = math.floor(val_teorico)
             
-            # Verificación técnica: si el redondeo estándar miente, lo corregimos
-            if abs((costo_por_ha * ha_dosis_final) - gran_total) > (ha_dosis_final / 2):
-                costo_por_ha = math.floor((gran_total / ha_dosis_final) + 0.5)
+            # Si la diferencia es mucha por el redondeo, subimos al siguiente entero
+            if (gran_total - (costo_por_ha * ha_dosis_final)) > (ha_dosis_final / 2):
+                costo_por_ha = math.ceil(val_teorico)
+            
+            # 🛡️ SINCRONIZACIÓN FINAL:
+            # Obligamos al Gran Total a ser el resultado exacto de Costo x Ha * Área
+            # Esto elimina cualquier desfase de $1, $2 o $5 pesos por volumen.
+            gran_total = costo_por_ha * ha_dosis_final
         else:
             costo_por_ha = 0
 
-        # --- 2. MÉTRICAS VISUALES (LIMPIEZA DE PANTALLA) ---
+        # --- 2. MÉTRICAS VISUALES ---
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
