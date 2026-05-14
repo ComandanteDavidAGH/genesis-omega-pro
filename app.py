@@ -1091,65 +1091,62 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 1. CÁLCULOS AL ESTILO SAP (Redondeo de unitario ANTES de multiplicar)
+        # --- 1. CÁLCULOS ESTILO SAP (PRECISIÓN ABSOLUTA) ---
         unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
         unitario_vuelo_bruto = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        # SAP exige que el unitario no tenga decimales antes de hacer la matemática de la fila
+        # Redondeo previo de unitarios (Regla SAP para Colombia)
         unitario_st_vis = round(unitario_st_bruto, 0)
         unitario_vuelo_vis = round(unitario_vuelo_bruto, 0)
         
-        # Multiplicamos el unitario YA REDONDEADO por las Hectáreas (Igual que SAP)
+        # Cálculo de subtotales
         subtotal_st_finca = unitario_st_vis * ha_dosis_final
         subtotal_vuelo_finca = unitario_vuelo_vis * ha_dosis_final
         
-        # Suma del Gran Total
+        # GRAN TOTAL: Es la suma de los subtotales redondeados + la mezcla
         gran_total = round(costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca, 0)
+        
+        # COSTO POR HECTÁREA: Se calcula DESPUÉS del gran total para que sea exacto
+        # Usamos math.floor o round dependiendo de cómo lo quiera SAP, pero round(x, 0) es el estándar
         costo_por_ha = round(gran_total / ha_dosis_final, 0) if ha_dosis_final > 0 else 0
 
-        # --- MÉTRICAS VISUALES ---
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🚜 Hectáreas Factura (Finca)", f"{ha_dosis_final:.2f} Ha")
+        # --- 2. MÉTRICAS VISUALES (UNA SOLA VEZ) ---
+        st.markdown("---")
+        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        if mision_solo_dron: r2.metric("🛣️ Condición Pista", "NO APLICA (Dron)")
-        else: r2.metric("🛣️ Condición Pista", tipo_de_tope_finca, f"Límite: $ {fmt_sap(val_tope)}")
-            
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("🚜 Hectáreas Factura", f"{ha_dosis_final:.2f} Ha")
+        r2.metric("🛣️ Condición Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON")
         r3.metric("👨‍🔬 Tarifa ST Base", f"$ {fmt_sap(tarifa_serv_tec_base)}")
-        r4.metric("✈️ Multiplicador Avión", f"x {mult_avion_final}")
+        r4.metric("✈️ Multiplicador", f"x {mult_avion_final}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
-        
         with c_sap1: 
-            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
+            st.caption("👨‍🔬 UNITARIO ST (459)")
             st.code(fmt_sap(unitario_st_vis), language="text")
-            
         with c_sap2: 
-            st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
+            st.caption("✈️ UNITARIO Vuelo (429)")
             st.code(fmt_sap(unitario_vuelo_vis), language="text")
-
         with c_sap3: 
-            st.caption("🧪 TOTAL Mezcla Química")
+            st.caption("🧪 TOTAL Mezcla")
             st.code(fmt_sap(costo_mezcla_total), language="text")
-            
         with c_sap4:
-            st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
+            # Esta caja ahora mostrará el valor exacto derivado del Gran Total
+            st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
+        # --- 3. TOTALES INFORMATIVOS (SOLO UNA VEZ) ---
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
+        st.info("📊 **Resumen de Validación para SAP**")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Subtotal Serv. Tec (459)", f"$ {fmt_sap(subtotal_st_finca)}")
-        c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
-        c_tot3.metric("🔥 GRAN TOTAL FINCA", f"$ {fmt_sap(gran_total)}")       
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
-        c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Subtotal Serv. Tec (459)", f"$ {fmt_sap(subtotal_st_finca)}")
+        c_tot1.metric("Subtotal ST (459)", f"$ {fmt_sap(subtotal_st_finca)}")
         c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
-        c_tot3.metric("🔥 GRAN TOTAL FINCA", f"$ {fmt_sap(gran_total)}")
+        
+        # El Gran Total que debe coincidir con el valor neto de su imagen de SAP
+        c_tot3.subheader(f"🔥 TOTAL: $ {fmt_sap(gran_total)}")
         
         st.markdown("---")
         st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
