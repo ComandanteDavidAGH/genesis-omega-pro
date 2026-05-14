@@ -1153,20 +1153,19 @@ elif menu == "⚙️ 3. Validación de Misión":
             except:
                 precio_hora_referencia = 0
 
-        # --- 2. MÉTRICAS VISUALES (HTML PERSONALIZADO ANTI-CORTES) ---
+        # --- 2. MÉTRICAS VISUALES (HTML PERSONALIZADO ALTO CONTRASTE) ---
         st.markdown("---")
         
-        # ⚠️ Verifique que este sea el ÚNICO título de Liquidación en esta sección
-        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
+        # ⚠️ Título eliminado de aquí para matar la duplicidad.
         st.markdown("<br>", unsafe_allow_html=True)
         
         m1, m2, m3, m4, m5 = st.columns(5)
         
-        # Función táctica para crear métricas que se ajustan al espacio sin cortarse
+        # Función táctica: Fondo azul naval oscuro con letras blancas y doradas
         def mini_metric(icono, titulo, valor):
             return f"""
-            <div style='background-color: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border-left: 3px solid #d4af37;'>
-                <p style='margin:0; font-size: 0.75rem; color: #a0aab5; text-transform: uppercase;'>{icono} {titulo}</p>
+            <div style='background-color: #0d1b2a; padding: 10px; border-radius: 8px; border-left: 4px solid #d4af37; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);'>
+                <p style='margin:0; font-size: 0.75rem; color: #d4af37; text-transform: uppercase;'>{icono} {titulo}</p>
                 <p style='margin:0; font-size: 1.15rem; font-weight: bold; color: white;'>{valor}</p>
             </div>
             """
