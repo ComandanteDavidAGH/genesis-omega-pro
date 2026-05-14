@@ -894,19 +894,20 @@ elif menu == "⚙️ 3. Validación de Misión":
             except:
                 horo = 0.0
             
-            # 👇 RESTO DEL CÓDIGO PERFECTAMENTE ALINEADO
+            # 👇 CÁLCULO DE AVIONES PERFECTAMENTE ALINEADO
             if pd.isna(av_sel) or ha_av <= 0: continue
             total_ha_cobro_escuadron += ha_av
             tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
             tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
             costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
-                
-                for _, row in escuadron_drones.iterrows():
-                    dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
-                    if pd.isna(dr_sel) or ha_dr <= 0: continue
-                    total_ha_cobro_escuadron += ha_dr
-                    costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
-
+            
+        # 👇 CÁLCULO DE DRONES ALINEADO CORRECTAMENTE (Separado de los aviones)
+        for _, row in escuadron_drones.iterrows():
+            dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
+            if pd.isna(dr_sel) or ha_dr <= 0: continue
+            total_ha_cobro_escuadron += ha_dr
+            costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
+            
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         costo_mezcla_total = 0.0
 
