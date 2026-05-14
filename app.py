@@ -919,12 +919,13 @@ elif menu == "⚙️ 3. Validación de Misión":
         costo_mezcla_total = 0.0
 
         if not match_ped.empty:
-            idx_precio = -1; idx_lote = -1; idx_saldo = -1
+            idx_precio = -1; idx_lote = -1; idx_saldo = -1; idx_almacen = -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
                     col_str = str(col).upper()
                     if 'MAYOR' in col_str or 'PRECIO' in col_str: idx_precio = j
                     if 'LOTE' in col_str: idx_lote = j
+                    if 'ALMACEN' in col_str or 'PISTA' in col_str: idx_almacen = j
                     if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
 
             sap_dict_pista = {}
@@ -1053,7 +1054,12 @@ elif menu == "⚙️ 3. Validación de Misión":
                                 c_total = extraer_numero(fila_precio[col_cant_tot[0]])
                                 if c_total > 0: costo_unit = v_total / c_total
 
-                        match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.contains(pista_sel, case=False, na=False)).any(axis=1)]
+                        # 🔥 FILTRADO LÁSER: Solo buscamos en la columna de Almacén detectada
+                        if idx_almacen != -1:
+                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.contains(pista_sel, case=False, na=False)]
+                        else:
+                            match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.contains(pista_sel, case=False, na=False)).any(axis=1)]
+
                         if not match_pista.empty:
                             try:
                                 col_ordenar = [c for c in match_pista.columns if ('LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()) and 'VALOR' not in str(c).upper()]
@@ -1061,6 +1067,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                                     match_pista['Temp_Sort'] = match_pista[col_ordenar[0]].apply(extraer_numero)
                                     match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
                             except: pass
+                            
                             fila_pista = match_pista.iloc[0]
                             if idx_lote != -1: lote_sap = str(fila_pista.iloc[idx_lote])
                             if idx_saldo != -1: saldo_sap = extraer_numero(fila_pista.iloc[idx_saldo])
