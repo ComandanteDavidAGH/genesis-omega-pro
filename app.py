@@ -1165,27 +1165,37 @@ elif menu == "⚙️ 3. Validación de Misión":
         costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
         # --- 🛰️ CÁLCULO DE REFERENCIA PARA GERENCIA ---
-        # Sacamos el precio base de la hora del primer avión del escuadrón para mostrarlo
+        # Sacamos el precio base de la hora del primer avión del escuadrón
         precio_hora_referencia = 0
         if not mision_solo_dron:
             try:
-                avion_principal = escuadron_aviones.iloc[0]['Avión']
-                precio_hora_referencia = dict_aviones.get(avion_principal, 0)
+                if not escuadron_aviones.empty:
+                    avion_principal = escuadron_aviones.iloc[0]['Avión']
+                    precio_hora_referencia = dict_aviones.get(avion_principal, 0)
             except:
                 precio_hora_referencia = 0
 
+        # 🚁 NUEVO: Rescatar el precio base del Dron seleccionado
+        precio_dron_referencia = 0
+        try:
+            # Buscamos en la tabla de drones (sea misión mixta o solo dron)
+            df_busqueda_dron = escuadron_drones if mision_solo_dron else escuadron_drones
+            if not df_busqueda_dron.empty:
+                dron_principal = df_busqueda_dron.iloc[0]['Drone']
+                if pd.notna(dron_principal) and str(dron_principal).strip() not in ["None", ""]:
+                    precio_dron_referencia = dict_drones.get(dron_principal, 0)
+        except:
+            precio_dron_referencia = 0
+
         # --- 2. MÉTRICAS VISUALES (HTML PERSONALIZADO ALTO CONTRASTE) ---
         st.markdown("---")
-        
-        # ⚠️ Título eliminado de aquí para matar la duplicidad.
         st.markdown("<br>", unsafe_allow_html=True)
         
         m1, m2, m3, m4, m5 = st.columns(5)
         
-        # Función táctica: Fondo azul naval oscuro con letras blancas y doradas
         def mini_metric(icono, titulo, valor):
             return f"""
-            <div style='background-color: #0d1b2a; padding: 10px; border-radius: 8px; border-left: 4px solid #d4af37; box-shadow: 2px 2px 5px rgba(0,0,0,0.1);'>
+            <div style='background-color: #0d1b2a; padding: 10px; border-radius: 8px; border-left: 4px solid #d4af37; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); margin-bottom: 10px;'>
                 <p style='margin:0; font-size: 0.75rem; color: #d4af37; text-transform: uppercase;'>{icono} {titulo}</p>
                 <p style='margin:0; font-size: 1.15rem; font-weight: bold; color: white;'>{valor}</p>
             </div>
@@ -1195,8 +1205,11 @@ elif menu == "⚙️ 3. Validación de Misión":
         with m2: st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON"), unsafe_allow_html=True)
         with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
         with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {mult_avion_final}"), unsafe_allow_html=True)
-        with m5: st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_hora_referencia)}"), unsafe_allow_html=True)
-
+        
+        # 🎯 ZONA DE CONTROL GLOBAL (M5): Avión arriba, Dron abajo
+        with m5: 
+            st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_hora_referencia)}"), unsafe_allow_html=True)
+            st.markdown(mini_metric("🚁", "Tarifa Dron", f"$ {fmt_sap(precio_dron_referencia)}"), unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
