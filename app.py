@@ -692,33 +692,37 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.stop()
         # --- 🛰️ EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
         mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_avion_base = 1.112
-# --- RECONEXIÓN DE BASES DE DATOS ---
+# =======================================================
+        # --- 1. RECONEXIÓN DE BASES DE DATOS ---
+        # =======================================================
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
         df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
         df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
         df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
-        
-        # Debajo de esto ya debe seguir su código normal que da el error:
-        # finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
-        # ...
-        # if not df_cfg.empty:
-        # ...
-        
-        if not df_cfg.empty:
-# --- RECONEXIÓN DE VARIABLES CLAVE DE LA FINCA ---
-        import re # Por si acaso se borró la importación de esta librería
+
+        # =======================================================
+        # --- 2. IDENTIFICACIÓN DE LA FINCA ---
+        # =======================================================
+        import re 
         finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
 
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
+        
+        # Primero buscamos qué tipo de productor es en la configuración general (df_t2)
         if not df_t2.empty:
             match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
             if not match_t2.empty:
                 fila_t2 = match_t2.iloc[0]
                 tipo_productor = str(fila_t2.iloc[5]).strip().upper()
                 tipo_de_tope_finca = str(fila_t2.iloc[6]).strip().upper()
-            
+        
+        # =======================================================
+        # --- 3. EXTRACCIÓN DE TARIFAS ---
+        # =======================================================
+        # Ahora sí, con el tipo_productor claro, buscamos sus tarifas
+        if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
                 fila_c = match_cfg.iloc[0]
