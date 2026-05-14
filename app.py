@@ -750,11 +750,27 @@ elif menu == "⚙️ 3. Validación de Misión":
         datos_raw = datos_vuelo['DATOS_FILA']
         
         num_pedido = "S/N"
-        for idx in range(18, 35):
-            val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
-            if val_celda.isdigit() and len(val_celda) >= 7:
-                num_pedido = val_celda
-                break
+        datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
+        datos_raw = datos_vuelo.get('DATOS_FILA', {})
+        
+        # --- 🎯 ENLACE MAESTRO DE PEDIDO SAP ---
+        num_pedido = "S/N"
+        
+        # 1. Prioridad Máxima: Lo que el Comandante digitó en la casilla Radar (Módulo 3)
+        if pedido_sap and len(str(pedido_sap)) >= 7:
+            num_pedido = str(pedido_sap).strip()
+            
+        # 2. Segunda Prioridad: Lo que el Escáner automático capturó (Módulo 2)
+        elif datos_vuelo.get('PEDIDO_SAP') and str(datos_vuelo.get('PEDIDO_SAP')).strip() != "":
+            num_pedido = str(datos_vuelo.get('PEDIDO_SAP')).strip()
+            
+        # 3. Plan de Contingencia: Buscar en las columnas crudas del Excel (Legado)
+        else:
+            for idx in range(18, 40):
+                val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
+                if val_celda.isdigit() and len(val_celda) >= 7:
+                    num_pedido = val_celda
+                    break
         
         lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
         pista_detectada = "PLUC"
