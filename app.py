@@ -648,22 +648,37 @@ elif menu == "⚙️ 3. Validación de Misión":
         pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
 
         finca_sap = ""
-        st.session_state['ha_radar_sap'] = 0.0  # Guardamos las Ha en memoria para usarlas más abajo
+        st.session_state['ha_radar_sap'] = 0.0  # Guardamos las Ha en memoria
 
         if pedido_sap and 'df_pedidos' in st.session_state:
             df_p = st.session_state['df_pedidos']
-            match_sap = df_p[df_p.astype(str).apply(lambda x: x.str.contains(pedido_sap)).any(axis=1)]
+            match_sap = df_p[df_p.astype(str).apply(lambda x: x.str.contains(str(pedido_sap).strip())).any(axis=1)]
+            
             if not match_sap.empty:
                 try:
                     col_finca = [c for c in df_p.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
                     col_ha = [c for c in df_p.columns if 'HECT' in str(c).upper() or 'CANT' in str(c).upper()][0]
                     
                     finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
-                    st.session_state['ha_radar_sap'] = float(match_sap.iloc[0][col_ha])
+                    
+                    # 🎯 REGLA DE ORO 459: Buscar la fila exacta del servicio técnico
+                    ha_correcta = 0.0
+                    for _, fila_ped in match_sap.iterrows():
+                        # Si la fila contiene el código 459, extraemos esa cantidad exacta
+                        if any("459" in str(val) for val in fila_ped.values):
+                            ha_correcta = extraer_numero(fila_ped[col_ha])
+                            break
+                    
+                    # Si encontró el 459 lo usa, si no, usa el primer valor como plan B
+                    if ha_correcta > 0:
+                        st.session_state['ha_radar_sap'] = ha_correcta
+                    else:
+                        st.session_state['ha_radar_sap'] = extraer_numero(match_sap.iloc[0][col_ha])
                     
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
                 except:
                     pass
+        # ---------------------------
         # ---------------------------
 
         c0, c1, c2 = st.columns([1, 2, 2])
@@ -1084,6 +1099,8 @@ elif menu == "⚙️ 3. Validación de Misión":
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
+  
+            
             costos_limpios = df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()
             texto_para_copiar = "\n".join(costos_limpios)
             st.code(texto_para_copiar, language="text")
@@ -1124,7 +1141,7 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         # --- 2. MÉTRICAS VISUALES ---
         st.markdown("---")
-        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
+        
         
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🚜 Hectáreas Factura", f"{ha_dosis_final:.2f} Ha")
