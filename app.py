@@ -1061,8 +1061,12 @@ elif menu == "⚙️ 3. Validación de Misión":
             df_matriz["C_Val"] = df_matriz["C: X (Extra %)"].fillna(0.0)
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B_Val"] * (1 + df_matriz["C_Val"]/100) * ha_dosis_final).round(3)
 
-            costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).round(0).sum()
-            df_matriz = df_matriz.drop(columns=["B_Val", "C_Val"])
+            # --- 🧪 CÁLCULO DE MEZCLA CON REDONDEO ARITMÉTICO (ESTILO SAP) ---
+            import math
+            df_matriz["Total_Fila"] = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"])
+            costo_mezcla_total = df_matriz["Total_Fila"].apply(lambda x: math.floor(x + 0.5)).sum()
+            
+            df_matriz = df_matriz.drop(columns=["B_Val", "C_Val", "Total_Fila"])
 
             edited_df = st.data_editor(
                 df_matriz, key='editor_valid',
@@ -1092,22 +1096,31 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
         # =======================================================
-        # --- 1. CÁLCULOS ESTILO SAP (EL ADN PERFECTO DE AYER) ---
+        # --- 1. CÁLCULOS CON PRECISIÓN ARITMÉTICA (ESTILO SAP) ---
         # =======================================================
+        import math
+
+        # Función de redondeo contable (Arriba de .5 siempre sube)
+        def sap_round(n):
+            return math.floor(n + 0.5)
+
+        # Cálculos de unitarios
+        unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
+        unitario_vuelo_bruto = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        # SAP redondea cada unitario a cero decimales primero
-        unitario_st = round(d_ciclo_factura * tarifa_serv_tec_base, 0)
-        unitario_vuelo = round(costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0, 0)
+        # Aplicamos el redondeo de SAP a los unitarios
+        unitario_st = sap_round(unitario_st_bruto)
+        unitario_vuelo = sap_round(unitario_vuelo_bruto)
         
-        # SAP calcula el subtotal de la línea y LO REDONDEA antes de sumar al Gran Total
-        subtotal_st_finca = round(unitario_st * ha_dosis_final, 0)
-        subtotal_vuelo_finca = round(unitario_vuelo * ha_dosis_final, 0)
+        # Subtotales redondeados línea por línea (Como hace SAP)
+        subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
+        subtotal_vuelo_finca = sap_round(unitario_vuelo * ha_dosis_final)
         
-        # EL GRAN TOTAL: Suma pura de las partes ya redondeadas (¡AQUÍ REGRESA SU PESO!)
+        # 🔥 GRAN TOTAL: Suma de subtotales ya redondeados aritméticamente
         gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
         
-        # Costo por Hectárea (Visual exacto)
-        costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
+        # Costo por Hectárea derivado del total final
+        costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
         # --- 2. MÉTRICAS VISUALES ---
         st.markdown("---")
