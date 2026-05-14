@@ -1114,7 +1114,7 @@ elif menu == "⚙️ 3. Validación de Misión":
             costo_mezcla_total = 0.0
 
         st.markdown("---")
-        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
+        
         
         # =======================================================
         # --- 1. CÁLCULOS CON PRECISIÓN ARITMÉTICA (ESTILO SAP) ---
@@ -1153,20 +1153,25 @@ elif menu == "⚙️ 3. Validación de Misión":
             except:
                 precio_hora_referencia = 0
 
-        # --- 2. MÉTRICAS VISUALES ---
+        # --- 2. MÉTRICAS VISUALES (LIMPIEZA Y AJUSTE DE TAMAÑO) ---
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # Ampliamos a 5 columnas para meter el precio por hora
+        # ⚠️ INYECCIÓN CSS: Reducimos el tamaño de las métricas para que no se corten los números
+        st.markdown("""
+            <style>
+            div[data-testid="stMetricValue"] > div {
+                font-size: 1.3rem !important; 
+            }
+            </style>
+            """, unsafe_allow_html=True)
+        
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("🚜 Hectáreas", f"{ha_dosis_final:.2f} Ha")
         m2.metric("🛣️ Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON")
         m3.metric("👨‍🔬 Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}")
         m4.metric("✈️ Mult.", f"x {mult_avion_final}")
-        # Nueva métrica para el Gerente:
         m5.metric("⏱️ Precio Hora", f"$ {fmt_sap(precio_hora_referencia)}")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
