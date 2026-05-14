@@ -1089,10 +1089,9 @@ elif menu == "⚙️ 3. Validación de Misión":
             costo_mezcla_total = 0.0
 
         st.markdown("---")
-        st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 1. CÁLCULOS EXACTOS (Sin redondear prematuramente)
+        # 1. CÁLCULOS EXACTOS (Sin redondear prematuramente para evitar descuadres)
         unitario_st = d_ciclo_factura * tarifa_serv_tec_base
         unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
@@ -1104,13 +1103,10 @@ elif menu == "⚙️ 3. Validación de Misión":
         costo_por_ha = round(gran_total / ha_dosis_final, 0) if ha_dosis_final > 0 else 0
 
         # Para las cajitas de copia rápida a SAP, redondeamos visualmente
-        with c_sap1: 
-            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
-            st.code(fmt_sap(unitario_st_vis), language="text")
-            
-        with c_sap2: 
-            st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
-            st.code(fmt_sap(unitario_vuelo_vis), language="text")
+        unitario_st_vis = round(unitario_st, 0)
+        unitario_vuelo_vis = round(unitario_vuelo, 0)
+
+        # --- MÉTRICAS VISUALES ---
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🚜 Hectáreas Factura (Finca)", f"{ha_dosis_final:.2f} Ha")
         
@@ -1122,15 +1118,17 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
+        
+        # 👇 ¡ESTA ES LA LÍNEA QUE EVITA EL ERROR DE C_SAP1!
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
             st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
-            st.code(fmt_sap(unitario_st), language="text")
+            st.code(fmt_sap(unitario_st_vis), language="text")
             
         with c_sap2: 
             st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
-            st.code(fmt_sap(unitario_vuelo), language="text")
+            st.code(fmt_sap(unitario_vuelo_vis), language="text")
 
         with c_sap3: 
             st.caption("🧪 TOTAL Mezcla Química")
@@ -1138,7 +1136,6 @@ elif menu == "⚙️ 3. Validación de Misión":
             
         with c_sap4:
             st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
-
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
