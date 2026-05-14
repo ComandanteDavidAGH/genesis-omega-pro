@@ -880,20 +880,20 @@ elif menu == "⚙️ 3. Validación de Misión":
                 
         for ... in ...:  # <-- Esta es su línea 881 (No la toque)
             
-            # 🛡️ EXTRACCIÓN SEGURA (Alineado hacia la derecha)
-            av_sel = row["Avión"]
+            # 🛡️ EXTRACCIÓN SEGURA (Filtro anti-celdas vacías o "None")
+        av_sel = row["Avión"]
+        
+        try:
+            val_ha = row.get("Hectáreas", 0)
+            ha_av = float(val_ha) if val_ha not in [None, "None", "", "nan"] else 0.0
+        except:
+            ha_av = 0.0
             
-            try:
-                val_ha = row.get("Hectáreas", 0)
-                ha_av = float(val_ha) if val_ha not in [None, "None", "", "nan"] else 0.0
-            except:
-                ha_av = 0.0
-                
-            try:
-                val_horo = row.get("Horómetro", 0)
-                horo = float(val_horo) if val_horo not in [None, "None", "", "nan"] else 0.0
-            except:
-                horo = 0.0
+        try:
+            val_horo = row.get("Horómetro", 0)
+            horo = float(val_horo) if val_horo not in [None, "None", "", "nan"] else 0.0
+        except:
+            horo = 0.0
                     if pd.isna(av_sel) or ha_av <= 0: continue
                     total_ha_cobro_escuadron += ha_av
                     tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
