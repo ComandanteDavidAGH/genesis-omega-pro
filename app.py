@@ -550,8 +550,10 @@ elif menu == "⚙️ 3. Validación de Misión":
         if st.button("🚀 Construir Matriz MEGAZORD"):
             import re
             try:
+                # 🎯 INTELIGENCIA DE MÁRGENES (Ajustado según Tabla de Configuración Oficial)
                 if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
-                elif tipo_prod_sim in ["AFILIADO", "COOPERATIVA"]: mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "COOPERATIVA": mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
