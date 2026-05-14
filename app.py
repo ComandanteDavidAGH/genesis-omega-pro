@@ -565,13 +565,9 @@ elif menu == "⚙️ 3. Validación de Misión":
                 if vuelo_sim == "DRONE": 
                     if "PLUC" in pista_sim: base_dron = 84428     # DATAROT
                     elif "PDIV" in pista_sim: base_dron = 76916   # NORTE
-                    else: base_dron = 72600                       # AVIL / GENESYS (TEHO, LUCI, etc)
+                    else: base_dron = 72600                       # AVIL / GENESYS
                     
                     unitario_vuelo = base_dron * mult_v
-                else:
-                    costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
-                    if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
-                    unitario_vuelo = costo_bruto * mult_v
                 else:
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
