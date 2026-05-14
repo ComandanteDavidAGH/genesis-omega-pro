@@ -878,35 +878,32 @@ elif menu == "⚙️ 3. Validación de Misión":
                     df_drones_def = pd.DataFrame([{"Drone": None, "Hectáreas": 0.0}])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys())), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
                 
-        for index, row in escuadron_aviones.iterrows():
-            # 🛡️ EXTRACCIÓN SEGURA (Filtro anti-celdas vacías o "None")
-            av_sel = row["Avión"]
-            
-            try:
-                val_ha = row.get("Hectáreas", 0)
-                ha_av = float(val_ha) if val_ha not in [None, "None", "", "nan"] else 0.0
-            except:
-                ha_av = 0.0
-                
-            try:
-                val_horo = row.get("Horómetro", 0)
-                horo = float(val_horo) if val_horo not in [None, "None", "", "nan"] else 0.0
-            except:
-                horo = 0.0
-            
-            # 👇 CÁLCULO DE AVIONES PERFECTAMENTE ALINEADO
-            if pd.isna(av_sel) or ha_av <= 0: continue
-            total_ha_cobro_escuadron += ha_av
-            tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
-            tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
-            costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
-            
-        # 👇 CÁLCULO DE DRONES ALINEADO CORRECTAMENTE (Separado de los aviones)
-        for _, row in escuadron_drones.iterrows():
-            dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
-            if pd.isna(dr_sel) or ha_dr <= 0: continue
-            total_ha_cobro_escuadron += ha_dr
-            costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
+                # 👇 ESTOS CÁLCULOS AHORA VIVEN PROTEGIDOS DENTRO DEL "ELSE"
+                for index, row in escuadron_aviones.iterrows():
+                    av_sel = row["Avión"]
+                    try:
+                        val_ha = row.get("Hectáreas", 0)
+                        ha_av = float(val_ha) if val_ha not in [None, "None", "", "nan"] else 0.0
+                    except:
+                        ha_av = 0.0
+                        
+                    try:
+                        val_horo = row.get("Horómetro", 0)
+                        horo = float(val_horo) if val_horo not in [None, "None", "", "nan"] else 0.0
+                    except:
+                        horo = 0.0
+                    
+                    if pd.isna(av_sel) or ha_av <= 0: continue
+                    total_ha_cobro_escuadron += ha_av
+                    tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
+                    tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
+                    costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
+                    
+                for _, row in escuadron_drones.iterrows():
+                    dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
+                    if pd.isna(dr_sel) or ha_dr <= 0: continue
+                    total_ha_cobro_escuadron += ha_dr
+                    costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
             
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         costo_mezcla_total = 0.0
