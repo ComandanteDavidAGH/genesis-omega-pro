@@ -1091,20 +1091,21 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # 1. CÁLCULOS EXACTOS (Sin redondear prematuramente para evitar descuadres)
-        unitario_st = d_ciclo_factura * tarifa_serv_tec_base
-        unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
+        # 1. CÁLCULOS AL ESTILO SAP (Redondeo de unitario ANTES de multiplicar)
+        unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
+        unitario_vuelo_bruto = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        subtotal_st_finca = unitario_st * ha_dosis_final
-        subtotal_vuelo_finca = unitario_vuelo * ha_dosis_final
+        # SAP exige que el unitario no tenga decimales antes de hacer la matemática de la fila
+        unitario_st_vis = round(unitario_st_bruto, 0)
+        unitario_vuelo_vis = round(unitario_vuelo_bruto, 0)
         
-        # El costo_mezcla_total ya viene de arriba, lo sumamos con precisión
+        # Multiplicamos el unitario YA REDONDEADO por las Hectáreas (Igual que SAP)
+        subtotal_st_finca = unitario_st_vis * ha_dosis_final
+        subtotal_vuelo_finca = unitario_vuelo_vis * ha_dosis_final
+        
+        # Suma del Gran Total
         gran_total = round(costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca, 0)
         costo_por_ha = round(gran_total / ha_dosis_final, 0) if ha_dosis_final > 0 else 0
-
-        # Para las cajitas de copia rápida a SAP, redondeamos visualmente
-        unitario_st_vis = round(unitario_st, 0)
-        unitario_vuelo_vis = round(unitario_vuelo, 0)
 
         # --- MÉTRICAS VISUALES ---
         r1, r2, r3, r4 = st.columns(4)
@@ -1119,7 +1120,6 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
-        # 👇 ¡ESTA ES LA LÍNEA QUE EVITA EL ERROR DE C_SAP1!
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         
         with c_sap1: 
@@ -1136,6 +1136,14 @@ elif menu == "⚙️ 3. Validación de Misión":
             
         with c_sap4:
             st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HECTÁREA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
+        c_tot1, c_tot2, c_tot3 = st.columns(3)
+        c_tot1.metric("Subtotal Serv. Tec (459)", f"$ {fmt_sap(subtotal_st_finca)}")
+        c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
+        c_tot3.metric("🔥 GRAN TOTAL FINCA", f"$ {fmt_sap(gran_total)}")       
+        
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("##### 💵 Totales de Posiciones por Finca (Informativo)")
         c_tot1, c_tot2, c_tot3 = st.columns(3)
