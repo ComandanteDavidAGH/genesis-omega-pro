@@ -1092,41 +1092,22 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
         # =======================================================
-        # --- 1. CÁLCULOS ESTILO SAP (PRECISIÓN QUIRÚRGICA) ---
+        # --- 1. CÁLCULOS ESTILO SAP (EL ADN PERFECTO DE AYER) ---
         # =======================================================
-        import math
-
-        # Cálculos base de las posiciones
-        unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
-        unitario_vuelo_bruto = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        # Redondeo de unitarios base (IGUAL QUE SAP PARA COLOMBIA)
-        unitario_st_vis = round(unitario_st_bruto, 0)
-        unitario_vuelo_vis = round(unitario_vuelo_bruto, 0)
+        # SAP redondea cada unitario a cero decimales primero
+        unitario_st = round(d_ciclo_factura * tarifa_serv_tec_base, 0)
+        unitario_vuelo = round(costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0, 0)
         
-        # Subtotales de las posiciones
-        subtotal_st_finca = unitario_st_vis * ha_dosis_final
-        subtotal_vuelo_finca = unitario_vuelo_vis * ha_dosis_final
+        # SAP calcula el subtotal de la línea y LO REDONDEA antes de sumar al Gran Total
+        subtotal_st_finca = round(unitario_st * ha_dosis_final, 0)
+        subtotal_vuelo_finca = round(unitario_vuelo * ha_dosis_final, 0)
         
-        # 🔥 GRAN TOTAL (La cifra que debe coincidir con el neto de SAP)
-        gran_total = round(costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca, 0)
+        # EL GRAN TOTAL: Suma pura de las partes ya redondeadas (¡AQUÍ REGRESA SU PESO!)
+        gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
         
-        # --- 🎯 EL AJUSTE FINAL ANTI-DESCUADRE ($1) ---
-        if ha_dosis_final > 0:
-            # Calculamos el unitario teórico
-            val_teorico = gran_total / ha_dosis_final
-            costo_por_ha = math.floor(val_teorico)
-            
-            # Si la diferencia es mucha por el redondeo, subimos al siguiente entero
-            if (gran_total - (costo_por_ha * ha_dosis_final)) > (ha_dosis_final / 2):
-                costo_por_ha = math.ceil(val_teorico)
-            
-            # 🛡️ SINCRONIZACIÓN FINAL:
-            # Obligamos al Gran Total a ser el resultado exacto de Costo x Ha * Área
-            # Esto elimina cualquier desfase de $1, $2 o $5 pesos por volumen.
-            gran_total = costo_por_ha * ha_dosis_final
-        else:
-            costo_por_ha = 0
+        # Costo por Hectárea (Visual exacto)
+        costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
 
         # --- 2. MÉTRICAS VISUALES ---
         st.markdown("---")
@@ -1144,10 +1125,10 @@ elif menu == "⚙️ 3. Validación de Misión":
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
         with c_sap1: 
             st.caption("👨‍🔬 UNITARIO ST (459)")
-            st.code(fmt_sap(unitario_st_vis), language="text")
+            st.code(fmt_sap(unitario_st), language="text")
         with c_sap2: 
             st.caption("✈️ UNITARIO Vuelo (429)")
-            st.code(fmt_sap(unitario_vuelo_vis), language="text")
+            st.code(fmt_sap(unitario_vuelo), language="text")
         with c_sap3: 
             st.caption("🧪 TOTAL Mezcla")
             st.code(fmt_sap(costo_mezcla_total), language="text")
