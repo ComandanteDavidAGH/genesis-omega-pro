@@ -656,20 +656,24 @@ elif menu == "⚙️ 3. Validación de Misión":
             
             if not match_sap.empty:
                 try:
+                    # 🎯 RECONOCIMIENTO DE COLUMNAS EXACTAS
                     col_finca = [c for c in df_p.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
-                    col_ha = [c for c in df_p.columns if 'HECT' in str(c).upper() or 'CANT' in str(c).upper()][0]
+                    col_ha = [c for c in df_p.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
+                    # Aquí la mira telescópica ubica la columna "Material"
+                    col_mat = [c for c in df_p.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper()][0]
                     
                     finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
                     
-                    # 🎯 REGLA DE ORO 459: Buscar la fila exacta del servicio técnico
+                    # 🎯 REGLA DE ORO 459: Francotirador directo a la columna Material
                     ha_correcta = 0.0
                     for _, fila_ped in match_sap.iterrows():
-                        # Si la fila contiene el código 459, extraemos esa cantidad exacta
-                        if any("459" in str(val) for val in fila_ped.values):
+                        valor_material = str(fila_ped[col_mat]).strip()
+                        # Si la columna Material es exactamente 459, extraemos las Hectáreas
+                        if valor_material == "459" or valor_material.split(".")[0] == "459": 
                             ha_correcta = extraer_numero(fila_ped[col_ha])
                             break
                     
-                    # Si encontró el 459 lo usa, si no, usa el primer valor como plan B
+                    # Asignamos la cantidad encontrada
                     if ha_correcta > 0:
                         st.session_state['ha_radar_sap'] = ha_correcta
                     else:
