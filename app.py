@@ -1143,16 +1143,29 @@ elif menu == "⚙️ 3. Validación de Misión":
         # Costo por Hectárea derivado del total final
         costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
+        # --- 🛰️ CÁLCULO DE REFERENCIA PARA GERENCIA ---
+        # Sacamos el precio base de la hora del primer avión del escuadrón para mostrarlo
+        precio_hora_referencia = 0
+        if not mision_solo_dron:
+            try:
+                avion_principal = escuadron_aviones.iloc[0]['Avión']
+                precio_hora_referencia = dict_aviones.get(avion_principal, 0)
+            except:
+                precio_hora_referencia = 0
+
         # --- 2. MÉTRICAS VISUALES ---
         st.markdown("---")
+        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
+        # Ampliamos a 5 columnas para meter el precio por hora
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("🚜 Hectáreas", f"{ha_dosis_final:.2f} Ha")
+        m2.metric("🛣️ Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON")
+        m3.metric("👨‍🔬 Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}")
+        m4.metric("✈️ Mult.", f"x {mult_avion_final}")
+        # Nueva métrica para el Gerente:
+        m5.metric("⏱️ Precio Hora", f"$ {fmt_sap(precio_hora_referencia)}")
         
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("🚜 Hectáreas Factura", f"{ha_dosis_final:.2f} Ha")
-        r2.metric("🛣️ Condición Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON")
-        r3.metric("👨‍🔬 Tarifa ST Base", f"$ {fmt_sap(tarifa_serv_tec_base)}")
-        r4.metric("✈️ Multiplicador", f"x {mult_avion_final}")
-
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
