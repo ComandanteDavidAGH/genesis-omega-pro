@@ -1089,17 +1089,28 @@ elif menu == "⚙️ 3. Validación de Misión":
             costo_mezcla_total = 0.0
 
         st.markdown("---")
+        st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        unitario_st = round(d_ciclo_factura * tarifa_serv_tec_base, 0)
-        unitario_vuelo = round(costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0, 0)
+        # 1. CÁLCULOS EXACTOS (Sin redondear prematuramente)
+        unitario_st = d_ciclo_factura * tarifa_serv_tec_base
+        unitario_vuelo = costo_total_vuelos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
         
-        subtotal_st_finca = round(unitario_st * ha_dosis_final, 0)
-        subtotal_vuelo_finca = round(unitario_vuelo * ha_dosis_final, 0)
+        subtotal_st_finca = unitario_st * ha_dosis_final
+        subtotal_vuelo_finca = unitario_vuelo * ha_dosis_final
         
-        gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
-        costo_por_ha = gran_total / ha_dosis_final if ha_dosis_final > 0 else 0
+        # El costo_mezcla_total ya viene de arriba, lo sumamos con precisión
+        gran_total = round(costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca, 0)
+        costo_por_ha = round(gran_total / ha_dosis_final, 0) if ha_dosis_final > 0 else 0
 
+        # Para las cajitas de copia rápida a SAP, redondeamos visualmente
+        with c_sap1: 
+            st.caption("👨‍🔬 UNITARIO Serv. Tec (Pos. 459)")
+            st.code(fmt_sap(unitario_st_vis), language="text")
+            
+        with c_sap2: 
+            st.caption("✈️ UNITARIO Vuelo (Pos. 429)")
+            st.code(fmt_sap(unitario_vuelo_vis), language="text")
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("🚜 Hectáreas Factura (Finca)", f"{ha_dosis_final:.2f} Ha")
         
