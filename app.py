@@ -1114,7 +1114,7 @@ elif menu == "⚙️ 3. Validación de Misión":
             costo_mezcla_total = 0.0
 
         st.markdown("---")
-        
+        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
         # =======================================================
         # --- 1. CÁLCULOS CON PRECISIÓN ARITMÉTICA (ESTILO SAP) ---
@@ -1153,25 +1153,31 @@ elif menu == "⚙️ 3. Validación de Misión":
             except:
                 precio_hora_referencia = 0
 
-        # --- 2. MÉTRICAS VISUALES (LIMPIEZA Y AJUSTE DE TAMAÑO) ---
+        # --- 2. MÉTRICAS VISUALES (HTML PERSONALIZADO ANTI-CORTES) ---
         st.markdown("---")
-        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # ⚠️ INYECCIÓN CSS: Reducimos el tamaño de las métricas para que no se corten los números
-        st.markdown("""
-            <style>
-            div[data-testid="stMetricValue"] > div {
-                font-size: 1.3rem !important; 
-            }
-            </style>
-            """, unsafe_allow_html=True)
+        # ⚠️ Verifique que este sea el ÚNICO título de Liquidación en esta sección
+        st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("🚜 Hectáreas", f"{ha_dosis_final:.2f} Ha")
-        m2.metric("🛣️ Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON")
-        m3.metric("👨‍🔬 Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}")
-        m4.metric("✈️ Mult.", f"x {mult_avion_final}")
-        m5.metric("⏱️ Precio Hora", f"$ {fmt_sap(precio_hora_referencia)}")
+        
+        # Función táctica para crear métricas que se ajustan al espacio sin cortarse
+        def mini_metric(icono, titulo, valor):
+            return f"""
+            <div style='background-color: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border-left: 3px solid #d4af37;'>
+                <p style='margin:0; font-size: 0.75rem; color: #a0aab5; text-transform: uppercase;'>{icono} {titulo}</p>
+                <p style='margin:0; font-size: 1.15rem; font-weight: bold; color: white;'>{valor}</p>
+            </div>
+            """
+
+        with m1: st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
+        with m2: st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON"), unsafe_allow_html=True)
+        with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
+        with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {mult_avion_final}"), unsafe_allow_html=True)
+        with m5: st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_hora_referencia)}"), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
         c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
