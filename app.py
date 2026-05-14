@@ -706,6 +706,19 @@ elif menu == "⚙️ 3. Validación de Misión":
         # ...
         
         if not df_cfg.empty:
+# --- RECONEXIÓN DE VARIABLES CLAVE DE LA FINCA ---
+        import re # Por si acaso se borró la importación de esta librería
+        finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
+
+        tipo_productor = "REVISAR FINCA"
+        tipo_de_tope_finca = "SIN TOPE"
+        if not df_t2.empty:
+            match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
+            if not match_t2.empty:
+                fila_t2 = match_t2.iloc[0]
+                tipo_productor = str(fila_t2.iloc[5]).strip().upper()
+                tipo_de_tope_finca = str(fila_t2.iloc[6]).strip().upper()
+            
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
                 fila_c = match_cfg.iloc[0]
