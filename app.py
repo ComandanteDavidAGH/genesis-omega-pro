@@ -1243,7 +1243,20 @@ elif menu == "⚙️ 3. Validación de Misión":
             """
 
         with m1: st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
-        with m2: st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON"), unsafe_allow_html=True)
+        # 🎯 ZONA DE CONTROL TOPE (M2): Nombre del tope arriba, Valor del tope abajo
+        with m2: 
+            st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON"), unsafe_allow_html=True)
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) # Espacio separador
+            
+            # 🛡️ Inteligencia para mostrar el valor del tope o la tarifa del Dron
+            if mision_solo_dron:
+                texto_valor_tope = f"$ {fmt_sap(precio_dron_referencia)}"
+            elif val_tope == 999999 or val_tope == 0:
+                texto_valor_tope = "Sin Tope"
+            else:
+                texto_valor_tope = f"$ {fmt_sap(val_tope)}"
+                
+            st.markdown(mini_metric("🚧", "Valor Tope", texto_valor_tope), unsafe_allow_html=True)
         with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
         with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {mult_avion_final}"), unsafe_allow_html=True)
         
