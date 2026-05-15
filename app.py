@@ -1117,8 +1117,32 @@ elif menu == "⚙️ 3. Validación de Misión":
             
             df_matriz = df_matriz.drop(columns=["B_Val", "C_Val", "Total_Fila"])
 
+            # 🔥 RADAR DE COLOR TÉRMICO (FORMATO CONDICIONAL INTELIGENTE)
+            def colorear_matriz(row):
+                # El sistema suma todas las líneas de este producto para validar el global
+                global_sap = df_matriz[df_matriz["A: Producto"] == row["A: Producto"]]["I: Sugerido SAP (Total)"].sum()
+                ideal_sistema = row["D: Dosis Total (Sistema)"]
+                
+                # Calculamos la diferencia matemática
+                diferencia = abs(global_sap - ideal_sistema)
+                
+                # 🎨 Pintura Táctica según el desfase
+                if diferencia <= 0.5:
+                    color = 'background-color: #d4edda; color: #155724;' # 🟢 Verde: Cuadrado Perfecto
+                elif diferencia <= 5.0:
+                    color = 'background-color: #fff3cd; color: #856404;' # 🟡 Amarillo: Leve Desfase
+                elif diferencia <= 20.0:
+                    color = 'background-color: #f8d7da; color: #721c24;' # 🔴 Rojo Claro: Alerta Media
+                else:
+                    color = 'background-color: #8b0000; color: white; font-weight: bold;' # 🚨 Rojo Sangre: Crítico
+                    
+                return [color] * len(row)
+
+            # Bañamos la matriz con la inteligencia de colores
+            df_pintado = df_matriz.style.apply(colorear_matriz, axis=1)
+
             edited_df = st.data_editor(
-                df_matriz, key='editor_valid',
+                df_pintado, key='editor_valid',
                 column_config={
                     "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
                     "C: X (Extra %)": st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
