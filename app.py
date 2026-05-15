@@ -1072,6 +1072,10 @@ elif menu == "⚙️ 3. Validación de Misión":
                             if idx_lote != -1: lote_sap = str(fila_pista.iloc[idx_lote])
                             if idx_saldo != -1: saldo_sap = extraer_numero(fila_pista.iloc[idx_saldo])
 
+                # 🛡️ CÁLCULO DE DOSIS GLOBAL (Para evitar falsos rojos en lotes divididos)
+                # El sistema busca en todo el pedido cuánto se mandó en total de este producto
+                total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == cod_item)
+
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
@@ -1082,9 +1086,10 @@ elif menu == "⚙️ 3. Validación de Misión":
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio:
                     dosis_teorica = 1.5 if coctel_ganador.startswith("IN") else 1.0
                 
+                # 🎯 SI EL PRODUCTO NO ESTÁ EN RECETA, EL IDEAL ES LA SUMA GLOBAL DE SAP
                 if dosis_teorica is None:
-                    dosis_teorica = cant_total_pedido / ha_dosis_final if ha_dosis_final > 0 else 0.0
-
+                    dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
+                    
                 costo_margen = round(costo_unit * mult_material, 0)
 
                 matriz_datos.append({
