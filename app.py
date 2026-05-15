@@ -951,9 +951,12 @@ elif menu == "⚙️ 3. Validación de Misión":
                         if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
 
                 nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
-                sap_dict_pista[nombre_limpio] = dosis_pista
+                
+                # 🧠 ACUMULADOR PARA LA IA: Sumamos la dosis para que adivine el Cóctel Correcto
+                sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
+                
+                # 📋 Mantenemos el registro individual para que la tabla muestre los lotes separados
                 datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
-
             dict_recetas = {}
             dict_lideres = {}
             dict_fertilizantes = {}
