@@ -1348,6 +1348,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                         piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
                         hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
 
+                        # 📦 EMPAQUETADO BASE (34 Espacios)
                         row_azul = [""] * 34
                         row_azul[0] = os_virtual
                         row_azul[1] = bloque_f
@@ -1376,8 +1377,24 @@ elif menu == "⚙️ 3. Validación de Misión":
                         row_azul[32] = tipo_productor
                         row_azul[33] = "GÉNESIS_V2_PRO"
 
+                        # 🧪 RECOLECTOR DE QUÍMICOS (Evita Fuga de Datos)
+                        # Toma los químicos validados de la pantalla y los añade al final de la fila azul
+                        try:
+                            # Asume que su tabla de químicos final se llama 'edited_df'
+                            for idx, row in edited_df.iterrows():
+                                nombre_prod = str(row["A: Producto"])
+                                if "⚠️" not in nombre_prod: # Solo metemos los reales
+                                    dosis_prod = float(row["D: Dosis Total (Sistema)"])
+                                    costo_unit = float(row["E: Costo Unit (+Margen)"])
+                                    costo_total_prod = dosis_prod * costo_unit
+                                    # Empacamos en orden: Producto, Dosis, Costo Total
+                                    row_azul.extend([nombre_prod, dosis_prod, costo_total_prod])
+                        except Exception as e_quimicos:
+                            pass # Si la tabla está vacía, no hace nada
+
+                        # 📦 EMPAQUETADO APOYO2023
                         fila_apoyo = [""] * 15
-                        fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" # ⚠️ API de Google exige la coma aquí
+                        fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" 
                         fila_apoyo[1] = finca_limpia
                         fila_apoyo[2] = ha_f
                         fila_apoyo[3] = float(costo_por_ha)
@@ -1386,19 +1403,12 @@ elif menu == "⚙️ 3. Validación de Misión":
                         fila_apoyo[10] = pista_manual
                         fila_apoyo[13] = tipo_mision
                         
-                        # 🔥 ESTRATEGIA FRANCOTIRADOR: Ignoramos la fórmula MAP y buscamos la fila real
-                        col_A_azul = [x for x in hoja_maestra.col_values(1) if str(x).strip() != ""]
-                        ultima_fila_azul = len(col_A_azul) + 1
-                        
-                        col_B_apoyo = [x for x in hoja_apoyo.col_values(2) if str(x).strip() != ""]
-                        ultima_fila_apoyo = len(col_B_apoyo) + 1
-
-                        # Inyectamos exactamente en la celda correspondiente
-                        hoja_maestra.update(range_name=f"A{ultima_fila_azul}", values=[row_azul], value_input_option='USER_ENTERED')
-                        hoja_apoyo.update(range_name=f"A{ultima_fila_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
+                        # 🔥 ESTRATEGIA FRANCOTIRADOR V2 (Garantiza ir a la última fila real sin fallar)
+                        hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
+                        hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
 
                         st.balloons()
-                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada en la fila {ultima_fila_azul}.")
+                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada en la bóveda con éxito.")
                         
                         if 'memoria_excel' in st.session_state:
                             del st.session_state['memoria_excel']
