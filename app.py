@@ -1245,11 +1245,23 @@ elif menu == "⚙️ 3. Validación de Misión":
         with m1: st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
         # 🎯 ZONA DE CONTROL TOPE (M2): Nombre del tope arriba, Valor del tope abajo
         with m2: 
-            st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not mision_solo_dron else "DRON"), unsafe_allow_html=True)
+            # 🕵️‍♂️ Radar de actividad real: ¿Voló el avión o todo el trabajo lo hizo el Dron?
+            ha_avion_real = 0
+            try:
+                if not mision_solo_dron and not escuadron_aviones.empty:
+                    ha_avion_real = float(escuadron_aviones['Hectáreas'].sum())
+            except:
+                ha_avion_real = 0
+
+            # Si el switch es 100% Dron, o si el avión tiene 0 Ha y hay un Dron asignado, domina el Dron
+            es_dron_dominante = mision_solo_dron or (ha_avion_real == 0 and precio_dron_referencia > 0)
+
+            # Pintamos la tarjeta de la pista o asumimos DRON
+            st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not es_dron_dominante else "DRON"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) # Espacio separador
             
             # 🛡️ Inteligencia para mostrar el valor del tope o la tarifa del Dron
-            if mision_solo_dron:
+            if es_dron_dominante:
                 texto_valor_tope = f"$ {fmt_sap(precio_dron_referencia)}"
             elif val_tope == 999999 or val_tope == 0:
                 texto_valor_tope = "Sin Tope"
