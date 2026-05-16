@@ -1967,11 +1967,19 @@ elif menu == "✈️ 6. Rastreo Dominicales":
 # =====================================================================
 elif menu == "⚖️ 7. Arqueo de Inventarios":
     
-    st.title("⚖️ Arqueo de Inventarios y Conciliación")
+    st.markdown("<h1 class='titulo-principal'>⚖️ Arqueo de Inventarios y Conciliación</h1>", unsafe_allow_html=True)
     
-    archivo_sap = st.sidebar.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
-    archivos_sup = st.sidebar.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
-    semana_obj = st.sidebar.text_input("🎯 Semana a Auditar (Ej: 17):", placeholder="Escriba aquí...")
+    # 📦 ZONA DE CARGA EN PANTALLA PRINCIPAL (Descamuflada)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown("### 📁 1. Sábana SAP")
+        archivo_sap = st.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
+    with c2:
+        st.markdown("### 📋 2. Reportes Físicos")
+        archivos_sup = st.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
+    with c3:
+        st.markdown("### 🎯 3. Objetivo")
+        semana_obj = st.text_input("Semana a Auditar (Ej: 17):", placeholder="Escriba la semana aquí...")
 
     if "arqueo_procesado" not in st.session_state:
         st.session_state.arqueo_procesado = False
@@ -2001,6 +2009,15 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
                 cruce.at[idx, 'OBSERVACIONES'] = "SUGERIDO: Entrega / Traslado / Pendiente por Facturar"
 
         st.session_state.cruce_final = cruce[['PISTA', 'ITEM', 'PRODUCTO', 'LOTE_KEY', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'ESTADO', 'OBSERVACIONES']].sort_values(by=['PISTA', 'PRODUCTO'])
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Botón en la pantalla principal
+    if st.button("🚀 INICIAR ARQUEO ESTRATÉGICO", type="primary", use_container_width=True):
+        if not archivo_sap or not archivos_sup or not semana_obj:
+            st.error("❌ Faltan suministros. Asegúrese de cargar ambos archivos y escribir la semana.")
+        else:
+            try:
 
     if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=True):
         if not archivo_sap or not archivos_sup or not semana_obj:
