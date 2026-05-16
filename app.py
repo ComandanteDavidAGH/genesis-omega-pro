@@ -1450,7 +1450,8 @@ elif menu == "⚙️ 3. Validación de Misión":
                         fila_apoyo[10] = pista_manual
                         fila_apoyo[13] = tipo_mision
                         
-                        # 🔥 ESTRATEGIA FRANCOTIRADOR V3 (Escáner Infrarrojo Anti-Fantasmas)
+                        # 🔥 ESTRATEGIA FRANCOTIRADOR V3 (Escáner Infrarrojo + Expansión Automática)
+                        
                         # 1. Escaneo de la Tabla Azul (Columna A: Nº de Orden)
                         col_azul = hoja_maestra.col_values(1)
                         fila_destino_azul = 1
@@ -1459,15 +1460,23 @@ elif menu == "⚙️ 3. Validación de Misión":
                                 fila_destino_azul = i + 2
                                 break
                         
-                        # 2. Escaneo de la Tabla Apoyo (Columna B: Finca - Esquiva fórmulas de la Col A)
+                        # 🚧 Si llegamos al límite físico de la hoja, construimos 10 filas más
+                        if fila_destino_azul > hoja_maestra.row_count:
+                            hoja_maestra.add_rows(10)
+
+                        # 2. Escaneo de la Tabla Apoyo (Columna B: Finca)
                         col_apoyo = hoja_apoyo.col_values(2)
                         fila_destino_apoyo = 1
                         for i in range(len(col_apoyo)-1, -1, -1):
                             if str(col_apoyo[i]).strip() != "":
                                 fila_destino_apoyo = i + 2
                                 break
+                                
+                        # 🚧 Si llegamos al límite físico de la hoja de apoyo, construimos 10 filas más
+                        if fila_destino_apoyo > hoja_apoyo.row_count:
+                            hoja_apoyo.add_rows(10)
 
-                        # Inyectamos exactamente en las coordenadas calculadas sin importar las filas "fantasmas"
+                        # Inyectamos exactamente en las coordenadas calculadas sin chocar con el límite
                         hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
 
