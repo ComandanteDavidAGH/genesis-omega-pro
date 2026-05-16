@@ -2018,12 +2018,6 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
             st.error("❌ Faltan suministros. Asegúrese de cargar ambos archivos y escribir la semana.")
         else:
             try:
-
-    if st.sidebar.button("🚀 INICIAR ARQUEO ESTRATÉGICO", use_container_width=True):
-        if not archivo_sap or not archivos_sup or not semana_obj:
-            st.sidebar.error("❌ Faltan suministros.")
-        else:
-            try:
                 with st.spinner("Desplegando analista de inventarios..."):
                     st.session_state.observaciones_memoria = {}
                     
@@ -2092,11 +2086,11 @@ elif menu == "⚖️ 7. Arqueo de Inventarios":
                         generar_cruce()
                         st.session_state.arqueo_procesado = True
                     else:
-                        st.error("No se encontraron datos.")
+                        st.error("❌ No se encontraron datos válidos.")
 
             except Exception as e:
                 st.error(f"Error: {e}")
-
+                
     if st.session_state.arqueo_procesado:
         tab1, tab2, tab3 = st.tabs(["⚠️ Discrepancias y Notas", "🛠️ Conciliador Inteligente", "📋 Inventario Completo"])
         
