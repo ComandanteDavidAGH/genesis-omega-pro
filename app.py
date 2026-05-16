@@ -268,16 +268,63 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP":
 elif menu == "📥 2. Carga Facturación":
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
+    import io
+    
+    # ---------------------------------------------------------
+    # 🧠 SISTEMA DE MEMORIA PERSISTENTE PARA ARCHIVOS SAP
+    # ---------------------------------------------------------
+    if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
+    if 'name_sabana' not in st.session_state: st.session_state['name_sabana'] = None
+    if 'mem_pedidos' not in st.session_state: st.session_state['mem_pedidos'] = None
+    if 'name_pedidos' not in st.session_state: st.session_state['name_pedidos'] = None
+
     c1, c2, c3 = st.columns(3)
+    
+    # 📦 CAJA FUERTE 1: SÁBANA
     with c1:
         st.markdown("### 📁 1. Sábana SAP")
-        f_sabana = st.file_uploader("Inventario, Precios y Lotes", type=["xlsx", "xls", "csv"], key="sab")
+        if st.session_state['mem_sabana'] is None:
+            f_sabana_up = st.file_uploader("Inventario, Precios y Lotes", type=["xlsx", "xls", "csv"], key="sab")
+            if f_sabana_up:
+                st.session_state['mem_sabana'] = f_sabana_up.getvalue()
+                st.session_state['name_sabana'] = f_sabana_up.name
+                st.rerun()
+        else:
+            st.success(f"✅ Sábana en memoria: {st.session_state['name_sabana']}")
+            if st.button("🔄 Cambiar Sábana", use_container_width=True):
+                st.session_state['mem_sabana'] = None
+                st.rerun()
+
+    # 📦 CAJA FUERTE 2: PEDIDOS
     with c2:
         st.markdown("### 📝 2. Pedidos SAP")
-        f_pedidos = st.file_uploader("Planificación (Finca/Cantidades)", type=["xlsx", "xls", "csv"], key="ped")
+        if st.session_state['mem_pedidos'] is None:
+            f_pedidos_up = st.file_uploader("Planificación (Finca/Cantidades)", type=["xlsx", "xls", "csv"], key="ped")
+            if f_pedidos_up:
+                st.session_state['mem_pedidos'] = f_pedidos_up.getvalue()
+                st.session_state['name_pedidos'] = f_pedidos_up.name
+                st.rerun()
+        else:
+            st.success(f"✅ Pedidos en memoria: {st.session_state['name_pedidos']}")
+            if st.button("🔄 Cambiar Pedidos", use_container_width=True):
+                st.session_state['mem_pedidos'] = None
+                st.rerun()
+
+    # 🚁 CAJA FUERTE 3: PISTAS (Este cambia cada vez, lo dejamos igual)
     with c3:
         st.markdown("### 🚁 3. Informes Pista")
         f_pistas = st.file_uploader("Reportes Reales", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pis")
+
+    # 🪄 TRUCO DE MAGIA: Reconstruimos los archivos para que el botón procesador no note la diferencia
+    f_sabana = None
+    if st.session_state['mem_sabana']:
+        f_sabana = io.BytesIO(st.session_state['mem_sabana'])
+        f_sabana.name = st.session_state['name_sabana']
+        
+    f_pedidos = None
+    if st.session_state['mem_pedidos']:
+        f_pedidos = io.BytesIO(st.session_state['mem_pedidos'])
+        f_pedidos.name = st.session_state['name_pedidos']
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
