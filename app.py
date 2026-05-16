@@ -1450,12 +1450,29 @@ elif menu == "⚙️ 3. Validación de Misión":
                         fila_apoyo[10] = pista_manual
                         fila_apoyo[13] = tipo_mision
                         
-                        # 🔥 ESTRATEGIA FRANCOTIRADOR V2 (Garantiza ir a la última fila real sin fallar)
-                        hoja_maestra.append_row(row_azul, value_input_option='USER_ENTERED')
-                        hoja_apoyo.append_row(fila_apoyo, value_input_option='USER_ENTERED')
+                        # 🔥 ESTRATEGIA FRANCOTIRADOR V3 (Escáner Infrarrojo Anti-Fantasmas)
+                        # 1. Escaneo de la Tabla Azul (Columna A: Nº de Orden)
+                        col_azul = hoja_maestra.col_values(1)
+                        fila_destino_azul = 1
+                        for i in range(len(col_azul)-1, -1, -1):
+                            if str(col_azul[i]).strip() != "":
+                                fila_destino_azul = i + 2
+                                break
+                        
+                        # 2. Escaneo de la Tabla Apoyo (Columna B: Finca - Esquiva fórmulas de la Col A)
+                        col_apoyo = hoja_apoyo.col_values(2)
+                        fila_destino_apoyo = 1
+                        for i in range(len(col_apoyo)-1, -1, -1):
+                            if str(col_apoyo[i]).strip() != "":
+                                fila_destino_apoyo = i + 2
+                                break
+
+                        # Inyectamos exactamente en las coordenadas calculadas sin importar las filas "fantasmas"
+                        hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
+                        hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
 
                         st.balloons()
-                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada en la bóveda con éxito.")
+                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada exactamente en la fila {fila_destino_azul}.")
                         
                         if 'memoria_excel' in st.session_state:
                             del st.session_state['memoria_excel']
