@@ -1456,7 +1456,8 @@ elif menu == "⚙️ 3. Validación de Misión":
                         
                         # 💰 ZONA FINANCIERA CORREGIDA
                         row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total general de la operación]
-                        row_azul[19] = float(costo_por_ha)        # T: VALOR ORDEN DE SERVICIO [COSTO AVIÓN ($/ha)] 🎯🎯
+                        # 💰 Se inyecta el Unitario del Vuelo restando el valor del Dominical
+                        row_azul[19] = float(costo_por_ha) - float(recargo_final)  # T: COSTO AVIÓN ($/ha) SIN DOMINICAL
                         row_azul[20] = float(recargo_final)       # U: DOMINIC ($/ha)
                         row_azul[21] = float(gran_total)          # V: COSTO AVIÓN ($/finca)
                         
