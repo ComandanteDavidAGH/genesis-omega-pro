@@ -927,14 +927,44 @@ elif menu == "⚙️ 3. Validación de Misión":
             else:
                 c_av, c_dr = st.columns(2)
                 with c_av:
-                    st.markdown("##### 🛩️ Base Aviones")
-                    df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
-                    escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f"), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
+                    # 📡 RADAR DINÁMICO DE AVIONES Y DRONES (Conecta tarifas vivas desde Configuración)
+                try:
+                    df_conf = st.session_state['df_config_base']
+                    # Extraer Aviones
+                    df_av_vivo = df_conf[df_conf['TIPO'].notna() & (df_conf['TIPO'].str.strip() != '') & (df_conf['CATEGORÍA'] == 'AVIÓN')]
+                    dict_aviones = dict(zip(df_av_vivo['TIPO'].str.strip(), pd.to_numeric(df_av_vivo['TARIFA ($)'], errors='coerce').fillna(0)))
+                    # Extraer Drones
+                    df_dr_vivo = df_conf[df_conf['TIPO'].notna() & (df_conf['TIPO'].str.strip() != '') & (df_conf['CATEGORÍA'] == 'DRON')]
+                    dict_drones = dict(zip(df_dr_vivo['TIPO'].str.strip(), pd.to_numeric(df_dr_vivo['TARIFA ($)'], errors='coerce').fillna(0)))
+                except Exception as e:
+                    # Si falla, mantiene los viejos por seguridad
+                    st.warning("⚠️ Modo Offline: Usando precios guardados en memoria caché.")
+
+                # 📡 RADAR DINÁMICO DE AVIONES Y DRONES (Conectado a 'Validación Dosis')
+                try:
+                    # 🚨 COLOQUE AQUÍ LA VARIABLE QUE LEE SU PESTAÑA 'Validación Dosis'
+                    # Por ejemplo, si su código usa df_validacion, cámbielo así: df_flota = df_validacion
+                    df_flota = st.session_state['NOMBRE_DE_SU_VARIABLE_DE_VALIDACION'] 
+                    
+                    # Extraer Aviones
+                    df_av_vivo = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].str.strip() != '') & (df_flota['CATEGORÍA'] == 'AVIÓN')]
+                    dict_aviones = dict(zip(df_av_vivo['TIPO'].str.strip(), pd.to_numeric(df_av_vivo['TARIFA ($)'], errors='coerce').fillna(0)))
+                    
+                    # Extraer Drones
+                    df_dr_vivo = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].str.strip() != '') & (df_flota['CATEGORÍA'] == 'DRON')]
+                    dict_drones = dict(zip(df_dr_vivo['TIPO'].str.strip(), pd.to_numeric(df_dr_vivo['TARIFA ($)'], errors='coerce').fillna(0)))
+                except Exception as e:
+                    # Si falla la conexión, la aplicación no se cae y usa lo que tenga en memoria
+                    pass 
+
+                st.markdown("##### 🛩️ Base Aviones")
+                df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
+                escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f"), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
+                
                 with c_dr:
                     st.markdown("##### 🚁 Base Drones (Apoyo)")
                     df_drones_def = pd.DataFrame([{"Drone": None, "Hectáreas": 0.0}])
-                    escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys())), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
-                
+                    escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys())), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)                
                 # 👇 ESTOS CÁLCULOS AHORA VIVEN PROTEGIDOS DENTRO DEL "ELSE"
                 for index, row in escuadron_aviones.iterrows():
                     av_sel = row["Avión"]
