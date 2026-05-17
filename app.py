@@ -1374,6 +1374,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                         boveda = gc.open_by_url(url_boveda)
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
                         hoja_maestra = boveda.worksheet("TABLA 1")
+                        hoja_memoria = boveda.worksheet("MEMORIA")
 
                         fecha_str = fecha_operacion.strftime("%d/%m/%Y")
                         dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
@@ -1482,6 +1483,36 @@ elif menu == "⚙️ 3. Validación de Misión":
                         # Inyectamos exactamente en las coordenadas calculadas sin chocar con el límite
                         hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
+                        # 🧪 DESEMBARCO DE QUÍMICOS EN LA PESTAÑA 'MEMORIA'
+                        try:
+                            filas_memoria = []
+                            # Iteramos sobre la matriz de productos en pantalla
+                            for idx, row in edited_df.iterrows():
+                                nombre_prod = str(row.get("A: Producto", ""))
+                                if "⚠️" not in nombre_prod and nombre_prod.strip() != "" and nombre_prod.lower() != "nan":
+                                    dosis_prod = float(row.get("D: Dosis Total (Sistema)", 0))
+                                    lote_prod = str(row.get("G: Lotes (SAP)", "S/N"))
+                                    
+                                    # Armamos la fila de 10 columnas según su diseño
+                                    fila_m = [""] * 10
+                                    fila_m[0] = fecha_str                                      # A: FECHA
+                                    fila_m[1] = coctel_ganador                                 # B: ORDEN/COCTEL
+                                    fila_m[2] = str(pista_manual).split("-")[0].strip()[:4]    # C: PISTA (Ej: LUCI, TEHO)
+                                    fila_m[3] = nombre_prod                                    # D: PRODUCTO
+                                    fila_m[4] = lote_prod                                      # E: LOTE
+                                    fila_m[5] = float(dosis_prod)                              # F: CANTIDAD
+                                    fila_m[6] = "BODEGA PRINCIPAL"                             # G: BODEGA
+                                    fila_m[7] = ""                                             # H: MODELO (Vacío)
+                                    fila_m[8] = "X"                                            # I: Facturado (X)
+                                    fila_m[9] = finca_limpia                                   # J: FINCA
+                                    
+                                    filas_memoria.append(fila_m)
+                                    
+                            # Si recolectamos químicos, los disparamos todos juntos
+                            if filas_memoria:
+                                hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
+                        except Exception as e_mem:
+                            st.warning(f"⚠️ Nota de sistema: Error al guardar en MEMORIA: {e_mem}")
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada exactamente en la fila {fila_destino_azul}.")
