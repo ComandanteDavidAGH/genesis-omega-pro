@@ -107,6 +107,12 @@ def procesar_fecha_pesada(v):
 # --- 4. MENÚ MAESTRO (CUARTEL GENERAL) ---
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h2>", unsafe_allow_html=True)
+    
+    # 🔄 BOTÓN TÁCTICO: RECARGA EN CALIENTE (Conserva sus datos)
+    st.markdown("---")
+    if st.button("🔄 Cargar Cócteles/Aviones nuevos"):
+        st.cache_data.clear()
+        st.rerun()
     menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
         "🏠 Centro de Mando", 
         "🛠️ 1. Mantenimiento Plantilla SAP",
