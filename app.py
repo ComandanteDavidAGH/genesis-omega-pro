@@ -1476,6 +1476,9 @@ elif menu == "⚙️ 3. Validación de Misión":
                         if fila_destino_apoyo > hoja_apoyo.row_count:
                             hoja_apoyo.add_rows(10)
 
+                        # 🔥 LA SOLUCIÓN TÁCTICA: Python calcula el número exacto y lo ancla como valor fijo
+                        fila_apoyo[0] = fila_destino_apoyo - 3
+
                         # Inyectamos exactamente en las coordenadas calculadas sin chocar con el límite
                         hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
