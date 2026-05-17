@@ -1439,7 +1439,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                         tarifa_pago = 84427 if "DR51" in hk_f else 71280 if ("DR52" in hk_f or "DR53" in hk_f) else 0
                         total_pago_avion = ha_f * tarifa_pago if mision_solo_dron else 0
 
-                        # 📦 EMPAQUETADO MAESTRO CON VALOR DE LA OS EN COLUMNA T (34 Espacios)
+                        # 📦 EMPAQUETADO MAESTRO - DETONACIÓN TABLA AZUL (34 Espacios)
                         row_azul = [""] * 34
                         row_azul[0] = os_virtual                  # A: ORDEN DE SERVICIO VIRTUAL
                         row_azul[1] = bloque_f
@@ -1460,17 +1460,25 @@ elif menu == "⚙️ 3. Validación de Misión":
                         row_azul[16] = hk_f
                         row_azul[17] = tipo_mision
                         
-                        # 💰 ZONA FINANCIERA CORREGIDA
-                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total general de la operación]
-                        # 💰 Se inyecta el Unitario del Vuelo restando el valor del Dominical
-                        row_azul[19] = float(costo_por_ha) - float(recargo_final)  # T: COSTO AVIÓN ($/ha) SIN DOMINICAL
-                        row_azul[20] = float(recargo_final)       # U: DOMINIC ($/ha)
+                        # 💰 ZONA FINANCIERA CALIBRADA CON PRECISIÓN LÁSER 🎯🎯
+                        # Capturamos el valor pleno de la tarifa aplicada al avión
+                        tarifa_vuelo_plena = float(tarifa_aplicada)
+                        valor_dominical = float(recargo_final)
+                        
+                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total de la factura]
+                        
+                        # PUNTO 1 y 2 COMPLETADOS: Aquí llega el 429 pleno RESTANDO el dominical (Valor Limpio)
+                        row_azul[19] = tarifa_vuelo_plena - valor_dominical  # T: COSTO AVIÓN ($/ha) [Ej: 64.022] 
+                        
+                        # Aquí se almacena el dominical por separado para que no se duplique
+                        row_azul[20] = valor_dominical            # U: DOMINIC ($/ha) [Ej: 14.421]
+                        
                         row_azul[21] = float(gran_total)          # V: COSTO AVIÓN ($/finca)
                         
                         row_azul[23] = pista_manual               # X: PISTA
                         
                         row_azul[28] = float(gran_total)          # AC: COSTO TOTAL
-                        row_azul[29] = float(total_pago_avion)    # AD: TOTAL PAGO AVIÓN (Calculado con la tarifa del Dron)
+                        row_azul[29] = float(total_pago_avion)    # AD: TOTAL PAGO AVIÓN 
                         row_azul[32] = tipo_productor             # AG: TIPO DE PRODUCTOR
                         row_azul[33] = "GÉNESIS_V2_PRO"           # AH: SELLO DE SISTEMA
                         # 📦 EMPAQUETADO APOYO2023
