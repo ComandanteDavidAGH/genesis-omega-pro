@@ -110,7 +110,7 @@ with st.sidebar:
     
     # 🔄 BOTÓN TÁCTICO: RECARGA EN CALIENTE (Conserva sus datos)
     st.markdown("---")
-    if st.button("🔄 Cargar Cócteles/Aviones nuevos"):
+    if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
     menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
