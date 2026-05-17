@@ -1460,18 +1460,19 @@ elif menu == "⚙️ 3. Validación de Misión":
                         row_azul[16] = hk_f
                         row_azul[17] = tipo_mision
                         
-                        # 💰 ZONA FINANCIERA CALIBRADA CON PRECISIÓN LÁSER 🎯🎯
-                        # Capturamos el valor pleno de la tarifa aplicada al avión
-                        tarifa_vuelo_plena = float(tarifa_aplicada)
+                        # 💰 ZONA FINANCIERA CALIBRADA (RESCATE DE VARIABLE) 🎯🎯
+                        # Como tarifa_aplicada se quedó en el radar anterior, deducimos el valor de la caja 429
+                        # dividiendo el costo total de los vuelos entre las hectáreas reales.
+                        tarifa_vuelo_plena = float(costo_total_vuelos / ha_f) if ha_f > 0 else 0.0
                         valor_dominical = float(recargo_final)
                         
-                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total de la factura]
+                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total general de la factura]
                         
-                        # PUNTO 1 y 2 COMPLETADOS: Aquí llega el 429 pleno RESTANDO el dominical (Valor Limpio)
-                        row_azul[19] = tarifa_vuelo_plena - valor_dominical  # T: COSTO AVIÓN ($/ha) [Ej: 64.022] 
+                        # PUNTO 1 y 2 COMPLETADOS: El 429 pleno RESTANDO el dominical (Valor Limpio del Vuelo a la Columna T)
+                        row_azul[19] = round(tarifa_vuelo_plena - valor_dominical, 2)  # T: COSTO AVIÓN ($/ha) 
                         
-                        # Aquí se almacena el dominical por separado para que no se duplique
-                        row_azul[20] = valor_dominical            # U: DOMINIC ($/ha) [Ej: 14.421]
+                        # Aquí se almacena el dominical por separado para que no se duplique en SAP
+                        row_azul[20] = round(valor_dominical, 2)  # U: DOMINIC ($/ha)
                         
                         row_azul[21] = float(gran_total)          # V: COSTO AVIÓN ($/finca)
                         
