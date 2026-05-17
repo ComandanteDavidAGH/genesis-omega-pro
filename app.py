@@ -905,8 +905,8 @@ elif menu == "⚙️ 3. Validación de Misión":
         dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
         val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
         
-        # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA
-        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600}
+        # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA (Flota Actualizada)
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3500000}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 76916, "DRONE AVIL": 72600, "DRONE GENESYS": 72600}
 
         with st.container(border=True):
