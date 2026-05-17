@@ -1408,39 +1408,35 @@ elif menu == "⚙️ 3. Validación de Misión":
                         tarifa_pago = 84427 if "DR51" in hk_f else 71280 if ("DR52" in hk_f or "DR53" in hk_f) else 0
                         total_pago_avion = ha_f * tarifa_pago if mision_solo_dron else 0
 
-                        # 📦 EMPAQUETADO BASE CON FÓRMULAS CONGELADAS (34 Espacios)
+                        # 📦 EMPAQUETADO MAESTRO CON VALOR DE LA OS EN COLUMNA T (34 Espacios)
                         row_azul = [""] * 34
-                        row_azul[0] = os_virtual
+                        row_azul[0] = os_virtual                  # A: ORDEN DE SERVICIO VIRTUAL
                         row_azul[1] = bloque_f
                         row_azul[2] = finca_limpia
                         row_azul[3] = sector_f
                         row_azul[4] = ha_bruta_f
-                        row_azul[5] = ha_f
+                        row_azul[5] = ha_f                        # F: HECTÁREAS REALES
                         row_azul[6] = coctel_ganador
                         row_azul[7] = fecha_str
                         row_azul[8] = dia_sem
                         row_azul[9] = num_sem
                         row_azul[10] = h_total_v
                         row_azul[11] = 6
-                        
-                        # 📸 IMAGEN 1: M, N, O (Volumen y Rendimiento)
                         row_azul[12] = round(vol_total_gln, 2)    # M: VOLUMEN (gln)
                         row_azul[13] = round(h_total_v, 2)        # N: RENDIMIENTO (hora)
                         row_azul[14] = round(rend_min, 2)         # O: RENDIMIENTO (min)
-                        
                         row_azul[15] = piloto_f
                         row_azul[16] = hk_f
                         row_azul[17] = tipo_mision
                         
-                        # 📸 IMAGEN 2: S, T, V (Costos de Avión/Operación)
-                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($)
-                        row_azul[19] = float(costo_por_ha)        # T: COSTO AVIÓN ($/ha)
+                        # 💰 ZONA FINANCIERA CORREGIDA
+                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total general de la operación]
+                        row_azul[19] = float(costo_por_ha)        # T: VALOR ORDEN DE SERVICIO [COSTO AVIÓN ($/ha)] 🎯🎯
                         row_azul[20] = float(recargo_final)       # U: DOMINIC ($/ha)
                         row_azul[21] = float(gran_total)          # V: COSTO AVIÓN ($/finca)
                         
                         row_azul[23] = pista_manual               # X: PISTA
                         
-                        # 📸 IMAGEN 3: AC, AD, AG (Costos Totales y Productor)
                         row_azul[28] = float(gran_total)          # AC: COSTO TOTAL
                         row_azul[29] = float(total_pago_avion)    # AD: TOTAL PAGO AVIÓN (Calculado con la tarifa del Dron)
                         row_azul[32] = tipo_productor             # AG: TIPO DE PRODUCTOR
