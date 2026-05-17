@@ -1396,7 +1396,19 @@ elif menu == "⚙️ 3. Validación de Misión":
                         piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
                         hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
 
-                        # 📦 EMPAQUETADO BASE (34 Espacios)
+                        # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS (Reemplazo de Fórmulas Excel) ---
+                        ha_f = float(ha_dosis_final)
+                        h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
+                        vol_total_gln = ha_f * 6
+                        rend_min = h_total_v * 60
+                        piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+                        hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
+
+                        # 🚁 CÁLCULO DE PAGO A TERCEROS (Columna AD en Excel)
+                        tarifa_pago = 84427 if "DR51" in hk_f else 71280 if ("DR52" in hk_f or "DR53" in hk_f) else 0
+                        total_pago_avion = ha_f * tarifa_pago if mision_solo_dron else 0
+
+                        # 📦 EMPAQUETADO BASE CON FÓRMULAS CONGELADAS (34 Espacios)
                         row_azul = [""] * 34
                         row_azul[0] = os_virtual
                         row_azul[1] = bloque_f
@@ -1410,36 +1422,29 @@ elif menu == "⚙️ 3. Validación de Misión":
                         row_azul[9] = num_sem
                         row_azul[10] = h_total_v
                         row_azul[11] = 6
-                        row_azul[12] = round(vol_total_gln, 2)
-                        row_azul[13] = round(h_total_v, 2)
-                        row_azul[14] = round(rend_min, 2)
+                        
+                        # 📸 IMAGEN 1: M, N, O (Volumen y Rendimiento)
+                        row_azul[12] = round(vol_total_gln, 2)    # M: VOLUMEN (gln)
+                        row_azul[13] = round(h_total_v, 2)        # N: RENDIMIENTO (hora)
+                        row_azul[14] = round(rend_min, 2)         # O: RENDIMIENTO (min)
+                        
                         row_azul[15] = piloto_f
                         row_azul[16] = hk_f
                         row_azul[17] = tipo_mision
-                        row_azul[18] = float(gran_total)
-                        row_azul[19] = float(costo_por_ha)
-                        row_azul[20] = float(recargo_final)
-                        row_azul[21] = float(gran_total)
-                        row_azul[23] = pista_manual
-                        row_azul[28] = float(gran_total)
-                        row_azul[32] = tipo_productor
-                        row_azul[33] = "GÉNESIS_V2_PRO"
-
-                        # 🧪 RECOLECTOR DE QUÍMICOS (Evita Fuga de Datos)
-                        # Toma los químicos validados de la pantalla y los añade al final de la fila azul
-                        try:
-                            # Asume que su tabla de químicos final se llama 'edited_df'
-                            for idx, row in edited_df.iterrows():
-                                nombre_prod = str(row["A: Producto"])
-                                if "⚠️" not in nombre_prod: # Solo metemos los reales
-                                    dosis_prod = float(row["D: Dosis Total (Sistema)"])
-                                    costo_unit = float(row["E: Costo Unit (+Margen)"])
-                                    costo_total_prod = dosis_prod * costo_unit
-                                    # Empacamos en orden: Producto, Dosis, Costo Total
-                                    row_azul.extend([nombre_prod, dosis_prod, costo_total_prod])
-                        except Exception as e_quimicos:
-                            pass # Si la tabla está vacía, no hace nada
-
+                        
+                        # 📸 IMAGEN 2: S, T, V (Costos de Avión/Operación)
+                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($)
+                        row_azul[19] = float(costo_por_ha)        # T: COSTO AVIÓN ($/ha)
+                        row_azul[20] = float(recargo_final)       # U: DOMINIC ($/ha)
+                        row_azul[21] = float(gran_total)          # V: COSTO AVIÓN ($/finca)
+                        
+                        row_azul[23] = pista_manual               # X: PISTA
+                        
+                        # 📸 IMAGEN 3: AC, AD, AG (Costos Totales y Productor)
+                        row_azul[28] = float(gran_total)          # AC: COSTO TOTAL
+                        row_azul[29] = float(total_pago_avion)    # AD: TOTAL PAGO AVIÓN (Calculado con la tarifa del Dron)
+                        row_azul[32] = tipo_productor             # AG: TIPO DE PRODUCTOR
+                        row_azul[33] = "GÉNESIS_V2_PRO"           # AH: SELLO DE SISTEMA
                         # 📦 EMPAQUETADO APOYO2023
                         fila_apoyo = [""] * 15
                         fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" 
