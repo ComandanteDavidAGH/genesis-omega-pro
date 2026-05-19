@@ -1438,7 +1438,15 @@ elif menu == "⚙️ 3. Validación de Misión":
                         # 🚁 CÁLCULO DE PAGO A TERCEROS (Columna AD en Excel)
                         tarifa_pago = 84427 if "DR51" in hk_f else 71280 if ("DR52" in hk_f or "DR53" in hk_f) else 0
                         total_pago_avion = ha_f * tarifa_pago if mision_solo_dron else 0
+                        # 📡 RADAR DE POSICIONAMIENTO EN GOOGLE SHEETS
+                        try:
+                            # Detecta cuántos datos hay guardados actualmente en la Tabla Azul
+                            # para saber si la nueva factura va a caer en la fila 6, 7, 100, etc.
+                            fila_excel = len(st.session_state['df_azul_actual']) + 2 
+                        except:
+                            fila_excel = 6 # Fila de respaldo por si el radar falla
 
+                        
                         # 📦 EMPAQUETADO MAESTRO - DETONACIÓN TABLA AZUL (34 Espacios)
                         row_azul = [""] * 34
                         row_azul[0] = os_virtual                  # A: ORDEN DE SERVICIO VIRTUAL
