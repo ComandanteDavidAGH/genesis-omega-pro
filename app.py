@@ -913,7 +913,7 @@ elif menu == "⚙️ 3. Validación de Misión":
         
         # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA (Flota Actualizada)
         dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665107, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
-        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 76916, "DRONE AVIL": 72600, "DRONE GENESYS": 72600}
+        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
 
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
