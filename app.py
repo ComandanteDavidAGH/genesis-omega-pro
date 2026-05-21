@@ -2662,14 +2662,12 @@ elif menu == "📈 9. Dashboard Táctico":
                 if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
                 if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
-                # --- 🏆 TARJETAS DE MANDO (KPIs) CORREGIDAS SEGÚN EXCEL ---
-                # 1. Área: Tomamos el tamaño de la finca (el máximo), no la suma de vuelos
+                # --- 🏆 TARJETAS DE MANDO (KPIs) ---
                 total_area = df_filtrado['AREA_FUMIG'].max() if not df_filtrado.empty else 0
                 
-                # 2. Facturación: Sumamos la columna COSTO_AVION ($) para ver los millones
-                total_facturacion = float(df_filtrado['COSTO_AVION'].sum())
+                # 🎯 CORRECCIÓN: Sumar directamente COSTO_TOTAL (La columna de los Millones)
+                total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
                 
-                # 3. Dominicales: Sumamos directamente la columna como en su Excel
                 total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
                 
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -2681,6 +2679,7 @@ elif menu == "📈 9. Dashboard Táctico":
                 k3.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>⚠️ DOMINICALES TOTAL</h4><h2 style='color:#2F75B5; margin:0;'>$ {total_dominical:,.0f}</h2></div>", unsafe_allow_html=True)
 
                 st.markdown("<hr>", unsafe_allow_html=True)
+                
                 if df_filtrado.empty:
                     st.warning(f"⚠️ El Escuadrón no registró operaciones con los filtros actuales.")
                 else:
@@ -2791,15 +2790,18 @@ elif menu == "📈 9. Dashboard Táctico":
                         fig3.update_yaxes(type='category')
                         
                         st.plotly_chart(fig3, use_container_width=True)
-                    # --- GRÁFICO 4: FACTURACIÓN MENSUAL CORREGIDA ---
+                    # --- GRÁFICO 4: FACTURACIÓN MENSUAL (Corregido) ---
                     with g4:
                         st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL</h4>", unsafe_allow_html=True)
-                        # Cambiamos la variable para que grafique los millones de COSTO_AVION
-                        df_mes = df_filtrado.groupby('MES_ORDEN')['COSTO_AVION'].sum().reset_index().sort_values(by='MES_ORDEN')
                         
-                        fig4 = px.bar(df_mes, x='MES_ORDEN', y='COSTO_AVION', text='COSTO_AVION',
+                        # 🎯 CORRECCIÓN: Agrupamos y sumamos COSTO_TOTAL (Millones) en lugar del valor unitario
+                        df_mes = df_filtrado.groupby('MES_ORDEN')['COSTO_TOTAL'].sum().reset_index().sort_values(by='MES_ORDEN')
+                        
+                        fig4 = px.bar(df_mes, x='MES_ORDEN', y='COSTO_TOTAL', text='COSTO_TOTAL',
                                       color_discrete_sequence=['#548235'])
-                        fig4.update_traces(texttemplate='$%{text:,.0f}', textposition='outside', textfont_size=14)
+                        
+                        # Mostramos el valor en formato moneda
+                        fig4.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont_size=14)
                         fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig4, use_container_width=True)
         except Exception as e:
