@@ -2697,29 +2697,36 @@ elif menu == "📈 9. Dashboard Táctico":
                         fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas", plot_bgcolor='rgba(0,0,0,0)', uniformtext_minsize=12)
                         st.plotly_chart(fig1, use_container_width=True)
 
-                    # --- GRÁFICO 2: FACTURACIÓN/ha vs LÍMITE (Corregido) ---
+                    # --- GRÁFICO 2: FACTURACIÓN/ha vs LÍMITE (Corregido y Optimizado Visualmente) ---
                     with g2:
                         st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE</h4>", unsafe_allow_html=True)
                         
-                        # 1. Cambiamos a VALOR_FACTURAR y sacamos el MAX del límite para evitar los ceros
                         df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({
                             'VALOR_FACTURAR': 'mean', 
                             'LIMITE': 'max'
                         }).reset_index()
                         
-                        # 2. Rescate visual: Si el Excel tiene el límite vacío, buscamos el real de esa finca
                         limite_real = df_filtrado[df_filtrado['LIMITE'] > 0]['LIMITE'].max()
                         if pd.isna(limite_real) or limite_real == 0: 
-                            limite_real = 200000 # Valor por defecto si todo viene vacío
+                            limite_real = 200000 
                             
-                        # Si la agrupación dejó algún límite en 0, lo rellenamos con el tope real
                         df_costo['LIMITE'] = df_costo['LIMITE'].apply(lambda x: limite_real if x == 0 else x)
                         
-                        df_costo['ETIQUETA'] = df_costo['COCTEL'] + "<br>(" + df_costo['MES_ORDEN'] + ")"
+                        # ✂️ TRUCO VISUAL 1: Acortar la fecha (Ej: "2025-01 (Ene)" -> "Ene '25")
+                        def acortar_fecha(txt):
+                            try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
+                            except: return txt
+                            
+                        df_costo['FECHA_CORTA'] = df_costo['MES_ORDEN'].apply(acortar_fecha)
+                        
+                        # ✂️ TRUCO VISUAL 2: Truncar nombres de cócteles gigantes (más de 15 caracteres)
+                        df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x))
+                        
+                        # 🏷️ Construir la etiqueta final compacta
+                        df_costo['ETIQUETA'] = df_costo['COCTEL_CORTO'] + "<br>(" + df_costo['FECHA_CORTA'] + ")"
 
                         fig2 = go.Figure()
                         
-                        # BARRAS: Valor a Facturar (Para que suban a 150k-190k igual que en Excel)
                         fig2.add_trace(go.Bar(
                             x=df_costo['ETIQUETA'], 
                             y=df_costo['VALOR_FACTURAR'], 
@@ -2728,26 +2735,30 @@ elif menu == "📈 9. Dashboard Táctico":
                             text=df_costo['VALOR_FACTURAR'], 
                             texttemplate='$%{text:,.0f}', 
                             textposition='outside', 
-                            textfont=dict(size=13)
+                            textfont=dict(size=12), # Letra un poco más ajustada
+                            hovertext=df_costo['COCTEL'], # 💡 Muestra el cóctel completo al pasar el ratón
+                            hovertemplate='<b>%{hovertext}</b><br>Facturación: $%{y:,.0f}<extra></extra>'
                         ))
                         
-                        # LÍNEA ROJA: Límite Oficial (Misma escala principal)
                         fig2.add_trace(go.Scatter(
                             x=df_costo['ETIQUETA'], 
                             y=df_costo['LIMITE'], 
                             name="Límite Finca",
                             mode='lines+markers', 
                             line=dict(color='red', width=3), 
-                            marker=dict(size=8)
+                            marker=dict(size=8),
+                            hovertemplate='Límite: $%{y:,.0f}<extra></extra>'
                         ))
                         
                         fig2.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)', 
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                            yaxis=dict(title="Valor ($/Ha)", rangemode='tozero') # 🎯 Escala única y compartida
+                            yaxis=dict(title="Valor ($/Ha)", rangemode='tozero'),
+                            margin=dict(b=60) # Añade margen inferior para que las letras respiren
                         )
-                        fig2.update_xaxes(tickangle=-45)
+                        fig2.update_xaxes(tickangle=-45, tickfont=dict(size=11)) # Inclina el texto para que no choque
                         st.plotly_chart(fig2, use_container_width=True)
+                        
                     g3, g4 = st.columns(2)
 
                     # --- GRÁFICO 3: RENDIMIENTO/Hora FINCA (Estilo Excel) ---
