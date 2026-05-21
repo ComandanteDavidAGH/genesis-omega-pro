@@ -2615,7 +2615,7 @@ elif menu == "📈 9. Dashboard Táctico":
                 filas_limpias = [r + [""]*(len(columnas) - len(r)) for r in datos_brutos[5:]]
                 df_dash = pd.DataFrame([r[:len(columnas)] for r in filas_limpias], columns=columnas)
                 
-                cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL']
+                cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
                 for col in cols_numericas:
                     df_dash[col] = df_dash[col].apply(extraer_numero)
                 
@@ -2667,10 +2667,10 @@ elif menu == "📈 9. Dashboard Táctico":
                 total_area = df_filtrado['AREA_FUMIG'].max() if not df_filtrado.empty else 0
                 
                 # 2. Facturación: Sumamos la columna COSTO_AVION ($) para ver los millones
-                total_facturacion = df_filtrado['COSTO_AVION'].sum()
+                total_facturacion = float(df_filtrado['COSTO_AVION'].sum())
                 
                 # 3. Dominicales: Sumamos directamente la columna como en su Excel
-                total_dominical = df_filtrado['DOMINICAL_HA'].sum()
+                total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 k1, k2, k3 = st.columns(3)
