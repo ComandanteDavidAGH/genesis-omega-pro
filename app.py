@@ -2593,6 +2593,9 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
 # =====================================================================
 elif menu == "📈 9. Dashboard Táctico":
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
+    
+    import plotly.graph_objects as go
+    import plotly.express as px
 
     with st.spinner("📡 Conectando con la Bóveda de Datos (TABLA 1)..."):
         try:
@@ -2607,36 +2610,54 @@ elif menu == "📈 9. Dashboard Táctico":
             datos_brutos = hoja_maestra.get_all_values()
             
             if len(datos_brutos) > 5:
-                # 🚨 IMPORTANTE: Nombres de las columnas según su base de datos
                 columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
                 
                 filas_limpias = [r + [""]*(len(columnas) - len(r)) for r in datos_brutos[5:]]
                 df_dash = pd.DataFrame([r[:len(columnas)] for r in filas_limpias], columns=columnas)
                 
-                # Limpieza de datos (Convertir a números de Python)
                 cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL']
                 for col in cols_numericas:
                     df_dash[col] = df_dash[col].apply(extraer_numero)
                 
                 df_dash['FECHA_DT'] = df_dash['FECHA'].apply(procesar_fecha_pesada)
                 df_dash = df_dash.dropna(subset=['FECHA_DT'])
-                df_dash['MES'] = df_dash['FECHA_DT'].dt.strftime('%Y-%m') 
+                
+                # 🎯 NUEVA INTELIGENCIA TEMPORAL
+                df_dash['AÑO'] = df_dash['FECHA_DT'].dt.year
+                df_dash['TRIMESTRE'] = df_dash['FECHA_DT'].dt.quarter
+                df_dash['MES_NUM'] = df_dash['FECHA_DT'].dt.month
+                meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
+                df_dash['MES_NOMBRE'] = df_dash['MES_NUM'].map(meses_dict)
+                df_dash['MES_ORDEN'] = df_dash['AÑO'].astype(str) + "-" + df_dash['MES_NUM'].astype(str).str.zfill(2) + " (" + df_dash['MES_NOMBRE'] + ")"
+                
                 df_dash = df_dash[df_dash['AREA_FUMIG'] > 0] 
 
-                # --- 🎛️ FILTROS TÁCTICOS ---
-                st.markdown("### 🎛️ Filtros de Operación")
-                f1, f2, f3 = st.columns(3)
+                # --- 🎛️ FILTROS TÁCTICOS AVANZADOS ---
+                st.markdown("### 🎛️ Filtros de Operación y Tiempo")
                 
+                # Fila 1: Filtros de Tiempo
+                t1, t2 = st.columns(2)
+                # 🎯 AÑADIMOS "TODOS" AL INICIO DE LA LISTA DE AÑOS
+                años_disp = ["TODOS"] + sorted(df_dash['AÑO'].astype(int).unique().tolist(), reverse=True)
+                año_sel = t1.selectbox("📅 AÑO FISCAL", años_disp, index=0)
+                
+                trimestres = {"TODOS": 0, "Q1 (Ene-Mar)": 1, "Q2 (Abr-Jun)": 2, "Q3 (Jul-Sep)": 3, "Q4 (Oct-Dic)": 4}
+                trim_sel = t2.selectbox("📊 TRIMESTRE", list(trimestres.keys()))
+
+                # Fila 2: Filtros Operativos
+                f1, f2, f3 = st.columns(3)
                 fincas_disp = ["TODAS"] + sorted(df_dash['FINCA'].astype(str).unique().tolist())
                 pilotos_disp = ["TODOS"] + sorted(df_dash['PILOTO'].astype(str).unique().tolist())
                 hks_disp = ["TODAS"] + sorted(df_dash['HK'].astype(str).unique().tolist())
                 
                 finca_filtro = f1.selectbox("📍 FINCA", fincas_disp)
                 piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
-                hk_filtro = f3.selectbox("✈️ HK (MATRÍCULA)", hks_disp)
+                hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-                # Aplicar Filtros Dinámicos
+                # 🎯 APLICAR FILTROS (Lógica actualizada para aceptar "TODOS" en Años)
                 df_filtrado = df_dash.copy()
+                if año_sel != "TODOS": df_filtrado = df_filtrado[df_filtrado['AÑO'] == año_sel]
+                if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
                 if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
                 if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
                 if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
@@ -2657,60 +2678,59 @@ elif menu == "📈 9. Dashboard Táctico":
                 st.markdown("<hr>", unsafe_allow_html=True)
 
                 if df_filtrado.empty:
-                    st.warning("⚠️ No hay datos para los filtros seleccionados.")
+                    st.warning(f"⚠️ El Escuadrón no registró operaciones con los filtros actuales.")
                 else:
                     g1, g2 = st.columns(2)
 
-                    # --- GRÁFICO 1: ÁREA ASPERJADA ---
+                    # --- GRÁFICO 1: ÁREA ASPERJADA (Agrupada por MES) ---
                     with g1:
-                        st.markdown(f"<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA - {finca_filtro}</h4>", unsafe_allow_html=True)
-                        df_area = df_filtrado.groupby('FECHA_DT')['AREA_FUMIG'].sum().reset_index()
-                        df_area['FECHA_STR'] = df_area['FECHA_DT'].dt.strftime('%d/%m/%Y')
+                        st.markdown(f"<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES</h4>", unsafe_allow_html=True)
+                        df_area = df_filtrado.groupby('MES_ORDEN')['AREA_FUMIG'].sum().reset_index()
+                        df_area = df_area.sort_values(by='MES_ORDEN')
                         
-                        fig1 = px.bar(df_area, y='FECHA_STR', x='AREA_FUMIG', orientation='h', text='AREA_FUMIG',
-                                      color_discrete_sequence=['#548235'])
-                        fig1.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-                        fig1.update_layout(yaxis_title="Fecha", xaxis_title="Hectáreas", plot_bgcolor='rgba(0,0,0,0)', yaxis={'autorange': 'reversed'})
+                        fig1 = px.bar(df_area, x='MES_ORDEN', y='AREA_FUMIG', text='AREA_FUMIG', color_discrete_sequence=['#548235'])
+                        fig1.update_traces(texttemplate='%{text:.1f}', textposition='outside', textfont_size=14)
+                        fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas", plot_bgcolor='rgba(0,0,0,0)', uniformtext_minsize=12)
                         st.plotly_chart(fig1, use_container_width=True)
 
-                    # --- GRÁFICO 2: COSTO VS LÍMITE (EL DE EXCEL) ---
+                    # --- GRÁFICO 2: COSTO VS LÍMITE (Agrupado por CÓCTEL Y MES) ---
                     with g2:
-                        st.markdown(f"<h4 style='text-align:center;'>⚖️ COSTO/ha vs LÍMITE - {finca_filtro}</h4>", unsafe_allow_html=True)
-                        df_costo = df_filtrado.groupby(['FECHA_DT', 'COCTEL']).agg({'COSTO_HA': 'mean', 'LIMITE': 'mean'}).reset_index()
-                        df_costo['ETIQUETA'] = df_costo['COCTEL'] + "<br>" + df_costo['FECHA_DT'].dt.strftime('%d/%m')
+                        st.markdown(f"<h4 style='text-align:center;'>⚖️ COSTO/ha vs LÍMITE (Promedio)</h4>", unsafe_allow_html=True)
+                        df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'COSTO_HA': 'mean', 'LIMITE': 'mean'}).reset_index()
+                        df_costo['ETIQUETA'] = df_costo['COCTEL'] + "<br>(" + df_costo['MES_ORDEN'] + ")"
 
                         fig2 = go.Figure()
-                        fig2.add_trace(go.Bar(x=df_costo['ETIQUETA'], y=df_costo['COSTO_HA'], name="Costo/ha",
-                                              marker_color='#548235', text=df_costo['COSTO_HA'], texttemplate='$%{text:,.0f}', textposition='outside'))
+                        fig2.add_trace(go.Bar(x=df_costo['ETIQUETA'], y=df_costo['COSTO_HA'], name="Costo/ha Promedio",
+                                              marker_color='#548235', text=df_costo['COSTO_HA'], texttemplate='$%{text:,.0f}', textposition='outside', textfont=dict(size=13)))
                         fig2.add_trace(go.Scatter(x=df_costo['ETIQUETA'], y=df_costo['LIMITE'], name="Límite Finca",
                                                   mode='lines+markers', line=dict(color='red', width=3), marker=dict(size=8)))
                         
                         fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                        fig2.update_xaxes(tickangle=-45)
                         st.plotly_chart(fig2, use_container_width=True)
 
                     g3, g4 = st.columns(2)
 
-                    # --- GRÁFICO 3: RENDIMIENTO HORAS ---
+                    # --- GRÁFICO 3: RENDIMIENTO TOTAL POR HK (Aeronave) ---
                     with g3:
-                        st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO (Horas) - {finca_filtro}</h4>", unsafe_allow_html=True)
-                        df_rend = df_filtrado.groupby(['HK', 'FECHA_DT'])['REND_HR'].sum().reset_index()
-                        df_rend['ETIQUETA'] = df_rend['HK'] + " | " + df_rend['FECHA_DT'].dt.strftime('%d/%m')
+                        st.markdown(f"<h4 style='text-align:center;'>⏱️ HORAS DE VUELO POR MÁQUINA (HK)</h4>", unsafe_allow_html=True)
+                        df_rend = df_filtrado.groupby('HK')['REND_HR'].sum().reset_index().sort_values(by='REND_HR', ascending=True)
                         
-                        fig3 = px.bar(df_rend, y='ETIQUETA', x='REND_HR', orientation='h', text='REND_HR',
+                        fig3 = px.bar(df_rend, y='HK', x='REND_HR', orientation='h', text='REND_HR',
                                       color_discrete_sequence=['#548235'])
-                        fig3.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-                        fig3.update_layout(yaxis_title="HK | Fecha", xaxis_title="Horas de Vuelo", plot_bgcolor='rgba(0,0,0,0)', yaxis={'autorange': 'reversed'})
+                        fig3.update_traces(texttemplate='%{text:.1f} Hrs', textposition='outside', textfont_size=14)
+                        fig3.update_layout(yaxis_title="Matrícula (HK)", xaxis_title="Horas Totales", plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig3, use_container_width=True)
 
                     # --- GRÁFICO 4: FACTURACIÓN MENSUAL ---
                     with g4:
-                        st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL - {finca_filtro}</h4>", unsafe_allow_html=True)
-                        df_mes = df_filtrado.groupby('MES')['VALOR_FACTURAR'].sum().reset_index()
+                        st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL</h4>", unsafe_allow_html=True)
+                        df_mes = df_filtrado.groupby('MES_ORDEN')['VALOR_FACTURAR'].sum().reset_index().sort_values(by='MES_ORDEN')
                         
-                        fig4 = px.bar(df_mes, x='MES', y='VALOR_FACTURAR', text='VALOR_FACTURAR',
+                        fig4 = px.bar(df_mes, x='MES_ORDEN', y='VALOR_FACTURAR', text='VALOR_FACTURAR',
                                       color_discrete_sequence=['#548235'])
-                        fig4.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
-                        fig4.update_layout(xaxis_title="Mes", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
+                        fig4.update_traces(texttemplate='$%{text:,.0f}', textposition='outside', textfont_size=14)
+                        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig4, use_container_width=True)
 
         except Exception as e:
