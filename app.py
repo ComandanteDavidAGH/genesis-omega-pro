@@ -123,7 +123,7 @@ with st.sidebar:
         "📈 5. Sincronización Precios",
         "✈️ 6. Rastreo Dominicales",
         "⚖️ 7. Arqueo de Inventarios",
-        "📊 8. Reporte Hectáreas (Pistas)"
+        "📊 8. Reporte Hectáreas (Pistas)",
         "📈 9. Dashboard Táctico"
     ])
     st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
