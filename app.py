@@ -2717,7 +2717,9 @@ elif menu == "📈 9. Dashboard Táctico":
                             except: return txt
                             
                         df_costo['FECHA_CORTA'] = df_costo['MES_ORDEN'].apply(acortar_fecha)
-                        df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x))
+                        
+                        # ✂️ TRUCO MÁS AGRESIVO: Máximo 10 letras para el cóctel en el eje
+                        df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:10] + '..' if len(str(x)) > 10 else str(x))
                         df_costo['ETIQUETA'] = df_costo['COCTEL_CORTO'] + "<br>(" + df_costo['FECHA_CORTA'] + ")"
 
                         fig2 = go.Figure()
@@ -2730,9 +2732,8 @@ elif menu == "📈 9. Dashboard Táctico":
                             text=df_costo['VALOR_FACTURAR'], 
                             texttemplate='$ %{text:,.0f}', 
                             textposition='outside', 
-                            textfont=dict(size=12), 
+                            textfont=dict(size=11), # Letra del valor un poco más pequeña
                             hovertext=df_costo['COCTEL'], 
-                            # 🎯 AQUÍ ESTÁ LA CORRECCIÓN: Etiqueta robusta al pasar el ratón
                             hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> $ %{y:,.0f} COP<extra></extra>'
                         ))
                         
@@ -2743,18 +2744,17 @@ elif menu == "📈 9. Dashboard Táctico":
                             mode='lines+markers', 
                             line=dict(color='red', width=3), 
                             marker=dict(size=8),
-                            # 🎯 CORRECCIÓN: Etiqueta robusta para la línea roja
                             hovertemplate='<b>Límite Fijo:</b> $ %{y:,.0f} COP<extra></extra>'
                         ))
                         
                         fig2.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)', 
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                            # 🎯 Aclaración directa en el título del eje lateral
                             yaxis=dict(title="Valor ($ COP / Ha)", rangemode='tozero'),
-                            margin=dict(b=60) 
+                            margin=dict(b=100) # 🎯 MÁS ESPACIO ABAJO para el texto vertical
                         )
-                        fig2.update_xaxes(tickangle=-45, tickfont=dict(size=11)) 
+                        # 🎯 TEXTO COMPLETAMENTE VERTICAL (-90 GRADOS) Y TAMAÑO REDUCIDO
+                        fig2.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
                         st.plotly_chart(fig2, use_container_width=True)
                         
                     g3, g4 = st.columns(2)
