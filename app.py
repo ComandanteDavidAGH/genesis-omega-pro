@@ -2662,21 +2662,25 @@ elif menu == "📈 9. Dashboard Táctico":
                 if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
                 if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
-                # --- 🏆 TARJETAS DE MANDO (KPIs) ---
-                total_area = df_filtrado['AREA_FUMIG'].sum()
-                total_facturacion = df_filtrado['VALOR_FACTURAR'].sum()
-                total_dominical = (df_filtrado['DOMINICAL_HA'] * df_filtrado['AREA_FUMIG']).sum()
+                # --- 🏆 TARJETAS DE MANDO (KPIs) CORREGIDAS SEGÚN EXCEL ---
+                # 1. Área: Tomamos el tamaño de la finca (el máximo), no la suma de vuelos
+                total_area = df_filtrado['AREA_FUMIG'].max() if not df_filtrado.empty else 0
+                
+                # 2. Facturación: Sumamos la columna COSTO_AVION ($) para ver los millones
+                total_facturacion = df_filtrado['COSTO_AVION'].sum()
+                
+                # 3. Dominicales: Sumamos directamente la columna como en su Excel
+                total_dominical = df_filtrado['DOMINICAL_HA'].sum()
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 k1, k2, k3 = st.columns(3)
                 
                 estilo_kpi = "background-color: #D9E1F2; border: 2px solid #2F75B5; border-radius: 10px; padding: 15px; text-align: center;"
-                k1.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>🚜 ÁREA ASPERJADA (Ha)</h4><h2 style='color:#2F75B5; margin:0;'>{total_area:,.2f}</h2></div>", unsafe_allow_html=True)
+                k1.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>🚜 ÁREA FINCA (Ha)</h4><h2 style='color:#2F75B5; margin:0;'>{total_area:,.2f}</h2></div>", unsafe_allow_html=True)
                 k2.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>💰 FACTURACIÓN TOTAL</h4><h2 style='color:#2F75B5; margin:0;'>$ {total_facturacion:,.0f}</h2></div>", unsafe_allow_html=True)
                 k3.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>⚠️ DOMINICALES TOTAL</h4><h2 style='color:#2F75B5; margin:0;'>$ {total_dominical:,.0f}</h2></div>", unsafe_allow_html=True)
 
                 st.markdown("<hr>", unsafe_allow_html=True)
-
                 if df_filtrado.empty:
                     st.warning(f"⚠️ El Escuadrón no registró operaciones con los filtros actuales.")
                 else:
@@ -2722,16 +2726,16 @@ elif menu == "📈 9. Dashboard Táctico":
                         fig3.update_layout(yaxis_title="Matrícula (HK)", xaxis_title="Horas Totales", plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig3, use_container_width=True)
 
-                    # --- GRÁFICO 4: FACTURACIÓN MENSUAL ---
+                    # --- GRÁFICO 4: FACTURACIÓN MENSUAL CORREGIDA ---
                     with g4:
                         st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL</h4>", unsafe_allow_html=True)
-                        df_mes = df_filtrado.groupby('MES_ORDEN')['VALOR_FACTURAR'].sum().reset_index().sort_values(by='MES_ORDEN')
+                        # Cambiamos la variable para que grafique los millones de COSTO_AVION
+                        df_mes = df_filtrado.groupby('MES_ORDEN')['COSTO_AVION'].sum().reset_index().sort_values(by='MES_ORDEN')
                         
-                        fig4 = px.bar(df_mes, x='MES_ORDEN', y='VALOR_FACTURAR', text='VALOR_FACTURAR',
+                        fig4 = px.bar(df_mes, x='MES_ORDEN', y='COSTO_AVION', text='COSTO_AVION',
                                       color_discrete_sequence=['#548235'])
                         fig4.update_traces(texttemplate='$%{text:,.0f}', textposition='outside', textfont_size=14)
                         fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig4, use_container_width=True)
-
         except Exception as e:
             st.error(f"🚨 Falla en los motores del Dashboard: {e}")
