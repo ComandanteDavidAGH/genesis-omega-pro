@@ -2715,17 +2715,38 @@ elif menu == "📈 9. Dashboard Táctico":
 
                     g3, g4 = st.columns(2)
 
-                    # --- GRÁFICO 3: RENDIMIENTO TOTAL POR HK (Aeronave) ---
+                    # --- GRÁFICO 3: RENDIMIENTO/Hora FINCA (Estilo Excel) ---
                     with g3:
-                        st.markdown(f"<h4 style='text-align:center;'>⏱️ HORAS DE VUELO POR MÁQUINA (HK)</h4>", unsafe_allow_html=True)
-                        df_rend = df_filtrado.groupby('HK')['REND_HR'].sum().reset_index().sort_values(by='REND_HR', ascending=True)
+                        titulo_finca = f" {finca_filtro}" if finca_filtro != "TODAS" else ""
+                        st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO/Hora FINCA{titulo_finca}</h4>", unsafe_allow_html=True)
                         
-                        fig3 = px.bar(df_rend, y='HK', x='REND_HR', orientation='h', text='REND_HR',
+                        # 1. Agrupamos por Máquina (HK) y Semana, igual que en Excel
+                        df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
+                        
+                        # 2. TRUCO VITAL: Convertimos HK y Semana a texto puro para que Python no los sume ni los aplaste
+                        df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
+                        df_rend['SEMANA'] = df_rend['SEMANA'].astype(str).str.replace(".0", "", regex=False)
+                        
+                        # 3. Creamos la jerarquía visual para el eje Y (Ej: "4014 | Sem 2")
+                        df_rend['EJE_Y'] = df_rend['HK'] + " | Sem " + df_rend['SEMANA']
+                        
+                        # Ordenamos para que las máquinas y las semanas queden agrupadas y en orden
+                        df_rend = df_rend.sort_values(by=['HK', 'SEMANA'], ascending=[True, False])
+                        
+                        # 4. Generamos el gráfico
+                        fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='REND_HR',
                                       color_discrete_sequence=['#548235'])
-                        fig3.update_traces(texttemplate='%{text:.1f} Hrs', textposition='outside', textfont_size=14)
-                        fig3.update_layout(yaxis_title="Matrícula (HK)", xaxis_title="Horas Totales", plot_bgcolor='rgba(0,0,0,0)')
+                        
+                        # Formato de los números sobre las barras
+                        fig3.update_traces(texttemplate='%{text:.2f}', textposition='outside', textfont_size=14)
+                        
+                        # Ajuste de fondo y títulos
+                        fig3.update_layout(yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
+                        
+                        # BLINDAJE: Forzar el eje Y para que trate las etiquetas como categorías
+                        fig3.update_yaxes(type='category')
+                        
                         st.plotly_chart(fig3, use_container_width=True)
-
                     # --- GRÁFICO 4: FACTURACIÓN MENSUAL CORREGIDA ---
                     with g4:
                         st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL</h4>", unsafe_allow_html=True)
