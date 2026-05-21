@@ -80,8 +80,21 @@ if not st.session_state['autenticado']:
 # =====================================================================
 
 # --- 2. ARTILLERÍA VISUAL Y CSS ---
-# (Deje su bloque de arsenal_css tal cual como lo tiene en su código...)
+arsenal_css = """
+<style>
+[data-testid="stToolbarActions"] { display: none !important; }
+.stApp { background-color: #f4f6f9; }
+[data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
+[data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
+.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase;}
+.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px;}
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
+div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
+th { background-color: #f0f2f6 !important; color: black !important; }
+</style>
+"""
 st.markdown(arsenal_css, unsafe_allow_html=True)
+
 # --- 3. FUNCIONES GLOBALES TÁCTICAS ---
 def purificar_lote(lote):
     if pd.isna(lote) or lote is None: return ""
