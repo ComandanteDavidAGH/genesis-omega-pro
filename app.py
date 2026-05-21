@@ -2712,17 +2712,12 @@ elif menu == "📈 9. Dashboard Táctico":
                             
                         df_costo['LIMITE'] = df_costo['LIMITE'].apply(lambda x: limite_real if x == 0 else x)
                         
-                        # ✂️ TRUCO VISUAL 1: Acortar la fecha (Ej: "2025-01 (Ene)" -> "Ene '25")
                         def acortar_fecha(txt):
                             try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
                             except: return txt
                             
                         df_costo['FECHA_CORTA'] = df_costo['MES_ORDEN'].apply(acortar_fecha)
-                        
-                        # ✂️ TRUCO VISUAL 2: Truncar nombres de cócteles gigantes (más de 15 caracteres)
                         df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x))
-                        
-                        # 🏷️ Construir la etiqueta final compacta
                         df_costo['ETIQUETA'] = df_costo['COCTEL_CORTO'] + "<br>(" + df_costo['FECHA_CORTA'] + ")"
 
                         fig2 = go.Figure()
@@ -2733,11 +2728,12 @@ elif menu == "📈 9. Dashboard Táctico":
                             name="Facturación/ha",
                             marker_color='#548235', 
                             text=df_costo['VALOR_FACTURAR'], 
-                            texttemplate='$%{text:,.0f}', 
+                            texttemplate='$ %{text:,.0f}', 
                             textposition='outside', 
-                            textfont=dict(size=12), # Letra un poco más ajustada
-                            hovertext=df_costo['COCTEL'], # 💡 Muestra el cóctel completo al pasar el ratón
-                            hovertemplate='<b>%{hovertext}</b><br>Facturación: $%{y:,.0f}<extra></extra>'
+                            textfont=dict(size=12), 
+                            hovertext=df_costo['COCTEL'], 
+                            # 🎯 AQUÍ ESTÁ LA CORRECCIÓN: Etiqueta robusta al pasar el ratón
+                            hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> $ %{y:,.0f} COP<extra></extra>'
                         ))
                         
                         fig2.add_trace(go.Scatter(
@@ -2747,16 +2743,18 @@ elif menu == "📈 9. Dashboard Táctico":
                             mode='lines+markers', 
                             line=dict(color='red', width=3), 
                             marker=dict(size=8),
-                            hovertemplate='Límite: $%{y:,.0f}<extra></extra>'
+                            # 🎯 CORRECCIÓN: Etiqueta robusta para la línea roja
+                            hovertemplate='<b>Límite Fijo:</b> $ %{y:,.0f} COP<extra></extra>'
                         ))
                         
                         fig2.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)', 
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                            yaxis=dict(title="Valor ($/Ha)", rangemode='tozero'),
-                            margin=dict(b=60) # Añade margen inferior para que las letras respiren
+                            # 🎯 Aclaración directa en el título del eje lateral
+                            yaxis=dict(title="Valor ($ COP / Ha)", rangemode='tozero'),
+                            margin=dict(b=60) 
                         )
-                        fig2.update_xaxes(tickangle=-45, tickfont=dict(size=11)) # Inclina el texto para que no choque
+                        fig2.update_xaxes(tickangle=-45, tickfont=dict(size=11)) 
                         st.plotly_chart(fig2, use_container_width=True)
                         
                     g3, g4 = st.columns(2)
