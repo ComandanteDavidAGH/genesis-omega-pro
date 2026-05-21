@@ -7,6 +7,31 @@ import unicodedata
 from datetime import datetime
 import dateutil.parser
 
+# --- 🔐 BÓVEDA DE SEGURIDAD OMEGA ---
+# Aquí definimos quiénes tienen acceso al sistema
+USUARIOS_CREDENTIALS = {
+    "usernames": {
+        "comandante": {
+            "name": "Comandante Omega",
+            "password": "Alfa123*", # 🚨 CAMBIE ESTA CLAVE DESPUÉS
+            "role": "ADMIN"
+        },
+        "gerencia": {
+            "name": "Visor Gerencial / Cliente",
+            "password": "Omega456*", # 🚨 CAMBIE ESTA CLAVE DESPUÉS
+            "role": "VIEWER"
+        }
+    }
+}
+
+# Inicializar la memoria de sesión para el inicio de sesión
+if 'autenticado' not in st.session_state:
+    st.session_state['autenticado'] = False
+if 'usuario_rol' not in st.session_state:
+    st.session_state['usuario_rol'] = None
+if 'usuario_nombre' not in st.session_state:
+    st.session_state['usuario_nombre'] = None
+    
 # Imports de conexiones y apis
 import openpyxl
 import gspread
@@ -23,22 +48,40 @@ except ImportError:
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
-# --- 2. ARTILLERÍA VISUAL Y CSS ---
-arsenal_css = """
-<style>
-[data-testid="stToolbarActions"] { display: none !important; }
-.stApp { background-color: #f4f6f9; }
-[data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
-[data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
-.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase;}
-.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px;}
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
-div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
-th { background-color: #f0f2f6 !important; color: black !important; }
-</style>
-"""
-st.markdown(arsenal_css, unsafe_allow_html=True)
+# --- 🔐 CONTROL DE ACCESO PERIMETRAL ---
+if not st.session_state['autenticado']:
+    st.markdown("<h2 style='text-align: center; color: #0d1b2a;'>🚀 GÉNESIS OMEGA PRO</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Ingrese sus coordenadas de acceso para activar los radares.</p>", unsafe_allow_html=True)
+    
+    col_log1, col_log2, col_log3 = st.columns([1, 2, 1])
+    with col_log2:
+        with st.form("Formulario de Autenticación"):
+            user_input = st.text_input("🛰️ Usuario:")
+            pass_input = st.text_input("🔑 Contraseña:", type="password")
+            btn_login = st.form_submit_button("🔓 ACTIVAR SISTEMA", use_container_width=True)
+            
+            if btn_login:
+                if user_input in USUARIOS_CREDENTIALS["usernames"]:
+                    datos_user = USUARIOS_CREDENTIALS["usernames"][user_input]
+                    if pass_input == datos_user["password"]:
+                        st.session_state['autenticado'] = True
+                        st.session_state['usuario_rol'] = datos_user["role"]
+                        st.session_state['usuario_nombre'] = datos_user["name"]
+                        st.success(f"🔓 Acceso Concedido. Bienvenido {datos_user['name']}")
+                        st.rerun()
+                    else:
+                        st.error("🚨 Contraseña incorrecta. Intento registrado.")
+                else:
+                    st.error("🚨 Usuario no identificado en el perímetro.")
+    st.stop() # DETIENE EL CÓDIGO AQUÍ SI NO ESTÁ AUTENTICADO
 
+# =====================================================================
+# si el código llega aquí, significa que el usuario ya se autenticó
+# =====================================================================
+
+# --- 2. ARTILLERÍA VISUAL Y CSS ---
+# (Deje su bloque de arsenal_css tal cual como lo tiene en su código...)
+st.markdown(arsenal_css, unsafe_allow_html=True)
 # --- 3. FUNCIONES GLOBALES TÁCTICAS ---
 def purificar_lote(lote):
     if pd.isna(lote) or lote is None: return ""
@@ -107,26 +150,43 @@ def procesar_fecha_pesada(v):
 
 # --- 4. MENÚ MAESTRO (CUARTEL GENERAL) ---
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: white; font-size:12px;'>👤 {st.session_state['usuario_nombre']}</p>", unsafe_allow_html=True)
     
-    # 🔄 BOTÓN TÁCTICO: RECARGA EN CALIENTE (Conserva sus datos)
-    st.markdown("---")
-    if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True):
-        st.cache_data.clear()
+    # BOTÓN DE CIERRE DE SESIÓN TÁCTICO
+    if st.button("🔒 Cerrar Sesión", use_container_width=True):
+        st.session_state['autenticado'] = False
+        st.session_state['usuario_rol'] = None
+        st.session_state['usuario_nombre'] = None
         st.rerun()
-    menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
-        "🏠 Centro de Mando", 
-        "🛠️ 1. Mantenimiento Plantilla SAP",
-        "📥 2. Carga Facturación", 
-        "⚙️ 3. Validación de Misión", 
-        "⌨️ 4. Ingreso Manual Acelerado (OS)", 
-        "📈 5. Sincronización Precios",
-        "✈️ 6. Rastreo Dominicales",
-        "⚖️ 7. Arqueo de Inventarios",
-        "📊 8. Reporte Hectáreas (Pistas)",
-        "📈 9. Dashboard Táctico"
-    ])
+        
+    st.markdown("---")
+    
+    # 🕵️‍♂️ REGLA DE RANGO: Si es ADMIN (Usted), ve todo. Si es VIEWER (Gerente/Cliente), solo ve el Dashboard
+    if st.session_state['usuario_rol'] == "ADMIN":
+        if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+            
+        menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
+            "🏠 Centro de Mando", 
+            "🛠️ 1. Mantenimiento Plantilla SAP",
+            "📥 2. Carga Facturación", 
+            "⚙️ 3. Validación de Misión", 
+            "⌨️ 4. Ingreso Manual Acelerado (OS)", 
+            "📈 5. Sincronización Precios",
+            "✈️ 6. Rastreo Dominicales",
+            "⚖️ 7. Arqueo de Inventarios",
+            "📊 8. Reporte Hectáreas (Pistas)",
+            "📈 9. Dashboard Táctico"
+        ])
+    else:
+        # El gerente o cliente NO tiene opciones operativas, va directo al Dashboard
+        menu = "📈 9. Dashboard Táctico"
+        st.info("🛰️ Modo Consulta Gerencial Activado. Acceso restringido a reportes visuales.")
+
     st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
+    
 
 # =====================================================================
 # 🏠 0. CENTRO DE MANDO
