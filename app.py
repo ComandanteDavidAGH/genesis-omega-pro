@@ -11,6 +11,7 @@ import dateutil.parser
 import openpyxl
 import gspread
 import plotly.express as px
+import plotly.graph_objects as go  # <-- AGREGUE ESTA LÍNEA AQUÍ
 
 # Intentar importar matplotlib para el mapa de calor, si falla, el sistema sigue
 try:
@@ -123,6 +124,7 @@ with st.sidebar:
         "✈️ 6. Rastreo Dominicales",
         "⚖️ 7. Arqueo de Inventarios",
         "📊 8. Reporte Hectáreas (Pistas)"
+        "📈 9. Dashboard Táctico"
     ])
     st.info(f"📅 Operación: {datetime.now().strftime('%Y-%m-%d')}")
 
@@ -2583,3 +2585,133 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
                 )                
     except Exception as e:
         st.error(f"🚨 Falla en el sistema de radares: {e}")
+
+
+
+# =====================================================================
+# 📈 9. DASHBOARD TÁCTICO (FUSIÓN EXCEL + STREAMLIT)
+# =====================================================================
+elif menu == "📈 9. Dashboard Táctico":
+    st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
+
+    with st.spinner("📡 Conectando con la Bóveda de Datos (TABLA 1)..."):
+        try:
+            # 1. CONEXIÓN A LA BASE DE DATOS
+            if "gcp_credentials" in st.secrets:
+                gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+            else:
+                gc = gspread.service_account(filename='credenciales.json')
+            
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            hoja_maestra = boveda.worksheet("TABLA 1")
+            datos_brutos = hoja_maestra.get_all_values()
+            
+            if len(datos_brutos) > 5:
+                # 🚨 IMPORTANTE: Nombres de las columnas según su base de datos
+                columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+                
+                filas_limpias = [r + [""]*(len(columnas) - len(r)) for r in datos_brutos[5:]]
+                df_dash = pd.DataFrame([r[:len(columnas)] for r in filas_limpias], columns=columnas)
+                
+                # Limpieza de datos (Convertir a números de Python)
+                cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL']
+                for col in cols_numericas:
+                    df_dash[col] = df_dash[col].apply(extraer_numero)
+                
+                df_dash['FECHA_DT'] = df_dash['FECHA'].apply(procesar_fecha_pesada)
+                df_dash = df_dash.dropna(subset=['FECHA_DT'])
+                df_dash['MES'] = df_dash['FECHA_DT'].dt.strftime('%Y-%m') 
+                df_dash = df_dash[df_dash['AREA_FUMIG'] > 0] 
+
+                # --- 🎛️ FILTROS TÁCTICOS ---
+                st.markdown("### 🎛️ Filtros de Operación")
+                f1, f2, f3 = st.columns(3)
+                
+                fincas_disp = ["TODAS"] + sorted(df_dash['FINCA'].astype(str).unique().tolist())
+                pilotos_disp = ["TODOS"] + sorted(df_dash['PILOTO'].astype(str).unique().tolist())
+                hks_disp = ["TODAS"] + sorted(df_dash['HK'].astype(str).unique().tolist())
+                
+                finca_filtro = f1.selectbox("📍 FINCA", fincas_disp)
+                piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
+                hk_filtro = f3.selectbox("✈️ HK (MATRÍCULA)", hks_disp)
+
+                # Aplicar Filtros Dinámicos
+                df_filtrado = df_dash.copy()
+                if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
+                if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
+                if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
+
+                # --- 🏆 TARJETAS DE MANDO (KPIs) ---
+                total_area = df_filtrado['AREA_FUMIG'].sum()
+                total_facturacion = df_filtrado['VALOR_FACTURAR'].sum()
+                total_dominical = (df_filtrado['DOMINICAL_HA'] * df_filtrado['AREA_FUMIG']).sum()
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                k1, k2, k3 = st.columns(3)
+                
+                estilo_kpi = "background-color: #D9E1F2; border: 2px solid #2F75B5; border-radius: 10px; padding: 15px; text-align: center;"
+                k1.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>🚜 ÁREA ASPERJADA (Ha)</h4><h2 style='color:#2F75B5; margin:0;'>{total_area:,.2f}</h2></div>", unsafe_allow_html=True)
+                k2.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>💰 FACTURACIÓN TOTAL</h4><h2 style='color:#2F75B5; margin:0;'>$ {total_facturacion:,.0f}</h2></div>", unsafe_allow_html=True)
+                k3.markdown(f"<div style='{estilo_kpi}'><h4 style='color:#0d1b2a; margin:0;'>⚠️ DOMINICALES TOTAL</h4><h2 style='color:#2F75B5; margin:0;'>$ {total_dominical:,.0f}</h2></div>", unsafe_allow_html=True)
+
+                st.markdown("<hr>", unsafe_allow_html=True)
+
+                if df_filtrado.empty:
+                    st.warning("⚠️ No hay datos para los filtros seleccionados.")
+                else:
+                    g1, g2 = st.columns(2)
+
+                    # --- GRÁFICO 1: ÁREA ASPERJADA ---
+                    with g1:
+                        st.markdown(f"<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA - {finca_filtro}</h4>", unsafe_allow_html=True)
+                        df_area = df_filtrado.groupby('FECHA_DT')['AREA_FUMIG'].sum().reset_index()
+                        df_area['FECHA_STR'] = df_area['FECHA_DT'].dt.strftime('%d/%m/%Y')
+                        
+                        fig1 = px.bar(df_area, y='FECHA_STR', x='AREA_FUMIG', orientation='h', text='AREA_FUMIG',
+                                      color_discrete_sequence=['#548235'])
+                        fig1.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                        fig1.update_layout(yaxis_title="Fecha", xaxis_title="Hectáreas", plot_bgcolor='rgba(0,0,0,0)', yaxis={'autorange': 'reversed'})
+                        st.plotly_chart(fig1, use_container_width=True)
+
+                    # --- GRÁFICO 2: COSTO VS LÍMITE (EL DE EXCEL) ---
+                    with g2:
+                        st.markdown(f"<h4 style='text-align:center;'>⚖️ COSTO/ha vs LÍMITE - {finca_filtro}</h4>", unsafe_allow_html=True)
+                        df_costo = df_filtrado.groupby(['FECHA_DT', 'COCTEL']).agg({'COSTO_HA': 'mean', 'LIMITE': 'mean'}).reset_index()
+                        df_costo['ETIQUETA'] = df_costo['COCTEL'] + "<br>" + df_costo['FECHA_DT'].dt.strftime('%d/%m')
+
+                        fig2 = go.Figure()
+                        fig2.add_trace(go.Bar(x=df_costo['ETIQUETA'], y=df_costo['COSTO_HA'], name="Costo/ha",
+                                              marker_color='#548235', text=df_costo['COSTO_HA'], texttemplate='$%{text:,.0f}', textposition='outside'))
+                        fig2.add_trace(go.Scatter(x=df_costo['ETIQUETA'], y=df_costo['LIMITE'], name="Límite Finca",
+                                                  mode='lines+markers', line=dict(color='red', width=3), marker=dict(size=8)))
+                        
+                        fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                        st.plotly_chart(fig2, use_container_width=True)
+
+                    g3, g4 = st.columns(2)
+
+                    # --- GRÁFICO 3: RENDIMIENTO HORAS ---
+                    with g3:
+                        st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO (Horas) - {finca_filtro}</h4>", unsafe_allow_html=True)
+                        df_rend = df_filtrado.groupby(['HK', 'FECHA_DT'])['REND_HR'].sum().reset_index()
+                        df_rend['ETIQUETA'] = df_rend['HK'] + " | " + df_rend['FECHA_DT'].dt.strftime('%d/%m')
+                        
+                        fig3 = px.bar(df_rend, y='ETIQUETA', x='REND_HR', orientation='h', text='REND_HR',
+                                      color_discrete_sequence=['#548235'])
+                        fig3.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                        fig3.update_layout(yaxis_title="HK | Fecha", xaxis_title="Horas de Vuelo", plot_bgcolor='rgba(0,0,0,0)', yaxis={'autorange': 'reversed'})
+                        st.plotly_chart(fig3, use_container_width=True)
+
+                    # --- GRÁFICO 4: FACTURACIÓN MENSUAL ---
+                    with g4:
+                        st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL - {finca_filtro}</h4>", unsafe_allow_html=True)
+                        df_mes = df_filtrado.groupby('MES')['VALOR_FACTURAR'].sum().reset_index()
+                        
+                        fig4 = px.bar(df_mes, x='MES', y='VALOR_FACTURAR', text='VALOR_FACTURAR',
+                                      color_discrete_sequence=['#548235'])
+                        fig4.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+                        fig4.update_layout(xaxis_title="Mes", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
+                        st.plotly_chart(fig4, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"🚨 Falla en los motores del Dashboard: {e}")
