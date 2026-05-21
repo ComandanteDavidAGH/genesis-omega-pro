@@ -1146,7 +1146,16 @@ elif menu == "⚙️ 3. Validación de Misión":
                                 col_ordenar = [c for c in match_pista.columns if ('LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()) and 'VALOR' not in str(c).upper()]
                                 if col_ordenar:
                                     match_pista['Temp_Sort'] = match_pista[col_ordenar[0]].apply(extraer_numero)
-                                    match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
+                                    
+                                    # 🔍 RADAR DE LOTES INTELIGENTE (FIFO: Agota primero el de menor cantidad)
+                                    match_pista_vivos = match_pista[match_pista['Temp_Sort'] > 0]
+                                    
+                                    if not match_pista_vivos.empty:
+                                        # Ordena de Menor a Mayor (Gasta los saldos pequeños primero)
+                                        match_pista = match_pista_vivos.sort_values(by='Temp_Sort', ascending=True)
+                                    else:
+                                        # Si no hay vivos, los deja normal
+                                        match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
                             except: pass
                             
                             fila_pista = match_pista.iloc[0]
@@ -1173,6 +1182,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     
                 costo_margen = round(costo_unit * mult_material, 0)
 
+                # 📦 EMPAQUETADO CON LOTE INTELIGENTE INYECTADO
                 matriz_datos.append({
                     "A: Producto": nombre_p,
                     "B: Dosis/Ha (SAP)": round(dosis_teorica, 3),
