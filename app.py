@@ -1511,25 +1511,31 @@ elif menu == "⚙️ 3. Validación de Misión":
                                 ha_bruta_f = match_f.iloc[0, 2]
                                 bloque_f = match_f.iloc[0, 3]
 
+                        # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS Y AJUSTE DE AERONAVE (Corregido) ---
                         ha_f = float(ha_dosis_final)
                         h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
                         vol_total_gln = ha_f * 6
                         rend_min = h_total_v * 60
+                        
+                        # 🎯 CORRECCIÓN 1: Identificación Dinámica del Piloto/Operador
                         piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
-                        hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
+                        
+                        # 🎯 CORRECCIÓN 2: Asignación e Inyección Dinámica de Matrículas (HK)
+                        if mision_solo_dron:
+                            if "DATAROT" in tipo_mision.upper(): hk_f = "DR51"
+                            elif "GENESYS" in tipo_mision.upper(): hk_f = "DR52"
+                            elif "AVIL" in tipo_mision.upper(): hk_f = "DR53"
+                            else: hk_f = "DRONE_GEN"
+                        else:
+                            # Si es AVIÓN, toma la matrícula real seleccionada en los campos anteriores
+                            hk_f = hk_sel if 'hk_sel' in locals() else "AVION_REG"
 
-                        # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS (Reemplazo de Fórmulas Excel) ---
-                        ha_f = float(ha_dosis_final)
-                        h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
-                        vol_total_gln = ha_f * 6
-                        rend_min = h_total_v * 60
-                        piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
-                        hk_f = "DR51" if "DATAROT" in tipo_mision else "DR52" if "GENESYS" in tipo_mision else "DR53" if "AVIL" in tipo_mision else "S/N"
+                        # 🎯 CORRECCIÓN 3: Modelo de la Aeronave para la base de datos
+                        modelo_f = "DRONE" if mision_solo_dron else "AVION"
 
-                        # 🚁 CÁLCULO DE PAGO A TERCEROS (Columna AD en Excel)
+                        # 🚁 CÁLCULO DE PAGO A TERCEROS (Columna AD en Excel) - Ahora sí detecta el HK correcto
                         tarifa_pago = 84427 if "DR51" in hk_f else 71280 if ("DR52" in hk_f or "DR53" in hk_f) else 0
                         total_pago_avion = ha_f * tarifa_pago if mision_solo_dron else 0
-                        # 📡 RADAR DE POSICIONAMIENTO EN GOOGLE SHEETS
                         try:
                             # Detecta cuántos datos hay guardados actualmente en la Tabla Azul
                             # para saber si la nueva factura va a caer en la fila 6, 7, 100, etc.
