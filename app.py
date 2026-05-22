@@ -2933,58 +2933,56 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
         if "" in df.columns: df = df.drop(columns=[""])
         return df
         
-    # 2. 🎯 ESTANDARIZADOR BLINDADO: Solo renombra la columna exacta, evitando clones
+    # 2. 🎯 ESTANDARIZADOR BLINDADO: Prioridad Máxima a la columna FACTURAR
     def estandarizar_base(df):
         renombres = {}
-        finca_ok = False; costo_ok = False; fecha_ok = False
-        
+        # Primero buscamos al Rey: VALOR A FACTURAR
         for col in df.columns:
             col_u = str(col).upper().strip()
-            
-            # Atrapa el costo (ignora otras si ya atrapó la principal)
-            if not costo_ok and ('FACTURAR' in col_u or 'COSTO AVION ($/HA)' in col_u or col_u == 'COSTO_HA'):
+            if 'FACTURAR' in col_u:
                 renombres[col] = 'COSTO_MAESTRO'
-                costo_ok = True
+                break
                 
-            # Atrapa a Finca EXACTA (ignora COSTO_FINCA)
-            elif not finca_ok and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
+        # Si por alguna razón no está, usamos respaldos
+        if 'COSTO_MAESTRO' not in renombres.values():
+            for col in df.columns:
+                col_u = str(col).upper().strip()
+                if 'COSTO AVION ($/HA)' in col_u or col_u == 'COSTO_HA':
+                    renombres[col] = 'COSTO_MAESTRO'
+                    break
+                    
+        # Buscamos Finca y Fecha sin clones
+        finca_ok = False; fecha_ok = False
+        for col in df.columns:
+            col_u = str(col).upper().strip()
+            if not finca_ok and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
                 renombres[col] = 'FINCA_MAESTRA'
                 finca_ok = True
-                
-            # Atrapa a Fecha EXACTA (ignora otras fechas)
             elif not fecha_ok and col_u == 'FECHA':
                 renombres[col] = 'FECHA_MAESTRA'
                 fecha_ok = True
                 
         df.rename(columns=renombres, inplace=True)
         return df
-    # 3. 🎯 TRADUCTOR FINANCIERO BLINDADO: Ignora letras como "AER." o "FUMYG"
+
+    # 3. 🎯 TRADUCTOR FINANCIERO SUPERIOR (A prueba de letras)
     def convertir_pesos(val):
         try:
             v = str(val)
-            # 1. Filtra y deja ÚNICAMENTE números, puntos y comas (Destruye letras y espacios)
             v_limpio = "".join([c for c in v if c.isdigit() or c in ['.', ',']])
-            
-            # 2. Elimina cualquier punto que haya quedado "huérfano" al final (ej: 206.101.)
             v_limpio = v_limpio.rstrip('.,')
-            
             if v_limpio == '': return 0.0
             
-            # 3. Lógica para diferenciar miles colombianos vs decimales gringos
             if ',' in v_limpio and '.' not in v_limpio: v_limpio = v_limpio.replace(',', '.')
             elif '.' in v_limpio and ',' in v_limpio: v_limpio = v_limpio.replace('.', '').replace(',', '.')
             elif '.' in v_limpio:
                 partes = v_limpio.split('.')
-                # Si el bloque después del punto tiene exactamente 3 números, eran miles
                 if len(partes[-1]) == 3: v_limpio = v_limpio.replace('.', '')
                     
             num = float(v_limpio)
-            
-            # Salvavidas: Convierte los "197 pesos" en 197,000 reales
             if 0 < num < 2000: num = num * 1000 
             return num
-        except:
-            return 0.0
+        except: return 0.0
     with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
         try:
             if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
@@ -3032,9 +3030,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     st.markdown("### 🎛️ Centro de Mando: Parámetros de Autopsia")
                     
                     if 'FECHA_MAESTRA' in super_base_bi.columns:
-                        super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA_MAESTRA'], errors='coerce', dayfirst=True)
+                        # 🎯 USAMOS SU FUNCIÓN NATIVA PARA NO PERDER NI UNA SOLA FILA DEL PASADO
+                        super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
                         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
                         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
+                        
                         
                         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
                         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
