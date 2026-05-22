@@ -3077,6 +3077,111 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
             else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
+                # =====================================================================
+                        # --- 📊 FASE 4: VISORES GRÁFICOS Y DETECTOR DE CULPABLES ---
+                        # =====================================================================
+                        st.markdown("---")
+                        st.markdown("### 🧬 Autopsia Analítica: El Detector de Culpables")
+                        
+                        # 1. ESTABLECER COLUMNAS RESPALDO PARA AERONAVE
+                        col_avion = None
+                        for col in df_finca.columns:
+                            if 'AVION' in str(col).upper():
+                                col_avion = col
+                                break
+                        
+                        if col_avion:
+                            df_periodo_a['AVION_NUM'] = df_periodo_a[col_avion].apply(convertir_pesos)
+                            df_periodo_b['AVION_NUM'] = df_periodo_b[col_avion].apply(convertir_pesos)
+                        else:
+                            df_periodo_a['AVION_NUM'] = 0.0
+                            df_periodo_b['AVION_NUM'] = 0.0
+
+                        # Cálculo de promedios de vuelo
+                        vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
+                        vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
+                        
+                        # Insumos puros (Costo Total menos Costo Avión)
+                        insumos_a = max(0, costo_a - vuelo_a)
+                        insumos_b = max(0, costo_b - vuelo_b)
+                        
+                        # 2. GRÁFICO 1: DESGLOSE DE RESPONSABILIDAD (Vuelo vs Insumos)
+                        st.markdown("#### 🛩️ vs 🧪 Distribución del Incremento de Costo")
+                        
+                        categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
+                        fig_desglose = go.Figure(data=[
+                            go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
+                            go.Bar(name='Costo Insumos (Cóctel) / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
+                        ])
+                        fig_desglose.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha")
+                        st.plotly_chart(fig_desglose, use_container_width=True)
+                        
+                        # 3. EXPLICACIÓN IA EN TIEMPO REAL
+                        diff_vuelo = vuelo_b - vuelo_a
+                        diff_insumos = insumos_b - insumos_a
+                        
+                        st.info("🕵️‍♂️ **DICTAMEN DEL DETECTOR DE CULPABLES:**")
+                        if diff_vuelo > 0 and diff_insumos > 0:
+                            st.write(f"• El encarecimiento es **MIXTO**: La tarifa del avión subió **$ {diff_vuelo:,.0f}/Ha** y el cóctel de químicos subió **$ {diff_insumos:,.0f}/Ha**.")
+                        elif diff_insumos > diff_vuelo:
+                            st.write(f"• Culpable principal: **LOS INSUMOS**. El cóctel de químicos aumentó **$ {diff_insumos:,.0f}/Ha**, representando el mayor impacto en el presupuesto.")
+                        elif diff_vuelo > diff_insumos:
+                            st.write(f"• Culpable principal: **EL AVIÓN**. La tarifa logística de vuelo subió **$ {diff_vuelo:,.0f}/Ha**. Revise contratos de operación o eficiencia de pistas.")
+                        else:
+                            st.write("• Los componentes de costo se mantienen estables o presentan variaciones proporcionales.")
+
+                        # 4. TABLA INTERACTIVA DE COMPORTAMIENTO POR CÓCTEL Y DOSIS
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.markdown("#### 📋 Auditoría de Cócteles, Recetas y Volumen Aplicado")
+                        
+                        # Buscamos la columna cóctel y volumen
+                        col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
+                        col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
+                        
+                        if col_coctel:
+                            # Aseguramos limpieza en los nombres de los cócteles
+                            df_periodo_a[col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
+                            df_periodo_b[col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+                            
+                            # Agrupamos año base
+                            agg_dict = {'COSTO_NUM': 'mean'}
+                            if col_gln: agg_dict[col_gln] = 'mean'
+                            
+                            g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
+                            g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+                            
+                            # Cruzamos ambas épocas en una sola matriz de autopsia
+                            tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, suffixes=('_BASE', '_ACTUAL'))
+                            
+                            # Renombramos para el Comandante
+                            tabla_autopsia.rename(columns={
+                                col_coctel: 'CÓCTEL APLICADO',
+                                'COSTO_NUM_BASE': f'Costo/Ha ({año_base})',
+                                'COSTO_NUM_ACTUAL': f'Costo/Ha ({año_comp})'
+                            }, inplace=True)
+                            
+                            # Calculamos desviaciones monetarias
+                            tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
+                            
+                            if col_gln:
+                                tabla_autopsia.rename(columns={
+                                    f'{col_gln}_BASE': f'Volumen Volado ({año_base}) [Gln/Ha]',
+                                    f'{col_gln}_ACTUAL': f'Volumen Volado ({año_comp}) [Gln/Ha]'
+                                }, inplace=True)
+                                # Evaluamos si cambió la dosis (Volumen volado por hectárea)
+                                tabla_autopsia['Cambio de Dosis/Receta'] = tabla_autopsia.apply(
+                                    lambda r: "🚨 CAMBIÓ DOSIS" if abs(float(r[3]) - float(r[2])) > 0.05 else "⚖️ MISMA RECETA (Alza SAP)", axis=1
+                                )
+                            
+                            # Formatear dinero para vista ejecutiva
+                            df_vista = tabla_autopsia.copy()
+                            df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
+                            df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
+                            df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
+                            
+                            st.dataframe(df_vista, use_container_width=True)
+                        else:
+                            st.warning("⚠️ No se encontró la columna 'COCTEL' para desglosar las recetas.")
 
         except Exception as e:
             st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
