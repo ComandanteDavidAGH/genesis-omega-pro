@@ -1223,11 +1223,14 @@ elif menu == "⚙️ 3. Validación de Misión":
                                 c_total = extraer_numero(fila_precio[col_cant_tot[0]])
                                 if c_total > 0: costo_unit = v_total / c_total
 
-                        # 🔥 FILTRADO LÁSER: Solo buscamos en la columna de Almacén detectada
+                        # 🔥 FILTRADO LÁSER BLINDADO: Limpieza de espacios fantasma antes de buscar la pista
                         if idx_almacen != -1:
-                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.contains(pista_sel, case=False, na=False)]
+                            # Extrae la columna, quita espacios al inicio/final y fuerza a mayúsculas
+                            col_pista_limpia = match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper()
+                            match_pista = match_sabana_global[col_pista_limpia.str.contains(str(pista_sel).strip().upper(), na=False)]
                         else:
-                            match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.contains(pista_sel, case=False, na=False)).any(axis=1)]
+                            # Si no encuentra la columna, hace una limpieza global en toda la fila
+                            match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
 
                         if not match_pista.empty:
                             try:
