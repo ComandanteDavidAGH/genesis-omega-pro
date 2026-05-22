@@ -3035,12 +3035,21 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             df_finca = df_finca[df_finca['FINCA'] == finca_sel]
                             
                         # 4. Cálculo Criptográfico (Convertir textos de dinero a números puros)
-                        # Usamos su función extraer_numero nativa
-                        if 'COSTO_HA' in df_finca.columns:
-                            df_finca['COSTO_HA_NUM'] = df_finca['COSTO_HA'].apply(extraer_numero)
+                        # Buscador láser para atrapar la columna correcta sin importar su nombre largo
+                        col_costo = None
+                        for col in df_finca.columns:
+                            col_upper = str(col).upper()
+                            if 'FACTURAR' in col_upper or 'COSTO AVION ($/HA)' in col_upper or 'COSTO_HA' in col_upper:
+                                col_costo = col
+                                break
+                        
+                        if col_costo:
+                            # Usamos la función extraer_numero nativa de su sistema
+                            df_finca['COSTO_HA_NUM'] = df_finca[col_costo].apply(extraer_numero)
                         else:
                             df_finca['COSTO_HA_NUM'] = 0.0
-
+                            st.warning(f"⚠️ Radar ciego: No detecté la columna de Costos. Columnas leídas: {list(df_finca.columns)}")
+                            
                         # 5. División del Espacio-Tiempo (Corte de la base de datos)
                         df_periodo_a = df_finca[df_finca['AÑO'] == año_base]
                         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp]
