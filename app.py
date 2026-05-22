@@ -2929,8 +2929,14 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             .strip()
             for col in df.columns
         ]
+        # 🛡️ BLINDAJE ANTI-CLONES: Elimina columnas repetidas que bloquean el sistema
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
+        
+        # 🧹 ELIMINADOR DE VACÍOS: Borra columnas sin nombre
+        if "" in df.columns:
+            df = df.drop(columns=[""])
+            
         return df
-
     with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
         try:
             # --- CONEXIÓN DE CREDENCIALES ---
