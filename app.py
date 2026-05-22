@@ -92,15 +92,20 @@ arsenal_css = """
 /* Botones Principales */
 button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
 
-/* 🎯 NUEVA REGLA: Botones Secundarios (Cerrar Sesión) */
-button[kind="secondary"] { background-color: transparent !important; color: white !important; border: 1px solid #d4af37 !important; transition: 0.3s; }
-button[kind="secondary"]:hover { background-color: #d4af37 !important; color: #0d1b2a !important; }
+/* 🎯 CORRECCIÓN: Botones Secundarios Generales (Pantalla Clara) */
+button[kind="secondary"] { background-color: transparent !important; color: #0d1b2a !important; border: 1px solid #0d1b2a !important; transition: 0.3s; }
+button[kind="secondary"]:hover { background-color: #0d1b2a !important; color: #d4af37 !important; }
+
+/* 🎯 EXCEPCIÓN TÁCTICA: Botones en la Barra Lateral Oscura (Cerrar Sesión) */
+[data-testid="stSidebar"] button[kind="secondary"] { color: white !important; border: 1px solid #d4af37 !important; }
+[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #d4af37 !important; color: #0d1b2a !important; }
 
 div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
 th { background-color: #f0f2f6 !important; color: black !important; }
 </style>
 """
 st.markdown(arsenal_css, unsafe_allow_html=True)
+
 # --- 3. FUNCIONES GLOBALES TÁCTICAS ---
 def purificar_lote(lote):
     if pd.isna(lote) or lote is None: return ""
