@@ -2958,25 +2958,33 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 
         df.rename(columns=renombres, inplace=True)
         return df
-    # 3. 🎯 TRADUCTOR FINANCIERO: Entiende puntos de miles y comas colombianas
+    # 3. 🎯 TRADUCTOR FINANCIERO BLINDADO: Ignora letras como "AER." o "FUMYG"
     def convertir_pesos(val):
         try:
-            v = str(val).replace('$', '').replace('COP', '').replace(' ', '').strip()
-            if v == '': return 0.0
+            v = str(val)
+            # 1. Filtra y deja ÚNICAMENTE números, puntos y comas (Destruye letras y espacios)
+            v_limpio = "".join([c for c in v if c.isdigit() or c in ['.', ',']])
             
-            if ',' in v and '.' not in v: v = v.replace(',', '.')
-            elif '.' in v and ',' in v: v = v.replace('.', '').replace(',', '.')
-            elif '.' in v:
-                partes = v.split('.')
-                if len(partes[-1]) == 3: v = v.replace('.', '')
+            # 2. Elimina cualquier punto que haya quedado "huérfano" al final (ej: 206.101.)
+            v_limpio = v_limpio.rstrip('.,')
+            
+            if v_limpio == '': return 0.0
+            
+            # 3. Lógica para diferenciar miles colombianos vs decimales gringos
+            if ',' in v_limpio and '.' not in v_limpio: v_limpio = v_limpio.replace(',', '.')
+            elif '.' in v_limpio and ',' in v_limpio: v_limpio = v_limpio.replace('.', '').replace(',', '.')
+            elif '.' in v_limpio:
+                partes = v_limpio.split('.')
+                # Si el bloque después del punto tiene exactamente 3 números, eran miles
+                if len(partes[-1]) == 3: v_limpio = v_limpio.replace('.', '')
                     
-            num = float(v)
-            # Salvavidas blindado: Si leyó 197 en vez de 197000, lo corrige
+            num = float(v_limpio)
+            
+            # Salvavidas: Convierte los "197 pesos" en 197,000 reales
             if 0 < num < 2000: num = num * 1000 
             return num
         except:
             return 0.0
-
     with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
         try:
             if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
