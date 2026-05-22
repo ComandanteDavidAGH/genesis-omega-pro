@@ -1000,6 +1000,7 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.markdown("#### ✈️ Hangar de Despliegue")
             costo_total_vuelos = 0.0
             total_ha_cobro_escuadron = 0.0
+            horometro_final_avion = 0.0  # 🎯 CAJA FUERTE PARA EL TIEMPO
 
             if mision_solo_dron:
                 st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
@@ -1064,6 +1065,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     
                     if pd.isna(av_sel) or ha_av <= 0: continue
                     total_ha_cobro_escuadron += ha_av
+                    horometro_final_avion += horo  # 🎯 ATRAPAMOS EL VALOR DE LA TABLA
                     tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
                     tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
                     costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
@@ -1513,7 +1515,8 @@ elif menu == "⚙️ 3. Validación de Misión":
 
                         # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS Y AJUSTE DE AERONAVE (Corregido) ---
                         ha_f = float(ha_dosis_final)
-                        h_total_v = (ha_f / 10) if mision_solo_dron else 1.0
+                        # 🎯 Inyecta el tiempo real digitado en la tabla superior
+                        h_total_v = (ha_f / 10) if mision_solo_dron else horometro_final_avion
                         vol_total_gln = ha_f * 6
                         rend_min = h_total_v * 60
                         
