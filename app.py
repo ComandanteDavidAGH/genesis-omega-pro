@@ -1201,9 +1201,13 @@ elif menu == "⚙️ 3. Validación de Misión":
 
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
 
+            # --- 🔴 INYECCIÓN DE RAYOS X PARA DIAGNÓSTICO ---
+            st.error(f"🔍 **RAYOS X DE COLUMNAS:** Pista Elegida: '{pista_sel}' | Lote: Columna {idx_lote} | Almacén: Columna {idx_almacen} | Saldo: Columna {idx_saldo}")
+            
             matriz_datos = []
             for item_data in datos_extraidos_sap:
-                cod_item = item_data['cod']
+                # Quitamos ceros a la izquierda del Pedido (Ej: 000300054 -> 300054)
+                cod_item = str(item_data['cod']).strip().upper().lstrip('0')
                 nombre_p = item_data['nombre']
                 nombre_limpio = item_data['nombre_limpio']
                 cant_total_pedido = item_data['cant_total']
@@ -1211,65 +1215,49 @@ elif menu == "⚙️ 3. Validación de Misión":
                 costo_unit = 0.0; lote_sap = "SIN LOTE EN PISTA"; saldo_sap = 0.0
 
                 if not df_sab.empty:
-                    # 1. Limpieza Quirúrgica (Conserva letras como 'A5003-1' pero quita decimales fantasma)
-                    cod_item_clean = str(cod_item).split('.')[0].strip().upper()
-                    col_0_clean = df_sab.iloc[:, 0].astype(str).apply(lambda x: x.split('.')[0].strip().upper())
+                    # 1. BÚSQUEDA BLINDADA (Quitando ceros a la izquierda también en la Sábana)
+                    col_0_limpia = df_sab.iloc[:, 0].astype(str).apply(lambda x: x.split('.')[0].strip().upper().lstrip('0'))
+                    match_sabana_global = df_sab[col_0_limpia == cod_item]
                     
-                    match_sabana_global = df_sab[col_0_clean == cod_item_clean]
-                    
-                    # 2. Búsqueda parcial por si falla el exacto
-                    if match_sabana_global.empty: 
-                        match_sabana_global = df_sab[col_0_clean.str.contains(cod_item_clean, case=False, na=False)]
-                    
-                    # 3. 🎯 SALVAVIDAS REFLECT (Por Nombre en caso de fallar el código)
+                    # 2. SALVAVIDAS: Buscar por nombre si el código falla
                     if match_sabana_global.empty and nombre_limpio != "" and "ITEM" not in nombre_limpio:
                         match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
                     if not match_sabana_global.empty:
+                        # Extraer Precio
                         fila_precio = match_sabana_global.iloc[0]
-                        if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
+                        if idx_precio != -1: 
+                            costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
                         if costo_unit == 0.0:
-                            col_valor_tot = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
-                            col_cant_tot = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
-                            if col_valor_tot and col_cant_tot:
-                                v_total = extraer_numero(fila_precio[col_valor_tot[0]])
-                                c_total = extraer_numero(fila_precio[col_cant_tot[0]])
-                                if c_total > 0: costo_unit = v_total / c_total
-                                    
-                        # 🔥 FILTRADO LÁSER BLINDADO: Limpieza de espacios fantasma antes de buscar la pista
+                            col_v = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
+                            col_c = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
+                            if col_v and col_c:
+                                v_t = extraer_numero(fila_precio[col_v[0]])
+                                c_t = extraer_numero(fila_precio[col_c[0]])
+                                if c_t > 0: costo_unit = v_t / c_t
+
+                        # 3. FILTRAR POR PISTA SELECCIONADA
                         if idx_almacen != -1:
-                            # Extrae la columna, quita espacios al inicio/final y fuerza a mayúsculas
-                            col_pista_limpia = match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper()
-                            match_pista = match_sabana_global[col_pista_limpia.str.contains(str(pista_sel).strip().upper(), na=False)]
+                            col_almacen = match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper()
+                            match_pista = match_sabana_global[col_almacen.str.contains(str(pista_sel).strip().upper(), na=False)]
                         else:
-                            # Si no encuentra la columna, hace una limpieza global en toda la fila
                             match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
 
+                        # 4. EXTRAER LOTE Y SALDO (FIFO)
                         if not match_pista.empty:
                             try:
-                                col_ordenar = [c for c in match_pista.columns if ('LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()) and 'VALOR' not in str(c).upper()]
-                                if col_ordenar:
-                                    match_pista['Temp_Sort'] = match_pista[col_ordenar[0]].apply(extraer_numero)
-                                    
-                                    # 🔍 RADAR DE LOTES INTELIGENTE (FIFO: Agota primero el de menor cantidad)
-                                    match_pista_vivos = match_pista[match_pista['Temp_Sort'] > 0]
-                                    
-                                    if not match_pista_vivos.empty:
-                                        # Ordena de Menor a Mayor (Gasta los saldos pequeños primero)
-                                        match_pista = match_pista_vivos.sort_values(by='Temp_Sort', ascending=True)
-                                    else:
-                                        # Si no hay vivos, los deja normal
-                                        match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
+                                if idx_saldo != -1:
+                                    match_pista['Temp_Sort'] = match_pista.iloc[:, idx_saldo].apply(extraer_numero)
+                                    match_vivos = match_pista[match_pista['Temp_Sort'] > 0]
+                                    match_pista = match_vivos.sort_values(by='Temp_Sort', ascending=True) if not match_vivos.empty else match_pista.sort_values(by='Temp_Sort', ascending=False)
                             except: pass
                             
-                            fila_pista = match_pista.iloc[0]
-                            if idx_lote != -1: lote_sap = str(fila_pista.iloc[idx_lote])
-                            if idx_saldo != -1: saldo_sap = extraer_numero(fila_pista.iloc[idx_saldo])
+                            fila_final = match_pista.iloc[0]
+                            if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
+                            if idx_saldo != -1: saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
 
-                # 🛡️ CÁLCULO DE DOSIS GLOBAL (Para evitar falsos rojos en lotes divididos)
-                # El sistema busca en todo el pedido cuánto se mandó en total de este producto
-                total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == cod_item)
-
+                # 🛡️ CÁLCULO DE DOSIS
+                total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio)>=4 and p_receta in nombre_limpio) or (len(p_receta)>=4 and nombre_limpio in p_receta):
@@ -1280,13 +1268,12 @@ elif menu == "⚙️ 3. Validación de Misión":
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio:
                     dosis_teorica = 1.5 if coctel_ganador.startswith("IN") else 1.0
                 
-                # 🎯 SI EL PRODUCTO NO ESTÁ EN RECETA, EL IDEAL ES LA SUMA GLOBAL DE SAP
                 if dosis_teorica is None:
                     dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
                 costo_margen = round(costo_unit * mult_material, 0)
 
-                # 📦 EMPAQUETADO CON LOTE INTELIGENTE INYECTADO
+                # EMPAQUETADO FINAL
                 matriz_datos.append({
                     "A: Producto": nombre_p,
                     "B: Dosis/Ha (SAP)": round(dosis_teorica, 3),
