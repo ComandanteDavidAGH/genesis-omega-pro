@@ -1088,15 +1088,14 @@ elif menu == "⚙️ 3. Validación de Misión":
             idx_precio = -1; idx_lote = -1; idx_saldo = -1; idx_almacen = -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
-                    # 🎯 RADAR ANTI-TILDES
-                    col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
+                    col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                     
-                    # 🛡️ SEGURO ANTI-CLONES: El " == -1" asegura que solo tome la PRIMERA columna que coincida
-                    if ('MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str) and idx_precio == -1: idx_precio = j
-                    if 'LOTE' in col_str and idx_lote == -1: idx_lote = j
-                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and idx_almacen == -1: idx_almacen = j
-                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str and idx_saldo == -1: idx_saldo = j
-
+                    # 🛡️ Detección inteligente sin bloqueos (Ignora las columnas trampa)
+                    if 'MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str: idx_precio = j
+                    if 'LOTE' in col_str and 'PROVEEDOR' not in col_str: idx_lote = j
+                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and 'PB' not in col_str: idx_almacen = j
+                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
+                        
             sap_dict_pista = {}
             datos_extraidos_sap = []
 
@@ -1212,8 +1211,18 @@ elif menu == "⚙️ 3. Validación de Misión":
                 costo_unit = 0.0; lote_sap = "SIN LOTE EN PISTA"; saldo_sap = 0.0
 
                 if not df_sab.empty:
-                    match_sabana_global = df_sab[df_sab.iloc[:, 0].astype(str).str.strip() == cod_item]
-                    if match_sabana_global.empty: match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                    # 1. Filtro estricto: Comparamos solo números puros (Destruye caracteres invisibles)
+                    cod_num = ''.join(filter(str.isdigit, str(cod_item)))
+                    col_0_num = df_sab.iloc[:, 0].astype(str).str.replace(r'\D', '', regex=True)
+                    match_sabana_global = df_sab[col_0_num == cod_num]
+                    
+                    # 2. Si el número exacto falla, búscalo en cualquier parte
+                    if match_sabana_global.empty: 
+                        match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                    
+                    # 3. 🎯 EL SALVAVIDAS (Para REFLECT): Si el código SAP no sirve, búscalo por el nombre
+                    if match_sabana_global.empty and nombre_limpio != "" and "ITEM" not in nombre_limpio:
+                        match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
                     if not match_sabana_global.empty:
                         fila_precio = match_sabana_global.iloc[0]
@@ -1225,7 +1234,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                                 v_total = extraer_numero(fila_precio[col_valor_tot[0]])
                                 c_total = extraer_numero(fila_precio[col_cant_tot[0]])
                                 if c_total > 0: costo_unit = v_total / c_total
-
+                                    
                         # 🔥 FILTRADO LÁSER BLINDADO: Limpieza de espacios fantasma antes de buscar la pista
                         if idx_almacen != -1:
                             # Extrae la columna, quita espacios al inicio/final y fuerza a mayúsculas
