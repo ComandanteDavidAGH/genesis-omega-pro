@@ -2913,14 +2913,14 @@ elif menu == "📈 9. Dashboard Táctico":
 
 
 # =====================================================================
-# 📊 MÓDULO 10: CENTRO DE INTELIGENCIA ESTRATÉGICA BI (Fase 2 - Unificación)
+# 📊 MÓDULO 10: CENTRO DE INTELIGENCIA ESTRATÉGICA BI
 # =====================================================================
 elif menu == "📊 10. Inteligencia de Costos (BI)":
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
     st.markdown("### 🛰️ Radar de Autopsia y Comportamiento Histórico Finca a Finca")
-    st.info("🤖 **MOTOR IA BI:** Extrayendo memoria histórica de años anteriores y datos vivos del Drive...")
+    st.info("🤖 **MOTOR IA BI:** Extrayendo memoria histórica y datos vivos...")
 
-    # Función táctica para limpiar encabezados (Destruye tildes y espacios fantasma)
+    # 1. Limpiador Base
     def limpiar_encabezados(df):
         df.columns = [
             str(col).upper()
@@ -2929,163 +2929,133 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             .strip()
             for col in df.columns
         ]
-        # 🛡️ BLINDAJE ANTI-CLONES: Elimina columnas repetidas que bloquean el sistema
         df = df.loc[:, ~df.columns.duplicated(keep='first')]
-        
-        # 🧹 ELIMINADOR DE VACÍOS: Borra columnas sin nombre
-        if "" in df.columns:
-            df = df.drop(columns=[""])
-            
+        if "" in df.columns: df = df.drop(columns=[""])
         return df
+        
+    # 2. 🎯 ESTANDARIZADOR: Obliga a que los nombres coincidan antes de fusionar
+    def estandarizar_base(df):
+        for col in df.columns:
+            col_u = str(col).upper()
+            if 'FACTURAR' in col_u or 'COSTO AVION ($/HA)' in col_u or 'COSTO_HA' in col_u:
+                df.rename(columns={col: 'COSTO_MAESTRO'}, inplace=True)
+            elif 'FINCA' in col_u or 'PROPIEDAD' in col_u:
+                df.rename(columns={col: 'FINCA_MAESTRA'}, inplace=True)
+            elif 'FECHA' in col_u:
+                df.rename(columns={col: 'FECHA_MAESTRA'}, inplace=True)
+        return df
+
+    # 3. 🎯 TRADUCTOR FINANCIERO: Entiende puntos de miles y comas colombianas
+    def convertir_pesos(val):
+        try:
+            v = str(val).replace('$', '').replace('COP', '').replace(' ', '').strip()
+            if v == '': return 0.0
+            
+            if ',' in v and '.' not in v: v = v.replace(',', '.')
+            elif '.' in v and ',' in v: v = v.replace('.', '').replace(',', '.')
+            elif '.' in v:
+                partes = v.split('.')
+                if len(partes[-1]) == 3: v = v.replace('.', '')
+                    
+            num = float(v)
+            # Salvavidas blindado: Si leyó 197 en vez de 197000, lo corrige
+            if 0 < num < 2000: num = num * 1000 
+            return num
+        except:
+            return 0.0
+
     with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
         try:
-            # --- CONEXIÓN DE CREDENCIALES ---
-            if "gcp_credentials" in st.secrets:
-                gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-            else:
-                gc = gspread.service_account(filename='credenciales.json')
+            if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+            else: gc = gspread.service_account(filename='credenciales.json')
                 
-            # 🟢 CANAL A: Descarga de Datos Vivos (Sábana Maestra Actual)
+            # 🟢 CANAL A: Datos Vivos
             boveda_actual = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-            hoja_actual = boveda_actual.worksheet("TABLA 1")
-            datos_brutos_act = hoja_actual.get_all_values()
+            datos_brutos_act = boveda_actual.worksheet("TABLA 1").get_all_values()
             
             if len(datos_brutos_act) > 5:
-                # Usamos la fila 4 como nombres de columnas (índice 4 en base 0)
                 df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
-                df_vivos = limpiar_encabezados(df_vivos)
+                df_vivos = estandarizar_base(limpiar_encabezados(df_vivos))
                 df_vivos['ORIGEN_BI'] = 'ACTUAL'
-            else:
-                df_vivos = pd.DataFrame()
+            else: df_vivos = pd.DataFrame()
 
-            # 🔵 CANAL B: Descarga de Datos Históricos (El nuevo archivo enlazado)
+            # 🔵 CANAL B: Datos Históricos
             boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-            
-            # Intentamos abrir la pestaña "Datos" o por defecto la primera disponible
-            try:
-                hoja_hist = boveda_hist.worksheet("Datos")
-            except:
-                hoja_hist = boveda_hist.get_worksheet(0) # Si no encuentra "Datos", toma la pestaña 1
+            try: hoja_hist = boveda_hist.worksheet("Datos")
+            except: hoja_hist = boveda_hist.get_worksheet(0)
                 
             datos_brutos_hist = hoja_hist.get_all_values()
-            
             if len(datos_brutos_hist) > 0:
-                # Evaluamos si tiene filas vacías arriba. Si empieza directo en fila 1:
                 df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
-                # Si su archivo histórico también tiene 5 filas vacías arriba, cambie el pedazo anterior por:
-                # df_historico = pd.DataFrame(datos_brutos_hist[5:], columns=datos_brutos_hist[4])
-                
-                df_historico = limpiar_encabezados(df_historico)
+                df_historico = estandarizar_base(limpiar_encabezados(df_historico))
                 df_historico['ORIGEN_BI'] = 'HISTORICO'
-            else:
-                df_historico = pd.DataFrame()
+            else: df_historico = pd.DataFrame()
 
-            # 🤝 EL FUSOR TÁCTICO: Ensamblaje por columnas coincidentes
+            # 🤝 FUSIÓN DEFINITIVA
             if not df_vivos.empty and not df_historico.empty:
-                # Buscamos qué columnas se llaman IGUAL en ambos archivos después de limpiar tildes
                 columnas_comunes = list(set(df_vivos.columns).intersection(set(df_historico.columns)))
-                # Removemos la etiqueta de origen para evitar conflictos
                 if 'ORIGEN_BI' in columnas_comunes: columnas_comunes.remove('ORIGEN_BI')
                 
-                if columnas_comunes:
-                    # Filtramos ambos sets para quedarnos con lo estructurado
+                # Validamos que nuestras columnas clave hayan sobrevivido
+                if 'COSTO_MAESTRO' in columnas_comunes and 'FINCA_MAESTRA' in columnas_comunes:
                     df_vivos_trim = df_vivos[columnas_comunes + ['ORIGEN_BI']].copy()
                     df_historico_trim = df_historico[columnas_comunes + ['ORIGEN_BI']].copy()
                     
-                    # ¡FUSIÓN TOTAL EN MEMORIA RÁPIDA!
                     super_base_bi = pd.concat([df_historico_trim, df_vivos_trim], ignore_index=True)
-                    
-                    # Limpieza estándar de textos de columnas críticas para evitar fallos de cruce
-                    cols_criticas = ['FINCA', 'LOTE', 'COCTEL', 'PISTA']
-                    for col in cols_criticas:
-                        if col in super_base_bi.columns:
-                            super_base_bi[col] = super_base_bi[col].astype(str).str.strip().str.upper()
+                    super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
 
-                    st.success(f"💥 **FUSIÓN EXITOSA DE DATOS:** El radar unificó {len(super_base_bi)} operaciones logísticas de vuelo en una sola base temporal.")
-                    
-                    # =====================================================================
                     # =====================================================================
                     # --- ⚙️ FASE 3: MOTOR DE TIEMPO Y FILTROS TÁCTICOS ---
                     # =====================================================================
                     st.markdown("---")
                     st.markdown("### 🎛️ Centro de Mando: Parámetros de Autopsia")
                     
-                    # 1. Procesamiento de Fechas Inteligente
-                    # Convertimos la columna FECHA a formato entendible por el radar
-                    if 'FECHA' in super_base_bi.columns:
-                        super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA'], errors='coerce', dayfirst=True)
+                    if 'FECHA_MAESTRA' in super_base_bi.columns:
+                        super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA_MAESTRA'], errors='coerce', dayfirst=True)
                         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
                         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
                         
-                        # 2. Despliegue de Filtros Maestros
-                        fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA'].dropna().unique().tolist())
+                        fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
                         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
                         
                         f1, f2, f3 = st.columns(3)
                         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
                         
-                        # Autoselección inteligente de años (El último vs el anterior)
                         idx_base = 1 if len(años_disp) > 1 else 0
                         año_base = f2.selectbox("📅 Periodo Base (Referencia)", años_disp, index=idx_base)
                         año_comp = f3.selectbox("📆 Periodo Actual (A Evaluar)", años_disp, index=0)
                         
-                        # 3. Aplicar Filtro Geográfico
                         df_finca = super_base_bi.copy()
-                        if finca_sel != "TODAS":
-                            df_finca = df_finca[df_finca['FINCA'] == finca_sel]
+                        if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
                             
-                        # 4. Cálculo Criptográfico (Convertir textos de dinero a números puros)
-                        # Buscador láser para atrapar la columna correcta sin importar su nombre largo
-                        col_costo = None
-                        for col in df_finca.columns:
-                            col_upper = str(col).upper()
-                            if 'FACTURAR' in col_upper or 'COSTO AVION ($/HA)' in col_upper or 'COSTO_HA' in col_upper:
-                                col_costo = col
-                                break
-                        
-                        if col_costo:
-                            # Usamos la función extraer_numero nativa de su sistema
-                            df_finca['COSTO_HA_NUM'] = df_finca[col_costo].apply(extraer_numero)
-                        else:
-                            df_finca['COSTO_HA_NUM'] = 0.0
-                            st.warning(f"⚠️ Radar ciego: No detecté la columna de Costos. Columnas leídas: {list(df_finca.columns)}")
-                            
-                        # 5. División del Espacio-Tiempo (Corte de la base de datos)
+                        # El traductor de dinero entra en acción
+                        df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
+
                         df_periodo_a = df_finca[df_finca['AÑO'] == año_base]
                         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp]
                         
-                        # 6. Cálculo de Deltas (Variaciones de Impacto)
-                        costo_a = df_periodo_a['COSTO_HA_NUM'].mean() if not df_periodo_a.empty else 0
-                        costo_b = df_periodo_b['COSTO_HA_NUM'].mean() if not df_periodo_b.empty else 0
+                        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
+                        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
                         
                         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
                         
-                        # 7. Artillería Visual: Tarjetas de Impacto
                         st.markdown("### 📊 Autopsia de Costos: Impacto General por Hectárea")
-                        
-                        # Delta Inverso: Rojo si sube (malo para el bolsillo), Verde si baja (ahorro)
                         k1, k2, k3 = st.columns(3)
                         k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
                         k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
                         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
                         
-                        # 8. Sistema de Alerta Temprana
                         st.markdown("<br>", unsafe_allow_html=True)
                         if delta_pct > 10:
-                            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} se disparó un **{delta_pct:.1f}%**. Se requiere autopsia de insumos y vuelo en la Fase 4.")
+                            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} se disparó un **{delta_pct:.1f}%**. Se requiere autopsia.")
                         elif delta_pct < 0:
                             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
                         else:
                             st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
                             
-                    else:
-                        st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' en la super-base para realizar el viaje en el tiempo.")                    
-                else:
-                    st.error("❌ **ERROR DE ALINEACIÓN:** Los archivos no comparten ninguna columna con el mismo nombre.")
-                    st.write("Columnas detectadas en Drive Actual:", list(df_vivos.columns))
-                    st.write("Columnas detectadas en Historial Nuevo:", list(df_historico.columns))
-            else:
-                st.error("❌ **ERROR DE VOLUMEN:** Uno de los dos archivos de datos se descargó completamente vacío.")
+                    else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
+                else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
+            else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
 
         except Exception as e:
-            st.error(f"🛰️ **FALLO EN LOS MOTORES DE FUSIÓN BI:** Error crítico en la conexión. Motivo: {str(e)}")
+            st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
