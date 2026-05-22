@@ -1090,7 +1090,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                 for j, col in enumerate(df_sab.columns):
                     col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                     
-                    if ('MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str) and idx_precio == -1: idx_precio = j
+                    if ('MAYOR' in col_str or 'PRECIO' in col_str) and idx_precio == -1: idx_precio = j
                     if 'LOTE' in col_str and 'PROVEEDOR' not in col_str and idx_lote == -1: idx_lote = j
                     # 🎯 RADAR DE PISTA: Excluye la trampa de la columna "PB"
                     if ('ALMACEN' in col_str or 'PISTA' in col_str) and 'PB' not in col_str and idx_almacen == -1: idx_almacen = j
