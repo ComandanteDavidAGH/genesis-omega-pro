@@ -1090,11 +1090,11 @@ elif menu == "⚙️ 3. Validación de Misión":
                 for j, col in enumerate(df_sab.columns):
                     col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                     
-                    # 🛡️ Detección inteligente sin bloqueos (Ignora las columnas trampa)
-                    if 'MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str: idx_precio = j
-                    if 'LOTE' in col_str and 'PROVEEDOR' not in col_str: idx_lote = j
-                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and 'PB' not in col_str: idx_almacen = j
-                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
+                    if ('MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str) and idx_precio == -1: idx_precio = j
+                    if 'LOTE' in col_str and 'PROVEEDOR' not in col_str and idx_lote == -1: idx_lote = j
+                    # 🎯 RADAR DE PISTA: Excluye la trampa de la columna "PB"
+                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and 'PB' not in col_str and idx_almacen == -1: idx_almacen = j
+                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str and idx_saldo == -1: idx_saldo = j
                         
             sap_dict_pista = {}
             datos_extraidos_sap = []
@@ -1211,16 +1211,17 @@ elif menu == "⚙️ 3. Validación de Misión":
                 costo_unit = 0.0; lote_sap = "SIN LOTE EN PISTA"; saldo_sap = 0.0
 
                 if not df_sab.empty:
-                    # 1. Filtro estricto: Comparamos solo números puros (Destruye caracteres invisibles)
-                    cod_num = ''.join(filter(str.isdigit, str(cod_item)))
-                    col_0_num = df_sab.iloc[:, 0].astype(str).str.replace(r'\D', '', regex=True)
-                    match_sabana_global = df_sab[col_0_num == cod_num]
+                    # 1. Limpieza Quirúrgica (Conserva letras como 'A5003-1' pero quita decimales fantasma)
+                    cod_item_clean = str(cod_item).split('.')[0].strip().upper()
+                    col_0_clean = df_sab.iloc[:, 0].astype(str).apply(lambda x: x.split('.')[0].strip().upper())
                     
-                    # 2. Si el número exacto falla, búscalo en cualquier parte
+                    match_sabana_global = df_sab[col_0_clean == cod_item_clean]
+                    
+                    # 2. Búsqueda parcial por si falla el exacto
                     if match_sabana_global.empty: 
-                        match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        match_sabana_global = df_sab[col_0_clean.str.contains(cod_item_clean, case=False, na=False)]
                     
-                    # 3. 🎯 EL SALVAVIDAS (Para REFLECT): Si el código SAP no sirve, búscalo por el nombre
+                    # 3. 🎯 SALVAVIDAS REFLECT (Por Nombre en caso de fallar el código)
                     if match_sabana_global.empty and nombre_limpio != "" and "ITEM" not in nombre_limpio:
                         match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
