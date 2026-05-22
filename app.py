@@ -3004,10 +3004,73 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     st.success(f"💥 **FUSIÓN EXITOSA DE DATOS:** El radar unificó {len(super_base_bi)} operaciones logísticas de vuelo en una sola base temporal.")
                     
                     # =====================================================================
-                    # --- PRÓXIMA FASE: DISEÑO DE FILTROS EN PANTALLA ---
                     # =====================================================================
-                    st.warning("📡 **FASE 2 COMPLETADA:** Perímetro asegurado y canales de datos sincronizados. Comandante, repórtenos si la fusión se muestra exitosa en verde para proceder a inyectar el tablero de filtros y los gráficos comparativos.")
+                    # --- ⚙️ FASE 3: MOTOR DE TIEMPO Y FILTROS TÁCTICOS ---
+                    # =====================================================================
+                    st.markdown("---")
+                    st.markdown("### 🎛️ Centro de Mando: Parámetros de Autopsia")
                     
+                    # 1. Procesamiento de Fechas Inteligente
+                    # Convertimos la columna FECHA a formato entendible por el radar
+                    if 'FECHA' in super_base_bi.columns:
+                        super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA'], errors='coerce', dayfirst=True)
+                        super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
+                        super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
+                        
+                        # 2. Despliegue de Filtros Maestros
+                        fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA'].dropna().unique().tolist())
+                        años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
+                        
+                        f1, f2, f3 = st.columns(3)
+                        finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
+                        
+                        # Autoselección inteligente de años (El último vs el anterior)
+                        idx_base = 1 if len(años_disp) > 1 else 0
+                        año_base = f2.selectbox("📅 Periodo Base (Referencia)", años_disp, index=idx_base)
+                        año_comp = f3.selectbox("📆 Periodo Actual (A Evaluar)", años_disp, index=0)
+                        
+                        # 3. Aplicar Filtro Geográfico
+                        df_finca = super_base_bi.copy()
+                        if finca_sel != "TODAS":
+                            df_finca = df_finca[df_finca['FINCA'] == finca_sel]
+                            
+                        # 4. Cálculo Criptográfico (Convertir textos de dinero a números puros)
+                        # Usamos su función extraer_numero nativa
+                        if 'COSTO_HA' in df_finca.columns:
+                            df_finca['COSTO_HA_NUM'] = df_finca['COSTO_HA'].apply(extraer_numero)
+                        else:
+                            df_finca['COSTO_HA_NUM'] = 0.0
+
+                        # 5. División del Espacio-Tiempo (Corte de la base de datos)
+                        df_periodo_a = df_finca[df_finca['AÑO'] == año_base]
+                        df_periodo_b = df_finca[df_finca['AÑO'] == año_comp]
+                        
+                        # 6. Cálculo de Deltas (Variaciones de Impacto)
+                        costo_a = df_periodo_a['COSTO_HA_NUM'].mean() if not df_periodo_a.empty else 0
+                        costo_b = df_periodo_b['COSTO_HA_NUM'].mean() if not df_periodo_b.empty else 0
+                        
+                        delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
+                        
+                        # 7. Artillería Visual: Tarjetas de Impacto
+                        st.markdown("### 📊 Autopsia de Costos: Impacto General por Hectárea")
+                        
+                        # Delta Inverso: Rojo si sube (malo para el bolsillo), Verde si baja (ahorro)
+                        k1, k2, k3 = st.columns(3)
+                        k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
+                        k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
+                        k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
+                        
+                        # 8. Sistema de Alerta Temprana
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if delta_pct > 10:
+                            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} se disparó un **{delta_pct:.1f}%**. Se requiere autopsia de insumos y vuelo en la Fase 4.")
+                        elif delta_pct < 0:
+                            st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
+                        else:
+                            st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
+                            
+                    else:
+                        st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' en la super-base para realizar el viaje en el tiempo.")                    
                 else:
                     st.error("❌ **ERROR DE ALINEACIÓN:** Los archivos no comparten ninguna columna con el mismo nombre.")
                     st.write("Columnas detectadas en Drive Actual:", list(df_vivos.columns))
