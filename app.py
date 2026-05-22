@@ -1088,14 +1088,14 @@ elif menu == "⚙️ 3. Validación de Misión":
             idx_precio = -1; idx_lote = -1; idx_saldo = -1; idx_almacen = -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
-                    # 🎯 RADAR ANTI-TILDES: Limpiamos los encabezados de SAP a la fuerza
+                    # 🎯 RADAR ANTI-TILDES
                     col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
                     
-                    # Ahora el radar detectará "ALMACEN" y "VALOR LIBRE" sin importar cómo vengan
-                    if 'MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str: idx_precio = j
-                    if 'LOTE' in col_str: idx_lote = j
-                    if 'ALMACEN' in col_str or 'PISTA' in col_str: idx_almacen = j
-                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
+                    # 🛡️ SEGURO ANTI-CLONES: El " == -1" asegura que solo tome la PRIMERA columna que coincida
+                    if ('MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str) and idx_precio == -1: idx_precio = j
+                    if 'LOTE' in col_str and idx_lote == -1: idx_lote = j
+                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and idx_almacen == -1: idx_almacen = j
+                    if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str and idx_saldo == -1: idx_saldo = j
 
             sap_dict_pista = {}
             datos_extraidos_sap = []
