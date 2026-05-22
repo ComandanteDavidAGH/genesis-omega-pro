@@ -202,7 +202,8 @@ with st.sidebar:
             "✈️ 6. Rastreo Dominicales",
             "⚖️ 7. Arqueo de Inventarios",
             "📊 8. Reporte Hectáreas (Pistas)",
-            "📈 9. Dashboard Táctico"
+            "📈 9. Dashboard Táctico",
+            "📊 10. Inteligencia de Costos (BI)"
         ])
     else:
         # El gerente o cliente NO tiene opciones operativas, va directo al Dashboard
@@ -2909,3 +2910,104 @@ elif menu == "📈 9. Dashboard Táctico":
                         st.plotly_chart(fig4, use_container_width=True)
         except Exception as e:
             st.error(f"🚨 Falla en los motores del Dashboard: {e}")
+
+
+# =====================================================================
+# 📊 MÓDULO 10: CENTRO DE INTELIGENCIA ESTRATÉGICA BI (Fase 2 - Unificación)
+# =====================================================================
+elif menu == "📊 10. Inteligencia de Costos (BI)":
+    st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
+    st.markdown("### 🛰️ Radar de Autopsia y Comportamiento Histórico Finca a Finca")
+    st.info("🤖 **MOTOR IA BI:** Extrayendo memoria histórica de años anteriores y datos vivos del Drive...")
+
+    # Función táctica para limpiar encabezados (Destruye tildes y espacios fantasma)
+    def limpiar_encabezados(df):
+        df.columns = [
+            str(col).upper()
+            .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
+            .replace('À','A').replace('È','E').replace('Ì','I').replace('Ò','O').replace('Ù','U')
+            .strip()
+            for col in df.columns
+        ]
+        return df
+
+    with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
+        try:
+            # --- CONEXIÓN DE CREDENCIALES ---
+            if "gcp_credentials" in st.secrets:
+                gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+            else:
+                gc = gspread.service_account(filename='credenciales.json')
+                
+            # 🟢 CANAL A: Descarga de Datos Vivos (Sábana Maestra Actual)
+            boveda_actual = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            hoja_actual = boveda_actual.worksheet("TABLA 1")
+            datos_brutos_act = hoja_actual.get_all_values()
+            
+            if len(datos_brutos_act) > 5:
+                # Usamos la fila 4 como nombres de columnas (índice 4 en base 0)
+                df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
+                df_vivos = limpiar_encabezados(df_vivos)
+                df_vivos['ORIGEN_BI'] = 'ACTUAL'
+            else:
+                df_vivos = pd.DataFrame()
+
+            # 🔵 CANAL B: Descarga de Datos Históricos (El nuevo archivo enlazado)
+            boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+            
+            # Intentamos abrir la pestaña "Datos" o por defecto la primera disponible
+            try:
+                hoja_hist = boveda_hist.worksheet("Datos")
+            except:
+                hoja_hist = boveda_hist.get_worksheet(0) # Si no encuentra "Datos", toma la pestaña 1
+                
+            datos_brutos_hist = hoja_hist.get_all_values()
+            
+            if len(datos_brutos_hist) > 0:
+                # Evaluamos si tiene filas vacías arriba. Si empieza directo en fila 1:
+                df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
+                # Si su archivo histórico también tiene 5 filas vacías arriba, cambie el pedazo anterior por:
+                # df_historico = pd.DataFrame(datos_brutos_hist[5:], columns=datos_brutos_hist[4])
+                
+                df_historico = limpiar_encabezados(df_historico)
+                df_historico['ORIGEN_BI'] = 'HISTORICO'
+            else:
+                df_historico = pd.DataFrame()
+
+            # 🤝 EL FUSOR TÁCTICO: Ensamblaje por columnas coincidentes
+            if not df_vivos.empty and not df_historico.empty:
+                # Buscamos qué columnas se llaman IGUAL en ambos archivos después de limpiar tildes
+                columnas_comunes = list(set(df_vivos.columns).intersection(set(df_historico.columns)))
+                # Removemos la etiqueta de origen para evitar conflictos
+                if 'ORIGEN_BI' in columnas_comunes: columnas_comunes.remove('ORIGEN_BI')
+                
+                if columnas_comunes:
+                    # Filtramos ambos sets para quedarnos con lo estructurado
+                    df_vivos_trim = df_vivos[columnas_comunes + ['ORIGEN_BI']].copy()
+                    df_historico_trim = df_historico[columnas_comunes + ['ORIGEN_BI']].copy()
+                    
+                    # ¡FUSIÓN TOTAL EN MEMORIA RÁPIDA!
+                    super_base_bi = pd.concat([df_historico_trim, df_vivos_trim], ignore_index=True)
+                    
+                    # Limpieza estándar de textos de columnas críticas para evitar fallos de cruce
+                    cols_criticas = ['FINCA', 'LOTE', 'COCTEL', 'PISTA']
+                    for col in cols_criticas:
+                        if col in super_base_bi.columns:
+                            super_base_bi[col] = super_base_bi[col].astype(str).str.strip().str.upper()
+
+                    st.success(f"💥 **FUSIÓN EXITOSA DE DATOS:** El radar unificó {len(super_base_bi)} operaciones logísticas de vuelo en una sola base temporal.")
+                    
+                    # =====================================================================
+                    # --- PRÓXIMA FASE: DISEÑO DE FILTROS EN PANTALLA ---
+                    # =====================================================================
+                    st.warning("📡 **FASE 2 COMPLETADA:** Perímetro asegurado y canales de datos sincronizados. Comandante, repórtenos si la fusión se muestra exitosa en verde para proceder a inyectar el tablero de filtros y los gráficos comparativos.")
+                    
+                else:
+                    st.error("❌ **ERROR DE ALINEACIÓN:** Los archivos no comparten ninguna columna con el mismo nombre.")
+                    st.write("Columnas detectadas en Drive Actual:", list(df_vivos.columns))
+                    st.write("Columnas detectadas en Historial Nuevo:", list(df_historico.columns))
+            else:
+                st.error("❌ **ERROR DE VOLUMEN:** Uno de los dos archivos de datos se descargó completamente vacío.")
+
+        except Exception as e:
+            st.error(f"🛰️ **FALLO EN LOS MOTORES DE FUSIÓN BI:** Error crítico en la conexión. Motivo: {str(e)}")
