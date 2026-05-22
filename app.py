@@ -1082,6 +1082,13 @@ elif menu == "⚙️ 3. Validación de Misión":
                     costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
             
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
+        # 🎯 PUENTE DE MANDO: Control maestro de pista ANTES de armar la matriz
+        pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
+        idx_pista = pistas_disponibles.index(pista_sel) if 'pista_sel' in locals() and pista_sel in pistas_disponibles else 0
+        
+        pista_sel = st.selectbox("📍 Seleccione la Pista para extraer Inventario de SAP:", pistas_disponibles, index=idx_pista, key="pista_matriz_maestra")
+        
+        st.markdown("---")
         costo_mezcla_total = 0.0
 
         if not match_ped.empty:
