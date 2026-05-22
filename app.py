@@ -2933,18 +2933,31 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
         if "" in df.columns: df = df.drop(columns=[""])
         return df
         
-    # 2. 🎯 ESTANDARIZADOR: Obliga a que los nombres coincidan antes de fusionar
+    # 2. 🎯 ESTANDARIZADOR BLINDADO: Solo renombra la columna exacta, evitando clones
     def estandarizar_base(df):
+        renombres = {}
+        finca_ok = False; costo_ok = False; fecha_ok = False
+        
         for col in df.columns:
-            col_u = str(col).upper()
-            if 'FACTURAR' in col_u or 'COSTO AVION ($/HA)' in col_u or 'COSTO_HA' in col_u:
-                df.rename(columns={col: 'COSTO_MAESTRO'}, inplace=True)
-            elif 'FINCA' in col_u or 'PROPIEDAD' in col_u:
-                df.rename(columns={col: 'FINCA_MAESTRA'}, inplace=True)
-            elif 'FECHA' in col_u:
-                df.rename(columns={col: 'FECHA_MAESTRA'}, inplace=True)
+            col_u = str(col).upper().strip()
+            
+            # Atrapa el costo (ignora otras si ya atrapó la principal)
+            if not costo_ok and ('FACTURAR' in col_u or 'COSTO AVION ($/HA)' in col_u or col_u == 'COSTO_HA'):
+                renombres[col] = 'COSTO_MAESTRO'
+                costo_ok = True
+                
+            # Atrapa a Finca EXACTA (ignora COSTO_FINCA)
+            elif not finca_ok and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
+                renombres[col] = 'FINCA_MAESTRA'
+                finca_ok = True
+                
+            # Atrapa a Fecha EXACTA (ignora otras fechas)
+            elif not fecha_ok and col_u == 'FECHA':
+                renombres[col] = 'FECHA_MAESTRA'
+                fecha_ok = True
+                
+        df.rename(columns=renombres, inplace=True)
         return df
-
     # 3. 🎯 TRADUCTOR FINANCIERO: Entiende puntos de miles y comas colombianas
     def convertir_pesos(val):
         try:
