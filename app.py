@@ -1088,8 +1088,11 @@ elif menu == "⚙️ 3. Validación de Misión":
             idx_precio = -1; idx_lote = -1; idx_saldo = -1; idx_almacen = -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
-                    col_str = str(col).upper()
-                    if 'MAYOR' in col_str or 'PRECIO' in col_str: idx_precio = j
+                    # 🎯 RADAR ANTI-TILDES: Limpiamos los encabezados de SAP a la fuerza
+                    col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
+                    
+                    # Ahora el radar detectará "ALMACEN" y "VALOR LIBRE" sin importar cómo vengan
+                    if 'MAYOR' in col_str or 'PRECIO' in col_str or 'VALOR LIBRE' in col_str: idx_precio = j
                     if 'LOTE' in col_str: idx_lote = j
                     if 'ALMACEN' in col_str or 'PISTA' in col_str: idx_almacen = j
                     if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str: idx_saldo = j
