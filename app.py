@@ -3224,39 +3224,28 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             
                         st.markdown("<hr>", unsafe_allow_html=True)
                         
-                        # 1. ESTABLECER COLUMNAS RESPALDO PARA AERONAVE
-                        col_avion = None
+                        # 1. ESCÁNER DE AERONAVE (Específico por Hectárea)
+                        col_avion_ha = None
                         for col in df_finca.columns:
-                            if 'AVION' in str(col).upper():
-                                col_avion = col
+                            col_u = str(col).upper().replace('Ó', 'O')
+                            # Buscamos estrictamente la tarifa unitaria (que tenga /ha o ha)
+                            if 'AVION' in col_u and ('/HA' in col_u or ' HA' in col_u or '(HA)' in col_u):
+                                col_avion_ha = col
                                 break
                         
-                        if col_avion:
-                            df_periodo_a['AVION_NUM'] = df_periodo_a[col_avion].apply(convertir_pesos)
-                            df_periodo_b['AVION_NUM'] = df_periodo_b[col_avion].apply(convertir_pesos)
+                        if col_avion_ha:
+                            df_periodo_a['AVION_NUM'] = df_periodo_a[col_avion_ha].apply(convertir_pesos)
+                            df_periodo_b['AVION_NUM'] = df_periodo_b[col_avion_ha].apply(convertir_pesos)
                         else:
                             df_periodo_a['AVION_NUM'] = 0.0
                             df_periodo_b['AVION_NUM'] = 0.0
 
-                        # Cálculo de promedios de vuelo
+                        # Promedios unitarios reales
                         vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
                         vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
                         
-                        # Insumos puros (Costo Total menos Costo Avión)
                         insumos_a = max(0, costo_a - vuelo_a)
                         insumos_b = max(0, costo_b - vuelo_b)
-                        
-                        # 2. GRÁFICO 1: MATRIZ DE RESPONSABILIDAD (Pestañas Unitario vs Global)
-                        st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
-                        
-                        # Cálculos Globales (Suma total del presupuesto)
-                        vuelo_tot_a = df_periodo_a['AVION_NUM'].sum() if not df_periodo_a.empty else 0
-                        vuelo_tot_b = df_periodo_b['AVION_NUM'].sum() if not df_periodo_b.empty else 0
-                        costo_tot_a = df_periodo_a['COSTO_NUM'].sum() if not df_periodo_a.empty else 0
-                        costo_tot_b = df_periodo_b['COSTO_NUM'].sum() if not df_periodo_b.empty else 0
-                        
-                        insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
-                        insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
 
                         # Escáner Inteligente de Área (Hectáreas) recuperadas
                         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
@@ -3272,21 +3261,29 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             df_periodo_a['AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
                             df_periodo_b['AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
                             
-                            # 🎯 DIRECTRIZ DEL COMANDANTE: Sumar por FECHA (ignorando clones de producto)
+                            # Filtro Anti-Clones (Directriz del Comandante)
                             area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0
                             area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0
                         else:
                             area_a, area_b = 0.0, 0.0
+
+                        # 2. CÁLCULOS GLOBALES INTELIGENTES (Matemática Pura: Tarifa x Hectárea = Inmune a Clones)
+                        vuelo_tot_a = vuelo_a * area_a
+                        vuelo_tot_b = vuelo_b * area_b
+                        insumos_tot_a = insumos_a * area_a
+                        insumos_tot_b = insumos_b * area_b
+
+                        # 3. GRÁFICO 1: MATRIZ DE RESPONSABILIDAD (Pestañas Unitario vs Global)
+                        st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
                         
                         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
                         
-                        # Creación de Pestañas Interactivas
                         tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario (Promedio / Ha)", "💰 Impacto Global (Presupuesto Total)"])
                         
                         with tab_unit:
                             fig_unit = go.Figure(data=[
-                                go.Bar(name='Costo Avión', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
-                                go.Bar(name='Costo Insumos (Cóctel)', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
+                                go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
+                                go.Bar(name='Costo Insumos (Cóctel) / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
                             ])
                             fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", margin=dict(t=20, b=20))
                             st.plotly_chart(fig_unit, use_container_width=True)
