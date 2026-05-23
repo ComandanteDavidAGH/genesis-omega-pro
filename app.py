@@ -3029,7 +3029,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     # --- ⚙️ FASE 3: MOTOR DE TIEMPO Y FILTROS TÁCTICOS ---
                     # =====================================================================
                     st.markdown("---")
-                    st.markdown("### 🎛️ Centro de Mando: Parámetros de Autopsia")
+                    st.markdown("### 🎛️ Centro de Mando: Parámetros de Análisis")
+                    # ... (código intermedio) ...
                     
                     if 'FECHA_MAESTRA' in super_base_bi.columns:
                         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
@@ -3103,25 +3104,28 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         
                         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
                         
-                        st.markdown("### 📊 Autopsia de Costos: Impacto General por Hectárea")
-                        k1, k2, k3 = st.columns(3)
+                        st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
+                        # ... (código de los k1, k2, k3) ...
                         k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
                         k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
                         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         if delta_pct > 10:
-                            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} se disparó un **{delta_pct:.1f}%**. Se requiere autopsia.")
+                            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} presenta una desviación del **{delta_pct:.1f}%**. Se requiere análisis de causa raíz.")
                         elif delta_pct < 0:
                             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
                         else:
                             st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
                         
                         # =====================================================================
-                        # --- 📊 FASE 4: VISORES GRÁFICOS Y DETECTOR DE CULPABLES ---
+                        # =====================================================================
+                        # --- 📊 FASE 4: VISORES GRÁFICOS Y ATRIBUCIÓN DE COSTOS ---
                         # =====================================================================
                         st.markdown("---")
-                        st.markdown("### 🧬 Autopsia Analítica: El Detector de Culpables")
+                        st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
+                        
+                        # ... (código de las variables de avión e insumos) ...
                         # 0. GRÁFICO TENDENCIA TEMPORAL (Evolución Dinámica)
                         st.markdown("#### 📈 Evolución Comparativa: Tendencia del Periodo")
                         
@@ -3213,19 +3217,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         diff_vuelo = vuelo_b - vuelo_a
                         diff_insumos = insumos_b - insumos_a
                         
-                        st.info("🕵️‍♂️ **DICTAMEN DEL DETECTOR DE CULPABLES:**")
+                        st.info("🧠 **DIAGNÓSTICO AUTOMATIZADO DE IMPACTO:**")
                         if diff_vuelo > 0 and diff_insumos > 0:
-                            st.write(f"• El encarecimiento es **MIXTO**: La tarifa del avión subió **$ {diff_vuelo:,.0f}/Ha** y el cóctel de químicos subió **$ {diff_insumos:,.0f}/Ha**.")
+                            st.write(f"• La desviación es **MIXTA**: La tarifa operativa (Vuelo/Aeronave) impactó en **$ {diff_vuelo:,.0f}/Ha** y los insumos (Cóctel) impactaron en **$ {diff_insumos:,.0f}/Ha**.")
                         elif diff_insumos > diff_vuelo:
-                            st.write(f"• Culpable principal: **LOS INSUMOS**. El cóctel de químicos aumentó **$ {diff_insumos:,.0f}/Ha**, representando el mayor impacto en el presupuesto.")
+                            st.write(f"• Factor de mayor impacto: **LOS INSUMOS**. El costo de los químicos generó una desviación de **$ {diff_insumos:,.0f}/Ha**, representando el mayor peso en la fluctuación.")
                         elif diff_vuelo > diff_insumos:
-                            st.write(f"• Culpable principal: **EL AVIÓN**. La tarifa logística de vuelo subió **$ {diff_vuelo:,.0f}/Ha**. Revise contratos de operación o eficiencia de pistas.")
+                            st.write(f"• Factor de mayor impacto: **LOGÍSTICA DE VUELO**. La tarifa de aplicación refleja una desviación de **$ {diff_vuelo:,.0f}/Ha**. Se sugiere revisar tarifas operativas o eficiencias de pista.")
                         else:
-                            st.write("• Los componentes de costo se mantienen estables o presentan variaciones proporcionales.")
-
+                            st.write("• Los componentes de costo se mantienen estables o presentan variaciones proporcionales acordes a la media histórica.")
+                            
                         # 4. TABLA INTERACTIVA DE COMPORTAMIENTO POR CÓCTEL Y DOSIS
                         st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown("#### 📋 Auditoría de Cócteles, Recetas y Volumen Aplicado")
+                        st.markdown("#### 📋 Desglose Operativo: Cócteles, Recetas y Volumen Aplicado")
                         
                         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
                         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
