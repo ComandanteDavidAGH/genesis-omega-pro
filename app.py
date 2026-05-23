@@ -3120,6 +3120,45 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
                         else:
                             st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
+                            # =====================================================================
+                        # --- ⏱️ ANEXO TÁCTICO: FRECUENCIA OPERATIVA (CICLOS E INTERVALOS) ---
+                        # =====================================================================
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.markdown("#### ⏱️ Análisis de Frecuencia: Intervenciones e Intervalo")
+                        
+                        # Motor de cálculo de días y ciclos
+                        def calcular_frecuencia(df):
+                            if df.empty or 'FECHA_DT' not in df.columns: return 0, 0
+                            # Extraemos fechas únicas de vuelo para no contar doble si volaron 2 lotes el mismo día
+                            fechas_unicas = sorted(df['FECHA_DT'].dt.date.unique())
+                            ciclos = len(fechas_unicas)
+                            if ciclos > 1:
+                                diffs = [(fechas_unicas[i] - fechas_unicas[i-1]).days for i in range(1, ciclos)]
+                                avg_int = sum(diffs) / len(diffs)
+                            else:
+                                avg_int = 0
+                            return ciclos, avg_int
+                            
+                        ciclos_a, int_a = calcular_frecuencia(df_periodo_a)
+                        ciclos_b, int_b = calcular_frecuencia(df_periodo_b)
+                        
+                        c1, c2, c3, c4 = st.columns(4)
+                        
+                        # 1. Tarjetas de Ciclos (Frecuencia)
+                        c1.metric(f"Intervenciones ({año_base})", f"{ciclos_a} vuelos")
+                        c2.metric(f"Intervenciones ({año_comp})", f"{ciclos_b} vuelos", delta=f"{ciclos_b - ciclos_a} vuelos", delta_color="inverse")
+                        
+                        # 2. Tarjetas de Intervalo (Días entre vuelos)
+                        str_int_a = f"{int_a:.1f} días" if int_a > 0 else "N/A"
+                        str_int_b = f"{int_b:.1f} días" if int_b > 0 else "N/A"
+                        c3.metric(f"Intervalo Promedio ({año_base})", str_int_a)
+                        
+                        # Lógica de color: Si el intervalo sube (ej: de 7 a 10 días), es bueno porque fumigamos menos.
+                        if int_a > 0 and int_b > 0:
+                            delta_int = int_b - int_a
+                            c4.metric(f"Intervalo Promedio ({año_comp})", str_int_b, delta=f"{delta_int:+.1f} días", delta_color="normal")
+                        else:
+                            c4.metric(f"Intervalo Promedio ({año_comp})", str_int_b)
                         
                         # =====================================================================
                         # =====================================================================
