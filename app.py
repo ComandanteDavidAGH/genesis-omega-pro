@@ -3264,14 +3264,20 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         def limpiar_area(val):
                             try:
                                 v = str(val).upper().replace(',', '.')
-                                # Extrae solo números y puntos, ignora todo lo demás
                                 v = "".join([c for c in v if c.isdigit() or c == '.'])
                                 return float(v) if v != '' else 0.0
                             except: return 0.0
                             
-                        area_a = df_periodo_a[col_area].apply(limpiar_area).sum() if col_area and not df_periodo_a.empty else 0
-                        area_b = df_periodo_b[col_area].apply(limpiar_area).sum() if col_area and not df_periodo_b.empty else 0
-
+                        if col_area:
+                            df_periodo_a['AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
+                            df_periodo_b['AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
+                            
+                            # 🎯 DIRECTRIZ DEL COMANDANTE: Sumar por FECHA (ignorando clones de producto)
+                            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0
+                            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0
+                        else:
+                            area_a, area_b = 0.0, 0.0
+                        
                         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
                         
                         # Creación de Pestañas Interactivas
