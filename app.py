@@ -3122,34 +3122,58 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("---")
                         st.markdown("### 🧬 Autopsia Analítica: El Detector de Culpables")
-                        # 0. GRÁFICO TENDENCIA TEMPORAL (Evolución Mes a Mes)
-                        st.markdown("#### 📈 Evolución Comparativa: Tendencia del Año")
+                        # 0. GRÁFICO TENDENCIA TEMPORAL (Evolución Dinámica)
+                        st.markdown("#### 📈 Evolución Comparativa: Tendencia del Periodo")
                         
-                        df_tendencia = df_finca[df_finca['AÑO'].isin([año_base, año_comp])]
+                        # 🎯 CORRECCIÓN: Unimos los datos que YA pasaron por la lupa temporal
+                        df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
+                        
                         if not df_tendencia.empty:
-                            tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
-                            # Convertimos el número del mes al nombre (Ene, Feb, Mar...)
-                            tendencia_agrupa['MES_NOMBRE'] = tendencia_agrupa['MES'].map(meses_dict)
-                            # Ordenamos para que los meses salgan en secuencia correcta
-                            tendencia_agrupa = tendencia_agrupa.sort_values('MES')
-                            # Forzamos que el año sea un texto para la leyenda del gráfico
+                            if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
+                                # MODO 1: Zoom de Meses (Para Año o Trimestre)
+                                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                                tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
+                                tendencia_agrupa = tendencia_agrupa.sort_values('MES')
+                                titulo_x = "Meses Operativos"
+                            else:
+                                # MODO 2: Zoom de Días (Para cuando selecciona un solo mes)
+                                df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
+                                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+                                # Creamos una etiqueta bonita para el día
+                                tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
+                                tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
+                                titulo_x = f"Días Operativos ({etiq_periodo})"
+                                
+                            # Forzamos año a texto para que los colores se separen
                             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
                             
                             fig_tendencia = px.line(
-                                tendencia_agrupa, x='MES_NOMBRE', y='COSTO_NUM', color='AÑO', 
+                                tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', 
                                 markers=True, color_discrete_sequence=['#2F75B5', '#ef4444']
                             )
+                            
+                            # 🎯 CORRECCIÓN DE ETIQUETAS: Claridad absoluta
                             fig_tendencia.update_layout(
                                 yaxis_title="Costo Promedio ($ COP / Ha)", 
-                                xaxis_title="Meses Operativos", 
+                                xaxis_title=titulo_x, 
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 hovermode="x unified"
                             )
+                            
+                            # Le damos un techo más alto al gráfico para que los números no se corten arriba
+                            max_y = tendencia_agrupa['COSTO_NUM'].max() * 1.2
+                            fig_tendencia.update_yaxes(range=[0, max_y])
+
                             fig_tendencia.update_traces(
                                 line=dict(width=3), marker=dict(size=8),
-                                texttemplate="$ %{y:,.0f}", textposition="top center"
+                                texttemplate="$ %{y:,.0f}", textposition="top center",
+                                hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>"
                             )
+                            
                             st.plotly_chart(fig_tendencia, use_container_width=True)
+                        else:
+                            st.warning("⚠️ No hay suficientes operaciones en este periodo exacto para trazar una curva comparativa.")
+                            
                         st.markdown("<hr>", unsafe_allow_html=True)
                         
                         # 1. ESTABLECER COLUMNAS RESPALDO PARA AERONAVE
