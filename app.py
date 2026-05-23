@@ -2933,38 +2933,40 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
         if "" in df.columns: df = df.drop(columns=[""])
         return df
         
-    # 2. 🎯 ESTANDARIZADOR BLINDADO: Prioridad Máxima a la columna FACTURAR
+    # 2. 🎯 ESTANDARIZADOR BLINDADO: Prioridad Máxima
     def estandarizar_base(df):
         renombres = {}
-        # Primero buscamos al Rey: VALOR A FACTURAR
         for col in df.columns:
-            col_u = str(col).upper().strip()
+            # Reemplazamos saltos de línea invisibles por espacios
+            col_u = str(col).upper().replace('\n', ' ').strip()
             if 'FACTURAR' in col_u:
                 renombres[col] = 'COSTO_MAESTRO'
                 break
                 
-        # Si por alguna razón no está, usamos respaldos
         if 'COSTO_MAESTRO' not in renombres.values():
             for col in df.columns:
-                col_u = str(col).upper().strip()
+                col_u = str(col).upper().replace('\n', ' ').strip()
                 if 'COSTO AVION ($/HA)' in col_u or col_u == 'COSTO_HA':
                     renombres[col] = 'COSTO_MAESTRO'
                     break
                     
-        # Buscamos Finca y Fecha sin clones
-        finca_ok = False; fecha_ok = False
+        finca_ok = False; fecha_ok = False; area_ok = False
         for col in df.columns:
-            col_u = str(col).upper().strip()
+            col_u = str(col).upper().replace('\n', ' ').strip()
             if not finca_ok and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
                 renombres[col] = 'FINCA_MAESTRA'
                 finca_ok = True
             elif not fecha_ok and col_u == 'FECHA':
                 renombres[col] = 'FECHA_MAESTRA'
                 fecha_ok = True
+            # 🎯 BUSCADOR LÁSER EXCLUSIVO: Busca la palabra FUMIG
+            elif not area_ok and ('FUMIG' in col_u or 'AREA' in col_u or col_u == 'HAS'):
+                renombres[col] = 'AREA_MAESTRA'
+                area_ok = True
                 
         df.rename(columns=renombres, inplace=True)
         return df
-
+        
     # 3. 🎯 TRADUCTOR FINANCIERO SUPERIOR (A prueba de letras)
     def convertir_pesos(val):
         try:
@@ -3256,16 +3258,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
                         insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
 
-                        # Escáner Inteligente de Área (Hectáreas)
-                        col_area = None
-                        for col in df_finca.columns:
-                            col_u = str(col).upper()
-                            if col_u == 'AREA' or col_u == 'ÁREA' or col_u == 'HAS' or col_u == 'HECTAREAS' or 'HA_VOLADAS' in col_u:
-                                col_area = col
-                                break
+                        # Escáner Inteligente de Área (Hectáreas) recuperadas
+                        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
                         
                         def limpiar_area(val):
-                            try: return float(str(val).replace(',', '.'))
+                            try:
+                                v = str(val).upper().replace(',', '.')
+                                # Extrae solo números y puntos, ignora todo lo demás
+                                v = "".join([c for c in v if c.isdigit() or c == '.'])
+                                return float(v) if v != '' else 0.0
                             except: return 0.0
                             
                         area_a = df_periodo_a[col_area].apply(limpiar_area).sum() if col_area and not df_periodo_a.empty else 0
