@@ -3216,21 +3216,23 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         fig_desglose.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha")
                         st.plotly_chart(fig_desglose, use_container_width=True)
                         
-                        # 3. EXPLICACIÓN IA EN TIEMPO REAL
+                        # 3. EXPLICACIÓN IA EN TIEMPO REAL (Lógica Corregida)
                         diff_vuelo = vuelo_b - vuelo_a
                         diff_insumos = insumos_b - insumos_a
                         
                         st.info("🧠 **DIAGNÓSTICO AUTOMATIZADO DE IMPACTO:**")
                         if diff_vuelo > 0 and diff_insumos > 0:
-                            st.write(f"• La desviación es **MIXTA**: La tarifa operativa (Vuelo/Aeronave) impactó en **$ {diff_vuelo:,.0f}/Ha** y los insumos (Cóctel) impactaron en **$ {diff_insumos:,.0f}/Ha**.")
-                        elif diff_insumos > diff_vuelo:
-                            st.write(f"• Factor de mayor impacto: **LOS INSUMOS**. El costo de los químicos generó una desviación de **$ {diff_insumos:,.0f}/Ha**, representando el mayor peso en la fluctuación.")
-                        elif diff_vuelo > diff_insumos:
-                            st.write(f"• Factor de mayor impacto: **LOGÍSTICA DE VUELO**. La tarifa de aplicación refleja una desviación de **$ {diff_vuelo:,.0f}/Ha**. Se sugiere revisar tarifas operativas o eficiencias de pista.")
+                            st.write(f"• La desviación es **MIXTA**: La tarifa operativa (Vuelo) subió **$ {diff_vuelo:,.0f}/Ha** y los insumos (Cóctel) subieron **$ {diff_insumos:,.0f}/Ha**.")
+                        elif diff_insumos > 0 and diff_insumos > diff_vuelo:
+                            st.write(f"• Factor de mayor impacto: **LOS INSUMOS**. El costo de los químicos generó un alza de **$ {diff_insumos:,.0f}/Ha**, representando el mayor peso en la desviación.")
+                        elif diff_vuelo > 0 and diff_vuelo > diff_insumos:
+                            st.write(f"• Factor de mayor impacto: **LOGÍSTICA DE VUELO**. La tarifa de aplicación generó un alza de **$ {diff_vuelo:,.0f}/Ha**. Se sugiere revisar tarifas operativas.")
+                        elif diff_vuelo <= 0 and diff_insumos <= 0:
+                            st.write("• **AHORRO OPERATIVO CONFIRMADO:** Ambos componentes (Vuelo e Insumos) redujeron su costo o se mantuvieron estables en $0 desviación. Excelente control.")
                         else:
-                            st.write("• Los componentes de costo se mantienen estables o presentan variaciones proporcionales acordes a la media histórica.")
-                            
-                        # 4. TABLA INTERACTIVA DE COMPORTAMIENTO POR CÓCTEL Y DOSIS
+                            st.write("• Variación compensada: Las fluctuaciones de vuelo e insumos se equilibraron entre sí.")
+
+                        # 4. TABLA INTERACTIVA DE CÓCTELES (Apertura Total "Outer Join")
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.markdown("#### 📋 Desglose Operativo: Cócteles, Recetas y Volumen Aplicado")
                         
@@ -3247,7 +3249,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
                             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
                             
-                            tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, suffixes=('_BASE', '_ACTUAL'))
+                            # 🎯 LA SOLUCIÓN: Usar "outer" para que aparezcan todos los cócteles y rellenar vacíos con cero
+                            tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL'))
+                            tabla_autopsia.fillna(0, inplace=True)
                             
                             tabla_autopsia.rename(columns={
                                 col_coctel: 'CÓCTEL APLICADO',
@@ -3262,10 +3266,18 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     f'{col_gln}_BASE': f'Volumen Volado ({año_base}) [Gln/Ha]',
                                     f'{col_gln}_ACTUAL': f'Volumen Volado ({año_comp}) [Gln/Ha]'
                                 }, inplace=True)
-                                tabla_autopsia['Cambio de Dosis/Receta'] = tabla_autopsia.apply(
-                                    lambda r: "🚨 CAMBIÓ DOSIS" if abs(float(r[3]) - float(r[2])) > 0.05 else "⚖️ MISMA RECETA (Alza SAP)", axis=1
-                                )
+                                
+                                # Etiquetado Inteligente de Novedades
+                                def evaluar_dosis(r):
+                                    v_base, v_act = float(r[2]), float(r[3])
+                                    if v_base == 0: return "⚠️ CÓCTEL NUEVO (No usado año base)"
+                                    if v_act == 0: return "⚠️ DESCONTINUADO (No usado año actual)"
+                                    if abs(v_act - v_base) > 0.05: return "🚨 CAMBIÓ DOSIS / VOLUMEN"
+                                    return "⚖️ MISMA RECETA (Alza SAP)"
+                                    
+                                tabla_autopsia['Dictamen Dosis'] = tabla_autopsia.apply(evaluar_dosis, axis=1)
                             
+                            # Formatear dinero
                             df_vista = tabla_autopsia.copy()
                             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
                             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
@@ -3273,7 +3285,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             
                             st.dataframe(df_vista, use_container_width=True)
                         else:
-                            st.warning("⚠️ No se encontró la columna 'COCTEL' para desglosar las recetas.")
+                            st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
 
                     else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
