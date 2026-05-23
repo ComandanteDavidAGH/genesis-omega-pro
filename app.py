@@ -3025,6 +3025,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                     # =====================================================================
                     # =====================================================================
+                    # =====================================================================
                     # --- ⚙️ FASE 3: MOTOR DE TIEMPO Y FILTROS TÁCTICOS ---
                     # =====================================================================
                     st.markdown("---")
@@ -3033,12 +3034,16 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     if 'FECHA_MAESTRA' in super_base_bi.columns:
                         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
                         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
+                        
+                        # Extracción de inteligencia temporal
                         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
+                        super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
+                        super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
                         
                         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
                         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
                         
-                        # 🎯 NUEVO: Escáner de Escuadrón (Dron vs Avión)
+                        # Escáner de Escuadrón (Dron vs Avión)
                         col_modelo = 'MODELO' if 'MODELO' in super_base_bi.columns else None
                         if col_modelo:
                             super_base_bi[col_modelo] = super_base_bi[col_modelo].astype(str).str.strip().str.upper()
@@ -3046,31 +3051,53 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             modelos_disp = ["TODOS"]
                         
-                        # Ampliamos el tablero de control a 4 paneles
-                        f1, f2, f3, f4 = st.columns(4)
-                        finca_sel = f1.selectbox("📍 Objetivo (Finca)", fincas_disp)
-                        modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo)", modelos_disp)
+                        # FILA 1: Objetivos Físicos
+                        f1, f2 = st.columns(2)
+                        finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
+                        modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
                         
+                        # FILA 2: Lupa Temporal (El viaje en el tiempo granular)
+                        t1, t2, t3, t4 = st.columns(4)
                         idx_base = 1 if len(años_disp) > 1 else 0
-                        año_base = f3.selectbox("📅 Año Base", años_disp, index=idx_base)
-                        año_comp = f4.selectbox("📆 Año Actual", años_disp, index=0)
+                        año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=idx_base)
+                        año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
                         
-                        # Aplicación de filtros maestros
+                        tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES"])
+                        
+                        meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
+                        
+                        if tipo_periodo == "POR TRIMESTRE":
+                            periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
+                        elif tipo_periodo == "POR MES":
+                            periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
+                        else:
+                            t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
+                            periodo_sel = "TODOS"
+
+                        # 🎯 APLICACIÓN DE FILTROS EN CASCADA
                         df_finca = super_base_bi.copy()
-                        if finca_sel != "TODAS": 
-                            df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
+                        if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
+                        if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
                             
-                        # 🎯 NUEVO: Cierre de exclusa por tipo de aeronave
-                        if col_modelo and modelo_sel != "TODOS": 
-                            df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
-                            
-                        # El traductor de dinero entra en acción
                         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
-                        # División del Espacio-Tiempo (Corte de la base de datos)
+                        # División del Espacio-Tiempo
                         df_periodo_a = df_finca[df_finca['AÑO'] == año_base]
                         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp]
                         
+                        # 🎯 CORTE QUIRÚRGICO (Mes a Mes o Trimestre a Trimestre)
+                        if tipo_periodo == "POR TRIMESTRE":
+                            df_periodo_a = df_periodo_a[df_periodo_a['TRIMESTRE'] == periodo_sel]
+                            df_periodo_b = df_periodo_b[df_periodo_b['TRIMESTRE'] == periodo_sel]
+                            etiq_periodo = f"Q{periodo_sel}"
+                        elif tipo_periodo == "POR MES":
+                            df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
+                            df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
+                            etiq_periodo = meses_dict[periodo_sel]
+                        else:
+                            etiq_periodo = "Total"
+
+                        # Cálculos de impacto
                         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
                         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
                         
@@ -3095,6 +3122,35 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("---")
                         st.markdown("### 🧬 Autopsia Analítica: El Detector de Culpables")
+                        # 0. GRÁFICO TENDENCIA TEMPORAL (Evolución Mes a Mes)
+                        st.markdown("#### 📈 Evolución Comparativa: Tendencia del Año")
+                        
+                        df_tendencia = df_finca[df_finca['AÑO'].isin([año_base, año_comp])]
+                        if not df_tendencia.empty:
+                            tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                            # Convertimos el número del mes al nombre (Ene, Feb, Mar...)
+                            tendencia_agrupa['MES_NOMBRE'] = tendencia_agrupa['MES'].map(meses_dict)
+                            # Ordenamos para que los meses salgan en secuencia correcta
+                            tendencia_agrupa = tendencia_agrupa.sort_values('MES')
+                            # Forzamos que el año sea un texto para la leyenda del gráfico
+                            tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
+                            
+                            fig_tendencia = px.line(
+                                tendencia_agrupa, x='MES_NOMBRE', y='COSTO_NUM', color='AÑO', 
+                                markers=True, color_discrete_sequence=['#2F75B5', '#ef4444']
+                            )
+                            fig_tendencia.update_layout(
+                                yaxis_title="Costo Promedio ($ COP / Ha)", 
+                                xaxis_title="Meses Operativos", 
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                hovermode="x unified"
+                            )
+                            fig_tendencia.update_traces(
+                                line=dict(width=3), marker=dict(size=8),
+                                texttemplate="$ %{y:,.0f}", textposition="top center"
+                            )
+                            st.plotly_chart(fig_tendencia, use_container_width=True)
+                        st.markdown("<hr>", unsafe_allow_html=True)
                         
                         # 1. ESTABLECER COLUMNAS RESPALDO PARA AERONAVE
                         col_avion = None
