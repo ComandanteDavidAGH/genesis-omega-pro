@@ -1224,7 +1224,7 @@ elif menu == "⚙️ 3. Validación de Misión":
 
                 if not df_sab.empty:
                     # 1. BÚSQUEDA BLINDADA (Quitando ceros a la izquierda también en la Sábana)
-                    col_0_limpia = df_sab.iloc[:, 0].astype(str).apply(lambda x: x.split('.')[0].strip().upper().lstrip('0'))
+                    col_0_limpia = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0') if str(x).lower() not in ['nan', 'none', '<na>', ''] else "")
                     match_sabana_global = df_sab[col_0_limpia == cod_item]
                     
                     # 2. SALVAVIDAS: Buscar por nombre si el código falla
