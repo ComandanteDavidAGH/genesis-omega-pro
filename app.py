@@ -3073,11 +3073,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
                         else:
                             st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
-                            
-                    else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
-                else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
-            else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
-                # =====================================================================
+                        
+                        # =====================================================================
                         # --- 📊 FASE 4: VISORES GRÁFICOS Y DETECTOR DE CULPABLES ---
                         # =====================================================================
                         st.markdown("---")
@@ -3134,33 +3131,27 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.markdown("#### 📋 Auditoría de Cócteles, Recetas y Volumen Aplicado")
                         
-                        # Buscamos la columna cóctel y volumen
                         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
                         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
                         
                         if col_coctel:
-                            # Aseguramos limpieza en los nombres de los cócteles
                             df_periodo_a[col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
                             df_periodo_b[col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
                             
-                            # Agrupamos año base
                             agg_dict = {'COSTO_NUM': 'mean'}
                             if col_gln: agg_dict[col_gln] = 'mean'
                             
                             g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
                             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
                             
-                            # Cruzamos ambas épocas en una sola matriz de autopsia
                             tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, suffixes=('_BASE', '_ACTUAL'))
                             
-                            # Renombramos para el Comandante
                             tabla_autopsia.rename(columns={
                                 col_coctel: 'CÓCTEL APLICADO',
                                 'COSTO_NUM_BASE': f'Costo/Ha ({año_base})',
                                 'COSTO_NUM_ACTUAL': f'Costo/Ha ({año_comp})'
                             }, inplace=True)
                             
-                            # Calculamos desviaciones monetarias
                             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
                             
                             if col_gln:
@@ -3168,12 +3159,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     f'{col_gln}_BASE': f'Volumen Volado ({año_base}) [Gln/Ha]',
                                     f'{col_gln}_ACTUAL': f'Volumen Volado ({año_comp}) [Gln/Ha]'
                                 }, inplace=True)
-                                # Evaluamos si cambió la dosis (Volumen volado por hectárea)
                                 tabla_autopsia['Cambio de Dosis/Receta'] = tabla_autopsia.apply(
                                     lambda r: "🚨 CAMBIÓ DOSIS" if abs(float(r[3]) - float(r[2])) > 0.05 else "⚖️ MISMA RECETA (Alza SAP)", axis=1
                                 )
                             
-                            # Formatear dinero para vista ejecutiva
                             df_vista = tabla_autopsia.copy()
                             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
                             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
@@ -3182,6 +3171,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.dataframe(df_vista, use_container_width=True)
                         else:
                             st.warning("⚠️ No se encontró la columna 'COCTEL' para desglosar las recetas.")
+
+                    else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
+                else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
+            else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
 
         except Exception as e:
             st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
