@@ -3244,18 +3244,68 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         insumos_a = max(0, costo_a - vuelo_a)
                         insumos_b = max(0, costo_b - vuelo_b)
                         
-                        # 2. GRÁFICO 1: DESGLOSE DE RESPONSABILIDAD (Vuelo vs Insumos)
-                        st.markdown("#### 🛩️ vs 🧪 Distribución del Incremento de Costo")
+                        # 2. GRÁFICO 1: MATRIZ DE RESPONSABILIDAD (Pestañas Unitario vs Global)
+                        st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
                         
+                        # Cálculos Globales (Suma total del presupuesto)
+                        vuelo_tot_a = df_periodo_a['AVION_NUM'].sum() if not df_periodo_a.empty else 0
+                        vuelo_tot_b = df_periodo_b['AVION_NUM'].sum() if not df_periodo_b.empty else 0
+                        costo_tot_a = df_periodo_a['COSTO_NUM'].sum() if not df_periodo_a.empty else 0
+                        costo_tot_b = df_periodo_b['COSTO_NUM'].sum() if not df_periodo_b.empty else 0
+                        
+                        insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
+                        insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
+
+                        # Escáner Inteligente de Área (Hectáreas)
+                        col_area = None
+                        for col in df_finca.columns:
+                            col_u = str(col).upper()
+                            if col_u == 'AREA' or col_u == 'ÁREA' or col_u == 'HAS' or col_u == 'HECTAREAS' or 'HA_VOLADAS' in col_u:
+                                col_area = col
+                                break
+                        
+                        def limpiar_area(val):
+                            try: return float(str(val).replace(',', '.'))
+                            except: return 0.0
+                            
+                        area_a = df_periodo_a[col_area].apply(limpiar_area).sum() if col_area and not df_periodo_a.empty else 0
+                        area_b = df_periodo_b[col_area].apply(limpiar_area).sum() if col_area and not df_periodo_b.empty else 0
+
                         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
-                        fig_desglose = go.Figure(data=[
-                            go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
-                            go.Bar(name='Costo Insumos (Cóctel) / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
-                        ])
-                        fig_desglose.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha")
-                        st.plotly_chart(fig_desglose, use_container_width=True)
                         
-                        # 3. EXPLICACIÓN IA EN TIEMPO REAL (Lógica Corregida)
+                        # Creación de Pestañas Interactivas
+                        tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario (Promedio / Ha)", "💰 Impacto Global (Presupuesto Total)"])
+                        
+                        with tab_unit:
+                            fig_unit = go.Figure(data=[
+                                go.Bar(name='Costo Avión', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
+                                go.Bar(name='Costo Insumos (Cóctel)', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
+                            ])
+                            fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", margin=dict(t=20, b=20))
+                            st.plotly_chart(fig_unit, use_container_width=True)
+                            
+                        with tab_glob:
+                            st.markdown("##### 🗺️ Contexto de Área Operada (Efecto Volumen)")
+                            g1, g2, g3 = st.columns(3)
+                            g1.metric(f"Hectáreas Aplicadas ({año_base})", f"{area_a:,.1f} Ha")
+                            g2.metric(f"Hectáreas Aplicadas ({año_comp})", f"{area_b:,.1f} Ha")
+                            
+                            if area_a > 0:
+                                var_area = ((area_b - area_a) / area_a) * 100
+                                g3.metric("Variación de Área", f"{var_area:+.1f}%", delta=f"{var_area:+.1f}%", delta_color="off")
+                            else:
+                                g3.metric("Variación de Área", "N/A")
+
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            
+                            fig_glob = go.Figure(data=[
+                                go.Bar(name='Total Facturación Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[f"$ {vuelo_tot_a:,.0f}", f"$ {vuelo_tot_b:,.0f}"], textposition='auto'),
+                                go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#548235', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
+                            ])
+                            fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", margin=dict(t=20, b=20))
+                            st.plotly_chart(fig_glob, use_container_width=True)
+                        
+                        # 3. EXPLICACIÓN IA EN TIEMPO REAL (Lógica Corregida y Corporativa)
                         diff_vuelo = vuelo_b - vuelo_a
                         diff_insumos = insumos_b - insumos_a
                         
@@ -3270,7 +3320,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.write("• **AHORRO OPERATIVO CONFIRMADO:** Ambos componentes (Vuelo e Insumos) redujeron su costo o se mantuvieron estables en $0 desviación. Excelente control.")
                         else:
                             st.write("• Variación compensada: Las fluctuaciones de vuelo e insumos se equilibraron entre sí.")
-
+                            
+                        if area_a > 0 and area_b > 0 and var_area > 5:
+                            st.write(f"• **NOTA DE CONTEXTO DE VOLUMEN:** Considere que el área total operada aumentó un **{var_area:.1f}%**, lo cual justifica de forma directa el incremento en el presupuesto global reflejado en la pestaña de impacto total.")
                         # 4. TABLA INTERACTIVA DE CÓCTELES (Apertura Total "Outer Join")
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.markdown("#### 📋 Desglose Operativo: Cócteles, Recetas y Volumen Aplicado")
