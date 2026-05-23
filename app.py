@@ -3104,12 +3104,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         
                         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
                         
+                        # 7. Artillería Visual: Tarjetas de Impacto
                         st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
-                        # ... (código de los k1, k2, k3) ...
+                        
+                        k1, k2, k3 = st.columns(3)
                         k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
                         k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
                         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
                         
+                        # 8. Sistema de Alerta Temprana (Tono Ejecutivo)
                         st.markdown("<br>", unsafe_allow_html=True)
                         if delta_pct > 10:
                             st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} presenta una desviación del **{delta_pct:.1f}%**. Se requiere análisis de causa raíz.")
