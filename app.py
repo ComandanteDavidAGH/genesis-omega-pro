@@ -3024,34 +3024,50 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
 
                     # =====================================================================
+                    # =====================================================================
                     # --- ⚙️ FASE 3: MOTOR DE TIEMPO Y FILTROS TÁCTICOS ---
                     # =====================================================================
                     st.markdown("---")
                     st.markdown("### 🎛️ Centro de Mando: Parámetros de Autopsia")
                     
                     if 'FECHA_MAESTRA' in super_base_bi.columns:
-                        # 🎯 USAMOS SU FUNCIÓN NATIVA PARA NO PERDER NI UNA SOLA FILA DEL PASADO
                         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
                         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
                         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
                         
-                        
                         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
                         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
                         
-                        f1, f2, f3 = st.columns(3)
-                        finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
+                        # 🎯 NUEVO: Escáner de Escuadrón (Dron vs Avión)
+                        col_modelo = 'MODELO' if 'MODELO' in super_base_bi.columns else None
+                        if col_modelo:
+                            super_base_bi[col_modelo] = super_base_bi[col_modelo].astype(str).str.strip().str.upper()
+                            modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist())
+                        else:
+                            modelos_disp = ["TODOS"]
+                        
+                        # Ampliamos el tablero de control a 4 paneles
+                        f1, f2, f3, f4 = st.columns(4)
+                        finca_sel = f1.selectbox("📍 Objetivo (Finca)", fincas_disp)
+                        modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo)", modelos_disp)
                         
                         idx_base = 1 if len(años_disp) > 1 else 0
-                        año_base = f2.selectbox("📅 Periodo Base (Referencia)", años_disp, index=idx_base)
-                        año_comp = f3.selectbox("📆 Periodo Actual (A Evaluar)", años_disp, index=0)
+                        año_base = f3.selectbox("📅 Año Base", años_disp, index=idx_base)
+                        año_comp = f4.selectbox("📆 Año Actual", años_disp, index=0)
                         
+                        # Aplicación de filtros maestros
                         df_finca = super_base_bi.copy()
-                        if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
+                        if finca_sel != "TODAS": 
+                            df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
+                            
+                        # 🎯 NUEVO: Cierre de exclusa por tipo de aeronave
+                        if col_modelo and modelo_sel != "TODOS": 
+                            df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
                             
                         # El traductor de dinero entra en acción
                         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
+                        # División del Espacio-Tiempo (Corte de la base de datos)
                         df_periodo_a = df_finca[df_finca['AÑO'] == año_base]
                         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp]
                         
