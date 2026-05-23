@@ -2917,7 +2917,7 @@ elif menu == "📈 9. Dashboard Táctico":
 # =====================================================================
 elif menu == "📊 10. Inteligencia de Costos (BI)":
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
-    st.markdown("### 🛰️ Radar de Autopsia y Comportamiento Histórico Finca a Finca")
+    st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
     st.info("🤖 **MOTOR IA BI:** Extrayendo memoria histórica y datos vivos...")
 
     # 1. Limpiador Base
