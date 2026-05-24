@@ -3401,7 +3401,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 # =====================================================================
             st.markdown("<hr>", unsafe_allow_html=True)
                   st.error("🔍 REPORTE DE SÓNAR - COLUMNAS VIVAS EN LA MEMORIA:")
-                              st.write(df_finca.columns.tolist())
+                  st.write(df_finca.columns.tolist())
             st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
                         
             # 1. Buscamos la columna de Producto/Material (Radar Amplio)
