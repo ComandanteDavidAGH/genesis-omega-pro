@@ -3391,69 +3391,69 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             
                             st.dataframe(df_vista, use_container_width=True)
                         else:
-                            st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
+                            else:
+                                st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
+
+                        # =====================================================================
+                        # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (CONEXIÓN A BÓVEDA) ---
+                        # =====================================================================
+                        st.markdown("<hr>", unsafe_allow_html=True)
+                        st.markdown("### 🔬 Nivel 2: Composición del Cóctel (Desde Bóveda)")
+
+                        if col_coctel:
+                            cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
+                            coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para ver su receta y precios actuales:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
+
+                            if coctel_sel != "SELECCIONE UN CÓCTEL...":
+                                with st.spinner("Descargando receta y precios desde la Bóveda..."):
+                                    try:
+                                        # Obtenemos la conexión que ya está abierta arriba
+                                        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                                        
+                                        data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+                                        df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                                        
+                                        data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
+                                        df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
+
+                                        coctel_base = coctel_sel.split(" ")[0].strip().upper()
+                                        receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper() == coctel_base]
+
+                                        if not receta.empty:
+                                            matriz_mol = []
+                                            costo_total_coctel = 0.0
+                                            
+                                            for idx, row in receta.iterrows():
+                                                prod = str(row.iloc[1]).strip().upper()
+                                                dosis = extraer_numero(row.iloc[2])
+                                                
+                                                if dosis > 0 and prod not in ['NAN', '']:
+                                                    precio_unit = 0.0
+                                                    match_p = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == prod]
+                                                    if not match_p.empty:
+                                                        precio_unit = extraer_numero(match_p.iloc[0, 9])
+                                                        
+                                                    costo_fila = dosis * precio_unit
+                                                    costo_total_coctel += costo_fila
+                                                    
+                                                    matriz_mol.append({
+                                                        "INSUMO QUÍMICO": prod,
+                                                        "DOSIS/HA": f"{dosis:.3f}",
+                                                        "COSTO UNITARIO ACTUAL": f"$ {precio_unit:,.0f}",
+                                                        "COSTO TOTAL/HA": f"$ {costo_fila:,.0f}"
+                                                    })
+
+                                            st.dataframe(pd.DataFrame(matriz_mol), use_container_width=True, hide_index=True)
+                                            st.info(f"💡 **Costo Teórico del Cóctel:** $ {costo_total_coctel:,.0f} COP/Ha (Calculado con los últimos precios de SAP cargados en Bóveda).")
+                                        else:
+                                            st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
+                                            
+                                    except Exception as e:
+                                        st.error(f"🚨 Error al conectar con la receta: {e}")
 
                     else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
             else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
-# =====================================================================
-            # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (CONEXIÓN A BÓVEDA) ---
-            # =====================================================================
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("### 🔬 Nivel 2: Composición del Cóctel (Desde Bóveda)")
 
-            if col_coctel:
-                cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
-                coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para ver su receta y precios actuales:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
-
-                if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                    with st.spinner("Descargando receta y precios desde la Bóveda..."):
-                        try:
-                            # Obtenemos la conexión que ya está abierta arriba
-                            boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-                                   
-                            # Traemos la matriz de recetas (DD_Mesclas)
-                            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-                            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-                                        
-                            # Traemos la matriz de precios actuales (Configuración)
-                            data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
-                            df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
-
-                            # Filtramos la receta base (Quitando siglas extra como ZN para hallar la raíz)
-                            coctel_base = coctel_sel.split(" ")[0].strip().upper()
-                            receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper() == coctel_base]
-
-                            if not receta.empty:
-                                matriz_mol = []
-                                costo_total_coctel = 0.0
-                                            
-                                for idx, row in receta.iterrows():
-                                    prod = str(row.iloc[1]).strip().upper()
-                                    dosis = extraer_numero(row.iloc[2])
-                                                
-                                    if dosis > 0 and prod not in ['NAN', '']:
-                                        precio_unit = 0.0
-                                        # Buscamos el precio en la columna I (PRODUCTO) y J (PRECIO) de Configuración
-                                        match_p = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == prod]
-                                        if not match_p.empty:
-                                            precio_unit = extraer_numero(match_p.iloc[0, 9])
-                                                        
-                                        costo_fila = dosis * precio_unit
-                                        costo_total_coctel += costo_fila
-                                                    
-                                        matriz_mol.append({
-                                            "INSUMO QUÍMICO": prod,
-                                            "DOSIS/HA": f"{dosis:.3f}",
-                                            "COSTO UNITARIO ACTUAL": f"$ {precio_unit:,.0f}",
-                                            "COSTO TOTAL/HA": f"$ {costo_fila:,.0f}"
-                                        })
-
-                                    st.dataframe(pd.DataFrame(matriz_mol), use_container_width=True, hide_index=True)
-                                    st.info(f"💡 **Costo Teórico del Cóctel:** $ {costo_total_coctel:,.0f} COP/Ha (Calculado con los últimos precios de SAP cargados en Bóveda).")
-                                else:
-                                    st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
-                        except Exception as e:
-                            st.error(f"🚨 Error al conectar con la receta: {e}")
-    except Exception as e:
-        st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
+        except Exception as e:
+            st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
