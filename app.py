@@ -3403,13 +3403,13 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
                         
                         # 1. Buscamos la columna de Producto/Material en la sábana principal
-                        col_producto = None
-                        for col in df_finca.columns:
-                            col_u = str(col).upper().strip()
+            col_producto = None
+            for col in df_finca.columns:
+                col_u = str(col).upper().strip()
                             # Buscamos el nombre de la columna que SAP usa para el químico
-                            if col_u in ['PRODUCTO', 'MATERIAL', 'ARTICULO', 'ARTÍCULO', 'DESCRIPCIÓN', 'DESCRIPCION', 'INSUMO']:
-                                col_producto = col
-                                break
+                if col_u in ['PRODUCTO', 'MATERIAL', 'ARTICULO', 'ARTÍCULO', 'DESCRIPCIÓN', 'DESCRIPCION', 'INSUMO']:
+                    col_producto = col
+                    break
                                 
                         if col_coctel and col_producto:
                             # Recopilamos todos los cócteles que se volaron en el periodo
