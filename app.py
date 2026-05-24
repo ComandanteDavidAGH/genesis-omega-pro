@@ -3411,48 +3411,48 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     col_producto = col
                     break
                                 
-                        if col_coctel and col_producto:
-                            # Recopilamos todos los cócteles que se volaron en el periodo
-                            cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
+            if col_coctel and col_producto:
+                # Recopilamos todos los cócteles que se volaron en el periodo
+                cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
                             
-                            # Selector táctico
-                            coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para escanear sus componentes químicos:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
+                # Selector táctico
+                coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para escanear sus componentes químicos:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
                             
-                            if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                                # Aislamos las filas de SAP que corresponden SOLO a este cóctel
-                                df_coctel_a = df_periodo_a[df_periodo_a[col_coctel] == coctel_sel]
-                                df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
+                if coctel_sel != "SELECCIONE UN CÓCTEL...":
+                    # Aislamos las filas de SAP que corresponden SOLO a este cóctel
+                    df_coctel_a = df_periodo_a[df_periodo_a[col_coctel] == coctel_sel]
+                    df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
                                 
-                                # Agrupamos por producto para sacar el costo promedio por hectárea de CADA producto
-                                prod_a = df_coctel_a.groupby(col_producto)['COSTO_NUM'].mean().reset_index()
-                                prod_b = df_coctel_b.groupby(col_producto)['COSTO_NUM'].mean().reset_index()
+                    # Agrupamos por producto para sacar el costo promedio por hectárea de CADA producto
+                    prod_a = df_coctel_a.groupby(col_producto)['COSTO_NUM'].mean().reset_index()
+                    prod_b = df_coctel_b.groupby(col_producto)['COSTO_NUM'].mean().reset_index()
                                 
-                                # Unimos la receta de ambos años
-                                tabla_molecular = pd.merge(prod_a, prod_b, on=col_producto, how='outer', suffixes=(f'_{año_base}', f'_{año_comp}'))
-                                tabla_molecular.fillna(0, inplace=True)
+                    # Unimos la receta de ambos años
+                    tabla_molecular = pd.merge(prod_a, prod_b, on=col_producto, how='outer', suffixes=(f'_{año_base}', f'_{año_comp}'))
+                    tabla_molecular.fillna(0, inplace=True)
                                 
-                                # Calculamos al verdadero culpable a nivel molecular
-                                tabla_molecular['Variación Costo ($)'] = tabla_molecular[f'COSTO_NUM_{año_comp}'] - tabla_molecular[f'COSTO_NUM_{año_base}']
+                    # Calculamos al verdadero culpable a nivel molecular
+                    tabla_molecular['Variación Costo ($)'] = tabla_molecular[f'COSTO_NUM_{año_comp}'] - tabla_molecular[f'COSTO_NUM_{año_base}']
                                 
-                                # Formato Ejecutivo
-                                tabla_molecular.rename(columns={
-                                    col_producto: 'INSUMO QUÍMICO / PRODUCTO',
-                                    f'COSTO_NUM_{año_base}': f'Costo/Ha ({año_base})',
-                                    f'COSTO_NUM_{año_comp}': f'Costo/Ha ({año_comp})'
-                                }, inplace=True)
+                    # Formato Ejecutivo
+                    tabla_molecular.rename(columns={
+                        col_producto: 'INSUMO QUÍMICO / PRODUCTO',
+                        f'COSTO_NUM_{año_base}': f'Costo/Ha ({año_base})',
+                        f'COSTO_NUM_{año_comp}': f'Costo/Ha ({año_comp})'
+                    }, inplace=True)
                                 
-                                # Ordenamos de mayor a menor variación para que el "culpable" salga de primero
-                                tabla_molecular = tabla_molecular.sort_values('Variación Costo ($)', ascending=False)
+                    # Ordenamos de mayor a menor variación para que el "culpable" salga de primero
+                    tabla_molecular = tabla_molecular.sort_values('Variación Costo ($)', ascending=False)
                                 
-                                # Aplicamos formato de dinero para visualización
-                                df_vista_mol = tabla_molecular.copy()
-                                df_vista_mol[f'Costo/Ha ({año_base})'] = df_vista_mol[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
-                                df_vista_mol[f'Costo/Ha ({año_comp})'] = df_vista_mol[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
-                                df_vista_mol['Variación Costo ($)'] = df_vista_mol['Variación Costo ($)'].map("$ {:,.0f}".format)
+                    # Aplicamos formato de dinero para visualización
+                    df_vista_mol = tabla_molecular.copy()
+                    df_vista_mol[f'Costo/Ha ({año_base})'] = df_vista_mol[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
+                    df_vista_mol[f'Costo/Ha ({año_comp})'] = df_vista_mol[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
+                    df_vista_mol['Variación Costo ($)'] = df_vista_mol['Variación Costo ($)'].map("$ {:,.0f}".format)
                                 
-                                st.dataframe(df_vista_mol, use_container_width=True)
-                        else:
-                            st.info("💡 Para habilitar el Escáner Molecular, la sábana debe tener una columna llamada 'PRODUCTO', 'MATERIAL' o 'DESCRIPCION'.")
+                    st.dataframe(df_vista_mol, use_container_width=True)
+            else:
+                st.info("💡 Para habilitar el Escáner Molecular, la sábana debe tener una columna llamada 'PRODUCTO', 'MATERIAL' o 'DESCRIPCION'.")
         
         except Exception as e:
             st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
