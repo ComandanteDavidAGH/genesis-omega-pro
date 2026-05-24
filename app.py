@@ -3423,7 +3423,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             
                                             idx_header, col_anio, col_prod = -1, -1, -1
                                             
-                                            # Escanear las primeras 10 filas buscando los encabezados clave (AÑO y PRODUCTO)
                                             for i in range(min(10, len(datos_hoja))):
                                                 fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                                                 if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
@@ -3446,84 +3445,106 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                                 if v_num > 0: valores_semana.append(v_num)
                                                                 
                                                             promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
-                                                            
-                                                            precios_consolidados.append({
-                                                                'AÑO': anio_str,
-                                                                'PRODUCTO': prod_str,
-                                                                'PRECIO_PROM': promedio
-                                                            })
+                                                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': prod_str, 'PRECIO_PROM': promedio})
 
                                         df_precios = pd.DataFrame(precios_consolidados)
 
-                                        # 3. PROCESAR RECETA BASE
-                                        coctel_base = coctel_sel.split(" ")[0].strip().upper()
+                                        # =========================================================
+                                        # 3. PROCESAR RECETA BASE Y FERTILIZANTES (INTELIGENCIA DINÁMICA)
+                                        # =========================================================
+                                        coctel_limpio = coctel_sel.upper().replace("+", " ").replace("-", " ")
+                                        partes = coctel_limpio.split(" ")
+                                        coctel_base = partes[0].strip()
+                                        sigla_f = partes[1] if len(partes) > 1 else ""
+
                                         receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper() == coctel_base]
 
                                         if not receta.empty:
+                                            prods_receta = []
+                                            for idx, row in receta.iterrows():
+                                                prod = str(row.iloc[1]).strip().upper()
+                                                dosis = extraer_numero(row.iloc[2])
+                                                if dosis > 0 and prod not in ['NAN', '']:
+                                                    prods_receta.append({"PRODUCTO": prod, "DOSIS": dosis})
+                                                    
+                                            # INYECCIÓN DINÁMICA DE FERTILIZANTE
+                                            if "ZN" in sigla_f: prods_receta.append({"PRODUCTO": "ZINTRAC", "DOSIS": 0.5})
+                                            elif "BT" in sigla_f: prods_receta.append({"PRODUCTO": "BANATREL", "DOSIS": 0.5})
+                                            
+                                            # AJUSTE ACONDICIONADOR
+                                            for item in prods_receta:
+                                                if "ACONDICIONADOR" in item["PRODUCTO"]:
+                                                    item["DOSIS"] = 0.06 if ("ZN" in sigla_f or "BT" in sigla_f) else 0.02
+
                                             matriz_mol = []
                                             
                                             def obtener_precio_promedio(producto, anio_obj):
-                                                # Buscar en el histórico primero
                                                 if not df_precios.empty:
-                                                    mask = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)
-                                                    match_df = df_precios[mask]
+                                                    mask_ex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)
+                                                    match_df = df_precios[mask_ex]
+                                                    
+                                                    # Búsqueda flexible para ZINTRAC y BANATREL
+                                                    if match_df.empty and ("ZINTRAC" in producto or "BANATREL" in producto):
+                                                        mask_flex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))
+                                                        match_df = df_precios[mask_flex]
+                                                        
                                                     if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0:
                                                         return match_df['PRECIO_PROM'].mean()
                                                 
-                                                # Respaldo: Buscar en Configuración de la Bóveda (Precios Actuales)
+                                                # Respaldo en Precios Actuales
                                                 if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
-                                                    match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
+                                                    mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto
+                                                    match_conf = df_conf[mask_conf]
+                                                    
+                                                    if match_conf.empty and ("ZINTRAC" in producto or "BANATREL" in producto):
+                                                        mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)
+                                                        match_conf = df_conf[mask_conf]
+                                                        
                                                     if not match_conf.empty:
                                                         return extraer_numero(match_conf.iloc[0, 9])
-                                                        
                                                 return 0.0
 
                                             costo_total_a = 0.0
                                             costo_total_b = 0.0
 
-                                            for idx, row in receta.iterrows():
-                                                prod = str(row.iloc[1]).strip().upper()
-                                                dosis = extraer_numero(row.iloc[2])
+                                            for item in prods_receta:
+                                                prod = item["PRODUCTO"]
+                                                dosis = item["DOSIS"]
                                                 
-                                                if dosis > 0 and prod not in ['NAN', '']:
-                                                    precio_a = obtener_precio_promedio(prod, año_base)
-                                                    precio_b = obtener_precio_promedio(prod, año_comp)
-                                                    
-                                                    costo_ha_a = dosis * precio_a
-                                                    costo_ha_b = dosis * precio_b
-                                                    variacion = costo_ha_b - costo_ha_a
-                                                    
-                                                    costo_total_a += costo_ha_a
-                                                    costo_total_b += costo_ha_b
-                                                    
-                                                    matriz_mol.append({
-                                                        "INSUMO QUÍMICO": prod,
-                                                        "DOSIS/HA": f"{dosis:.3f}",
-                                                        f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}",
-                                                        f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}",
-                                                        f"Costo/Ha ({año_base})": costo_ha_a,
-                                                        f"Costo/Ha ({año_comp})": costo_ha_b,
-                                                        "Variación ($)": variacion
-                                                    })
+                                                precio_a = obtener_precio_promedio(prod, año_base)
+                                                precio_b = obtener_precio_promedio(prod, año_comp)
+                                                
+                                                costo_ha_a = dosis * precio_a
+                                                costo_ha_b = dosis * precio_b
+                                                variacion = costo_ha_b - costo_ha_a
+                                                
+                                                costo_total_a += costo_ha_a
+                                                costo_total_b += costo_ha_b
+                                                
+                                                matriz_mol.append({
+                                                    "INSUMO QUÍMICO": prod,
+                                                    "DOSIS/HA": f"{dosis:.3f}",
+                                                    f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}",
+                                                    f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}",
+                                                    f"Costo/Ha ({año_base})": costo_ha_a,
+                                                    f"Costo/Ha ({año_comp})": costo_ha_b,
+                                                    "Variación ($)": variacion
+                                                })
 
                                             if matriz_mol:
                                                 df_vista_mol = pd.DataFrame(matriz_mol)
-                                                # Ordenamos para que lo que más encareció salga primero
                                                 df_vista_mol = df_vista_mol.sort_values('Variación ($)', ascending=False)
                                                 
-                                                # Formato visual
                                                 df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
                                                 df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
                                                 df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format)
                                                 
                                                 st.dataframe(df_vista_mol, use_container_width=True, hide_index=True)
                                                 
-                                                # Tarjetas de totales debajo de la tabla
                                                 c1, c2, c3 = st.columns(3)
                                                 c1.metric(f"Total Cóctel ({año_base})", f"$ {costo_total_a:,.0f}")
                                                 c2.metric(f"Total Cóctel ({año_comp})", f"$ {costo_total_b:,.0f}")
                                                 c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
-                                                
                                             else:
                                                 st.info("No se encontraron ingredientes válidos para esta receta.")
                                         else:
@@ -3532,6 +3553,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     except Exception as e:
                                         st.error(f"🚨 Error en el cruce de históricos: {e}")
 
+                        else:
+                            st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'COCTEL' en la base unificada.")
                     else:
                         st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else:
