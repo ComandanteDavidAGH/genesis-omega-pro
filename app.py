@@ -3305,25 +3305,28 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.dataframe(df_vista, use_container_width=True)
                             
                             # =====================================================================
-                            # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR ---
-                            # =====================================================================
-                            st.markdown("<hr>", unsafe_allow_html=True)
-                            st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
+                        # --- 🔬 NIVEL 2: ALGORITMO CHEF (PARSING DINÁMICO DESDE DICCIONARIO) ---
+                        # =====================================================================
+                        st.markdown("<hr>", unsafe_allow_html=True)
+                        st.markdown("### 🔬 Nivel 2: Decodificación de Cóctel y Variación Real de Insumos")
 
+                        if col_coctel:
                             cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
                             coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
                             if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                                with st.spinner("Conectando con la Bóveda de Recetas y el Histórico de Precios..."):
+                                with st.spinner("Desplegando Algoritmo Chef y conectando al Histórico de Precios..."):
                                     try:
+                                        # 1. TRAER DICCIONARIO MAESTRO Y CONFIGURACIÓN
                                         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                                         
-                                        data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-                                        df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                                        data_dicc = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
+                                        df_dicc = pd.DataFrame(data_dicc[1:], columns=data_dicc[0])
                                         
                                         data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
                                         df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
 
+                                        # 2. TRAER HISTÓRICO DE PRECIOS
                                         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
                                         sh_precios = gc.open_by_url(url_precios)
                                         
@@ -3359,65 +3362,94 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         df_precios = pd.DataFrame(precios_consolidados)
 
-                                        coctel_limpio = coctel_sel.upper().replace("+", " ").replace("-", " ")
-                                        partes = coctel_limpio.split(" ")
-                                        coctel_base = partes[0].strip()
-                                        sigla_f = partes[1] if len(partes) > 1 else ""
-
-                                        # 1. Búsqueda Exacta original
-                                        receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == coctel_base]
+                                        # =========================================================
+                                        # 3. ALGORITMO CHEF: PARSING LÉXICO DEL CÓCTEL
+                                        # =========================================================
+                                        import re
+                                        coctel_crudo = coctel_sel.upper().replace(" ", "")
                                         
-                                        # 2. Respaldo Inteligente (Ej: CQ -> CQ0)
-                                        if receta.empty:
-                                            receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == f"{coctel_base}0"]
-                                            
-                                        # 3. Escáner de Aproximación (Atrapa la receta que empiece igual si todo lo demás falla)
-                                        if receta.empty:
-                                            mask_parecido = df_mezclas.iloc[:,0].astype(str).str.upper().str.strip().str.startswith(coctel_base)
-                                            if mask_parecido.any():
-                                                base_rescatada = df_mezclas[mask_parecido].iloc[0, 0]
-                                                receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == str(base_rescatada).upper().strip()]
+                                        # Separamos aditivos si existen (ej. XLBN4+ZN -> Base: XLBN4, Aditivo: ZN)
+                                        partes_coctel = coctel_crudo.split('+')
+                                        base_coctel = partes_coctel[0]
+                                        aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
 
-                                        if not receta.empty:
-                                            # 🛡️ FILTRO ANTI-CLONES: Evita duplicar dosis por culpa de lotes repetidos en Excel
-                                            dict_prods_unicos = {}
-                                            for idx, row in receta.iterrows():
-                                                prod = str(row.iloc[1]).strip().upper()
-                                                dosis = extraer_numero(row.iloc[2])
-                                                if dosis > 0 and prod not in ['NAN', '']:
-                                                    # Si el producto no está en la lista, lo agrega. Si ya está, lo ignora.
-                                                    if prod not in dict_prods_unicos:
-                                                        dict_prods_unicos[prod] = dosis
-                                                        
-                                            # INYECCIÓN DINÁMICA DE FERTILIZANTE
-                                            if "ZN" in sigla_f: dict_prods_unicos["ZINTRAC"] = 0.5
-                                            elif "BT" in sigla_f: dict_prods_unicos["BANATREL"] = 0.5
-                                            
-                                            # AJUSTE ACONDICIONADOR
-                                            for p_key in dict_prods_unicos.keys():
-                                                if "ACONDICIONADOR" in p_key:
-                                                    dict_prods_unicos[p_key] = 0.06 if ("ZN" in sigla_f or "BT" in sigla_f) else 0.02
+                                        # Extraemos el número de aceite (Ej: el '4' en 'XLBN4')
+                                        match_num = re.search(r'\d+', base_coctel)
+                                        dosis_aceite = int(match_num.group()) if match_num else 0
+                                        
+                                        # Dejamos solo las letras de la base (Ej: 'XLBN')
+                                        solo_letras = re.sub(r'\d+', '', base_coctel)
 
-                                            # Convertimos el diccionario purificado a la lista que necesita el sistema
-                                            prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items()]
+                                        # Obtenemos siglas válidas del diccionario y las ordenamos de mayor a menor longitud
+                                        # para que lea siglas largas (Ej: DTFMB) antes que cortas (Ej: DT).
+                                        siglas_validas = df_dicc[df_dicc['SIGLA'].str.strip() != '']['SIGLA'].str.strip().str.upper().unique().tolist()
+                                        siglas_validas.sort(key=len, reverse=True)
 
+                                        siglas_encontradas = []
+                                        resto_letras = solo_letras
+                                        for sigla in siglas_validas:
+                                            if sigla in resto_letras:
+                                                siglas_encontradas.append(sigla)
+                                                resto_letras = resto_letras.replace(sigla, '', 1) # Borra la sigla para no repetirla
+                                                
+                                        # Sumamos los aditivos encontrados (Ej: ZN)
+                                        for ad in aditivos:
+                                            if ad in siglas_validas:
+                                                siglas_encontradas.append(ad)
+
+                                        # Construcción de la receta final
+                                        dict_prods_unicos = {}
+                                        tiene_fertilizante = False
+
+                                        # A) Inyectar químicos por sigla
+                                        for sig in siglas_encontradas:
+                                            match_sig = df_dicc[df_dicc['SIGLA'].str.strip().str.upper() == sig]
+                                            if not match_sig.empty:
+                                                prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
+                                                dosis_val = extraer_numero(match_sig.iloc[0]['DOSIS'])
+                                                modo_acc = str(match_sig.iloc[0].get('MODO DE ACCION', '')).strip().upper()
+                                                
+                                                dict_prods_unicos[prod_name] = dosis_val
+                                                if 'FERTILIZANTE' in modo_acc:
+                                                    tiene_fertilizante = True
+
+                                        # B) Inyectar Aceite
+                                        if dosis_aceite > 0:
+                                            dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
+
+                                        # C) Inyectar Ayudantes sin sigla (Soporte Inteligente)
+                                        # Acondicionador sube a 0.06 si hay fertilizantes en la mezcla
+                                        dict_prods_unicos['ACONDICIONADOR SV'] = 0.06 if tiene_fertilizante else 0.02
+                                        dict_prods_unicos['ADHERENTE SV'] = 0.13
+
+                                        # Generar la lista iterable de la receta
+                                        prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
+
+                                        if prods_receta:
                                             matriz_mol = []
+                                            
                                             def obtener_precio_promedio(producto, anio_obj):
                                                 if not df_precios.empty:
                                                     mask_ex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)
                                                     match_df = df_precios[mask_ex]
-                                                    if match_df.empty and ("ZINTRAC" in producto or "BANATREL" in producto):
+                                                    
+                                                    if match_df.empty:
+                                                        # Búsqueda flexible por si cambia una letra
                                                         mask_flex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))
                                                         match_df = df_precios[mask_flex]
+                                                        
                                                     if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0:
                                                         return match_df['PRECIO_PROM'].mean()
                                                 
+                                                # Respaldo en Configuración si el año es el actual
                                                 if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
                                                     mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto
                                                     match_conf = df_conf[mask_conf]
-                                                    if match_conf.empty and ("ZINTRAC" in producto or "BANATREL" in producto):
+                                                    
+                                                    if match_conf.empty:
                                                         mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)
                                                         match_conf = df_conf[mask_conf]
+                                                        
                                                     if not match_conf.empty:
                                                         return extraer_numero(match_conf.iloc[0, 9])
                                                 return 0.0
@@ -3466,12 +3498,13 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             else:
                                                 st.info("No se encontraron ingredientes válidos para esta receta.")
                                         else:
-                                            st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
+                                            st.warning("⚠️ No se logró descifrar la receta usando el DICCIONARIO_SIGLAS.")
                                             
                                     except Exception as e:
                                         st.error(f"🚨 Error en el cruce de históricos: {e}")
+
                         else:
-                            st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
+                            st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'COCTEL' en la base unificada.")
                     else:
                         st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else:
