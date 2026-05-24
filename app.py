@@ -3455,5 +3455,5 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
                         except Exception as e:
                             st.error(f"🚨 Error al conectar con la receta: {e}")
-except Exception as e:
-    st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
+    except Exception as e:
+        st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
