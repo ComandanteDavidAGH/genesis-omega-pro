@@ -3407,7 +3407,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             for col in df_finca.columns:
                 col_u = str(col).upper().strip()
                             # Buscamos el nombre de la columna que SAP usa para el químico
-                if col_u in ['PRODUCTO', 'MATERIAL', 'ARTICULO', 'ARTÍCULO', 'DESCRIPCIÓN', 'DESCRIPCION', 'INSUMO']:
+                if col_u in ['PRODUCTO', 'MATERIAL', 'ARTICULO', 'ARTÍCULO', 'DESCRIPCIÓN', 'DESCRIPCION', 'INSUMO', 'DESCRIPCIÓN DEL MATERIAL', 'DESCRIPCION DEL MATERIAL']:
                     col_producto = col
                     break
                                 
