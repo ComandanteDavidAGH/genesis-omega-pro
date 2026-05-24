@@ -3363,7 +3363,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         df_precios = pd.DataFrame(precios_consolidados)
 
                                         # =========================================================
-                                        # 3. ALGORITMO CHEF: PARSING LÉXICO DEL CÓCTEL
+                                        # 3. ALGORITMO CHEF HÍBRIDO: INTELIGENCIA AUTOSUFICIENTE
                                         # =========================================================
                                         import re
                                         coctel_crudo = coctel_sel.upper().replace(" ", "")
@@ -3380,51 +3380,90 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         # Dejamos solo las letras de la base (Ej: 'XLBN')
                                         solo_letras = re.sub(r'\d+', '', base_coctel)
 
-                                        # Obtenemos siglas válidas del diccionario y las ordenamos de mayor a menor longitud
-                                        # para que lea siglas largas (Ej: DTFMB) antes que cortas (Ej: DT).
-                                        siglas_validas = df_dicc[df_dicc['SIGLA'].str.strip() != '']['SIGLA'].str.strip().str.upper().unique().tolist()
-                                        siglas_validas.sort(key=len, reverse=True)
-
-                                        siglas_encontradas = []
-                                        resto_letras = solo_letras
-                                        for sigla in siglas_validas:
-                                            if sigla in resto_letras:
-                                                siglas_encontradas.append(sigla)
-                                                resto_letras = resto_letras.replace(sigla, '', 1) # Borra la sigla para no repetirla
-                                                
-                                        # Sumamos los aditivos encontrados (Ej: ZN)
-                                        for ad in aditivos:
-                                            if ad in siglas_validas:
-                                                siglas_encontradas.append(ad)
-
-                                        # Construcción de la receta final
                                         dict_prods_unicos = {}
                                         tiene_fertilizante = False
+                                        es_organico = False
 
-                                        # A) Inyectar químicos por sigla
-                                        for sig in siglas_encontradas:
-                                            match_sig = df_dicc[df_dicc['SIGLA'].str.strip().str.upper() == sig]
+                                        # 🛡️ SENSOR 1: TIPO DE PRODUCTOR (TABLA 2)
+                                        try:
+                                            data_t2 = boveda_recetas.worksheet("TABLA 2").get_all_values()
+                                            df_t2 = pd.DataFrame(data_t2[1:], columns=data_t2[0])
+                                            match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
+                                            if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper():
+                                                es_organico = True
+                                        except: pass
+
+                                        # 🧠 FASE 1: APRENDIZAJE DESDE LA BÓVEDA (DD_Mesclas)
+                                        receta_base = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == base_coctel]
+                                        if receta_base.empty: # Si no encuentra con número, busca solo por letras
+                                            receta_base = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == solo_letras]
+
+                                        if not receta_base.empty:
+                                            # El sistema clona la receta oficial (memoriza qué tipo de aceite y adherente usan)
+                                            for idx, row in receta_base.iterrows():
+                                                prod = str(row.iloc[1]).strip().upper()
+                                                dosis = extraer_numero(row.iloc[2])
+                                                if dosis > 0 and prod not in ['NAN', '']:
+                                                    dict_prods_unicos[prod] = dosis
+                                        else:
+                                            # 🧠 FASE 2: ARMADO MOLECULAR DESDE CERO (DICCIONARIO)
+                                            siglas_validas = df_dicc[df_dicc['SIGLA'].str.strip() != '']['SIGLA'].str.strip().str.upper().unique().tolist()
+                                            siglas_validas.sort(key=len, reverse=True)
+                                            
+                                            resto_letras = solo_letras
+                                            for sigla in siglas_validas:
+                                                if sigla in resto_letras:
+                                                    match_sig = df_dicc[df_dicc['SIGLA'].str.strip().str.upper() == sigla]
+                                                    if not match_sig.empty:
+                                                        prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
+                                                        dosis_val = extraer_numero(match_sig.iloc[0]['DOSIS'])
+                                                        dict_prods_unicos[prod_name] = dosis_val
+                                                    resto_letras = resto_letras.replace(sigla, '', 1)
+                                            
+                                            # Como es desde cero, inyectamos los genéricos de respaldo
+                                            if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
+                                            dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
+                                            dict_prods_unicos['ADHERENTE SV'] = 0.13
+
+                                        # 🧠 FASE 3: INYECCIÓN DE ADITIVOS (+ZN, +BT)
+                                        for ad in aditivos:
+                                            match_sig = df_dicc[df_dicc['SIGLA'].str.strip().str.upper() == ad]
                                             if not match_sig.empty:
                                                 prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
                                                 dosis_val = extraer_numero(match_sig.iloc[0]['DOSIS'])
-                                                modo_acc = str(match_sig.iloc[0].get('MODO DE ACCION', '')).strip().upper()
-                                                
                                                 dict_prods_unicos[prod_name] = dosis_val
-                                                if 'FERTILIZANTE' in modo_acc:
-                                                    tiene_fertilizante = True
+                                            else:
+                                                # Respaldo si el usuario aún no metió el aditivo al diccionario
+                                                if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
+                                                elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
 
-                                        # B) Inyectar Aceite
-                                        if dosis_aceite > 0:
-                                            dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
+                                        # 🧠 FASE 4: AUDITORÍA CRUZADA CON DICCIONARIO
+                                        for prod_name in list(dict_prods_unicos.keys()):
+                                            match_dicc = df_dicc[df_dicc['PRODUCTO'].str.strip().str.upper() == prod_name]
+                                            if not match_dicc.empty:
+                                                modo_acc = str(match_dicc.iloc[0].get('MODO DE ACCION', '')).strip().upper()
+                                                tipo_cultivo = str(match_dicc.iloc[0].get('TIPO DE CULTIVO', '')).strip().upper()
+                                                
+                                                if 'FERTILIZANTE' in modo_acc: tiene_fertilizante = True
+                                                # 🛡️ SENSOR 2: DICCIONARIO ORGÁNICO
+                                                if 'ORGANIC' in tipo_cultivo: es_organico = True
 
-                                        # C) Inyectar Ayudantes sin sigla (Soporte Inteligente)
-                                        # Acondicionador sube a 0.06 si hay fertilizantes en la mezcla
-                                        dict_prods_unicos['ACONDICIONADOR SV'] = 0.06 if tiene_fertilizante else 0.02
-                                        dict_prods_unicos['ADHERENTE SV'] = 0.13
+                                        # 🎯 REGLAS DE ORO (Ajuste Final Dinámico)
+                                        for p_key in list(dict_prods_unicos.keys()):
+                                            # 1. Ajuste de Aceite (Busca la palabra 'ACEITE' sin importar la marca)
+                                            if "ACEITE" in p_key and dosis_aceite > 0:
+                                                dict_prods_unicos[p_key] = float(dosis_aceite)
+                                                
+                                            # 2. Ajuste de Acondicionador (Busca la palabra 'ACONDICIONADOR')
+                                            if "ACONDICIONADOR" in p_key:
+                                                dict_prods_unicos[p_key] = 0.06 if tiene_fertilizante else 0.02
+                                                
+                                            # 3. Purgador Orgánico (Borra la palabra 'ADHERENTE' si es finca orgánica)
+                                            if "ADHERENTE" in p_key and es_organico:
+                                                dict_prods_unicos[p_key] = 0.0
 
-                                        # Generar la lista iterable de la receta
+                                        # Generar la lista iterable de la receta (Omitiendo los que quedaron en dosis cero)
                                         prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
-
                                         if prods_receta:
                                             matriz_mol = []
                                             
