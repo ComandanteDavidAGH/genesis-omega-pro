@@ -3397,10 +3397,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
             else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
 # =====================================================================
-                        # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (DESGLOSE POR PRODUCTO) ---
-                        # =====================================================================
-                        st.markdown("<hr>", unsafe_allow_html=True)
-                        st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
+# --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (DESGLOSE POR PRODUCTO) ---
+# =====================================================================
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
                         
                         # 1. Buscamos la columna de Producto/Material en la sábana principal
                         col_producto = None
