@@ -3397,65 +3397,61 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
             else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
 # =====================================================================
-# --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (DESGLOSE POR PRODUCTO) ---
-# =====================================================================
+            # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (CONEXIÓN A BÓVEDA) ---
+            # =====================================================================
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.error("🔍 REPORTE DE SÓNAR - COLUMNAS VIVAS EN LA MEMORIA:")
-            st.write(df_finca.columns.tolist())
-            st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
-                        
-            # 1. Buscamos la columna de Producto/Material (Radar Amplio)
-            col_producto = None
-            for col in df_finca.columns:
-                # Limpiamos cualquier salto de línea basura que envíe Excel
-                col_u = str(col).upper().replace('\n', ' ').strip()
-                            # Buscamos coincidencias parciales clave
-                if 'MATERIAL' in col_u or 'PRODUCTO' in col_u or 'DESCRIPCION' in col_u or 'DESCRIPCIÓN' in col_u or 'INSUMO' in col_u:
-                    col_producto = col
-                    break
-                                
-            if col_coctel and col_producto:
-                # Recopilamos todos los cócteles que se volaron en el periodo
+            st.markdown("### 🔬 Nivel 2: Composición del Cóctel (Desde Bóveda)")
+
+            if col_coctel:
                 cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
-                            
-                # Selector táctico
-                coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para escanear sus componentes químicos:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
-                            
+                coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para ver su receta y precios actuales:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
+
                 if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                    # Aislamos las filas de SAP que corresponden SOLO a este cóctel
-                    df_coctel_a = df_periodo_a[df_periodo_a[col_coctel] == coctel_sel]
-                    df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
-                                
-                    # Agrupamos por producto para sacar el costo promedio por hectárea de CADA producto
-                    prod_a = df_coctel_a.groupby(col_producto)['COSTO_NUM'].mean().reset_index()
-                    prod_b = df_coctel_b.groupby(col_producto)['COSTO_NUM'].mean().reset_index()
-                                
-                    # Unimos la receta de ambos años
-                    tabla_molecular = pd.merge(prod_a, prod_b, on=col_producto, how='outer', suffixes=(f'_{año_base}', f'_{año_comp}'))
-                    tabla_molecular.fillna(0, inplace=True)
-                                
-                    # Calculamos al verdadero culpable a nivel molecular
-                    tabla_molecular['Variación Costo ($)'] = tabla_molecular[f'COSTO_NUM_{año_comp}'] - tabla_molecular[f'COSTO_NUM_{año_base}']
-                                
-                    # Formato Ejecutivo
-                    tabla_molecular.rename(columns={
-                        col_producto: 'INSUMO QUÍMICO / PRODUCTO',
-                        f'COSTO_NUM_{año_base}': f'Costo/Ha ({año_base})',
-                        f'COSTO_NUM_{año_comp}': f'Costo/Ha ({año_comp})'
-                    }, inplace=True)
-                                
-                    # Ordenamos de mayor a menor variación para que el "culpable" salga de primero
-                    tabla_molecular = tabla_molecular.sort_values('Variación Costo ($)', ascending=False)
-                                
-                    # Aplicamos formato de dinero para visualización
-                    df_vista_mol = tabla_molecular.copy()
-                    df_vista_mol[f'Costo/Ha ({año_base})'] = df_vista_mol[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
-                    df_vista_mol[f'Costo/Ha ({año_comp})'] = df_vista_mol[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
-                    df_vista_mol['Variación Costo ($)'] = df_vista_mol['Variación Costo ($)'].map("$ {:,.0f}".format)
-                                
-                    st.dataframe(df_vista_mol, use_container_width=True)
-            else:
-                st.info("💡 Para habilitar el Escáner Molecular, la sábana debe tener una columna llamada 'PRODUCTO', 'MATERIAL' o 'DESCRIPCION'.")
-        
-        except Exception as e:
-            st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
+                    with st.spinner("Descargando receta y precios desde la Bóveda..."):
+                        try:
+                            # Obtenemos la conexión que ya está abierta arriba
+                            boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                                   
+                            # Traemos la matriz de recetas (DD_Mesclas)
+                            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+                            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                                        
+                            # Traemos la matriz de precios actuales (Configuración)
+                            data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
+                            df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
+
+                            # Filtramos la receta base (Quitando siglas extra como ZN para hallar la raíz)
+                            coctel_base = coctel_sel.split(" ")[0].strip().upper()
+                            receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper() == coctel_base]
+
+                            if not receta.empty:
+                                matriz_mol = []
+                                costo_total_coctel = 0.0
+                                            
+                                for idx, row in receta.iterrows():
+                                    prod = str(row.iloc[1]).strip().upper()
+                                    dosis = extraer_numero(row.iloc[2])
+                                                
+                                    if dosis > 0 and prod not in ['NAN', '']:
+                                        precio_unit = 0.0
+                                        # Buscamos el precio en la columna I (PRODUCTO) y J (PRECIO) de Configuración
+                                        match_p = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == prod]
+                                        if not match_p.empty:
+                                            precio_unit = extraer_numero(match_p.iloc[0, 9])
+                                                        
+                                        costo_fila = dosis * precio_unit
+                                        costo_total_coctel += costo_fila
+                                                    
+                                        matriz_mol.append({
+                                            "INSUMO QUÍMICO": prod,
+                                            "DOSIS/HA": f"{dosis:.3f}",
+                                            "COSTO UNITARIO ACTUAL": f"$ {precio_unit:,.0f}",
+                                            "COSTO TOTAL/HA": f"$ {costo_fila:,.0f}"
+                                        })
+
+                                   st.dataframe(pd.DataFrame(matriz_mol), use_container_width=True, hide_index=True)
+                                   st.info(f"💡 **Costo Teórico del Cóctel:** $ {costo_total_coctel:,.0f} COP/Ha (Calculado con los últimos precios de SAP cargados en Bóveda).")
+                               else:
+                                   st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
+                           except Exception as e:
+                               st.error(f"🚨 Error al conectar con la receta: {e}")
