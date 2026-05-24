@@ -3453,7 +3453,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     st.info(f"💡 **Costo Teórico del Cóctel:** $ {costo_total_coctel:,.0f} COP/Ha (Calculado con los últimos precios de SAP cargados en Bóveda).")
                                 else:
                                     st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
-                                   except Exception as e:
-                                       st.error(f"🚨 Error al conectar con la receta: {e}")
+                        except Exception as e:
+                            st.error(f"🚨 Error al conectar con la receta: {e}")
 except Exception as e:
     st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
