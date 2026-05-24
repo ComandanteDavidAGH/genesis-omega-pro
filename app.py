@@ -3456,4 +3456,4 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             except Exception as e:
                                 st.error(f"🚨 Error al conectar con la receta: {e}")
 except Exception as e:
-            st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
+    st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
