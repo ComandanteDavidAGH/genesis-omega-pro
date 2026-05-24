@@ -3379,19 +3379,27 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == str(base_rescatada).upper().strip()]
 
                                         if not receta.empty:
-                                            prods_receta = []
+                                            # 🛡️ FILTRO ANTI-CLONES: Evita duplicar dosis por culpa de lotes repetidos en Excel
+                                            dict_prods_unicos = {}
                                             for idx, row in receta.iterrows():
                                                 prod = str(row.iloc[1]).strip().upper()
                                                 dosis = extraer_numero(row.iloc[2])
                                                 if dosis > 0 and prod not in ['NAN', '']:
-                                                    prods_receta.append({"PRODUCTO": prod, "DOSIS": dosis})
-                                                    
-                                            if "ZN" in sigla_f: prods_receta.append({"PRODUCTO": "ZINTRAC", "DOSIS": 0.5})
-                                            elif "BT" in sigla_f: prods_receta.append({"PRODUCTO": "BANATREL", "DOSIS": 0.5})
+                                                    # Si el producto no está en la lista, lo agrega. Si ya está, lo ignora.
+                                                    if prod not in dict_prods_unicos:
+                                                        dict_prods_unicos[prod] = dosis
+                                                        
+                                            # INYECCIÓN DINÁMICA DE FERTILIZANTE
+                                            if "ZN" in sigla_f: dict_prods_unicos["ZINTRAC"] = 0.5
+                                            elif "BT" in sigla_f: dict_prods_unicos["BANATREL"] = 0.5
                                             
-                                            for item in prods_receta:
-                                                if "ACONDICIONADOR" in item["PRODUCTO"]:
-                                                    item["DOSIS"] = 0.06 if ("ZN" in sigla_f or "BT" in sigla_f) else 0.02
+                                            # AJUSTE ACONDICIONADOR
+                                            for p_key in dict_prods_unicos.keys():
+                                                if "ACONDICIONADOR" in p_key:
+                                                    dict_prods_unicos[p_key] = 0.06 if ("ZN" in sigla_f or "BT" in sigla_f) else 0.02
+
+                                            # Convertimos el diccionario purificado a la lista que necesita el sistema
+                                            prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items()]
 
                                             matriz_mol = []
                                             def obtener_precio_promedio(producto, anio_obj):
