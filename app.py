@@ -2933,11 +2933,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
         if "" in df.columns: df = df.drop(columns=[""])
         return df
         
-    # 2. 🎯 ESTANDARIZADOR BLINDADO: Prioridad Máxima
+    # 2. 🎯 ESTANDARIZADOR BLINDADO
     def estandarizar_base(df):
         renombres = {}
         for col in df.columns:
-            # Reemplazamos saltos de línea invisibles por espacios
             col_u = str(col).upper().replace('\n', ' ').strip()
             if 'FACTURAR' in col_u:
                 renombres[col] = 'COSTO_MAESTRO'
@@ -2959,7 +2958,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             elif not fecha_ok and col_u == 'FECHA':
                 renombres[col] = 'FECHA_MAESTRA'
                 fecha_ok = True
-            # 🎯 BUSCADOR LÁSER EXCLUSIVO: Busca la palabra FUMIG
             elif not area_ok and ('FUMIG' in col_u or 'AREA' in col_u or col_u == 'HAS'):
                 renombres[col] = 'AREA_MAESTRA'
                 area_ok = True
@@ -2967,7 +2965,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
         df.rename(columns=renombres, inplace=True)
         return df
         
-    # 3. 🎯 TRADUCTOR FINANCIERO SUPERIOR (A prueba de letras)
+    # 3. TRADUCTOR FINANCIERO
     def convertir_pesos(val):
         try:
             v = str(val)
@@ -2985,12 +2983,13 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             if 0 < num < 2000: num = num * 1000 
             return num
         except: return 0.0
+
     with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
         try:
             if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
             else: gc = gspread.service_account(filename='credenciales.json')
                 
-            # 🟢 CANAL A: Datos Vivos
+            # CANAL A: Datos Vivos
             boveda_actual = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             datos_brutos_act = boveda_actual.worksheet("TABLA 1").get_all_values()
             
@@ -3000,7 +2999,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 df_vivos['ORIGEN_BI'] = 'ACTUAL'
             else: df_vivos = pd.DataFrame()
 
-            # 🔵 CANAL B: Datos Históricos
+            # CANAL B: Datos Históricos
             boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
             try: hoja_hist = boveda_hist.worksheet("Datos")
             except: hoja_hist = boveda_hist.get_worksheet(0)
@@ -3012,12 +3011,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 df_historico['ORIGEN_BI'] = 'HISTORICO'
             else: df_historico = pd.DataFrame()
 
-            # 🤝 FUSIÓN DEFINITIVA
+            # FUSIÓN DEFINITIVA
             if not df_vivos.empty and not df_historico.empty:
                 columnas_comunes = list(set(df_vivos.columns).intersection(set(df_historico.columns)))
                 if 'ORIGEN_BI' in columnas_comunes: columnas_comunes.remove('ORIGEN_BI')
                 
-                # Validamos que nuestras columnas clave hayan sobrevivido
                 if 'COSTO_MAESTRO' in columnas_comunes and 'FINCA_MAESTRA' in columnas_comunes:
                     df_vivos_trim = df_vivos[columnas_comunes + ['ORIGEN_BI']].copy()
                     df_historico_trim = df_historico[columnas_comunes + ['ORIGEN_BI']].copy()
@@ -3025,20 +3023,14 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     super_base_bi = pd.concat([df_historico_trim, df_vivos_trim], ignore_index=True)
                     super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
 
-                    # =====================================================================
-                    # =====================================================================
-                    # =====================================================================
-                    # --- ⚙️ FASE 3: MOTOR DE TIEMPO Y FILTROS TÁCTICOS ---
-                    # =====================================================================
+                    # --- FASE 3: MOTOR DE TIEMPO Y FILTROS ---
                     st.markdown("---")
                     st.markdown("### 🎛️ Centro de Mando: Parámetros de Análisis")
-                    # ... (código intermedio) ...
                     
                     if 'FECHA_MAESTRA' in super_base_bi.columns:
                         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
                         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
                         
-                        # Extracción de inteligencia temporal
                         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
                         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
                         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
@@ -3046,7 +3038,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
                         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
                         
-                        # Escáner de Escuadrón (Dron vs Avión)
                         col_modelo = 'MODELO' if 'MODELO' in super_base_bi.columns else None
                         if col_modelo:
                             super_base_bi[col_modelo] = super_base_bi[col_modelo].astype(str).str.strip().str.upper()
@@ -3054,56 +3045,47 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             modelos_disp = ["TODOS"]
                         
-                        # FILA 1: Objetivos Físicos
                         f1, f2 = st.columns(2)
                         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
                         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
                         
-                        # FILA 2: Lupa Temporal (El viaje en el tiempo granular)
                         t1, t2, t3, t4 = st.columns(4)
                         idx_base = 1 if len(años_disp) > 1 else 0
                         año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=idx_base)
                         año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
                         
                         tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES"])
-                        
                         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
                         
                         if tipo_periodo == "POR TRIMESTRE":
                             periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
+                            etiq_periodo = f"Q{periodo_sel}"
                         elif tipo_periodo == "POR MES":
                             periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
+                            etiq_periodo = meses_dict[periodo_sel]
                         else:
                             t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
                             periodo_sel = "TODOS"
+                            etiq_periodo = "Total"
 
-                        # 🎯 APLICACIÓN DE FILTROS EN CASCADA
                         df_finca = super_base_bi.copy()
                         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
                         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
                             
                         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
-                        # División del Espacio-Tiempo
-                        df_periodo_a = df_finca[df_finca['AÑO'] == año_base]
-                        df_periodo_b = df_finca[df_finca['AÑO'] == año_comp]
+                        df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
+                        df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
                         
-                        # 🎯 CORTE QUIRÚRGICO (Mes a Mes o Trimestre a Trimestre)
                         if tipo_periodo == "POR TRIMESTRE":
                             df_periodo_a = df_periodo_a[df_periodo_a['TRIMESTRE'] == periodo_sel]
                             df_periodo_b = df_periodo_b[df_periodo_b['TRIMESTRE'] == periodo_sel]
-                            etiq_periodo = f"Q{periodo_sel}"
                         elif tipo_periodo == "POR MES":
                             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
                             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
-                            etiq_periodo = meses_dict[periodo_sel]
-                        else:
-                            etiq_periodo = "Total"
 
-                        # Cálculos de impacto
                         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
                         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
-                        
                         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
                         
                         # 7. Artillería Visual: Tarjetas de Impacto
@@ -3145,7 +3127,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             h3.metric("Variación de Área", "N/A")
                         
-                        # 8. Sistema de Alerta Temprana (Tono Ejecutivo)
+                        # 8. Sistema de Alerta Temprana
                         st.markdown("<br>", unsafe_allow_html=True)
                         if delta_pct > 10:
                             st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} presenta una desviación del **{delta_pct:.1f}%**. Se requiere análisis de causa raíz.")
@@ -3153,197 +3135,127 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
                         else:
                             st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
-                            # =====================================================================
-                        # --- ⏱️ ANEXO TÁCTICO: FRECUENCIA OPERATIVA (CICLOS E INTERVALOS) ---
-                        # =====================================================================
+                            
+                        # --- ⏱️ FRECUENCIA OPERATIVA ---
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo")
                         
-                        # 🎯 Motor de cálculo de CICLOS (Blindado contra Drones y clima)
                         def calcular_frecuencia(df):
                             if df.empty or 'FECHA_DT' not in df.columns: return 0, 0
                             fechas = sorted(df['FECHA_DT'].dt.date.unique())
                             if not fechas: return 0, 0
                             
                             ciclos = 1
-                            inicios_ciclo = [fechas[0]] # Guarda la fecha en que arrancó el ciclo
+                            inicios_ciclo = [fechas[0]]
                             
                             for i in range(1, len(fechas)):
-                                # Si la diferencia con el vuelo anterior es mayor a 5 días, es un ciclo NUEVO.
-                                # Si es de 5 días o menos, es el MISMO ciclo continuado (Efecto Dron).
                                 if (fechas[i] - fechas[i-1]).days > 5:
                                     ciclos += 1
                                     inicios_ciclo.append(fechas[i])
                                     
-                            # El intervalo se calcula midiendo los arranques de cada ciclo
                             if ciclos > 1:
                                 diffs = [(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]
                                 avg_int = sum(diffs) / len(diffs)
                             else:
                                 avg_int = 0
-                                
                             return ciclos, avg_int
                             
                         ciclos_a, int_a = calcular_frecuencia(df_periodo_a)
                         ciclos_b, int_b = calcular_frecuencia(df_periodo_b)
                         
                         c1, c2, c3, c4 = st.columns(4)
+                        c1.metric(f"Ciclos ({año_base})", f"{ciclos_a} ciclos")
+                        c2.metric(f"Ciclos ({año_comp})", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
                         
-                        # 1. Tarjetas de Ciclos (Reemplazamos "Vuelos" por "Ciclos Reales")
-                        c1.metric(f"Ciclos Completados ({año_base})", f"{ciclos_a} ciclos")
-                        c2.metric(f"Ciclos Completados ({año_comp})", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
-                        
-                        # 2. Tarjetas de Intervalo
                         str_int_a = f"{int_a:.1f} días" if int_a > 0 else "N/A"
                         str_int_b = f"{int_b:.1f} días" if int_b > 0 else "N/A"
-                        c3.metric(f"Intervalo Promedio ({año_base})", str_int_a)
+                        c3.metric(f"Intervalo Prom. ({año_base})", str_int_a)
                         
                         if int_a > 0 and int_b > 0:
                             delta_int = int_b - int_a
-                            c4.metric(f"Intervalo Promedio ({año_comp})", str_int_b, delta=f"{delta_int:+.1f} días", delta_color="normal")
+                            c4.metric(f"Intervalo Prom. ({año_comp})", str_int_b, delta=f"{delta_int:+.1f} días", delta_color="normal")
                         else:
-                            c4.metric(f"Intervalo Promedio ({año_comp})", str_int_b)
+                            c4.metric(f"Intervalo Prom. ({año_comp})", str_int_b)
                         
-                        # =====================================================================
-                        # =====================================================================
                         # --- 📊 FASE 4: VISORES GRÁFICOS Y ATRIBUCIÓN DE COSTOS ---
-                        # =====================================================================
                         st.markdown("---")
                         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
                         
-                        # ... (código de las variables de avión e insumos) ...
-                        # 0. GRÁFICO TENDENCIA TEMPORAL (Evolución Dinámica)
-                        st.markdown("#### 📈 Evolución Comparativa: Tendencia del Periodo")
-                        
-                        # 🎯 CORRECCIÓN: Unimos los datos que YA pasaron por la lupa temporal
                         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
-                        
                         if not df_tendencia.empty:
                             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                                # MODO 1: Zoom de Meses (Para Año o Trimestre)
                                 tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                                 titulo_x = "Meses Operativos"
                             else:
-                                # MODO 2: Zoom de Días (Para cuando selecciona un solo mes)
                                 df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
                                 tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
-                                # Creamos una etiqueta bonita para el día
                                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                                 titulo_x = f"Días Operativos ({etiq_periodo})"
                                 
-                            # Forzamos año a texto para que los colores se separen
                             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
-                            
                             fig_tendencia = px.line(
                                 tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', 
                                 markers=True, color_discrete_sequence=['#2F75B5', '#ef4444']
                             )
-                            
-                            # 🎯 CORRECCIÓN DE ETIQUETAS: Claridad absoluta
                             fig_tendencia.update_layout(
                                 yaxis_title="Costo Promedio ($ COP / Ha)", 
                                 xaxis_title=titulo_x, 
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 hovermode="x unified"
                             )
-                            
-                            # Le damos un techo más alto al gráfico para que los números no se corten arriba
                             max_y = tendencia_agrupa['COSTO_NUM'].max() * 1.2
-                            fig_tendencia.update_yaxes(range=[0, max_y])
-
+                            if not pd.isna(max_y): fig_tendencia.update_yaxes(range=[0, max_y])
                             fig_tendencia.update_traces(
                                 line=dict(width=3), marker=dict(size=8),
                                 texttemplate="$ %{y:,.0f}", textposition="top center",
                                 hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>"
                             )
-                            
                             st.plotly_chart(fig_tendencia, use_container_width=True)
                         else:
                             st.warning("⚠️ No hay suficientes operaciones en este periodo exacto para trazar una curva comparativa.")
                             
                         st.markdown("<hr>", unsafe_allow_html=True)
                         
-                        # 1. ESCÁNER DE AERONAVE (Específico por Hectárea)
                         col_avion_ha = None
                         for col in df_finca.columns:
                             col_u = str(col).upper().replace('Ó', 'O')
-                            # Buscamos estrictamente la tarifa unitaria (que tenga /ha o ha)
                             if 'AVION' in col_u and ('/HA' in col_u or ' HA' in col_u or '(HA)' in col_u):
                                 col_avion_ha = col
                                 break
                         
                         if col_avion_ha:
-                            df_periodo_a['AVION_NUM'] = df_periodo_a[col_avion_ha].apply(convertir_pesos)
-                            df_periodo_b['AVION_NUM'] = df_periodo_b[col_avion_ha].apply(convertir_pesos)
+                            df_periodo_a.loc[:, 'AVION_NUM'] = df_periodo_a[col_avion_ha].apply(convertir_pesos)
+                            df_periodo_b.loc[:, 'AVION_NUM'] = df_periodo_b[col_avion_ha].apply(convertir_pesos)
                         else:
-                            df_periodo_a['AVION_NUM'] = 0.0
-                            df_periodo_b['AVION_NUM'] = 0.0
+                            df_periodo_a.loc[:, 'AVION_NUM'] = 0.0
+                            df_periodo_b.loc[:, 'AVION_NUM'] = 0.0
 
-                        # Promedios unitarios reales
                         vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
                         vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
-                        
                         insumos_a = max(0, costo_a - vuelo_a)
                         insumos_b = max(0, costo_b - vuelo_b)
 
-                        # Escáner Inteligente de Área (Hectáreas) recuperadas
-                        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
-                        
-                        def limpiar_area(val):
-                            try:
-                                v = str(val).upper().replace(',', '.')
-                                v = "".join([c for c in v if c.isdigit() or c == '.'])
-                                return float(v) if v != '' else 0.0
-                            except: return 0.0
-                            
-                        if col_area:
-                            df_periodo_a['AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
-                            df_periodo_b['AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
-                            
-                            # Filtro Anti-Clones (Directriz del Comandante)
-                            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0
-                            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0
-                        else:
-                            area_a, area_b = 0.0, 0.0
-
-                        # 2. CÁLCULOS GLOBALES INTELIGENTES (Matemática Pura: Tarifa x Hectárea = Inmune a Clones)
                         vuelo_tot_a = vuelo_a * area_a
                         vuelo_tot_b = vuelo_b * area_b
                         insumos_tot_a = insumos_a * area_a
                         insumos_tot_b = insumos_b * area_b
 
-                        # 3. GRÁFICO 1: MATRIZ DE RESPONSABILIDAD (Pestañas Unitario vs Global)
                         st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
-                        
                         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
-                        
                         tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario (Promedio / Ha)", "💰 Impacto Global (Presupuesto Total)"])
                         
                         with tab_unit:
                             fig_unit = go.Figure(data=[
                                 go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
-                                go.Bar(name='Costo Insumos (Cóctel) / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
+                                go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
                             ])
                             fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", margin=dict(t=20, b=20))
                             st.plotly_chart(fig_unit, use_container_width=True)
                             
                         with tab_glob:
-                            st.markdown("##### 🗺️ Contexto de Área Operada (Efecto Volumen)")
-                            g1, g2, g3 = st.columns(3)
-                            g1.metric(f"Hectáreas Aplicadas ({año_base})", f"{area_a:,.1f} Ha")
-                            g2.metric(f"Hectáreas Aplicadas ({año_comp})", f"{area_b:,.1f} Ha")
-                            
-                            if area_a > 0:
-                                var_area = ((area_b - area_a) / area_a) * 100
-                                g3.metric("Variación de Área", f"{var_area:+.1f}%", delta=f"{var_area:+.1f}%", delta_color="off")
-                            else:
-                                g3.metric("Variación de Área", "N/A")
-
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            
                             fig_glob = go.Figure(data=[
                                 go.Bar(name='Total Facturación Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[f"$ {vuelo_tot_a:,.0f}", f"$ {vuelo_tot_b:,.0f}"], textposition='auto'),
                                 go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#548235', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
@@ -3351,34 +3263,16 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", margin=dict(t=20, b=20))
                             st.plotly_chart(fig_glob, use_container_width=True)
                         
-                        # 3. EXPLICACIÓN IA EN TIEMPO REAL (Lógica Corregida y Corporativa)
-                        diff_vuelo = vuelo_b - vuelo_a
-                        diff_insumos = insumos_b - insumos_a
-                        
-                        st.info("🧠 **DIAGNÓSTICO AUTOMATIZADO DE IMPACTO:**")
-                        if diff_vuelo > 0 and diff_insumos > 0:
-                            st.write(f"• La desviación es **MIXTA**: La tarifa operativa (Vuelo) subió **$ {diff_vuelo:,.0f}/Ha** y los insumos (Cóctel) subieron **$ {diff_insumos:,.0f}/Ha**.")
-                        elif diff_insumos > 0 and diff_insumos > diff_vuelo:
-                            st.write(f"• Factor de mayor impacto: **LOS INSUMOS**. El costo de los químicos generó un alza de **$ {diff_insumos:,.0f}/Ha**, representando el mayor peso en la desviación.")
-                        elif diff_vuelo > 0 and diff_vuelo > diff_insumos:
-                            st.write(f"• Factor de mayor impacto: **LOGÍSTICA DE VUELO**. La tarifa de aplicación generó un alza de **$ {diff_vuelo:,.0f}/Ha**. Se sugiere revisar tarifas operativas.")
-                        elif diff_vuelo <= 0 and diff_insumos <= 0:
-                            st.write("• **AHORRO OPERATIVO CONFIRMADO:** Ambos componentes (Vuelo e Insumos) redujeron su costo o se mantuvieron estables en $0 desviación. Excelente control.")
-                        else:
-                            st.write("• Variación compensada: Las fluctuaciones de vuelo e insumos se equilibraron entre sí.")
-                            
-                        if area_a > 0 and area_b > 0 and var_area > 5:
-                            st.write(f"• **NOTA DE CONTEXTO DE VOLUMEN:** Considere que el área total operada aumentó un **{var_area:.1f}%**, lo cual justifica de forma directa el incremento en el presupuesto global reflejado en la pestaña de impacto total.")
-                        # 4. TABLA INTERACTIVA DE CÓCTELES (Apertura Total "Outer Join")
+                        # 4. TABLA INTERACTIVA DE CÓCTELES
                         st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown("#### 📋 Desglose Operativo: Cócteles, Recetas y Volumen Aplicado")
+                        st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
                         
                         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
                         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
                         
                         if col_coctel:
-                            df_periodo_a[col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
-                            df_periodo_b[col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+                            df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
+                            df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
                             
                             agg_dict = {'COSTO_NUM': 'mean'}
                             if col_gln: agg_dict[col_gln] = 'mean'
@@ -3399,42 +3293,29 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             
                             if col_gln:
                                 tabla_autopsia.rename(columns={
-                                    f'{col_gln}_BASE': f'Volumen Volado ({año_base}) [Gln/Ha]',
-                                    f'{col_gln}_ACTUAL': f'Volumen Volado ({año_comp}) [Gln/Ha]'
+                                    f'{col_gln}_BASE': f'Gln/Ha ({año_base})',
+                                    f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'
                                 }, inplace=True)
                                 
-                                def evaluar_dosis(r):
-                                    v_base, v_act = float(r[2]), float(r[3])
-                                    if v_base == 0: return "⚠️ CÓCTEL NUEVO (No usado año base)"
-                                    if v_act == 0: return "⚠️ DESCONTINUADO (No usado año actual)"
-                                    if abs(v_act - v_base) > 0.05: return "🚨 CAMBIÓ DOSIS / VOLUMEN"
-                                    return "⚖️ MISMA RECETA (Alza SAP)"
-                                    
-                                tabla_autopsia['Dictamen Dosis'] = tabla_autopsia.apply(evaluar_dosis, axis=1)
-                            
                             df_vista = tabla_autopsia.copy()
                             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
                             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
                             df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
                             
                             st.dataframe(df_vista, use_container_width=True)
-                        else:
-                            st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
+                            
+                            # =====================================================================
+                            # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR ---
+                            # =====================================================================
+                            st.markdown("<hr>", unsafe_allow_html=True)
+                            st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
 
-                        # =====================================================================
-                        # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (RECETA + HISTÓRICO DE PRECIOS) ---
-                        # =====================================================================
-                        st.markdown("<hr>", unsafe_allow_html=True)
-                        st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
-
-                        if col_coctel:
                             cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
                             coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
                             if coctel_sel != "SELECCIONE UN CÓCTEL...":
                                 with st.spinner("Conectando con la Bóveda de Recetas y el Histórico de Precios..."):
                                     try:
-                                        # 1. TRAER RECETA Y CONFIGURACIÓN (BÓVEDA PRINCIPAL)
                                         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                                         
                                         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
@@ -3443,7 +3324,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
                                         df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
 
-                                        # 2. TRAER HISTÓRICO DE PRECIOS
                                         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
                                         sh_precios = gc.open_by_url(url_precios)
                                         
@@ -3453,7 +3333,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             if not datos_hoja: continue
                                             
                                             idx_header, col_anio, col_prod = -1, -1, -1
-                                            
                                             for i in range(min(10, len(datos_hoja))):
                                                 fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                                                 if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
@@ -3480,9 +3359,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         df_precios = pd.DataFrame(precios_consolidados)
 
-                                        # =========================================================
-                                        # 3. PROCESAR RECETA BASE Y FERTILIZANTES (INTELIGENCIA DINÁMICA)
-                                        # =========================================================
                                         coctel_limpio = coctel_sel.upper().replace("+", " ").replace("-", " ")
                                         partes = coctel_limpio.split(" ")
                                         coctel_base = partes[0].strip()
@@ -3498,39 +3374,30 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 if dosis > 0 and prod not in ['NAN', '']:
                                                     prods_receta.append({"PRODUCTO": prod, "DOSIS": dosis})
                                                     
-                                            # INYECCIÓN DINÁMICA DE FERTILIZANTE
                                             if "ZN" in sigla_f: prods_receta.append({"PRODUCTO": "ZINTRAC", "DOSIS": 0.5})
                                             elif "BT" in sigla_f: prods_receta.append({"PRODUCTO": "BANATREL", "DOSIS": 0.5})
                                             
-                                            # AJUSTE ACONDICIONADOR
                                             for item in prods_receta:
                                                 if "ACONDICIONADOR" in item["PRODUCTO"]:
                                                     item["DOSIS"] = 0.06 if ("ZN" in sigla_f or "BT" in sigla_f) else 0.02
 
                                             matriz_mol = []
-                                            
                                             def obtener_precio_promedio(producto, anio_obj):
                                                 if not df_precios.empty:
                                                     mask_ex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)
                                                     match_df = df_precios[mask_ex]
-                                                    
-                                                    # Búsqueda flexible para ZINTRAC y BANATREL
                                                     if match_df.empty and ("ZINTRAC" in producto or "BANATREL" in producto):
                                                         mask_flex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))
                                                         match_df = df_precios[mask_flex]
-                                                        
                                                     if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0:
                                                         return match_df['PRECIO_PROM'].mean()
                                                 
-                                                # Respaldo en Precios Actuales
                                                 if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
                                                     mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto
                                                     match_conf = df_conf[mask_conf]
-                                                    
                                                     if match_conf.empty and ("ZINTRAC" in producto or "BANATREL" in producto):
                                                         mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)
                                                         match_conf = df_conf[mask_conf]
-                                                        
                                                     if not match_conf.empty:
                                                         return extraer_numero(match_conf.iloc[0, 9])
                                                 return 0.0
@@ -3583,9 +3450,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             
                                     except Exception as e:
                                         st.error(f"🚨 Error en el cruce de históricos: {e}")
-
                         else:
-                            st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'COCTEL' en la base unificada.")
+                            st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
                     else:
                         st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else:
