@@ -3355,7 +3355,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
                             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
                             
-                            # 🎯 LA SOLUCIÓN: Usar "outer" para que aparezcan todos los cócteles y rellenar vacíos con cero
                             tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL'))
                             tabla_autopsia.fillna(0, inplace=True)
                             
@@ -3373,7 +3372,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     f'{col_gln}_ACTUAL': f'Volumen Volado ({año_comp}) [Gln/Ha]'
                                 }, inplace=True)
                                 
-                                # Etiquetado Inteligente de Novedades
                                 def evaluar_dosis(r):
                                     v_base, v_act = float(r[2]), float(r[3])
                                     if v_base == 0: return "⚠️ CÓCTEL NUEVO (No usado año base)"
@@ -3383,7 +3381,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     
                                 tabla_autopsia['Dictamen Dosis'] = tabla_autopsia.apply(evaluar_dosis, axis=1)
                             
-                            # Formatear dinero
                             df_vista = tabla_autopsia.copy()
                             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
                             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
@@ -3391,8 +3388,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             
                             st.dataframe(df_vista, use_container_width=True)
                         else:
-                            else:
-                                st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
+                            st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
 
                         # =====================================================================
                         # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (CONEXIÓN A BÓVEDA) ---
@@ -3451,9 +3447,12 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     except Exception as e:
                                         st.error(f"🚨 Error al conectar con la receta: {e}")
 
-                    else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
-                else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
-            else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
+                    else:
+                        st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
+                else:
+                    st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
+            else:
+                st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
 
         except Exception as e:
             st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
