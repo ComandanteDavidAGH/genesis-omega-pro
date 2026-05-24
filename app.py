@@ -3397,19 +3397,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
             else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
                 # =====================================================================
-                # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (DESGLOSE POR PRODUCTO) ---
-                # =====================================================================
-                st.markdown("<hr>", unsafe_allow_html=True)
-                st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
+                        # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (DESGLOSE POR PRODUCTO) ---
+                        # =====================================================================
+                        st.markdown("<hr>", unsafe_allow_html=True)
+                        st.markdown("### 🔬 Nivel 2: Auditoría Molecular de Cócteles (Desglose por Insumo)")
                         
-                # 1. Buscamos la columna de Producto/Material en la sábana principal
-                col_producto = None
-                for col in df_finca.columns:
-                    col_u = str(col).upper().strip()
-                    # Buscamos el nombre de la columna que SAP usa para el químico
-                    if col_u in ['PRODUCTO', 'MATERIAL', 'ARTICULO', 'ARTÍCULO', 'DESCRIPCIÓN', 'DESCRIPCION', 'INSUMO']:
-                       col_producto = col
-                       break
+                        # 1. Buscamos la columna de Producto/Material en la sábana principal
+                        col_producto = None
+                        for col in df_finca.columns:
+                            col_u = str(col).upper().strip()
+                            # Buscamos el nombre de la columna que SAP usa para el químico
+                            if col_u in ['PRODUCTO', 'MATERIAL', 'ARTICULO', 'ARTÍCULO', 'DESCRIPCIÓN', 'DESCRIPCION', 'INSUMO']:
+                                col_producto = col
+                                break
                                 
                         if col_coctel and col_producto:
                             # Recopilamos todos los cócteles que se volaron en el periodo
@@ -3453,6 +3453,5 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                 st.dataframe(df_vista_mol, use_container_width=True)
                         else:
                             st.info("💡 Para habilitar el Escáner Molecular, la sábana debe tener una columna llamada 'PRODUCTO', 'MATERIAL' o 'DESCRIPCION'.")
-
         except Exception as e:
             st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
