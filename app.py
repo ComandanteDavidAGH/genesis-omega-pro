@@ -3114,6 +3114,37 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
                         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
                         
+                        # --- 🚜 RESCATE DE HECTÁREAS (FILTRO ANTI-CLONES) ---
+                        st.markdown("#### 🚜 Volumen Operativo (Hectáreas Aplicadas)")
+                        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
+                        
+                        def limpiar_area(val):
+                            try:
+                                v = str(val).upper().replace(',', '.')
+                                v = "".join([c for c in v if c.isdigit() or c == '.'])
+                                return float(v) if v != '' else 0.0
+                            except: return 0.0
+                            
+                        if col_area:
+                            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
+                            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
+                            
+                            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
+                            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
+                        else:
+                            area_a, area_b = 0.0, 0.0
+
+                        var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
+
+                        h1, h2, h3 = st.columns(3)
+                        h1.metric(f"Total Hectáreas ({año_base})", f"{area_a:,.1f} Ha")
+                        h2.metric(f"Total Hectáreas ({año_comp})", f"{area_b:,.1f} Ha")
+                        
+                        if area_a > 0:
+                            h3.metric("Variación de Área", f"{var_area:+.1f} %", delta=f"{var_area:+.1f}%", delta_color="normal")
+                        else:
+                            h3.metric("Variación de Área", "N/A")
+                        
                         # 8. Sistema de Alerta Temprana (Tono Ejecutivo)
                         st.markdown("<br>", unsafe_allow_html=True)
                         if delta_pct > 10:
