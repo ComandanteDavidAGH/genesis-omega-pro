@@ -3391,19 +3391,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada para hacer el desglose.")
 
                         # =====================================================================
-                        # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (CONEXIÓN A BÓVEDA) ---
+                        # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (RECETA + HISTÓRICO DE PRECIOS) ---
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
-                        st.markdown("### 🔬 Nivel 2: Composición del Cóctel (Desde Bóveda)")
+                        st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
 
                         if col_coctel:
                             cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
-                            coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para ver su receta y precios actuales:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
+                            coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
                             if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                                with st.spinner("Descargando receta y precios desde la Bóveda..."):
+                                with st.spinner("Conectando con la Bóveda de Recetas y el Histórico de Precios..."):
                                     try:
-                                        # Obtenemos la conexión que ya está abierta arriba
+                                        # 1. TRAER RECETA Y CONFIGURACIÓN (BÓVEDA PRINCIPAL)
                                         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                                         
                                         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
@@ -3412,40 +3412,125 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
                                         df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
 
+                                        # 2. TRAER HISTÓRICO DE PRECIOS
+                                        url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+                                        sh_precios = gc.open_by_url(url_precios)
+                                        
+                                        precios_consolidados = []
+                                        for ws in sh_precios.worksheets():
+                                            datos_hoja = ws.get_all_values()
+                                            if not datos_hoja: continue
+                                            
+                                            idx_header, col_anio, col_prod = -1, -1, -1
+                                            
+                                            # Escanear las primeras 10 filas buscando los encabezados clave (AÑO y PRODUCTO)
+                                            for i in range(min(10, len(datos_hoja))):
+                                                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                                                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                                                    idx_header = i
+                                                    col_anio = fila_upper.index('AÑO')
+                                                    col_prod = fila_upper.index('PRODUCTO')
+                                                    break
+                                                    
+                                            if idx_header != -1:
+                                                for row in datos_hoja[idx_header+1:]:
+                                                    if len(row) > max(col_anio, col_prod):
+                                                        anio_str = str(row[col_anio]).strip()
+                                                        prod_str = str(row[col_prod]).strip().upper()
+                                                        
+                                                        if anio_str and prod_str:
+                                                            col_inicio_semanas = max(col_anio, col_prod) + 1
+                                                            valores_semana = []
+                                                            for val in row[col_inicio_semanas:]:
+                                                                v_num = extraer_numero(val)
+                                                                if v_num > 0: valores_semana.append(v_num)
+                                                                
+                                                            promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
+                                                            
+                                                            precios_consolidados.append({
+                                                                'AÑO': anio_str,
+                                                                'PRODUCTO': prod_str,
+                                                                'PRECIO_PROM': promedio
+                                                            })
+
+                                        df_precios = pd.DataFrame(precios_consolidados)
+
+                                        # 3. PROCESAR RECETA BASE
                                         coctel_base = coctel_sel.split(" ")[0].strip().upper()
                                         receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper() == coctel_base]
 
                                         if not receta.empty:
                                             matriz_mol = []
-                                            costo_total_coctel = 0.0
                                             
+                                            def obtener_precio_promedio(producto, anio_obj):
+                                                # Buscar en el histórico primero
+                                                if not df_precios.empty:
+                                                    mask = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)
+                                                    match_df = df_precios[mask]
+                                                    if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0:
+                                                        return match_df['PRECIO_PROM'].mean()
+                                                
+                                                # Respaldo: Buscar en Configuración de la Bóveda (Precios Actuales)
+                                                if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
+                                                    match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
+                                                    if not match_conf.empty:
+                                                        return extraer_numero(match_conf.iloc[0, 9])
+                                                        
+                                                return 0.0
+
+                                            costo_total_a = 0.0
+                                            costo_total_b = 0.0
+
                                             for idx, row in receta.iterrows():
                                                 prod = str(row.iloc[1]).strip().upper()
                                                 dosis = extraer_numero(row.iloc[2])
                                                 
                                                 if dosis > 0 and prod not in ['NAN', '']:
-                                                    precio_unit = 0.0
-                                                    match_p = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == prod]
-                                                    if not match_p.empty:
-                                                        precio_unit = extraer_numero(match_p.iloc[0, 9])
-                                                        
-                                                    costo_fila = dosis * precio_unit
-                                                    costo_total_coctel += costo_fila
+                                                    precio_a = obtener_precio_promedio(prod, año_base)
+                                                    precio_b = obtener_precio_promedio(prod, año_comp)
+                                                    
+                                                    costo_ha_a = dosis * precio_a
+                                                    costo_ha_b = dosis * precio_b
+                                                    variacion = costo_ha_b - costo_ha_a
+                                                    
+                                                    costo_total_a += costo_ha_a
+                                                    costo_total_b += costo_ha_b
                                                     
                                                     matriz_mol.append({
                                                         "INSUMO QUÍMICO": prod,
                                                         "DOSIS/HA": f"{dosis:.3f}",
-                                                        "COSTO UNITARIO ACTUAL": f"$ {precio_unit:,.0f}",
-                                                        "COSTO TOTAL/HA": f"$ {costo_fila:,.0f}"
+                                                        f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}",
+                                                        f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}",
+                                                        f"Costo/Ha ({año_base})": costo_ha_a,
+                                                        f"Costo/Ha ({año_comp})": costo_ha_b,
+                                                        "Variación ($)": variacion
                                                     })
 
-                                            st.dataframe(pd.DataFrame(matriz_mol), use_container_width=True, hide_index=True)
-                                            st.info(f"💡 **Costo Teórico del Cóctel:** $ {costo_total_coctel:,.0f} COP/Ha (Calculado con los últimos precios de SAP cargados en Bóveda).")
+                                            if matriz_mol:
+                                                df_vista_mol = pd.DataFrame(matriz_mol)
+                                                # Ordenamos para que lo que más encareció salga primero
+                                                df_vista_mol = df_vista_mol.sort_values('Variación ($)', ascending=False)
+                                                
+                                                # Formato visual
+                                                df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
+                                                df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
+                                                df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format)
+                                                
+                                                st.dataframe(df_vista_mol, use_container_width=True, hide_index=True)
+                                                
+                                                # Tarjetas de totales debajo de la tabla
+                                                c1, c2, c3 = st.columns(3)
+                                                c1.metric(f"Total Cóctel ({año_base})", f"$ {costo_total_a:,.0f}")
+                                                c2.metric(f"Total Cóctel ({año_comp})", f"$ {costo_total_b:,.0f}")
+                                                c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
+                                                
+                                            else:
+                                                st.info("No se encontraron ingredientes válidos para esta receta.")
                                         else:
                                             st.warning("⚠️ No se encontró la receta base para este cóctel en la pestaña DD_Mesclas de la bóveda.")
                                             
                                     except Exception as e:
-                                        st.error(f"🚨 Error al conectar con la receta: {e}")
+                                        st.error(f"🚨 Error en el cruce de históricos: {e}")
 
                     else:
                         st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
