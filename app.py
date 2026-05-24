@@ -3364,7 +3364,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         coctel_base = partes[0].strip()
                                         sigla_f = partes[1] if len(partes) > 1 else ""
 
-                                        receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper() == coctel_base]
+                                        # 1. Búsqueda Exacta original
+                                        receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == coctel_base]
+                                        
+                                        # 2. Respaldo Inteligente (Ej: CQ -> CQ0)
+                                        if receta.empty:
+                                            receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == f"{coctel_base}0"]
+                                            
+                                        # 3. Escáner de Aproximación (Atrapa la receta que empiece igual si todo lo demás falla)
+                                        if receta.empty:
+                                            mask_parecido = df_mezclas.iloc[:,0].astype(str).str.upper().str.strip().str.startswith(coctel_base)
+                                            if mask_parecido.any():
+                                                base_rescatada = df_mezclas[mask_parecido].iloc[0, 0]
+                                                receta = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == str(base_rescatada).upper().strip()]
 
                                         if not receta.empty:
                                             prods_receta = []
