@@ -3396,7 +3396,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                     else: st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else: st.error("❌ **ERROR DE ALINEACIÓN:** No se logró estandarizar Fincas y Costos. Revise encabezados.")
             else: st.error("❌ **ERROR DE VOLUMEN:** Uno de los archivos está vacío.")
-                # =====================================================================
+# =====================================================================
                         # --- 🔬 NIVEL 2: AUDITORÍA MOLECULAR (DESGLOSE POR PRODUCTO) ---
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
@@ -3453,5 +3453,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                 st.dataframe(df_vista_mol, use_container_width=True)
                         else:
                             st.info("💡 Para habilitar el Escáner Molecular, la sábana debe tener una columna llamada 'PRODUCTO', 'MATERIAL' o 'DESCRIPCION'.")
+        
         except Exception as e:
             st.error(f"🛰️ **FALLO EN LOS MOTORES:** Error crítico. Motivo: {str(e)}")
