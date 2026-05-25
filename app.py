@@ -3305,7 +3305,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             st.dataframe(df_vista, use_container_width=True)
                             
                         # =====================================================================
-                        # --- 🔬 NIVEL 2: ALGORITMO CHEF HÍBRIDO (CONEXIÓN SEGURA A BÓVEDA) ---
+                        # --- 🔬 NIVEL 2: ALGORITMO CHEF HÍBRIDO Y DELIBERADOR IA ---
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
@@ -3315,13 +3315,17 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
                             if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                                with st.spinner("Conectando con la Bóveda de Recetas y el Histórico de Precios..."):
+                                with st.spinner("Desplegando Deliberador IA y conectando al Histórico de Precios..."):
                                     try:
-                                        # 1. CONEXIÓN A BÓVEDA PRINCIPAL (Lectura Segura y Completa)
-                                        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                                        df_mezclas = pd.DataFrame()
                                         
-                                        data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-                                        df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                                        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                                        hoja_mezclas = boveda_recetas.worksheet("DD_Mesclas")
+                                        data_mez = hoja_mezclas.get('A:D')
+                                        if data_mez and len(data_mez) > 1:
+                                            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                                            # Búsqueda a prueba de balas (sin espacios)
+                                            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:,0].astype(str).str.upper().str.replace(" ", "")
                                         
                                         data_conf = boveda_recetas.worksheet("Configuración").get_all_values()
                                         df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
@@ -3329,7 +3333,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         data_dicc = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
                                         df_dicc = pd.DataFrame(data_dicc[1:], columns=data_dicc[0])
 
-                                        # 2. TRAER HISTÓRICO DE PRECIOS
                                         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
                                         sh_precios = gc.open_by_url(url_precios)
                                         
@@ -3342,9 +3345,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             for i in range(min(10, len(datos_hoja))):
                                                 fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                                                 if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                                                    idx_header = i
-                                                    col_anio = fila_upper.index('AÑO')
-                                                    col_prod = fila_upper.index('PRODUCTO')
+                                                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO')
                                                     break
                                                     
                                             if idx_header != -1:
@@ -3352,25 +3353,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                     if len(row) > max(col_anio, col_prod):
                                                         anio_str = str(row[col_anio]).strip()
                                                         prod_str = str(row[col_prod]).strip().upper()
-                                                        
                                                         if anio_str and prod_str:
                                                             col_inicio_semanas = max(col_anio, col_prod) + 1
-                                                            valores_semana = []
-                                                            for val in row[col_inicio_semanas:]:
-                                                                v_num = extraer_numero(val)
-                                                                if v_num > 0: valores_semana.append(v_num)
-                                                                
+                                                            valores_semana = [extraer_numero(v) for v in row[col_inicio_semanas:] if extraer_numero(v) > 0]
                                                             promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
                                                             precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': prod_str, 'PRECIO_PROM': promedio})
 
                                         df_precios = pd.DataFrame(precios_consolidados)
 
                                         # =========================================================
-                                        # 3. ALGORITMO CHEF HÍBRIDO: DECODIFICACIÓN AUTOSUFICIENTE
+                                        # 3. ALGORITMO CHEF HÍBRIDO
                                         # =========================================================
                                         import re
                                         coctel_crudo = coctel_sel.upper().replace(" ", "")
-                                        
                                         partes_coctel = coctel_crudo.split('+')
                                         base_coctel = partes_coctel[0]
                                         aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
@@ -3392,13 +3387,18 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 es_organico = True
                                         except: pass
 
-                                        # FASE A: INTENTO DE APRENDIZAJE DESDE LA RECETA (DD_Mesclas)
+                                        # 🧠 AUTO-CORRECTOR ORGÁNICO (KM3 -> KM3 O)
                                         receta_base = pd.DataFrame()
                                         if not df_mezclas.empty:
-                                            # Buscamos en la Columna 0 (A), asegurándonos de extraer la receta de las Columnas 1 (B) y 2 (C)
-                                            receta_base = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == base_coctel]
+                                            if es_organico and not base_coctel.endswith('O'):
+                                                coctel_prueba = f"{base_coctel}O"
+                                                check_org = df_mezclas[df_mezclas['COCTEL_CLEAN'] == coctel_prueba]
+                                                if not check_org.empty:
+                                                    base_coctel = coctel_prueba
+                                            
+                                            receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == base_coctel]
                                             if receta_base.empty:
-                                                receta_base = df_mezclas[df_mezclas.iloc[:,0].astype(str).str.upper().str.strip() == solo_letras]
+                                                receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
 
                                         if not receta_base.empty:
                                             for idx, row in receta_base.iterrows():
@@ -3407,58 +3407,48 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 if dosis > 0 and prod not in ['NAN', '']:
                                                     dict_prods_unicos[prod] = dosis
                                         else:
-                                            # FASE B: CONSTRUCCIÓN DESDE CERO CON EL DICCIONARIO_SIGLAS
+                                            # FASE B: DICCIONARIO
                                             if not df_dicc.empty:
                                                 siglas_validas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
                                                 siglas_validas.sort(key=len, reverse=True)
-                                                
                                                 resto_letras = solo_letras
                                                 for sigla in siglas_validas:
                                                     if sigla in resto_letras:
                                                         match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
                                                         if not match_sig.empty:
                                                             prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
-                                                            dosis_val = extraer_numero(match_sig.iloc[0]['DOSIS'])
-                                                            dict_prods_unicos[prod_name] = dosis_val
+                                                            dict_prods_unicos[prod_name] = extraer_numero(match_sig.iloc[0]['DOSIS'])
                                                         resto_letras = resto_letras.replace(sigla, '', 1)
                                             
                                             if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
                                             dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
                                             dict_prods_unicos['ADHERENTE SV'] = 0.13
 
-                                        # FASE C: INYECCIÓN DE LOS ADITIVOS (+ZN, +BT) DESDE DICCIONARIO
+                                        # FASE C: ADITIVOS (+ZN, +BT)
                                         if not df_dicc.empty:
                                             for ad in aditivos:
                                                 match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad]
                                                 if not match_sig.empty:
                                                     prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
-                                                    dosis_val = extraer_numero(match_sig.iloc[0]['DOSIS'])
-                                                    dict_prods_unicos[prod_name] = dosis_val
+                                                    dict_prods_unicos[prod_name] = extraer_numero(match_sig.iloc[0]['DOSIS'])
                                                 else:
                                                     if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
                                                     elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
 
-                                        # FASE D: AUDITORÍA CRUZADA CON DICCIONARIO_SIGLAS (Fertilizantes y Orgánicos)
+                                        # FASE D: AUDITORÍA CRUZADA
                                         if not df_dicc.empty:
                                             for prod_name in list(dict_prods_unicos.keys()):
                                                 match_dicc = df_dicc[df_dicc['PRODUCTO'].astype(str).str.strip().str.upper() == prod_name]
                                                 if not match_dicc.empty:
-                                                    modo_acc = str(match_dicc.iloc[0].get('MODO DE ACCION', '')).strip().upper()
-                                                    tipo_cultivo = str(match_dicc.iloc[0].get('TIPO DE CULTIVO', '')).strip().upper()
-                                                    
-                                                    if 'FERTILIZANTE' in modo_acc: tiene_fertilizante = True
-                                                    if 'ORGANIC' in tipo_cultivo: es_organico = True
+                                                    if 'FERTILIZANTE' in str(match_dicc.iloc[0].get('MODO DE ACCION', '')).upper(): tiene_fertilizante = True
+                                                    if 'ORGANIC' in str(match_dicc.iloc[0].get('TIPO DE CULTIVO', '')).upper(): es_organico = True
 
-                                        # REGLAS DE ORO AUTOMÁTICAS
+                                        # REGLAS DE ORO
                                         for p_key in list(dict_prods_unicos.keys()):
-                                            if "ACEITE" in p_key and dosis_aceite > 0:
-                                                dict_prods_unicos[p_key] = float(dosis_aceite)
-                                            if "ACONDICIONADOR" in p_key:
-                                                dict_prods_unicos[p_key] = 0.06 if tiene_fertilizante else 0.02
-                                            if "ADHERENTE" in p_key and es_organico:
-                                                dict_prods_unicos[p_key] = 0.0
+                                            if "ACEITE" in p_key and dosis_aceite > 0: dict_prods_unicos[p_key] = float(dosis_aceite)
+                                            if "ACONDICIONADOR" in p_key: dict_prods_unicos[p_key] = 0.06 if tiene_fertilizante else 0.02
+                                            if "ADHERENTE" in p_key and es_organico: dict_prods_unicos[p_key] = 0.0
 
-                                        # Generación limpia de la lista final
                                         prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
 
                                         if prods_receta:
@@ -3466,22 +3456,17 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             
                                             def obtener_precio_promedio(producto, anio_obj):
                                                 if not df_precios.empty:
-                                                    mask_ex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)
-                                                    match_df = df_precios[mask_ex]
+                                                    match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)]
                                                     if match_df.empty:
-                                                        mask_flex = (df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))
-                                                        match_df = df_precios[mask_flex]
+                                                        match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))]
                                                     if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0:
                                                         return match_df['PRECIO_PROM'].mean()
                                                 
                                                 if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
-                                                    mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto
-                                                    match_conf = df_conf[mask_conf]
+                                                    match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
                                                     if match_conf.empty:
-                                                        mask_conf = df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)
-                                                        match_conf = df_conf[mask_conf]
-                                                    if not match_conf.empty:
-                                                        return extraer_numero(match_conf.iloc[0, 9])
+                                                        match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)]
+                                                    if not match_conf.empty: return extraer_numero(match_conf.iloc[0, 9])
                                                 return 0.0
 
                                             costo_total_a = 0.0
@@ -3490,46 +3475,76 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             for item in prods_receta:
                                                 prod = item["PRODUCTO"]
                                                 dosis = item["DOSIS"]
-                                                
                                                 precio_a = obtener_precio_promedio(prod, año_base)
                                                 precio_b = obtener_precio_promedio(prod, año_comp)
                                                 
                                                 costo_ha_a = dosis * precio_a
                                                 costo_ha_b = dosis * precio_b
-                                                variacion = costo_ha_b - costo_ha_a
                                                 
                                                 costo_total_a += costo_ha_a
                                                 costo_total_b += costo_ha_b
                                                 
                                                 matriz_mol.append({
-                                                    "INSUMO QUÍMICO": prod,
-                                                    "DOSIS/HA": f"{dosis:.3f}",
-                                                    f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}",
-                                                    f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}",
-                                                    f"Costo/Ha ({año_base})": costo_ha_a,
-                                                    f"Costo/Ha ({año_comp})": costo_ha_b,
-                                                    "Variación ($)": variacion
+                                                    "INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}",
+                                                    f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}", f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}",
+                                                    f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b,
+                                                    "Variación ($)": costo_ha_b - costo_ha_a
                                                 })
 
-                                            if matriz_mol:
-                                                df_vista_mol = pd.DataFrame(matriz_mol)
-                                                df_vista_mol = df_vista_mol.sort_values('Variación ($)', ascending=False)
-                                                
-                                                df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
-                                                df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
-                                                df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format)
-                                                
-                                                st.dataframe(df_vista_mol, use_container_width=True, hide_index=True)
-                                                
-                                                c1, c2, c3 = st.columns(3)
-                                                c1.metric(f"Total Cóctel ({año_base})", f"$ {costo_total_a:,.0f}")
-                                                c2.metric(f"Total Cóctel ({año_comp})", f"$ {costo_total_b:,.0f}")
-                                                c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
-                                            else:
-                                                st.info("No se encontraron ingredientes válidos para esta receta.")
-                                        else:
-                                            st.warning("⚠️ No se logró descifrar la receta usando el DICCIONARIO_SIGLAS.")
+                                            df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
+                                            df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
+                                            df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
+                                            df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format)
                                             
+                                            st.dataframe(df_vista_mol, use_container_width=True, hide_index=True)
+                                            
+                                            c1, c2, c3 = st.columns(3)
+                                            c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
+                                            c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}")
+                                            c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
+                                            
+                                            # =========================================================
+                                            # 🤖 DELIBERADOR IA: INGENIERÍA INVERSA DE FACTURACIÓN
+                                            # =========================================================
+                                            if 'AVION_NUM' in df_periodo_b.columns:
+                                                df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
+                                                costo_total_facturado_b = df_coctel_b['COSTO_NUM'].mean() if not df_coctel_b.empty else 0
+                                                vuelo_facturado_b = df_coctel_b['AVION_NUM'].mean() if not df_coctel_b.empty else 0
+                                                insumos_facturados_b = max(0, costo_total_facturado_b - vuelo_facturado_b)
+                                                
+                                                if costo_total_b > 0 and insumos_facturados_b > 0:
+                                                    diff_b = insumos_facturados_b - costo_total_b
+                                                    
+                                                    st.markdown("---")
+                                                    st.markdown("### 🤖 Deliberador IA: Auditoría de Facturación SAP vs Receta Teórica")
+                                                    
+                                                    if abs(diff_b) <= 2000: # Tolerancia por redondeos de Excel
+                                                        st.success(f"✅ **AUDITORÍA PERFECTA:** El costo de químicos facturados en SAP ($ {insumos_facturados_b:,.0f}) coincide con la receta ($ {costo_total_b:,.0f}).")
+                                                    else:
+                                                        st.warning(f"⚠️ **DISCREPANCIA DETECTADA:** Los insumos facturados ($ {insumos_facturados_b:,.0f}) no cuadran con el teórico ($ {costo_total_b:,.0f}). Diferencia: **$ {diff_b:,.0f} / Ha**")
+                                                        
+                                                        st.markdown("#### 🔍 Conclusiones del Deliberador:")
+                                                        if diff_b > 0:
+                                                            st.write(f"- 📈 **Sobrecosto:** Se cobró más de lo que indica la sigla. Es probable que se haya aplicado **SPRAYFIX**, **ADHERENTE** extra o mayor dosis de **ACEITE**.")
+                                                        else:
+                                                            st.write(f"- 📉 **Ahorro/Faltante:** Se cobró menos. Si la finca es orgánica, se facturó correctamente (sin adherente), o hubo un error a favor en SAP.")
+                                                            
+                                                        if not df_precios.empty:
+                                                            st.write("- **Posibles causantes de la diferencia:**")
+                                                            candidatos_encontrados = False
+                                                            for idx, p_row in df_precios[df_precios['AÑO'] == str(año_comp)].iterrows():
+                                                                precio_p = p_row['PRECIO_PROM']
+                                                                for d in [0.02, 0.06, 0.13, 0.2, 0.5, 1.0, 2.0]:
+                                                                    costo_teorico = precio_p * d
+                                                                    if costo_teorico > 0 and abs(costo_teorico - abs(diff_b)) <= (abs(diff_b) * 0.15 + 500):
+                                                                        st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})")
+                                                                        candidatos_encontrados = True
+                                                                        break
+                                                            if not candidatos_encontrados:
+                                                                st.write("No se detectó un químico individual que coincida exacto. Revise si hay una mezcla de aditivos omitidos.")
+
+                                        else:
+                                            st.info("No se encontraron ingredientes válidos para esta receta.")
                                     except Exception as e:
                                         st.error(f"🚨 Error en el cruce de históricos: {e}")
                         else:
