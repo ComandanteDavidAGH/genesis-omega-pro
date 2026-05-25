@@ -1002,11 +1002,13 @@ elif menu == "⚙️ 3. Validación de Misión":
         dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
 
-        with st.container(border=True):
+        
+            with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
             costo_total_vuelos = 0.0
+            costo_neto_vuelo_total = 0.0  # 🎯 ACUMULADOR NETO UNIVERSAL (Avión y Dron sin márgenes)
             total_ha_cobro_escuadron = 0.0
-            horometro_final_avion = 0.0  # 🎯 CAJA FUERTE PARA EL TIEMPO
+            horometro_final_avion = 0.0 
 
             if mision_solo_dron:
                 st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
@@ -1016,71 +1018,87 @@ elif menu == "⚙️ 3. Validación de Misión":
                     dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
                     if pd.isna(dr_sel) or ha_dr <= 0: continue
                     total_ha_cobro_escuadron += ha_dr
-                    costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
+                    
+                    # 🎯 MATEMÁTICA DRON: Neto y Comercial
+                    tarifa_dron_neta = dict_drones.get(dr_sel, 0)
+                    costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  # Neto puro
+                    costo_total_vuelos += (tarifa_dron_neta * ha_dr) * mult_avion_final # Facturación
 
             else:
                 c_av, c_dr = st.columns(2)
-                # 📡 RADAR DINÁMICO DE FLOTA (Ajustado a la estructura real de su Excel)
                 try:
-                    # 🚨 REEMPLACE 'SU_VARIABLE' POR LA QUE LEE LA PESTAÑA DE VALIDACIÓN
-                    df_flota = st.session_state['SU_VARIABLE'] 
+                    # 1. CONECTAR EN VIVO A 'Validación Dosis'
+                    if "gcp_credentials" in st.secrets:
+                        gc_vd = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                    else:
+                        gc_vd = gspread.service_account(filename='credenciales.json')
+                        
+                    boveda_vd = gc_vd.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    # Traemos los datos. La fila 2 de Excel (índice 1) tiene los encabezados reales
+                    datos_vd = boveda_vd.worksheet("Validación Dosis").get_all_values()
+                    df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1]) 
                     
-                    # 🛩️ Extraer Aviones (Nombre en 'TIPO', Tarifa en 'HORA')
+                    # 🛩️ AVIONES: Extraemos de 'TIPO' y 'HORA'
                     df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
-                    # Quitamos los puntos de miles (Ej: 4.606.562 -> 4606562) para que Python pueda hacer la matemática
                     dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
                     
-                    # 🚁 Extraer Drones (Nombre en 'Nombre Drone', Tarifa en 'Precio po...')
-                    col_precio_dr = next((c for c in df_flota.columns if 'Precio po' in str(c)), 'Precio')
-                    df_dr = df_flota[df_flota['Nombre Drone'].notna() & (df_flota['Nombre Drone'].astype(str).str.strip() != '')]
-                    dict_drones = dict(zip(df_dr['Nombre Drone'].astype(str).str.strip(), pd.to_numeric(df_dr[col_precio_dr].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
+                    # 🚁 DRONES: Extraemos de 'Tarifa' y 'Valor ha/Dr'
+                    df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
+                    # Limpiamos la palabra "TARIFA " para que quede "DRONE DATAROT"
+                    nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
+                    # Inteligencia: Si dice "AVIL" le pone "DRONE AVIL" para estandarizar
+                    nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
+                    precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
+                    dict_drones = dict(zip(nombres_dr, precios_dr))
+                    
                 except Exception as e:
-                    pass # Falla silenciosa anticaídas por si la tabla aún no ha cargado
+                    # SALVAVIDAS BLINDADO por si Google Sheets se desconecta un milisegundo
+                    dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
+                    dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
+                    pass 
 
-                # 👇 COORDENADAS DE PANTALLA (Alineación perfecta de espacios)
-                # 🚨 IMPORTANTE: Si su código usaba 'with col1:' en vez de 'with c_av:', cámbielo aquí abajo
                 with c_av: 
                     st.markdown("##### 🛩️ Base Aviones")
                     df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
-                    
-                    # Si el radar falla, dejamos unos de reserva para que no se caiga la app
                     opciones_av = list(dict_aviones.keys()) if 'dict_aviones' in locals() and dict_aviones else ["THRUS SR2", "PIPER PA 36-375"]
-                    
                     escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=opciones_av, required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f"), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
                     
                 with c_dr:
                     st.markdown("##### 🚁 Base Drones (Apoyo)")
                     df_drones_def = pd.DataFrame([{"Drone": None, "Hectáreas": 0.0}])
-                    
                     opciones_dr = list(dict_drones.keys()) if 'dict_drones' in locals() and dict_drones else ["DRONE DATAROT", "DRON GENESYS"]
-                    
-                    escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=opciones_dr), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)                # 👇 ESTOS CÁLCULOS AHORA VIVEN PROTEGIDOS DENTRO DEL "ELSE"
+                    escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=opciones_dr), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)                
+                
+                # 🛡️ CÁLCULOS PROTEGIDOS E INTELIGENCIA NETA
                 for index, row in escuadron_aviones.iterrows():
                     av_sel = row["Avión"]
-                    try:
-                        val_ha = row.get("Hectáreas", 0)
-                        ha_av = float(val_ha) if val_ha not in [None, "None", "", "nan"] else 0.0
-                    except:
-                        ha_av = 0.0
+                    try: ha_av = float(row.get("Hectáreas", 0)) if str(row.get("Hectáreas", 0)) not in ["None", "", "nan"] else 0.0
+                    except: ha_av = 0.0
                         
-                    try:
-                        val_horo = row.get("Horómetro", 0)
-                        horo = float(val_horo) if val_horo not in [None, "None", "", "nan"] else 0.0
-                    except:
-                        horo = 0.0
+                    try: horo = float(row.get("Horómetro", 0)) if str(row.get("Horómetro", 0)) not in ["None", "", "nan"] else 0.0
+                    except: horo = 0.0
                     
                     if pd.isna(av_sel) or ha_av <= 0: continue
                     total_ha_cobro_escuadron += ha_av
-                    horometro_final_avion += horo  # 🎯 ATRAPAMOS EL VALOR DE LA TABLA
+                    horometro_final_avion += horo  
+                    
                     tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
-                    tarifa_aplicada = tarifa_base_ha + recargo_final if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope) + recargo_final
-                    costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final
+                    tarifa_base_tope = tarifa_base_ha if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope)
+                    
+                    # 🎯 MATEMÁTICA AVIÓN: Neto y Comercial
+                    costo_neto_vuelo_total += (tarifa_base_tope * ha_av) # Neto puro
+                    tarifa_aplicada = tarifa_base_tope + recargo_final
+                    costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final # Facturación
                     
                 for _, row in escuadron_drones.iterrows():
                     dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
                     if pd.isna(dr_sel) or ha_dr <= 0: continue
                     total_ha_cobro_escuadron += ha_dr
-                    costo_total_vuelos += (dict_drones.get(dr_sel, 0) * ha_dr) * mult_avion_final
+                    
+                    # 🎯 MATEMÁTICA DRON (Apoyo): Neto y Comercial
+                    tarifa_dron_neta = dict_drones.get(dr_sel, 0)
+                    costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  # Neto puro
+                    costo_total_vuelos += (tarifa_dron_neta * ha_dr) * mult_avion_final # Facturación
             
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         # 🎯 PUENTE DE MANDO: Control maestro de pista ANTES de armar la matriz
@@ -1502,192 +1520,167 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
             
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
-                with st.spinner("🚀 Inyectando datos con Precisión de Francotirador..."):
+            with st.spinner("🚀 Inyectando datos con Precisión de Francotirador..."):
+                try:
+                    if "gcp_credentials" in st.secrets:
+                        cred_dict = dict(st.secrets["gcp_credentials"])
+                        gc = gspread.service_account_from_dict(cred_dict)
+                    else:
+                        gc = gspread.service_account(filename='credenciales.json')
+                    
+                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                    boveda = gc.open_by_url(url_boveda)
+                    hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
+                    hoja_maestra = boveda.worksheet("TABLA 1")
+                    hoja_memoria = boveda.worksheet("MEMORIA")
+
+                    fecha_str = fecha_operacion.strftime("%d/%m/%Y")
+                    dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
+                    num_sem = fecha_operacion.isocalendar()[1]
+                    os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
+                    
+                    bloque_f = ""; sector_f = ""; ha_bruta_f = ""
+                    if not df_t2.empty:
+                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia.upper().strip()]
+                        if not match_f.empty:
+                            sector_f = match_f.iloc[0, 1]
+                            ha_bruta_f = match_f.iloc[0, 2]
+                            bloque_f = match_f.iloc[0, 3]
+
+                    # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS Y AJUSTE DE AERONAVE ---
+                    ha_f = float(ha_dosis_final)
+                    h_total_v = (ha_f / 10) if mision_solo_dron else horometro_final_avion
+                    vol_total_gln = ha_f * 6
+                    rend_min = h_total_v * 60
+                    
+                    piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+                    
+                    if mision_solo_dron:
+                        if "DATAROT" in tipo_mision.upper(): hk_f = "DR51"
+                        elif "GENESYS" in tipo_mision.upper(): hk_f = "DR52"
+                        elif "AVIL" in tipo_mision.upper(): hk_f = "DR53"
+                        else: hk_f = "DRONE_GEN"
+                    else:
+                        hk_f = hk_sel if 'hk_sel' in locals() else "AVION_REG"
+
+                    modelo_f = "DRONE" if mision_solo_dron else "AVION"
+
                     try:
-                        if "gcp_credentials" in st.secrets:
-                            cred_dict = dict(st.secrets["gcp_credentials"])
-                            gc = gspread.service_account_from_dict(cred_dict)
-                        else:
-                            gc = gspread.service_account(filename='credenciales.json')
-                        
-                        url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                        boveda = gc.open_by_url(url_boveda)
-                        hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
-                        hoja_maestra = boveda.worksheet("TABLA 1")
-                        hoja_memoria = boveda.worksheet("MEMORIA")
+                        fila_excel = len(st.session_state['df_azul_actual']) + 2 
+                    except:
+                        fila_excel = 6 
+                    
+                    # 💰 ZONA FINANCIERA CALIBRADA (NETO VS COMERCIAL - UNIVERSAL) 🎯🎯
+                    tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / ha_f) if ha_f > 0 else 0.0
+                    valor_dominical = float(recargo_final)
+                    
+                    # PAGO A TERCEROS (AD): (Tarifa Neta + Recargo) * Hectáreas
+                    total_pago_avion_neto = (tarifa_vuelo_neta_ha + valor_dominical) * ha_f
+                    
+                    # 📦 EMPAQUETADO MAESTRO - DETONACIÓN TABLA AZUL (34 Espacios)
+                    row_azul = [""] * 34
+                    row_azul[0] = os_virtual                  # A: ORDEN DE SERVICIO VIRTUAL
+                    row_azul[1] = bloque_f
+                    row_azul[2] = finca_limpia
+                    row_azul[3] = sector_f
+                    row_azul[4] = ha_bruta_f
+                    row_azul[5] = ha_f                        # F: HECTÁREAS REALES
+                    row_azul[6] = coctel_ganador
+                    row_azul[7] = fecha_str
+                    row_azul[8] = dia_sem
+                    row_azul[9] = num_sem
+                    row_azul[10] = h_total_v
+                    row_azul[11] = 6
+                    row_azul[12] = round(vol_total_gln, 2)    # M: VOLUMEN (gln)
+                    row_azul[13] = round(h_total_v, 2)        # N: RENDIMIENTO (hora)
+                    row_azul[14] = round(rend_min, 2)         # O: RENDIMIENTO (min)
+                    row_azul[15] = piloto_f
+                    row_azul[16] = hk_f
+                    row_azul[17] = tipo_mision
+                    
+                    row_azul[18] = float(gran_total)               # S: COSTO AVIÓN ($) [Total general facturado]
+                    row_azul[19] = round(tarifa_vuelo_neta_ha, 2)  # T: COSTO AVIÓN ($/ha) [NETO PURO 2 DEC] 
+                    row_azul[20] = round(valor_dominical, 2)       # U: DOMINIC ($/ha) [NETO PURO 2 DEC]
+                    row_azul[21] = float(gran_total)               # V: COSTO AVIÓN ($/finca)
+                    row_azul[23] = pista_manual                    # X: PISTA
+                    row_azul[28] = float(gran_total)               # AC: COSTO TOTAL
+                    row_azul[29] = round(total_pago_avion_neto, 2) # AD: TOTAL PAGO AVIÓN [NETO EXACTO 2 DEC] 
+                    row_azul[32] = tipo_productor                  # AG: TIPO DE PRODUCTOR
+                    row_azul[33] = "GÉNESIS_V2_PRO"                # AH: SELLO DE SISTEMA
 
-                        fecha_str = fecha_operacion.strftime("%d/%m/%Y")
-                        dia_sem = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"][fecha_operacion.weekday()]
-                        num_sem = fecha_operacion.isocalendar()[1]
-                        os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
-                        
-                        bloque_f = ""; sector_f = ""; ha_bruta_f = ""
-                        if not df_t2.empty:
-                            match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia.upper().strip()]
-                            if not match_f.empty:
-                                sector_f = match_f.iloc[0, 1]
-                                ha_bruta_f = match_f.iloc[0, 2]
-                                bloque_f = match_f.iloc[0, 3]
+                    # 📦 EMPAQUETADO APOYO2023
+                    fila_apoyo = [""] * 15
+                    fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" 
+                    fila_apoyo[1] = finca_limpia
+                    fila_apoyo[2] = ha_f
+                    fila_apoyo[3] = float(costo_por_ha)
+                    fila_apoyo[5] = fecha_str
+                    fila_apoyo[8] = coctel_ganador
+                    fila_apoyo[10] = pista_manual
+                    fila_apoyo[13] = tipo_mision
+                    
+                    # 🔥 ESTRATEGIA FRANCOTIRADOR V3 (Escáner Infrarrojo + Expansión Automática)
+                    col_azul = hoja_maestra.col_values(1)
+                    fila_destino_azul = 1
+                    for i in range(len(col_azul)-1, -1, -1):
+                        if str(col_azul[i]).strip() != "":
+                            fila_destino_azul = i + 2
+                            break
+                    
+                    if fila_destino_azul > hoja_maestra.row_count:
+                        hoja_maestra.add_rows(10)
 
-                        # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS Y AJUSTE DE AERONAVE (Corregido) ---
-                        ha_f = float(ha_dosis_final)
-                        # 🎯 Inyecta el tiempo real digitado en la tabla superior
-                        h_total_v = (ha_f / 10) if mision_solo_dron else horometro_final_avion
-                        vol_total_gln = ha_f * 6
-                        rend_min = h_total_v * 60
-                        
-                        # 🎯 CORRECCIÓN 1: Identificación Dinámica del Piloto/Operador
-                        piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
-                        
-                        # 🎯 CORRECCIÓN 2: Asignación e Inyección Dinámica de Matrículas (HK)
-                        if mision_solo_dron:
-                            if "DATAROT" in tipo_mision.upper(): hk_f = "DR51"
-                            elif "GENESYS" in tipo_mision.upper(): hk_f = "DR52"
-                            elif "AVIL" in tipo_mision.upper(): hk_f = "DR53"
-                            else: hk_f = "DRONE_GEN"
-                        else:
-                            # Si es AVIÓN, toma la matrícula real seleccionada en los campos anteriores
-                            hk_f = hk_sel if 'hk_sel' in locals() else "AVION_REG"
+                    col_apoyo = hoja_apoyo.col_values(2)
+                    fila_destino_apoyo = 1
+                    for i in range(len(col_apoyo)-1, -1, -1):
+                        if str(col_apoyo[i]).strip() != "":
+                            fila_destino_apoyo = i + 2
+                            break
+                            
+                    if fila_destino_apoyo > hoja_apoyo.row_count:
+                        hoja_apoyo.add_rows(10)
 
-                        # 🎯 CORRECCIÓN 3: Modelo de la Aeronave para la base de datos
-                        modelo_f = "DRONE" if mision_solo_dron else "AVION"
+                    fila_apoyo[0] = fila_destino_apoyo - 3
 
-                        # 🚁 CÁLCULO DE PAGO A TERCEROS (Columna AD en Excel) - Ahora sí detecta el HK correcto
-                        tarifa_pago = 84427 if "DR51" in hk_f else 71280 if ("DR52" in hk_f or "DR53" in hk_f) else 0
-                        total_pago_avion = ha_f * tarifa_pago if mision_solo_dron else 0
-                        try:
-                            # Detecta cuántos datos hay guardados actualmente en la Tabla Azul
-                            # para saber si la nueva factura va a caer en la fila 6, 7, 100, etc.
-                            fila_excel = len(st.session_state['df_azul_actual']) + 2 
-                        except:
-                            fila_excel = 6 # Fila de respaldo por si el radar falla
-
-                        
-                        # 📦 EMPAQUETADO MAESTRO - DETONACIÓN TABLA AZUL (34 Espacios)
-                        row_azul = [""] * 34
-                        row_azul[0] = os_virtual                  # A: ORDEN DE SERVICIO VIRTUAL
-                        row_azul[1] = bloque_f
-                        row_azul[2] = finca_limpia
-                        row_azul[3] = sector_f
-                        row_azul[4] = ha_bruta_f
-                        row_azul[5] = ha_f                        # F: HECTÁREAS REALES
-                        row_azul[6] = coctel_ganador
-                        row_azul[7] = fecha_str
-                        row_azul[8] = dia_sem
-                        row_azul[9] = num_sem
-                        row_azul[10] = h_total_v
-                        row_azul[11] = 6
-                        row_azul[12] = round(vol_total_gln, 2)    # M: VOLUMEN (gln)
-                        row_azul[13] = round(h_total_v, 2)        # N: RENDIMIENTO (hora)
-                        row_azul[14] = round(rend_min, 2)         # O: RENDIMIENTO (min)
-                        row_azul[15] = piloto_f
-                        row_azul[16] = hk_f
-                        row_azul[17] = tipo_mision
-                        
-                        # 💰 ZONA FINANCIERA CALIBRADA (RESCATE DE VARIABLE) 🎯🎯
-                        # Como tarifa_aplicada se quedó en el radar anterior, deducimos el valor de la caja 429
-                        # dividiendo el costo total de los vuelos entre las hectáreas reales.
-                        tarifa_vuelo_plena = float(costo_total_vuelos / ha_f) if ha_f > 0 else 0.0
-                        valor_dominical = float(recargo_final)
-                        
-                        row_azul[18] = float(gran_total)          # S: COSTO AVIÓN ($) [Total general de la factura]
-                        
-                        # PUNTO 1 y 2 COMPLETADOS: El 429 pleno RESTANDO el dominical (Valor Limpio del Vuelo a la Columna T)
-                        row_azul[19] = round(tarifa_vuelo_plena - valor_dominical, 2)  # T: COSTO AVIÓN ($/ha) 
-                        
-                        # Aquí se almacena el dominical por separado para que no se duplique en SAP
-                        row_azul[20] = round(valor_dominical, 2)  # U: DOMINIC ($/ha)
-                        
-                        row_azul[21] = float(gran_total)          # V: COSTO AVIÓN ($/finca)
-                        
-                        row_azul[23] = pista_manual               # X: PISTA
-                        
-                        row_azul[28] = float(gran_total)          # AC: COSTO TOTAL
-                        row_azul[29] = float(total_pago_avion)    # AD: TOTAL PAGO AVIÓN 
-                        row_azul[32] = tipo_productor             # AG: TIPO DE PRODUCTOR
-                        row_azul[33] = "GÉNESIS_V2_PRO"           # AH: SELLO DE SISTEMA
-                        # 📦 EMPAQUETADO APOYO2023
-                        fila_apoyo = [""] * 15
-                        fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" 
-                        fila_apoyo[1] = finca_limpia
-                        fila_apoyo[2] = ha_f
-                        fila_apoyo[3] = float(costo_por_ha)
-                        fila_apoyo[5] = fecha_str
-                        fila_apoyo[8] = coctel_ganador
-                        fila_apoyo[10] = pista_manual
-                        fila_apoyo[13] = tipo_mision
-                        
-                        # 🔥 ESTRATEGIA FRANCOTIRADOR V3 (Escáner Infrarrojo + Expansión Automática)
-                        
-                        # 1. Escaneo de la Tabla Azul (Columna A: Nº de Orden)
-                        col_azul = hoja_maestra.col_values(1)
-                        fila_destino_azul = 1
-                        for i in range(len(col_azul)-1, -1, -1):
-                            if str(col_azul[i]).strip() != "":
-                                fila_destino_azul = i + 2
-                                break
-                        
-                        # 🚧 Si llegamos al límite físico de la hoja, construimos 10 filas más
-                        if fila_destino_azul > hoja_maestra.row_count:
-                            hoja_maestra.add_rows(10)
-
-                        # 2. Escaneo de la Tabla Apoyo (Columna B: Finca)
-                        col_apoyo = hoja_apoyo.col_values(2)
-                        fila_destino_apoyo = 1
-                        for i in range(len(col_apoyo)-1, -1, -1):
-                            if str(col_apoyo[i]).strip() != "":
-                                fila_destino_apoyo = i + 2
-                                break
+                    hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
+                    hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
+                    
+                    # 🧪 DESEMBARCO DE QUÍMICOS EN LA PESTAÑA 'MEMORIA'
+                    try:
+                        filas_memoria = []
+                        for idx, row in edited_df.iterrows():
+                            nombre_prod = str(row.get("A: Producto", ""))
+                            if "⚠️" not in nombre_prod and nombre_prod.strip() != "" and nombre_prod.lower() != "nan":
+                                dosis_prod = float(row.get("D: Dosis Total (Sistema)", 0))
+                                lote_prod = str(row.get("G: Lotes (SAP)", "S/N"))
                                 
-                        # 🚧 Si llegamos al límite físico de la hoja de apoyo, construimos 10 filas más
-                        if fila_destino_apoyo > hoja_apoyo.row_count:
-                            hoja_apoyo.add_rows(10)
+                                fila_m = [""] * 10
+                                fila_m[0] = fecha_str                                      # A: FECHA
+                                fila_m[1] = coctel_ganador                                 # B: ORDEN/COCTEL
+                                fila_m[2] = str(pista_manual).split("-")[0].strip()[:4]    # C: PISTA (Ej: LUCI, TEHO)
+                                fila_m[3] = nombre_prod                                    # D: PRODUCTO
+                                fila_m[4] = lote_prod                                      # E: LOTE
+                                fila_m[5] = float(dosis_prod)                              # F: CANTIDAD
+                                fila_m[6] = "BODEGA PRINCIPAL"                             # G: BODEGA
+                                fila_m[7] = ""                                             # H: MODELO (Vacío)
+                                fila_m[8] = "X"                                            # I: Facturado (X)
+                                fila_m[9] = finca_limpia                                   # J: FINCA
+                                
+                                filas_memoria.append(fila_m)
+                                
+                        if filas_memoria:
+                            hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
+                    except Exception as e_mem:
+                        st.warning(f"⚠️ Nota de sistema: Error al guardar en MEMORIA: {e_mem}")
 
-                        # 🔥 LA SOLUCIÓN TÁCTICA: Python calcula el número exacto y lo ancla como valor fijo
-                        fila_apoyo[0] = fila_destino_apoyo - 3
+                    st.balloons()
+                    st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada exactamente en la fila {fila_destino_azul}.")
+                    
+                    if 'memoria_excel' in st.session_state:
+                        del st.session_state['memoria_excel']
 
-                        # Inyectamos exactamente en las coordenadas calculadas sin chocar con el límite
-                        hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
-                        hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
-                        # 🧪 DESEMBARCO DE QUÍMICOS EN LA PESTAÑA 'MEMORIA'
-                        try:
-                            filas_memoria = []
-                            # Iteramos sobre la matriz de productos en pantalla
-                            for idx, row in edited_df.iterrows():
-                                nombre_prod = str(row.get("A: Producto", ""))
-                                if "⚠️" not in nombre_prod and nombre_prod.strip() != "" and nombre_prod.lower() != "nan":
-                                    dosis_prod = float(row.get("D: Dosis Total (Sistema)", 0))
-                                    lote_prod = str(row.get("G: Lotes (SAP)", "S/N"))
-                                    
-                                    # Armamos la fila de 10 columnas según su diseño
-                                    fila_m = [""] * 10
-                                    fila_m[0] = fecha_str                                      # A: FECHA
-                                    fila_m[1] = coctel_ganador                                 # B: ORDEN/COCTEL
-                                    fila_m[2] = str(pista_manual).split("-")[0].strip()[:4]    # C: PISTA (Ej: LUCI, TEHO)
-                                    fila_m[3] = nombre_prod                                    # D: PRODUCTO
-                                    fila_m[4] = lote_prod                                      # E: LOTE
-                                    fila_m[5] = float(dosis_prod)                              # F: CANTIDAD
-                                    fila_m[6] = "BODEGA PRINCIPAL"                             # G: BODEGA
-                                    fila_m[7] = ""                                             # H: MODELO (Vacío)
-                                    fila_m[8] = "X"                                            # I: Facturado (X)
-                                    fila_m[9] = finca_limpia                                   # J: FINCA
-                                    
-                                    filas_memoria.append(fila_m)
-                                    
-                            # Si recolectamos químicos, los disparamos todos juntos
-                            if filas_memoria:
-                                hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
-                        except Exception as e_mem:
-                            st.warning(f"⚠️ Nota de sistema: Error al guardar en MEMORIA: {e_mem}")
-
-                        st.balloons()
-                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada exactamente en la fila {fila_destino_azul}.")
-                        
-                        if 'memoria_excel' in st.session_state:
-                            del st.session_state['memoria_excel']
-
-                    except Exception as e_save:
-                        st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
+                except Exception as e_save:
+                    st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
                     
 # =====================================================================
 # ⌨️ 4. INGRESO MANUAL ACELERADO Y LEGALIZACIÓN (OS)
