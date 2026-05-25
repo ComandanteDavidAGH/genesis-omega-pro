@@ -1001,14 +1001,13 @@ elif menu == "⚙️ 3. Validación de Misión":
         # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA (Flota Actualizada)
         dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
-
         
-            with st.container(border=True):
-            st.markdown("#### ✈️ Hangar de Despliegue")
-            costo_total_vuelos = 0.0
-            costo_neto_vuelo_total = 0.0  # 🎯 ACUMULADOR NETO UNIVERSAL (Avión y Dron sin márgenes)
-            total_ha_cobro_escuadron = 0.0
-            horometro_final_avion = 0.0 
+        with st.container(border=True):
+        st.markdown("#### ✈️ Hangar de Despliegue")
+        costo_total_vuelos = 0.0
+        costo_neto_vuelo_total = 0.0  # 🎯 ACUMULADOR NETO UNIVERSAL (Avión y Dron sin márgenes)
+        total_ha_cobro_escuadron = 0.0
+        horometro_final_avion = 0.0 
 
             if mision_solo_dron:
                 st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
