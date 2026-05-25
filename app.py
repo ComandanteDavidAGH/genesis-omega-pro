@@ -995,7 +995,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                 else:
                     recargo_final = float(recargo_lista.split(" ")[0])
 
-        dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63325, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
+        dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
         val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
         
         # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA (Flota Actualizada)
