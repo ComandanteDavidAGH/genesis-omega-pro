@@ -3362,10 +3362,12 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         df_precios = pd.DataFrame(precios_consolidados)
 
                                         # =========================================================
-                                        # 3. ALGORITMO CHEF HÍBRIDO
+                                        # =========================================================
+                                        # 3. ALGORITMO CHEF HÍBRIDO: SOBERANÍA DE DD_Mesclas
                                         # =========================================================
                                         import re
                                         coctel_crudo = coctel_sel.upper().replace(" ", "")
+                                        
                                         partes_coctel = coctel_crudo.split('+')
                                         base_coctel = partes_coctel[0]
                                         aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
@@ -3375,10 +3377,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         solo_letras = re.sub(r'\d+', '', base_coctel)
 
                                         dict_prods_unicos = {}
-                                        tiene_fertilizante = False
                                         es_organico = False
 
-                                        # SENSOR 1: PRODUCTOR ORGÁNICO EN TABLA 2
+                                        # SENSOR 1: PRODUCTOR ORGÁNICO (TABLA 2)
                                         try:
                                             data_t2 = boveda_recetas.worksheet("TABLA 2").get_all_values()
                                             df_t2 = pd.DataFrame(data_t2[1:], columns=data_t2[0])
@@ -3387,13 +3388,13 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 es_organico = True
                                         except: pass
 
-                                        # 🧠 AUTO-CORRECTOR ORGÁNICO (KM3 -> KM3 O)
+                                        # 🧠 PRIORIDAD 1: CLONAR RECETA DESDE LA BÓVEDA (DD_Mesclas)
                                         receta_base = pd.DataFrame()
                                         if not df_mezclas.empty:
+                                            # Intentamos buscar KM3 u Organizados
                                             if es_organico and not base_coctel.endswith('O'):
                                                 coctel_prueba = f"{base_coctel}O"
-                                                check_org = df_mezclas[df_mezclas['COCTEL_CLEAN'] == coctel_prueba]
-                                                if not check_org.empty:
+                                                if not df_mezclas[df_mezclas['COCTEL_CLEAN'] == coctel_prueba].empty:
                                                     base_coctel = coctel_prueba
                                             
                                             receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == base_coctel]
@@ -3401,13 +3402,14 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
 
                                         if not receta_base.empty:
+                                            # Absorción total y fiel de sus datos de campo (Mantiene dosis reales de Acondicionador por pH/Dureza)
                                             for idx, row in receta_base.iterrows():
                                                 prod = str(row.iloc[1]).strip().upper()
                                                 dosis = extraer_numero(row.iloc[2])
                                                 if dosis > 0 and prod not in ['NAN', '']:
                                                     dict_prods_unicos[prod] = dosis
                                         else:
-                                            # FASE B: DICCIONARIO
+                                            # 🧠 PRIORIDAD 2: RESPALDO DESDE EL DICCIONARIO (Solo si es un cóctel 100% nuevo)
                                             if not df_dicc.empty:
                                                 siglas_validas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
                                                 siglas_validas.sort(key=len, reverse=True)
@@ -3421,10 +3423,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         resto_letras = resto_letras.replace(sigla, '', 1)
                                             
                                             if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
-                                            dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
+                                            dict_prods_unicos['ACONDICIONADOR SV'] = 0.02 # Default de fábrica temporal
                                             dict_prods_unicos['ADHERENTE SV'] = 0.13
 
-                                        # FASE C: ADITIVOS (+ZN, +BT)
+                                        # 🧠 FASE C: COMPLEMENTOS DE ADITIVOS (+ZN, +BT)
                                         if not df_dicc.empty:
                                             for ad in aditivos:
                                                 match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad]
@@ -3435,22 +3437,44 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                     if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
                                                     elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
 
-                                        # FASE D: AUDITORÍA CRUZADA
+                                        # 🧠 FASE D: COMPROBACIÓN DE LÍNEA DE CULTIVO DESDE DICCIONARIO
                                         if not df_dicc.empty:
                                             for prod_name in list(dict_prods_unicos.keys()):
                                                 match_dicc = df_dicc[df_dicc['PRODUCTO'].astype(str).str.strip().str.upper() == prod_name]
                                                 if not match_dicc.empty:
-                                                    if 'FERTILIZANTE' in str(match_dicc.iloc[0].get('MODO DE ACCION', '')).upper(): tiene_fertilizante = True
                                                     if 'ORGANIC' in str(match_dicc.iloc[0].get('TIPO DE CULTIVO', '')).upper(): es_organico = True
 
-                                        # REGLAS DE ORO
-                                        for p_key in list(dict_prods_unicos.keys()):
-                                            if "ACEITE" in p_key and dosis_aceite > 0: dict_prods_unicos[p_key] = float(dosis_aceite)
-                                            if "ACONDICIONADOR" in p_key: dict_prods_unicos[p_key] = 0.06 if tiene_fertilizante else 0.02
-                                            if "ADHERENTE" in p_key and es_organico: dict_prods_unicos[p_key] = 0.0
+                                        # 🧠 FASE E: AUDITORÍA FINANCIERA-AGRONÓMICA (REGLAS DE ORO CORREGIDAS)
+                                        
+                                        # 1. El Aceite obedece al número de la sigla, pero conserva la marca de su hoja de mezclas
+                                        if dosis_aceite > 0:
+                                            aceite_key = next((k for k in dict_prods_unicos.keys() if "ACEITE" in k), "ACEITE DICAM")
+                                            dict_prods_unicos[aceite_key] = float(dosis_aceite)
+                                        else:
+                                            # Si la sigla no tiene número de aceite, nos aseguramos de limpiarlo
+                                            claves_aceite = [k for k in dict_prods_unicos.keys() if "ACEITE" in k]
+                                            for k in claves_aceite: dict_prods_unicos.pop(k, None)
 
+                                        # 2. Bifurcación Inteligente de Pegantes Obligatorios (Orgánico vs Convencional)
+                                        if es_organico:
+                                            # Orgánico: Remueve el adherente convencional y asegura el Sprayfix a 0.2
+                                            claves_adherente = [k for k in dict_prods_unicos.keys() if "ADHERENTE" in k]
+                                            for k in claves_adherente: dict_prods_unicos.pop(k, None)
+                                            
+                                            sprayfix_key = next((k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k), "SPRAYFIX")
+                                            if sprayfix_key not in dict_prods_unicos: dict_prods_unicos[sprayfix_key] = 0.2
+                                        else:
+                                            # Convencional: Remueve el Sprayfix orgánico y asegura el Adherente a 0.13
+                                            claves_sprayfix = [k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k]
+                                            for k in claves_sprayfix: dict_prods_unicos.pop(k, None)
+                                            
+                                            adherente_key = next((k for k in dict_prods_unicos.keys() if "ADHERENTE" in k), "ADHERENTE SV")
+                                            if adherente_key not in dict_prods_unicos: dict_prods_unicos[adherente_key] = 0.13
+
+                                        # NOTA: El ACONDICIONADOR no se toca aquí. Se respeta la dosis exacta de su Excel.
+
+                                        # Generación limpia de la lista final omitiendo dosis en cero
                                         prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
-
                                         if prods_receta:
                                             matriz_mol = []
                                             
