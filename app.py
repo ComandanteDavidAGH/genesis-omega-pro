@@ -2020,9 +2020,10 @@ elif menu == "📈 5. Sincronización Precios":
                     st.error(f"🚨 Error al generar tarifario: {e}")
                     
         # 🛡️ SEGURO DE VIDA: Solo renderiza si el DataFrame existe y no está vacío
+        # 🛡️ SEGURO DE VIDA: Solo renderiza si el DataFrame existe y no está vacío
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
-            t1, t2 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Rápida a SAP"])
+            t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Copia Individual (Por Producto)"])
             
             with t1:
                 st.markdown("#### Matriz de Costos y Márgenes (Monitor Visual)")
@@ -2033,17 +2034,43 @@ elif menu == "📈 5. Sincronización Precios":
                 st.dataframe(df_visual, use_container_width=True, hide_index=True)
                 
             with t2:
-                st.markdown("#### Caja de Copiado de Precisión")
+                st.markdown("#### Caja de Copiado Masivo (Toda la columna)")
                 col_margen = st.selectbox("1️⃣ Seleccione el Perfil de Productor:", 
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
                 
-                st.caption(f"2️⃣ Copie la lista de valores haciendo clic en el ícono de la esquina superior derecha de esta caja:")
+                st.caption(f"2️⃣ Copie la lista vertical haciendo clic en el ícono de la esquina de esta caja:")
                 
                 if col_margen in df_t.columns:
                     precios_copia = df_t[col_margen].astype(int).astype(str).tolist()
                     texto_para_copiar = "\n".join(precios_copia)
                     st.code(texto_para_copiar, language="text")
-
+                    
+            with t3:
+                st.markdown("#### Búsqueda y Copia Rápida Individual (Modo Francotirador)")
+                prod_sel = st.selectbox("🔍 Buscar Producto Específico:", df_t["PRODUCTO"].tolist())
+                
+                if prod_sel:
+                    datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
+                    st.info(f"🎯 Valores calculados para: **{prod_sel}**")
+                    
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    
+                    with c1:
+                        st.caption("Costo Base")
+                        st.code(str(int(datos_prod["COSTO BASE"])), language="text")
+                    with c2:
+                        st.caption("Orgánico")
+                        st.code(str(int(datos_prod["ORGÁNICO (+1.1%)"])), language="text")
+                    with c3:
+                        st.caption("Socio / Coop")
+                        st.code(str(int(datos_prod["COOPERATIVA / SOCIO (+11.2%)"])), language="text")
+                    with c4:
+                        st.caption("Afiliado")
+                        st.code(str(int(datos_prod["AFILIADO (+16.4%)"])), language="text")
+                    with c5:
+                        st.caption("Tercero")
+                        st.code(str(int(datos_prod["TERCERO (+45.1%)"])), language="text")
+                        
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
     semana_target = st.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
