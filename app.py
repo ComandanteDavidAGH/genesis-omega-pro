@@ -783,6 +783,7 @@ elif menu == "⚙️ 3. Validación de Misión":
         st.stop() # DETIENE LA EJECUCIÓN AQUÍ SI EL MODO SIMULADOR ESTÁ ACTIVO
 
     # -----------------------------------------------------------------
+    # -----------------------------------------------------------------
     # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN (SE EJECUTA SI EL TOGGLE ESTÁ APAGADO)
     # -----------------------------------------------------------------
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
@@ -807,7 +808,6 @@ elif menu == "⚙️ 3. Validación de Misión":
                     # 🎯 RECONOCIMIENTO DE COLUMNAS EXACTAS
                     col_finca = [c for c in df_p.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
                     col_ha = [c for c in df_p.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
-                    # Aquí la mira telescópica ubica la columna "Material"
                     col_mat = [c for c in df_p.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper()][0]
                     
                     finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
@@ -816,12 +816,10 @@ elif menu == "⚙️ 3. Validación de Misión":
                     ha_correcta = 0.0
                     for _, fila_ped in match_sap.iterrows():
                         valor_material = str(fila_ped[col_mat]).strip()
-                        # Si la columna Material es exactamente 459, extraemos las Hectáreas
                         if valor_material == "459" or valor_material.split(".")[0] == "459": 
                             ha_correcta = extraer_numero(fila_ped[col_ha])
                             break
                     
-                    # Asignamos la cantidad encontrada
                     if ha_correcta > 0:
                         st.session_state['ha_radar_sap'] = ha_correcta
                     else:
@@ -830,8 +828,6 @@ elif menu == "⚙️ 3. Validación de Misión":
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
                 except:
                     pass
-        # ---------------------------
-        # ---------------------------
 
         c0, c1, c2 = st.columns([1, 2, 2])
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
@@ -857,27 +853,21 @@ elif menu == "⚙️ 3. Validación de Misión":
         if finca_sel == "---" or vuelo_ref == "---":
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
+
         # --- 🛰️ EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
         mult_material = 1.112; tarifa_serv_tec_base = 1337.0; mult_avion_base = 1.112
-# =======================================================
-        # --- 1. RECONEXIÓN DE BASES DE DATOS ---
-        # =======================================================
         df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
         df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
         df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
         df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
 
-        # =======================================================
-        # --- 2. IDENTIFICACIÓN DE LA FINCA ---
-        # =======================================================
         import re 
         finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
 
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
         
-        # Primero buscamos qué tipo de productor es en la configuración general (df_t2)
         if not df_t2.empty:
             match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
             if not match_t2.empty:
@@ -885,10 +875,6 @@ elif menu == "⚙️ 3. Validación de Misión":
                 tipo_productor = str(fila_t2.iloc[5]).strip().upper()
                 tipo_de_tope_finca = str(fila_t2.iloc[6]).strip().upper()
         
-        # =======================================================
-        # --- 3. EXTRACCIÓN DE TARIFAS ---
-        # =======================================================
-        # Ahora sí, con el tipo_productor claro, buscamos sus tarifas
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
@@ -914,16 +900,86 @@ elif menu == "⚙️ 3. Validación de Misión":
                             dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
-        datos_raw = datos_vuelo['DATOS_FILA']
-        
-        num_pedido = "S/N"
-        datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
         
-        # 🎯 AJUSTE DE PRECIOS EXACTOS SEGÚN IMAGEN MAESTRA (Flota Actualizada)
-        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
-        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
+        num_pedido = "S/N"
+        if pedido_sap and len(str(pedido_sap)) >= 7:
+            num_pedido = str(pedido_sap).strip()
+        elif datos_vuelo.get('PEDIDO_SAP') and str(datos_vuelo.get('PEDIDO_SAP')).strip() != "":
+            num_pedido = str(datos_vuelo.get('PEDIDO_SAP')).strip()
+        else:
+            for idx in range(18, 40):
+                val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
+                if val_celda.isdigit() and len(val_celda) >= 7:
+                    num_pedido = val_celda
+                    break
         
+        lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+        pista_detectada = "PLUC"
+        ha_dosis_detectada = 0.0
+        match_ped = pd.DataFrame()
+
+        if not df_ped.empty and num_pedido != "S/N":
+            match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
+            if not match_ped.empty:
+                texto_pedido = match_ped.to_string().upper()
+                for p_val in lista_pistas_validas:
+                    if p_val in texto_pedido: pista_detectada = p_val; break
+                for _, r_p in match_ped.iterrows():
+                    if len(r_p) >= 7 and "459" in str(r_p.iloc[5]):
+                        ha_dosis_detectada = extraer_numero(r_p.iloc[6])
+                        break
+        
+        ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
+        if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
+
+        casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
+        
+        # ==================================================
+        # CAJA 1: PARÁMETROS BASE Y SWITCH DE DRON
+        # ==================================================
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
+            c_sup1, c_sup2 = st.columns([3, 1])
+            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+            
+            # 🎯 EL BOTON DE DRON SE DEBE CREAR AQUÍ, ANTES DEL HANGAR
+            mision_solo_dron = c_sup2.toggle("🚁 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+            
+            r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+            r1c1.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=f"ds_{casilla_key}")
+            d_ciclo_factura = r1c2.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=f"df_{casilla_key}")
+            
+            ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
+            if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+                
+            ha_dosis_final = r1c3.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
+            
+            multi_aviones = r1c4.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
+            mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+
+            recargo_final = 0.0
+            pista_sel = "PLUC"
+            if not mision_solo_dron:
+                st.markdown("##### 🛣️ Parámetros Terrestres (Aviones)")
+                r2c1, r2c2, r2c3 = st.columns(3)
+                pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
+                pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
+                
+                opciones_rec = ["0 (Sin Recargo)", "8504 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
+                idx_recargo = 1 if pista_sel == "PDIV" else 0 
+                recargo_lista = r2c2.selectbox("🚛 Recargo Terrestre:", opciones_rec, index=idx_recargo, key=f"rl_{casilla_key}")
+                if recargo_lista == "Otro Valor Manual...":
+                    recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
+                else:
+                    recargo_final = float(recargo_lista.split(" ")[0])
+
+        dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
+        val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
+        
+        # ==================================================
+        # CAJA 2: HANGAR DE DESPLIEGUE (AVIONES Y DRONES)
+        # ==================================================
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
             costo_total_vuelos = 0.0
@@ -933,6 +989,26 @@ elif menu == "⚙️ 3. Validación de Misión":
 
             if mision_solo_dron:
                 st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
+                
+                # 🎯 CONEXIÓN DE EMERGENCIA PARA EL DRON (Si el Avión no lo hizo)
+                try:
+                    if "gcp_credentials" in st.secrets:
+                        gc_vd = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                    else:
+                        gc_vd = gspread.service_account(filename='credenciales.json')
+                        
+                    boveda_vd = gc_vd.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    datos_vd = boveda_vd.worksheet("Validación Dosis").get_all_values()
+                    df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1]) 
+                    
+                    df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
+                    nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
+                    nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
+                    precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
+                    dict_drones = dict(zip(nombres_dr, precios_dr))
+                except Exception as e:
+                    dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
+
                 df_drones_def = pd.DataFrame([{"Drone": "DRONE DATAROT", "Hectáreas": float(ha_cobro_detectada)}])
                 escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                 for _, row in escuadron_drones.iterrows():
@@ -970,7 +1046,8 @@ elif menu == "⚙️ 3. Validación de Misión":
                     dict_drones = dict(zip(nombres_dr, precios_dr))
                     
                 except Exception as e:
-                    pass
+                    dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
+                    dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
 
                 with c_av: 
                     st.markdown("##### 🛩️ Base Aviones")
@@ -997,7 +1074,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     total_ha_cobro_escuadron += ha_av
                     horometro_final_avion += horo  
                     
-                    tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av
+                    tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av if ha_av > 0 else 0
                     tarifa_base_tope = tarifa_base_ha if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope)
                     
                     # 🎯 MATEMÁTICA AVIÓN: Neto y Comercial
