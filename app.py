@@ -939,6 +939,7 @@ elif menu == "⚙️ 3. Validación de Misión":
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+            
             mision_solo_dron = c_sup2.toggle("🚁 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
@@ -997,6 +998,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                 except Exception as e:
                     dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
 
+                # Lee el total del piloto por defecto
                 df_drones_def = pd.DataFrame([{"Drone": "DRONE DATAROT", "Hectáreas": float(ha_cobro_detectada)}])
                 escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                 for _, row in escuadron_drones.iterrows():
@@ -1030,6 +1032,7 @@ elif menu == "⚙️ 3. Validación de Misión":
 
                 with c_av: 
                     st.markdown("##### 🛩️ Base Aviones")
+                    # Lee el total del piloto por defecto
                     df_aviones_def = pd.DataFrame([{"Avión": "CESSNA ASA", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
                     opciones_av = list(dict_aviones.keys()) if 'dict_aviones' in locals() and dict_aviones else ["THRUS SR2", "PIPER PA 36-375"]
                     escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=opciones_av, required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f"), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
