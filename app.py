@@ -1566,7 +1566,8 @@ elif menu == "⚙️ 3. Validación de Misión":
                     row_azul[7] = fecha_str
                     row_azul[8] = dia_sem
                     row_azul[9] = num_sem
-                    row_azul[10] = h_total_v
+                    # 🎯 AHORA SÍ: ODÓMETRO CON 2 DECIMALES EXACTOS (Columna K)
+                    row_azul[10] = round(h_total_v, 2)
                     row_azul[11] = 6
                     row_azul[12] = round(vol_total_gln, 2)    # M: VOLUMEN (gln)
                     row_azul[13] = round(h_total_v, 2)        # N: RENDIMIENTO (hora)
