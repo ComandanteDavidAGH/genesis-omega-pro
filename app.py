@@ -1978,7 +1978,6 @@ elif menu == "📈 5. Sincronización Precios":
     st.markdown("<h1 class='titulo-principal'>Sincronización de Precios y Tarifas</h1>", unsafe_allow_html=True)
     
     # --- 🧮 NUEVA SECCIÓN: TARIFARIO MAESTRO ---
-    # --- 🧮 NUEVA SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
         st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
@@ -1999,7 +1998,6 @@ elif menu == "📈 5. Sincronización Precios":
                         if len(row) > 9:
                             prod = str(row[8]).upper().strip()
                             if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod:
-                                # 🎯 CORRECCIÓN TÁCTICA: Usar 'extraer_numero' para ignorar los signos $
                                 costo_base = extraer_numero(row[9])
                                 if costo_base > 0:
                                     lista_precios.append({
@@ -2012,21 +2010,22 @@ elif menu == "📈 5. Sincronización Precios":
                                     })
                     
                     if lista_precios:
-                        st.session_state['df_tarifario'] = pd.DataFrame(lista_precios)
-                        st.success(f"✅ Tarifario cargado: {len(lista_precios)} productos procesados con precisión SAP (0 decimales).")
+                        # 🎯 ORDENAMIENTO MILITAR: Alfabético por NOMBRE
+                        df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
+                        st.session_state['df_tarifario'] = df_tarifario
+                        st.success(f"✅ Tarifario cargado: {len(lista_precios)} productos ordenados alfabéticamente (A-Z).")
                     else:
                         st.warning("⚠️ El escáner no encontró productos con precios válidos.")
                 except Exception as e:
                     st.error(f"🚨 Error al generar tarifario: {e}")
                     
         # 🛡️ SEGURO DE VIDA: Solo renderiza si el DataFrame existe y no está vacío
-        # 🛡️ SEGURO DE VIDA: Solo renderiza si el DataFrame existe y no está vacío
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
             t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Copia Individual (Por Producto)"])
             
             with t1:
-                st.markdown("#### Matriz de Costos y Márgenes (Monitor Visual)")
+                st.markdown("#### Matriz de Costos y Márgenes (Ordenada por Producto)")
                 df_visual = df_t.copy()
                 for col in df_visual.columns:
                     if col != "PRODUCTO":
@@ -2034,21 +2033,25 @@ elif menu == "📈 5. Sincronización Precios":
                 st.dataframe(df_visual, use_container_width=True, hide_index=True)
                 
             with t2:
-                st.markdown("#### Caja de Copiado Masivo (Por Margen)")
+                st.markdown("#### Caja de Copiado Masivo (Formación Alineada)")
                 col_margen = st.selectbox("1️⃣ Seleccione el Perfil de Productor:", 
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
                 
-                incluir_nombres = st.toggle("🔘 Incluir Nombre del Producto (Copia Dual Tabulada)", value=False)
-                st.caption(f"2️⃣ Copie la lista haciendo clic en el ícono de la esquina de esta caja:")
+                incluir_nombres = st.toggle("🔘 Incluir Nombre del Producto (Alineación Perfecta)", value=False)
+                st.caption(f"2️⃣ Copie la lista haciendo clic en el ícono de la esquina superior derecha:")
                 
                 if col_margen in df_t.columns:
                     if incluir_nombres:
-                        # Copia Dual: Nombre + [Tabulador] + Precio en Formato SAP
+                        # 🎯 JUSTIFICADOR MATEMÁTICO: Encuentra el nombre más largo para alinear
+                        max_len = df_t["PRODUCTO"].apply(len).max() + 4
+                        
                         lista_textos = []
                         for _, row in df_t.iterrows():
                             nombre = str(row["PRODUCTO"]).strip()
                             precio = fmt_sap(row[col_margen])
-                            lista_textos.append(f"{nombre}\t{precio}")
+                            # Rellena con espacios a la derecha para emparejar la columna visualmente
+                            nombre_alineado = nombre.ljust(max_len)
+                            lista_textos.append(f"{nombre_alineado}\t{precio}")
                         texto_para_copiar = "\n".join(lista_textos)
                     else:
                         # Solo la columna de precios en Formato SAP (Ej: 76.041)
