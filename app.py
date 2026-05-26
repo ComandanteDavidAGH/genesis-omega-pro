@@ -935,15 +935,10 @@ elif menu == "⚙️ 3. Validación de Misión":
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
         
-        # ==================================================
-        # CAJA 1: PARÁMETROS BASE Y SWITCH DE DRON
-        # ==================================================
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-            
-            # 🎯 EL BOTON DE DRON SE DEBE CREAR AQUÍ, ANTES DEL HANGAR
             mision_solo_dron = c_sup2.toggle("🚁 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
@@ -977,30 +972,23 @@ elif menu == "⚙️ 3. Validación de Misión":
         dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
         val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
         
-        # ==================================================
-        # CAJA 2: HANGAR DE DESPLIEGUE (AVIONES Y DRONES)
-        # ==================================================
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
             costo_total_vuelos = 0.0
-            costo_neto_vuelo_total = 0.0  # 🎯 ACUMULADOR NETO UNIVERSAL (Avión y Dron sin márgenes)
+            costo_neto_vuelo_total = 0.0  
             total_ha_cobro_escuadron = 0.0
             horometro_final_avion = 0.0 
 
             if mision_solo_dron:
                 st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
-                
-                # 🎯 CONEXIÓN DE EMERGENCIA PARA EL DRON (Si el Avión no lo hizo)
                 try:
                     if "gcp_credentials" in st.secrets:
                         gc_vd = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                     else:
                         gc_vd = gspread.service_account(filename='credenciales.json')
-                        
                     boveda_vd = gc_vd.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                     datos_vd = boveda_vd.worksheet("Validación Dosis").get_all_values()
                     df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1]) 
-                    
                     df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
                     nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
                     nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
@@ -1015,43 +1003,34 @@ elif menu == "⚙️ 3. Validación de Misión":
                     dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
                     if pd.isna(dr_sel) or ha_dr <= 0: continue
                     total_ha_cobro_escuadron += ha_dr
-                    
-                    # 🎯 MATEMÁTICA DRON: Neto y Comercial
                     tarifa_dron_neta = dict_drones.get(dr_sel, 0)
-                    costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  # Neto puro
-                    costo_total_vuelos += (tarifa_dron_neta * ha_dr) * mult_avion_final # Facturación
+                    costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
+                    costo_total_vuelos += (tarifa_dron_neta * ha_dr) * mult_avion_final 
 
             else:
                 c_av, c_dr = st.columns(2)
                 try:
-                    # 1. CONECTAR EN VIVO A 'Validación Dosis'
                     if "gcp_credentials" in st.secrets:
                         gc_vd = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
                     else:
                         gc_vd = gspread.service_account(filename='credenciales.json')
-                        
                     boveda_vd = gc_vd.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                     datos_vd = boveda_vd.worksheet("Validación Dosis").get_all_values()
                     df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1]) 
-                    
-                    # 🛩️ AVIONES: Extraemos de 'TIPO' y 'HORA'
                     df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
                     dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
-                    
-                    # 🚁 DRONES: Extraemos de 'Tarifa' y 'Valor ha/Dr'
                     df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
                     nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
                     nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
                     precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
                     dict_drones = dict(zip(nombres_dr, precios_dr))
-                    
                 except Exception as e:
                     dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
                     dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
 
                 with c_av: 
                     st.markdown("##### 🛩️ Base Aviones")
-                    df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
+                    df_aviones_def = pd.DataFrame([{"Avión": "CESSNA ASA", "Hectáreas": float(ha_cobro_detectada), "Horómetro": 1.00}])
                     opciones_av = list(dict_aviones.keys()) if 'dict_aviones' in locals() and dict_aviones else ["THRUS SR2", "PIPER PA 36-375"]
                     escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=opciones_av, required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f"), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)
                     
@@ -1077,20 +1056,17 @@ elif menu == "⚙️ 3. Validación de Misión":
                     tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av if ha_av > 0 else 0
                     tarifa_base_tope = tarifa_base_ha if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope)
                     
-                    # 🎯 MATEMÁTICA AVIÓN: Neto y Comercial
-                    costo_neto_vuelo_total += (tarifa_base_tope * ha_av) # Neto puro
+                    costo_neto_vuelo_total += (tarifa_base_tope * ha_av) 
                     tarifa_aplicada = tarifa_base_tope + recargo_final
-                    costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final # Facturación
+                    costo_total_vuelos += (tarifa_aplicada * ha_av) * mult_avion_final 
                     
                 for _, row in escuadron_drones.iterrows():
                     dr_sel, ha_dr = row["Drone"], float(row.get("Hectáreas", 0))
                     if pd.isna(dr_sel) or ha_dr <= 0: continue
                     total_ha_cobro_escuadron += ha_dr
-                    
-                    # 🎯 MATEMÁTICA DRON (Apoyo): Neto y Comercial
                     tarifa_dron_neta = dict_drones.get(dr_sel, 0)
-                    costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  # Neto puro
-                    costo_total_vuelos += (tarifa_dron_neta * ha_dr) * mult_avion_final # Facturación
+                    costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
+                    costo_total_vuelos += (tarifa_dron_neta * ha_dr) * mult_avion_final
             
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         # 🎯 PUENTE DE MANDO: Control maestro de pista ANTES de armar la matriz
@@ -1541,7 +1517,13 @@ elif menu == "⚙️ 3. Validación de Misión":
 
                     # --- 🧮 CÁLCULOS MATEMÁTICOS DIRECTOS Y AJUSTE DE AERONAVE ---
                     ha_f = float(ha_dosis_final)
-                    h_total_v = (ha_f / 10) if mision_solo_dron else horometro_final_avion
+                    
+                    # 🎯 INTELIGENCIA PROPORCIONAL: El horómetro se distribuye según las hectáreas de la finca actual
+                    if mision_solo_dron:
+                        h_total_v = ha_f / 10
+                    else:
+                        h_total_v = (ha_f / total_ha_cobro_escuadron) * horometro_final_avion if total_ha_cobro_escuadron > 0 else 0.0
+                        
                     vol_total_gln = ha_f * 6
                     rend_min = h_total_v * 60
                     
@@ -1563,10 +1545,10 @@ elif menu == "⚙️ 3. Validación de Misión":
                         fila_excel = 6 
                     
                     # 💰 ZONA FINANCIERA CALIBRADA (NETO VS COMERCIAL - UNIVERSAL) 🎯🎯
-                    tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / ha_f) if ha_f > 0 else 0.0
+                    tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                     valor_dominical = float(recargo_final)
                     
-                    # PAGO A TERCEROS (AD): (Tarifa Neta + Recargo) * Hectáreas
+                    # PAGO A TERCEROS (AD): (Tarifa Neta + Recargo) * Hectáreas de la Finca Individual
                     total_pago_avion_neto = (tarifa_vuelo_neta_ha + valor_dominical) * ha_f
                     
                     # 📦 EMPAQUETADO MAESTRO - DETONACIÓN TABLA AZUL (34 Espacios)
@@ -1599,7 +1581,7 @@ elif menu == "⚙️ 3. Validación de Misión":
                     row_azul[29] = round(total_pago_avion_neto, 2) # AD: TOTAL PAGO AVIÓN [NETO EXACTO 2 DEC] 
                     row_azul[32] = tipo_productor                  # AG: TIPO DE PRODUCTOR
                     row_azul[33] = "GÉNESIS_V2_PRO"                # AH: SELLO DE SISTEMA
-
+                    
                     # 📦 EMPAQUETADO APOYO2023
                     fila_apoyo = [""] * 15
                     fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" 
