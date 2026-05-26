@@ -1623,31 +1623,58 @@ elif menu == "⚙️ 3. Validación de Misión":
                     hoja_maestra.update(range_name=f"A{fila_destino_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                     hoja_apoyo.update(range_name=f"A{fila_destino_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                     
-                    # 🧪 DESEMBARCO DE QUÍMICOS EN LA PESTAÑA 'MEMORIA'
+                    # 🧪 DESEMBARCO DE QUÍMICOS EN LA PESTAÑA 'MEMORIA' (LÓGICA SAMURAI)
                     try:
+                        # 1. Escáner Anti-Duplicados (Lectura Rápida de la Bóveda)
+                        datos_memoria = hoja_memoria.get_all_values()
+                        set_existentes = set()
+                        if len(datos_memoria) > 1:
+                            for r in datos_memoria[1:]:
+                                if len(r) >= 10:
+                                    # Llave de seguridad: FECHA | FINCA | PRODUCTO
+                                    llave = f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}"
+                                    set_existentes.add(llave)
+                        
+                        # 2. Asignación Dinámica de Bodega (Filtro Avión/Dron)
+                        bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron else "BODEGA PRINCIPAL AVIÓN"
+                        
                         filas_memoria = []
+                        contador_nuevos = 0
+                        
+                        # 3. Bucle de Inyección
                         for idx, row in edited_df.iterrows():
-                            nombre_prod = str(row.get("A: Producto", ""))
-                            if "⚠️" not in nombre_prod and nombre_prod.strip() != "" and nombre_prod.lower() != "nan":
-                                dosis_prod = float(row.get("D: Dosis Total (Sistema)", 0))
-                                lote_prod = str(row.get("G: Lotes (SAP)", "S/N"))
+                            nombre_prod = str(row.get("A: Producto", "")).strip().upper()
+                            if "⚠️" not in nombre_prod and nombre_prod != "" and nombre_prod != "NAN":
                                 
-                                fila_m = [""] * 10
-                                fila_m[0] = fecha_str                                      # A: FECHA
-                                fila_m[1] = coctel_ganador                                 # B: ORDEN/COCTEL
-                                fila_m[2] = str(pista_manual).split("-")[0].strip()[:4]    # C: PISTA (Ej: LUCI, TEHO)
-                                fila_m[3] = nombre_prod                                    # D: PRODUCTO
-                                fila_m[4] = lote_prod                                      # E: LOTE
-                                fila_m[5] = float(dosis_prod)                              # F: CANTIDAD
-                                fila_m[6] = "BODEGA PRINCIPAL"                             # G: BODEGA
-                                fila_m[7] = ""                                             # H: MODELO (Vacío)
-                                fila_m[8] = "X"                                            # I: Facturado (X)
-                                fila_m[9] = finca_limpia                                   # J: FINCA
+                                # Comprobamos si ya existe en SAP/Memoria
+                                llave_actual = f"{fecha_str}|{finca_limpia}|{nombre_prod}"
                                 
-                                filas_memoria.append(fila_m)
-                                
+                                if llave_actual not in set_existentes:
+                                    dosis_prod = float(row.get("D: Dosis Total (Sistema)", 0))
+                                    lote_prod = str(row.get("G: Lotes (SAP)", "S/N"))
+                                    
+                                    fila_m = [""] * 10
+                                    fila_m[0] = fecha_str                                      # A: FECHA
+                                    fila_m[1] = coctel_ganador                                 # B: ORDEN/COCTEL
+                                    fila_m[2] = str(pista_manual).split("-")[0].strip()[:4]    # C: PISTA
+                                    fila_m[3] = nombre_prod                                    # D: PRODUCTO
+                                    fila_m[4] = lote_prod                                      # E: LOTE
+                                    fila_m[5] = float(dosis_prod)                              # F: CANTIDAD
+                                    fila_m[6] = bodega_f                                       # G: BODEGA (Dinámica)
+                                    fila_m[7] = ""                                             # H: MODELO (Vacío)
+                                    fila_m[8] = "X"                                            # I: Facturado
+                                    fila_m[9] = finca_limpia                                   # J: FINCA
+                                    
+                                    filas_memoria.append(fila_m)
+                                    contador_nuevos += 1
+                                    
+                        # 4. Detonación por Lotes (Protege la API de Google)
                         if filas_memoria:
                             hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
+                            st.toast(f"💾 Memoria Samurai: {contador_nuevos} productos nuevos guardados.")
+                        else:
+                            st.toast("⚠️ Memoria Samurai: Los productos ya existían. No se duplicaron.")
+                            
                     except Exception as e_mem:
                         st.warning(f"⚠️ Nota de sistema: Error al guardar en MEMORIA: {e_mem}")
 
