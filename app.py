@@ -1972,10 +1972,72 @@ elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)":
                     except Exception as e:
                         st.error(f"🚨 Falla en el sistema: {e}")
 # =====================================================================
-# 📈 5. SINCRONIZACIÓN PRECIOS
+# 📈 5. SINCRONIZACIÓN PRECIOS Y TARIFARIO MAESTRO
 # =====================================================================
 elif menu == "📈 5. Sincronización Precios":
-    st.markdown("<h1 class='titulo-principal'>Sincronización Semanal de Precios</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Sincronización de Precios y Tarifas</h1>", unsafe_allow_html=True)
+    
+    # --- 🧮 NUEVA SECCIÓN: TARIFARIO MAESTRO ---
+    with st.container(border=True):
+        st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
+        st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
+        
+        if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
+            with st.spinner("📡 Conectando con la Bóveda de Configuración..."):
+                try:
+                    if "gcp_credentials" in st.secrets:
+                        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                    else:
+                        gc = gspread.service_account(filename='credenciales.json')
+                        
+                    sh_gen = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    raw_config = sh_gen.worksheet("Configuración").get_all_values()
+                    
+                    lista_precios = []
+                    for row in raw_config:
+                        if len(row) > 9:
+                            prod = str(row[8]).upper().strip()
+                            if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod:
+                                costo_base = val_seguro(row[9])
+                                if costo_base > 0:
+                                    lista_precios.append({
+                                        "PRODUCTO": prod,
+                                        "COSTO BASE": costo_base,
+                                        "TERCERO (+45.1%)": round(costo_base * 1.451, 0),
+                                        "AFILIADO (+16.4%)": round(costo_base * 1.164, 0),
+                                        "COOPERATIVA / SOCIO (+11.2%)": round(costo_base * 1.112, 0),
+                                        "ORGÁNICO (+1.1%)": round(costo_base * 1.011, 0)
+                                    })
+                    
+                    st.session_state['df_tarifario'] = pd.DataFrame(lista_precios)
+                    st.success("✅ Tarifario cargado y calculado exitosamente con precisión SAP (0 decimales).")
+                except Exception as e:
+                    st.error(f"🚨 Error al generar tarifario: {e}")
+                    
+        if 'df_tarifario' in st.session_state:
+            df_t = st.session_state['df_tarifario']
+            t1, t2 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Rápida a SAP"])
+            
+            with t1:
+                st.markdown("#### Matriz de Costos y Márgenes (Monitor Visual)")
+                df_visual = df_t.copy()
+                for col in df_visual.columns:
+                    if col != "PRODUCTO":
+                        df_visual[col] = df_visual[col].map("$ {:,.0f}".format).str.replace(",", ".")
+                st.dataframe(df_visual, use_container_width=True, hide_index=True)
+                
+            with t2:
+                st.markdown("#### Caja de Copiado de Precisión")
+                col_margen = st.selectbox("1️⃣ Seleccione el Perfil de Productor:", 
+                                          ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
+                
+                st.caption(f"2️⃣ Copie la lista de valores haciendo clic en el ícono de la esquina superior derecha de esta caja:")
+                precios_copia = df_t[col_margen].astype(int).astype(str).tolist()
+                texto_para_copiar = "\n".join(precios_copia)
+                st.code(texto_para_copiar, language="text")
+
+    st.markdown("---")
+    st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
     semana_target = st.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
 
     if st.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
@@ -2055,7 +2117,7 @@ elif menu == "📈 5. Sincronización Precios":
 
         except Exception as e:
             st.error(f"🚨 FALLA DEL SISTEMA: {e}")
-
+            
 # =====================================================================
 # ✈️ 6. RASTREO DOMINICALES
 # =====================================================================
