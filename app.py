@@ -2034,15 +2034,27 @@ elif menu == "📈 5. Sincronización Precios":
                 st.dataframe(df_visual, use_container_width=True, hide_index=True)
                 
             with t2:
-                st.markdown("#### Caja de Copiado Masivo (Toda la columna)")
+                st.markdown("#### Caja de Copiado Masivo (Por Margen)")
                 col_margen = st.selectbox("1️⃣ Seleccione el Perfil de Productor:", 
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
                 
-                st.caption(f"2️⃣ Copie la lista vertical haciendo clic en el ícono de la esquina de esta caja:")
+                incluir_nombres = st.toggle("🔘 Incluir Nombre del Producto (Copia Dual Tabulada)", value=False)
+                st.caption(f"2️⃣ Copie la lista haciendo clic en el ícono de la esquina de esta caja:")
                 
                 if col_margen in df_t.columns:
-                    precios_copia = df_t[col_margen].astype(int).astype(str).tolist()
-                    texto_para_copiar = "\n".join(precios_copia)
+                    if incluir_nombres:
+                        # Copia Dual: Nombre + [Tabulador] + Precio en Formato SAP
+                        lista_textos = []
+                        for _, row in df_t.iterrows():
+                            nombre = str(row["PRODUCTO"]).strip()
+                            precio = fmt_sap(row[col_margen])
+                            lista_textos.append(f"{nombre}\t{precio}")
+                        texto_para_copiar = "\n".join(lista_textos)
+                    else:
+                        # Solo la columna de precios en Formato SAP (Ej: 76.041)
+                        lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
+                        texto_para_copiar = "\n".join(lista_textos)
+                        
                     st.code(texto_para_copiar, language="text")
                     
             with t3:
@@ -2057,19 +2069,19 @@ elif menu == "📈 5. Sincronización Precios":
                     
                     with c1:
                         st.caption("Costo Base")
-                        st.code(str(int(datos_prod["COSTO BASE"])), language="text")
+                        st.code(fmt_sap(datos_prod["COSTO BASE"]), language="text")
                     with c2:
                         st.caption("Orgánico")
-                        st.code(str(int(datos_prod["ORGÁNICO (+1.1%)"])), language="text")
+                        st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]), language="text")
                     with c3:
                         st.caption("Socio / Coop")
-                        st.code(str(int(datos_prod["COOPERATIVA / SOCIO (+11.2%)"])), language="text")
+                        st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]), language="text")
                     with c4:
                         st.caption("Afiliado")
-                        st.code(str(int(datos_prod["AFILIADO (+16.4%)"])), language="text")
+                        st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]), language="text")
                     with c5:
                         st.caption("Tercero")
-                        st.code(str(int(datos_prod["TERCERO (+45.1%)"])), language="text")
+                        st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]), language="text")
                         
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
