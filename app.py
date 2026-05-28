@@ -3685,17 +3685,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
 # =====================================================================
-                        # =====================================================================
                         # --- 🤝 NUEVO: SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 Utilice este radar para evaluar propuestas de las empresas aerofumigadoras. El sistema toma la tarifa por hectárea (incluyendo recargos), extrae el costo base y simula el impacto de un nuevo margen.")
+                        st.info("💡 Utilice este radar para evaluar propuestas de las empresas aerofumigadoras. Seleccione la columna de la tarifa real facturada para calcular la ingeniería inversa.")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
 
-                        # Detectar Pistas disponibles
                         col_pista_sim = next((c for c in super_base_bi.columns if "PISTA" in c or "ALMACEN" in c), None)
                         if col_pista_sim:
                             pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist())
@@ -3703,20 +3701,24 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             pistas_sim_disp = ["TODAS"]
 
                         sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v6")
-                        sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) # Mayo por defecto
+                        sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) 
                         sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v6")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
+                        
                         margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v6")
                         margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v6")
                         
-                        with c_sim_m3:
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
+                        # 🎯 LA SOLUCIÓN DEFINITIVA: El usuario elige la columna manualmente
+                        columnas_numericas = [c for c in super_base_bi.columns if super_base_bi[c].dtype in ['float64', 'int64'] or 'COSTO' in str(c).upper() or 'TARIFA' in str(c).upper() or 'VALOR' in str(c).upper()]
+                        col_tarifa_elegida = c_sim_m3.selectbox("💵 Columna de Tarifa Facturada:", columnas_numericas, key="col_tar_ele")
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
 
                         if btn_simular:
-                            with st.spinner("Desensamblando tarifas por hectárea y calculando proyecciones..."):
+                            with st.spinner("Desensamblando tarifas y aplicando matemática estricta..."):
                                 df_sim = super_base_bi.copy()
 
                                 # 1. Aplicar filtros de tiempo y pista
@@ -3725,37 +3727,26 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                 if col_pista_sim and sim_pista != "TODAS":
                                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
-                                # 2. 🎯 CIRUGÍA APLICADA: Filtrar misiones RESPETANDO LOS DECIMALES de las hectáreas
+                                # 2. Filtrar misiones RESPETANDO LOS DECIMALES de las hectáreas
                                 col_ha = 'AREA_MAESTRA'
                                 if col_ha in df_sim.columns:
-                                    # Convertir a número preservando puntos y comas decimales reales
                                     df_sim[col_ha] = pd.to_numeric(df_sim[col_ha].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                                     df_sim = df_sim[df_sim[col_ha] > 0]
 
                                 if df_sim.empty:
-                                    st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros seleccionados. Intente cambiar la Pista o el Mes.")
+                                    st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros seleccionados.")
                                 else:
-                                    col_os = None
+                                    import math
+                                    # Función para que Python redondee exactamente igual que Excel
+                                    def red_excel(num):
+                                        return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
+
+                                    col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
                                     for c in df_sim.columns:
-                                        c_upper = str(c).upper().strip()
-                                        if c_upper in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
-                                            col_os = c
-                                            break
-                                    if not col_os:
-                                        col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
+                                        if str(c).upper().strip() in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
+                                            col_os = c; break
 
                                     col_finca = 'FINCA_MAESTRA'
-
-                                    # 🎯 CIRUGÍA 1: Detectar estrictamente la TARIFA y evadir los Costos Internos
-                                    col_tarifa_vuelo = None
-                                    for c in df_sim.columns:
-                                        if "TARIFA" in str(c).upper():
-                                            col_tarifa_vuelo = c
-                                            break
-                                            
-                                    if not col_tarifa_vuelo:
-                                        col_tarifa_vuelo = next((c for c in df_sim.columns if "VALOR" in str(c).upper() and "HA" in str(c).upper()), 'COSTO_MAESTRO')
-
                                     col_dominical = next((c for c in df_sim.columns if "DOMINIC" in str(c).upper()), None)
 
                                     matriz_simulacion = []
@@ -3769,7 +3760,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         ha_val = float(row[col_ha])
                                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
                                         
-                                        # Captura de fecha y cálculo de semana
                                         if pd.notna(row['FECHA_DT']):
                                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
                                             semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
@@ -3778,7 +3768,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        tarifa_vuelo = convertir_pesos(row[col_tarifa_vuelo]) if col_tarifa_vuelo in row else 0.0
+                                        # 🎯 AHORA USAMOS LA COLUMNA QUE USTED ELIGIÓ MANUALMENTE
+                                        tarifa_vuelo = convertir_pesos(row[col_tarifa_elegida]) if col_tarifa_elegida in row else 0.0
                                         tarifa_dom = convertir_pesos(row[col_dominical]) if col_dominical in row else 0.0
                                         tarifa_actual_ha = tarifa_vuelo + tarifa_dom
 
@@ -3787,20 +3778,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
                                             tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
                                             
-                                            # 🎯 CIRUGÍA 2: LA MATEMÁTICA EXACTA DEL COMANDANTE
-                                            # 1. Redondeamos las tarifas para que queden enteras (como en Excel)
-                                            t_act_redondeada = round(tarifa_actual_ha, 0)
-                                            t_nue_redondeada = round(tarifa_nueva_ha, 0)
+                                            # 🎯 MATEMÁTICA EXACTA MANUAL: (Tarifa 2 - Tarifa 1) * Hectareas
+                                            t_act_red = red_excel(tarifa_actual_ha)
+                                            t_nue_red = red_excel(tarifa_nueva_ha)
                                             
-                                            # 2. LA RESTA DIRECTA (Tarifa Nueva - Tarifa Vieja)
-                                            resta_tarifas = t_nue_redondeada - t_act_redondeada
+                                            resta_tarifas = t_nue_red - t_act_red
+                                            diferencia_total = red_excel(resta_tarifas * ha_val)
                                             
-                                            # 3. MULTIPLICAR LA RESTA POR HECTÁREAS
-                                            diferencia_total = round(resta_tarifas * ha_val, 0)
-                                            
-                                            # 4. Totales finales
-                                            total_actual = round(t_act_redondeada * ha_val, 0)
-                                            total_nuevo = round(t_nue_redondeada * ha_val, 0)
+                                            total_actual = red_excel(t_act_red * ha_val)
+                                            total_nuevo = red_excel(t_nue_red * ha_val)
 
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
@@ -3809,17 +3795,18 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
-                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_redondeada,
-                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_redondeada,
+                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_red,
+                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_red,
                                                 "TOTAL ACTUAL ($)": total_actual,
                                                 "NUEVO TOTAL ($)": total_nuevo,
                                                 "DIFERENCIA ($)": diferencia_total
                                             })
+
+                                    if not matriz_simulacion:
                                         st.warning("⚠️ Se encontraron misiones, pero sus valores de tarifa están en $0.")
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
 
-                                        # Agrupación Semanal (Resumen)
                                         df_semanal = df_resultados.groupby("SEMANA").agg({
                                             "HECTÁREAS": "sum",
                                             "TOTAL ACTUAL ($)": "sum",
@@ -3828,7 +3815,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         }).reset_index()
                                         df_semanal = df_semanal.sort_values(by="SEMANA").reset_index(drop=True)
 
-                                        # KPIs Globales
                                         total_actual_global = df_resultados["TOTAL ACTUAL ($)"].sum()
                                         total_simulado_global = df_resultados["NUEVO TOTAL ($)"].sum()
                                         total_diferencia_global = df_resultados["DIFERENCIA ($)"].sum()
@@ -3840,14 +3826,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         color_delta = "normal" if total_diferencia_global > 0 else "inverse"
                                         k3.metric("⚖️ Dinero Real en Juego", f"$ {abs(total_diferencia_global):,.0f}".replace(",", "."), delta=f"$ {total_diferencia_global:,.0f}".replace(",", "."), delta_color=color_delta)
 
-                                        # =========================================================
-                                        # 🎯 ⚔️ AQUÍ SE INSERTAN LAS PESTAÑAS EN LA INTERFAZ WEB ⚔️ 🎯
-                                        # =========================================================
                                         st.markdown("<br>", unsafe_allow_html=True)
-                                        tab_resumen, tab_detalle = st.tabs(["📊 1. Resumen Macroeconómico (Por Semana)", "📋 2. Desglose Quirúrgico (Por Orden de Servicio)"])
+                                        tab_resumen, tab_detalle = st.tabs(["📊 1. Resumen Macroeconómico", "📋 2. Desglose Quirúrgico"])
                                         
                                         with tab_resumen:
-                                            st.markdown("#### Matriz Abstracta Semanal (Corte Sáb a Vie)")
+                                            st.markdown("#### Matriz Semanal (Corte Sáb a Vie)")
                                             df_sem_vista = df_semanal.copy()
                                             df_sem_vista["HECTÁREAS"] = df_sem_vista["HECTÁREAS"].map("{:,.2f}".format)
                                             for col in ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]:
@@ -3855,67 +3838,48 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             st.dataframe(df_sem_vista, use_container_width=True, hide_index=True)
                                         
                                         with tab_detalle:
-                                            st.markdown("#### Historial Detallado por OS de Avión")
+                                            st.markdown("#### Historial por OS")
                                             df_vista = df_resultados.copy()
                                             df_vista["HECTÁREAS"] = df_vista["HECTÁREAS"].map("{:,.2f}".format)
                                             columnas_moneda = [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]
                                             for col in columnas_moneda:
                                                 df_vista[col] = df_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
-
-                                            def colorear_diferencia(val):
+                                            
+                                            def col_dif(val):
                                                 if isinstance(val, str) and "-" in val: return 'color: #721c24; background-color: #f8d7da; font-weight: bold; text-align: center;'
                                                 elif isinstance(val, str) and "$" in val: return 'color: #155724; background-color: #d4edda; font-weight: bold; text-align: center;'
                                                 return ''
-                                            st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
+                                            st.dataframe(df_vista.style.map(col_dif, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL DE GALA DE DOS PESTAÑAS REALES ---
+                                        # --- EXPORTACIÓN EXCEL Pura ---
+                                        import io
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
                                             df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
                                             df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
-                                            
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                                            borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
-                                            fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                                            fuente_blanca = Font(color="FFFFFF", bold=True)
-
-                                            # Formatear Pestaña 1
-                                            ws_sem = writer.sheets['Resumen_Semanal']
-                                            ws_sem.sheet_view.showGridLines = True
-                                            for row in ws_sem.iter_rows(min_row=1, max_row=ws_sem.max_row, min_col=1, max_col=ws_sem.max_column):
-                                                for cell in row:
-                                                    cell.border = borde_pro
-                                                    if cell.row == 1:
-                                                        cell.fill = fondo_navy; cell.font = fuente_blanca
-                                                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                                                    else:
-                                                        if cell.column == 2: cell.number_format = '#,##0.00'
-                                                        if cell.column >= 3: cell.number_format = '"$" #,##0'
-
-                                            # Formatear Pestaña 2
-                                            ws_det = writer.sheets['Detalle_OS']
-                                            ws_det.sheet_view.showGridLines = True
-                                            for row in ws_det.iter_rows(min_row=1, max_row=ws_det.max_row, min_col=1, max_col=ws_det.max_column):
-                                                for cell in row:
-                                                    cell.border = borde_pro
-                                                    if cell.row == 1:
-                                                        cell.fill = fondo_navy; cell.font = fuente_blanca
-                                                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                                                    else:
-                                                        if cell.column == 6: cell.number_format = '#,##0.00'
-                                                        if cell.column >= 7: cell.number_format = '"$" #,##0'
-
-                                            for sheet in [ws_sem, ws_det]:
-                                                for col in sheet.columns:
-                                                    max_length = max(len(str(cell.value or '')) for cell in col)
-                                                    column = col[0].column_letter
-                                                    sheet.column_dimensions[column].width = min(max_length + 4, 32)
-
+                                            borde = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
+                                            fondo = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                                            blanca = Font(color="FFFFFF", bold=True)
+                                            for name in ['Resumen_Semanal', 'Detalle_OS']:
+                                                ws = writer.sheets[name]
+                                                ws.sheet_view.showGridLines = True
+                                                for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+                                                    for cell in row:
+                                                        cell.border = borde
+                                                        if cell.row == 1:
+                                                            cell.fill = fondo; cell.font = blanca; cell.alignment = Alignment(horizontal='center', vertical='center')
+                                                        else:
+                                                            if "HECTÁREAS" in str(ws.cell(1, cell.column).value): cell.number_format = '#,##0.00'
+                                                            elif "($" in str(ws.cell(1, cell.column).value) or "%" in str(ws.cell(1, cell.column).value): cell.number_format = '"$" #,##0'
+                                                for col in ws.columns:
+                                                    ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or '')) for c in col) + 4, 32)
+                                        
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME DUAL: RESUMEN + DETALLE (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME DUAL (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
-                                            file_name=f"Auditoria_Tarifas_Completas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
+                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                             type="primary",
                                             use_container_width=True
