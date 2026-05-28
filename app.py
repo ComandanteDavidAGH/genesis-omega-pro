@@ -3684,116 +3684,132 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
 # =====================================================================
+                        # =====================================================================
                         # --- 🤝 NUEVO: SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 Utilice este radar para aplicar ingeniería inversa a las facturas actuales, extraer el costo neto del proveedor y proyectar nuevos escenarios.")
+                        st.info("💡 Utilice este radar para evaluar propuestas de las empresas aerofumigadoras. El sistema toma la tarifa por hectárea (incluyendo recargos), extrae el costo base y simula el impacto de un nuevo margen.")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
 
                         # Detectar Pistas disponibles
-                        col_pista_sim = 'PISTA' if 'PISTA' in super_base_bi.columns else ('ALMACEN' if 'ALMACEN' in super_base_bi.columns else None)
+                        col_pista_sim = next((c for c in super_base_bi.columns if "PISTA" in c or "ALMACEN" in c), None)
                         if col_pista_sim:
                             pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist())
                         else:
                             pistas_sim_disp = ["TODAS"]
 
-                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio")
+                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v2")
                         sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) # Mayo por defecto
-                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista")
+                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v2")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
-                        margen_actual = c_sim_m1.number_input("📉 Margen Actual Aplicado (%)", value=8.0, step=0.5, help="Ej: 8.0 para indicar el 8% actual.")
-                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, help="Ej: 11.0 para la nueva propuesta.")
+                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, help="El porcentaje actual que se está cobrando.")
+                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, help="La propuesta de la Aerofumigadora.")
                         
                         with c_sim_m3:
                             st.markdown("<br>", unsafe_allow_html=True)
-                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True)
+                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v2")
 
                         if btn_simular:
-                            with st.spinner("Desensamblando costos y calculando proyecciones..."):
+                            with st.spinner("Desensamblando tarifas por hectárea y calculando proyecciones..."):
                                 df_sim = super_base_bi.copy()
 
-                                # Aplicar filtros de tiempo y pista
+                                # 1. Aplicar filtros de tiempo y pista
                                 df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
                                 df_sim = df_sim[df_sim['MES'] == int(sim_mes)]
                                 if col_pista_sim and sim_pista != "TODAS":
                                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
-                                # Filtrar solo misiones de avión
-                                if 'MODELO' in df_sim.columns:
-                                    df_sim = df_sim[df_sim['MODELO'].astype(str).str.upper().str.contains("AVION|AVIÓN", na=False)]
+                                # 2. 🛡️ CORRECCIÓN: Eliminamos el filtro estricto de MODELO que causaba el conflicto
+                                # Solo exigiremos que el área sea mayor a 0
+                                col_ha = 'AREA_MAESTRA'
+                                if col_ha in df_sim.columns:
+                                    df_sim[col_ha] = df_sim[col_ha].apply(convertir_pesos)
+                                    df_sim = df_sim[df_sim[col_ha] > 0]
 
                                 if df_sim.empty:
-                                    st.warning("⚠️ No se encontraron Órdenes de Servicio de avión para los parámetros seleccionados.")
+                                    st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros seleccionados. Intente cambiar la Pista o el Mes.")
                                 else:
                                     # Extraer columnas clave
-                                    col_os = next((c for c in df_sim.columns if c in ["OS", "ORDEN", "ORDEN DE SERVICIO"]), None)
+                                    col_os = next((c for c in df_sim.columns if "ORDEN" in c or "OS" in c), df_sim.columns[0])
                                     col_finca = 'FINCA_MAESTRA'
-                                    col_ha = 'AREA_MAESTRA'
 
-                                    # Identificar costo total facturado (Avión)
-                                    col_costo_avion = next((c for c in df_sim.columns if "COSTO_AVION" in c or "COSTO AVION" in c), 'COSTO_MAESTRO')
+                                    # Detectar columnas de tarifa
+                                    col_tarifa_vuelo = next((c for c in df_sim.columns if "COSTO AVION" in c and "/" in c), None)
+                                    if not col_tarifa_vuelo:
+                                        col_tarifa_vuelo = next((c for c in df_sim.columns if "COSTO" in c and "HA" in c), 'COSTO_MAESTRO')
+
+                                    col_dominical = next((c for c in df_sim.columns if "DOMINIC" in c), None)
 
                                     matriz_simulacion = []
 
                                     for _, row in df_sim.iterrows():
                                         os_val = str(row[col_os]) if col_os else "S/N"
-                                        if os_val.strip() == "" or os_val == "nan": continue
+                                        if os_val.strip() in ["", "nan", "S/N"]: continue
 
                                         finca_val = str(row[col_finca])
-                                        ha_val = convertir_pesos(row[col_ha]) if col_ha in row else 0.0
+                                        ha_val = float(row[col_ha])
+                                        pista_val = str(row[col_pista_sim]) if col_pista_sim else "N/A"
 
-                                        # Obtener Costo Total Actual (Total Avión de la OS)
-                                        costo_total_actual = convertir_pesos(row[col_costo_avion])
+                                        # Obtener Tarifas Actuales (Vuelo + Recargo Dominical)
+                                        tarifa_vuelo = convertir_pesos(row[col_tarifa_vuelo]) if col_tarifa_vuelo in row else 0.0
+                                        tarifa_dom = convertir_pesos(row[col_dominical]) if col_dominical in row else 0.0
+                                        
+                                        tarifa_actual_ha = tarifa_vuelo + tarifa_dom
 
-                                        if costo_total_actual > 0 and ha_val > 0:
-                                            # Ingeniería inversa: Quitar el margen actual para hallar el NETO PURO
-                                            costo_neto_puro = costo_total_actual / (1 + (margen_actual / 100))
-
-                                            # Proyección: Aplicar nuevo margen
-                                            costo_simulado = costo_neto_puro * (1 + (margen_nuevo / 100))
-
-                                            # Diferencia por OS
-                                            diferencia_total = costo_simulado - costo_total_actual
+                                        if tarifa_actual_ha > 0 and ha_val > 0:
+                                            # Ingeniería inversa: Dividir entre 1.08 para hallar la base pura
+                                            base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
+                                            # Multiplicar por 1.11 para hallar el nuevo valor
+                                            tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
+                                            
+                                            # Totales
+                                            total_actual = tarifa_actual_ha * ha_val
+                                            total_nuevo = tarifa_nueva_ha * ha_val
+                                            diferencia_total = total_nuevo - total_actual
 
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
                                                 "FINCA": finca_val,
+                                                "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
-                                                "COSTO NETO (Sin Margen)": costo_neto_puro,
-                                                f"FACTURADO ACTUAL ({margen_actual}%)": costo_total_actual,
-                                                f"PROYECCIÓN ({margen_nuevo}%)": costo_simulado,
+                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": tarifa_actual_ha,
+                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": tarifa_nueva_ha,
+                                                "TOTAL ACTUAL ($)": total_actual,
+                                                "NUEVO TOTAL ($)": total_nuevo,
                                                 "DIFERENCIA ($)": diferencia_total
                                             })
 
                                     if not matriz_simulacion:
-                                        st.warning("⚠️ No se pudieron calcular costos para estas OS. Verifique que tengan valor facturado en SAP.")
+                                        st.warning("⚠️ Se encontraron las órdenes, pero no tienen tarifas de vuelo registradas (Valor $0).")
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
 
                                         # --- 🏆 MÉTRICAS DE IMPACTO ---
-                                        total_actual = df_resultados[f"FACTURADO ACTUAL ({margen_actual}%)"].sum()
-                                        total_simulado = df_resultados[f"PROYECCIÓN ({margen_nuevo}%)"].sum()
-                                        total_diferencia = df_resultados["DIFERENCIA ($)"].sum()
+                                        total_actual_global = df_resultados["TOTAL ACTUAL ($)"].sum()
+                                        total_simulado_global = df_resultados["NUEVO TOTAL ($)"].sum()
+                                        total_diferencia_global = df_resultados["DIFERENCIA ($)"].sum()
 
                                         st.markdown("### 🎯 Impacto Financiero Global")
                                         k1, k2, k3 = st.columns(3)
-                                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {total_actual:,.0f}")
-                                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {total_simulado:,.0f}")
+                                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {total_actual_global:,.0f}")
+                                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {total_simulado_global:,.0f}")
                                         
-                                        color_delta = "normal" if total_diferencia > 0 else "inverse"
-                                        k3.metric("⚖️ Diferencia en Juego", f"$ {abs(total_diferencia):,.0f}", delta=f"$ {total_diferencia:,.0f}", delta_color=color_delta)
+                                        color_delta = "normal" if total_diferencia_global > 0 else "inverse"
+                                        k3.metric("⚖️ Diferencia en Juego", f"$ {abs(total_diferencia_global):,.0f}", delta=f"$ {total_diferencia_global:,.0f}", delta_color=color_delta)
 
                                         # --- 📋 MATRIZ DETALLADA ---
                                         st.markdown("#### 📋 Desglose Quirúrgico por Orden de Servicio (OS)")
 
                                         # Formatear a moneda para la vista web
                                         df_vista = df_resultados.copy()
-                                        for col in ["COSTO NETO (Sin Margen)", f"FACTURADO ACTUAL ({margen_actual}%)", f"PROYECCIÓN ({margen_nuevo}%)", "DIFERENCIA ($)"]:
+                                        columnas_moneda = [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]
+                                        
+                                        for col in columnas_moneda:
                                             df_vista[col] = df_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
 
                                         # Pintura táctica para diferencias
@@ -3823,7 +3839,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        if cell.column >= 4: # Formato moneda contable
+                                                        if cell.column >= 5: # Formato moneda contable a partir de columna E
                                                             cell.number_format = '"$" #,##0.00'
 
                                             # Auto-ajuste de columnas
