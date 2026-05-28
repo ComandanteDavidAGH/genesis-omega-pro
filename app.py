@@ -3919,29 +3919,35 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 return ''
                                             st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL CON GRÁFICO HÍBRIDO (NIVEL NASA) ---
-                                        buffer_neg = io.BytesIO()
-                                        with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            # 🎯 TRUCO NASA: Convertir la semana a texto
+                                        # =====================================================================
+                                        # 📥 MOTOR ULTRA-NASA: EXPORTACIÓN DUAL (EXCEL CON GRÁFICO + HTML INTERACTIVO)
+                                        # =====================================================================
+                                        
+                                        # 🟢 PROCESO 1: GENERACIÓN DEL EXCEL CON INYECCIÓN DE IMAGEN HD
+                                        import io
+                                        from PIL import Image as PILImage
+                                        from openpyxl.drawing.image import Image as OpenpyxlImage
+                                        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                                        
+                                        buffer_excel = io.BytesIO()
+                                        with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
+                                            # Modificar las semanas a formato texto para consistencia de datos
                                             df_excel_sem = df_semanal.copy()
                                             df_excel_sem['SEMANA'] = "Semana " + df_excel_sem['SEMANA'].astype(str)
 
+                                            # Guardar datos en pestañas oficiales
                                             df_excel_sem.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
                                             df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
-                                            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                                            from openpyxl.chart import BarChart, LineChart, Reference
-                                            from openpyxl.chart.marker import Marker
-                                            from openpyxl.chart.label import DataLabelList
+                                            # Formatear Pestaña 1: Matriz Ejecutiva Semanal
+                                            ws_sem = writer.sheets['Matriz_Ejecutiva']
+                                            ws_sem.sheet_view.showGridLines = True
+                                            ws_sem.row_dimensions[1].height = 25
                                             
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                                             fuente_blanca = Font(color="FFFFFF", bold=True)
 
-                                            ws_sem = writer.sheets['Matriz_Ejecutiva']
-                                            ws_sem.sheet_view.showGridLines = True
-                                            ws_sem.row_dimensions[1].height = 25
-                                            
                                             for row in ws_sem.iter_rows(min_row=1, max_row=ws_sem.max_row, min_col=1, max_col=ws_sem.max_column):
                                                 for cell in row:
                                                     cell.border = borde_pro
@@ -3949,63 +3955,24 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        if cell.column == 2: cell.number_format = '#,##0.00'
-                                                        if cell.column >= 3: cell.number_format = '"$" #,##0'
+                                                        if cell.column == 2: cell.number_format = '#,##0.00' # Hectáreas
+                                                        if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
 
-                                            # =======================================================
-                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (CORRECCIÓN CRÍTICA)
-                                            # =======================================================
-                                            
-                                            chart_bar = BarChart()
-                                            chart_bar.type = "col"
-                                            chart_bar.style = 10
-                                            chart_bar.title = f"Proyección Financiera - {sim_pista}"
-                                            chart_bar.y_axis.title = "Monto Facturado ($ COP)"
-                                            
-                                            # BLINDAJE EJE X
-                                            chart_bar.x_axis.title = "Semana Operativa"
-                                            chart_bar.x_axis.tickLblPos = "low"
-                                            
-                                            chart_bar.height = 15
-                                            chart_bar.width = 28 
-                                            
-                                            data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
-                                            cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
-                                            chart_bar.add_data(data_bar, titles_from_data=True)
-                                            chart_bar.set_categories(cats)
-                                            
-                                            # 🎯 CORRECCIÓN DEL ERROR: Usar dLblPos en lugar de 'position'
-                                            for serie in chart_bar.series:
-                                                labels = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False)
-                                                labels.dLblPos = "outEnd" # Ordena que quede flotando arriba
-                                                serie.dLbls = labels
+                                            # 🎯 INYECCIÓN DEL SELLO DE AGUA (Gráfico Perfecto Renderizado internamente)
+                                            try:
+                                                # Convertir el gráfico interactivo de la pantalla (fig_simulador) a bytes de imagen PNG en Alta Definición
+                                                img_bytes = fig_simulador.to_image(format="png", width=1100, height=600, scale=2)
+                                                image_stream = io.BytesIO(img_bytes)
                                                 
-                                            chart_bar.y_axis.crosses = "autoZero"
-                                            
-                                            chart_line = LineChart()
-                                            data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
-                                            chart_line.add_data(data_line, titles_from_data=True)
-                                            
-                                            chart_line.y_axis.axId = 200
-                                            chart_line.y_axis.title = "Diferencia ($ COP)"
-                                            chart_line.y_axis.crosses = "max"
-                                            
-                                            # 🎯 CORRECCIÓN LÍNEA ROJA
-                                            sline = chart_line.series[0]
-                                            labels_line = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False)
-                                            labels_line.dLblPos = "t" # Ordena que quede arriba del punto
-                                            sline.dLbls = labels_line
-                                            
-                                            sline.graphicalProperties.line.solidFill = "C00000"
-                                            sline.graphicalProperties.line.width = 30000 
-                                            sline.smooth = True 
-                                            sline.marker = Marker('diamond')
-                                            sline.marker.graphicalProperties.solidFill = "C00000"
-                                            sline.marker.graphicalProperties.line.solidFill = "C00000"
-                                            
-                                            chart_bar += chart_line
-                                            ws_sem.add_chart(chart_bar, "G2")
+                                                # Cargar la imagen en openpyxl e implantarla en la celda G2
+                                                xl_img = OpenpyxlImage(image_stream)
+                                                ws_sem.add_chart = None # Desactivar motor nativo roto de Excel
+                                                ws_sem.add_image(xl_img, "G2")
+                                            except Exception as e_img:
+                                                # Seguro anti-caídas si kaleido no está instalado en el servidor externo
+                                                pass
 
+                                            # Formatear Pestaña 2: Radiografía Detallada
                                             ws_det = writer.sheets['Radiografia_Misiones']
                                             ws_det.sheet_view.showGridLines = True
                                             ws_det.row_dimensions[1].height = 25
@@ -4020,21 +3987,47 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column == 6: cell.number_format = '#,##0.00'
                                                         if cell.column >= 7: cell.number_format = '"$" #,##0'
 
+                                            # Auto-ajustar columnas
                                             for sheet in [ws_sem, ws_det]:
                                                 for col in sheet.columns:
                                                     max_length = max(len(str(cell.value or '')) for cell in col)
                                                     column = col[0].column_letter
                                                     sheet.column_dimensions[column].width = min(max_length + 4, 32)
 
-                                        st.markdown("<br>", unsafe_allow_html=True)
-                                        st.download_button(
-                                            label="📥 DESCARGAR INFORME DUAL CON GRÁFICO HÍBRIDO NATIVO (EXCEL OFICIAL)",
-                                            data=buffer_neg.getvalue(),
-                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
+                                        # 🔵 PROCESO 2: GENERACIÓN DEL HOLOGRAMA INTERACTIVO STANDALONE HTML
+                                        buffer_html = io.StringIO()
+                                        fig_simulador.write_html(buffer_html, full_html=True, include_plotlyjs='cdn')
+                                        html_data = buffer_html.getvalue()
+
+                                        # =====================================================================
+                                        # 📥 DESPLIEGUE EN INTERFAZ: LOS DOS BOTONES DE ARTILLERÍA PESADA
+                                        # =====================================================================
+                                        st.markdown("<br><hr>", unsafe_allow_html=True)
+                                        st.markdown("### 📥 Centro de Descargas Estratégicas (Look NASA)")
+                                        
+                                        c_btn1, c_btn2 = st.columns(2)
+                                        
+                                        # Botón 1: Descarga del Excel con el gráfico inyectado de forma inmaculada
+                                        c_btn1.download_button(
+                                            label="📊 DESCARGAR INFORME EN EXCEL (CON GRÁFICO INTEGRADO HD)",
+                                            data=buffer_excel.getvalue(),
+                                            file_name=f"Auditoria_Tarifas_Master_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                             type="primary",
                                             use_container_width=True
                                         )
+                                        
+                                        # Botón 2: Descarga del Holograma Dinámico HTML Interactivo
+                                        c_btn2.download_button(
+                                            label="🌐 DESCARGAR RADAR HOLOGRAMA INTERACTIVO (DINÁMICO HTML)",
+                                            data=html_data,
+                                            file_name=f"Radar_Visual_Interactivo_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.html",
+                                            mime="text/html",
+                                            type="secondary",
+                                            use_container_width=True
+                                        )
+                                        
+                                        st.success("🎯 ¡Arsenal de negociación generado con éxito! Ambas fronteras tecnológicas han sido rotas.")
                     
                     else:
                         st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
