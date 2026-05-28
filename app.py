@@ -3919,15 +3919,16 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 return ''
                                             st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL CON TÍTULOS TÁCTICOS E INYECTOR DE GRÁFICOS ---
+                                        # --- 📥 EXPORTACIÓN EXCEL CON GRÁFICO HÍBRIDO AUTOMATIZADO ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            # 🎯 Renombramos las pestañas del Excel de Gala
+                                            # Renombramos las pestañas del Excel
                                             df_semanal.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
                                             df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                                            from openpyxl.chart import BarChart, Reference
+                                            from openpyxl.chart import BarChart, LineChart, Reference, Series
+                                            from openpyxl.chart.marker import Marker
                                             
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
@@ -3948,26 +3949,50 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column == 2: cell.number_format = '#,##0.00' # Hectáreas
                                                         if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
 
-                                            # 📊 INYECCIÓN DEL GRÁFICO NATIVO EN EXCEL (Resumen Semanal)
-                                            chart_xl = BarChart()
-                                            chart_xl.type = "col"
-                                            chart_xl.style = 10
-                                            chart_xl.title = f"Comparativo de Costos - Mayo ({sim_pista})"
-                                            chart_xl.y_axis.title = "Monto ($ COP)"
-                                            chart_xl.x_axis.title = "Semana Operativa"
-                                            chart_xl.height = 14
-                                            chart_xl.width = 22
+                                            # =======================================================
+                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (BARRAS + LÍNEA ROJA)
+                                            # =======================================================
                                             
-                                            # Referencia de datos: Columnas C (Actual) y D (Proyectado) desde Fila 1 a la última
-                                            data_xl = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
-                                            # Referencia de categorías: Columna A (SEMANA)
-                                            cats_xl = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
+                                            # 1. Crear el Gráfico de Barras (Eje Primario)
+                                            chart_bar = BarChart()
+                                            chart_bar.type = "col"
+                                            chart_bar.style = 10
+                                            chart_bar.title = f"Proyección Financiera - {sim_pista}"
+                                            chart_bar.y_axis.title = "Monto Facturado ($ COP)"
+                                            chart_bar.x_axis.title = "Semana Operativa"
+                                            chart_bar.height = 14
+                                            chart_bar.width = 22
                                             
-                                            chart_xl.add_data(data_xl, titles_from_data=True)
-                                            chart_xl.set_categories(cats_xl)
+                                            # Datos para Barras: Columnas C (Total Actual) y D (Nuevo Total)
+                                            data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
+                                            cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
+                                            chart_bar.add_data(data_bar, titles_from_data=True)
+                                            chart_bar.set_categories(cats)
                                             
-                                            # Ubicar el gráfico en la celda G2 para dejar espacio libre después de la tabla
-                                            ws_sem.add_chart(chart_xl, "G2")
+                                            # 2. Crear el Gráfico de Línea (Eje Secundario para la DIFERENCIA)
+                                            chart_line = LineChart()
+                                            # Datos para Línea: Columna E (Diferencia $)
+                                            data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
+                                            chart_line.add_data(data_line, titles_from_data=True)
+                                            
+                                            # Configurar para que use el eje Y de la derecha
+                                            chart_line.y_axis.axId = 200
+                                            chart_line.y_axis.title = "Diferencia ($ COP)"
+                                            chart_line.y_axis.crosses = "max"
+                                            
+                                            # Pintar la línea de Rojo Sangre Letal
+                                            sline = chart_line.series[0]
+                                            sline.graphicalProperties.line.solidFill = "C00000"
+                                            sline.graphicalProperties.line.width = 30000 # Grosor de la línea
+                                            sline.marker = Marker('diamond')
+                                            sline.marker.graphicalProperties.solidFill = "C00000"
+                                            sline.marker.graphicalProperties.line.solidFill = "C00000"
+                                            
+                                            # 3. FUSIÓN: Acoplar el gráfico de línea dentro del de barras
+                                            chart_bar += chart_line
+                                            
+                                            # 4. Ubicar el radar en el Excel (Celda G2)
+                                            ws_sem.add_chart(chart_bar, "G2")
 
                                             # --- FORMATEAR PESTAÑA 2: RADIOGRAFÍA DE MISIONES DETALLADA ---
                                             ws_det = writer.sheets['Radiografia_Misiones']
@@ -3993,9 +4018,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME DUAL AUTOMATIZADO CON GRÁFICAS (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME DUAL CON GRÁFICO HÍBRIDO NATIVO (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
-                                            file_name=f"Auditoria_Tarifas_Completas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
+                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                             type="primary",
                                             use_container_width=True
