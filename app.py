@@ -3702,21 +3702,21 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             pistas_sim_disp = ["TODAS"]
 
-                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v6")
+                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v7")
                         sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) # Mayo por defecto
-                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistes_sim_disp if 'pistes_sim_disp' in locals() else pitches_disp if 'pitches_disp' in locals() else pistas_sim_disp, key="sim_pista_v6")
+                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v7")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
-                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v6")
-                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v6")
+                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v7")
+                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v7")
                         
                         with c_sim_m3:
                             st.markdown("<br>", unsafe_allow_html=True)
-                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
+                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v7")
 
                         if btn_simular:
-                            with st.spinner("Desensamblando tarifas por hectárea y calculando proyecciones..."):
+                            with st.spinner("Desensamblando tarifas y proyectando radar gráfico..."):
                                 df_sim = super_base_bi.copy()
 
                                 # 1. Aplicar filtros de tiempo y pista
@@ -3725,7 +3725,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                 if col_pista_sim and sim_pista != "TODAS":
                                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
-                                # 2. Filtrar solo misiones con hectáreas válidas
+                                # 2. Filtrar solo filas donde el área fumigada sea válida (Sin multiplicadores fantasma)
                                 col_ha = 'AREA_MAESTRA'
                                 if col_ha in df_sim.columns:
                                     df_sim[col_ha] = df_sim[col_ha].apply(extraer_numero)
@@ -3734,6 +3734,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                 if df_sim.empty:
                                     st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros seleccionados. Intente cambiar la Pista o el Mes.")
                                 else:
+                                    # Blindaje Columna OS
                                     col_os = None
                                     for c in df_sim.columns:
                                         c_upper = str(c).upper().strip()
@@ -3772,12 +3773,13 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        # Limpieza contable
+                                        # Limpieza financiera estricta
                                         tarifa_vuelo = convertir_pesos(row[col_tarifa_vuelo]) if col_tarifa_vuelo in row else 0.0
                                         tarifa_dom = convertir_pesos(row[col_dominical]) if col_dominical in row else 0.0
                                         tarifa_actual_ha = tarifa_vuelo + tarifa_dom
 
                                         if tarifa_actual_ha > 0 and ha_val > 0:
+                                            # Desarmar margen y proyectar
                                             base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
                                             tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
                                             
@@ -3826,10 +3828,74 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         k3.metric("⚖️ Dinero Real en Juego", f"$ {abs(total_diferencia_global):,.0f}".replace(",", "."), delta=f"$ {total_diferencia_global:,.0f}".replace(",", "."), delta_color=color_delta)
 
                                         # =========================================================
-                                        # 🎯 ⚔️ AQUÍ SE INSERTAN LAS PESTAÑAS EN LA INTERFAZ WEB ⚔️ 🎯
+                                        # 📈 INYECCIÓN DEL RADAR GRÁFICO DE NEGOCIACIÓN (HÍBRIDO)
                                         # =========================================================
                                         st.markdown("<br>", unsafe_allow_html=True)
-                                        tab_resumen, tab_detalle = st.tabs(["📊 1. Resumen Macroeconómico (Por Semana)", "📋 2. Desglose Quirúrgico (Por Orden de Servicio)"])
+                                        st.markdown("### 📈 Proyección Visual de Sobrecostos (Semana a Semana)")
+                                        
+                                        import plotly.graph_objects as go
+                                        from plotly.subplots import make_subplots
+                                        
+                                        # Crear gráfico con doble eje Y
+                                        fig_simulador = make_subplots(specs=[[{"secondary_y": True}]])
+                                        
+                                        # Barras Azules (Costo Actual)
+                                        fig_simulador.add_trace(go.Bar(
+                                            name=f'Escenario Actual ({margen_actual}%)', 
+                                            x=df_semanal['SEMANA'].astype(str),
+                                            y=df_semanal['TOTAL ACTUAL ($)'],
+                                            marker_color='#2F75B5',
+                                            text=df_semanal['TOTAL ACTUAL ($)'],
+                                            texttemplate='$ %{text:,.0f}',
+                                            textposition='auto',
+                                            hovertemplate='Semana %{x}<br>Actual: $ %{y:,.0f}<extra></extra>'
+                                        ), secondary_y=False)
+                                        
+                                        # Barras Verdes (Costo Proyectado)
+                                        fig_simulador.add_trace(go.Bar(
+                                            name=f'Proyección ({margen_nuevo}%)', 
+                                            x=df_semanal['SEMANA'].astype(str),
+                                            y=df_semanal['NUEVO TOTAL ($)'],
+                                            marker_color='#548235',
+                                            text=df_semanal['NUEVO TOTAL ($)'],
+                                            texttemplate='$ %{text:,.0f}',
+                                            textposition='auto',
+                                            hovertemplate='Semana %{x}<br>Proyectado: $ %{y:,.0f}<extra></extra>'
+                                        ), secondary_y=False)
+                                        
+                                        # LÍNEA ROJA LETAL (La Diferencia)
+                                        fig_simulador.add_trace(go.Scatter(
+                                            name='Brecha a Negociar ($)', 
+                                            x=df_semanal['SEMANA'].astype(str),
+                                            y=df_semanal['DIFERENCIA ($)'],
+                                            mode='lines+markers+text',
+                                            line=dict(color='#C00000', width=4),
+                                            marker=dict(symbol='diamond', size=10),
+                                            text=df_semanal['DIFERENCIA ($)'],
+                                            texttemplate='+$ %{text:,.0f}',
+                                            textposition='top center',
+                                            textfont=dict(color='#C00000', size=13, family="Arial Black"),
+                                            hovertemplate='Semana %{x}<br>Sobrecosto: $ %{y:,.0f}<extra></extra>'
+                                        ), secondary_y=True)
+                                        
+                                        fig_simulador.update_layout(
+                                            barmode='group', 
+                                            plot_bgcolor='rgba(0,0,0,0)', 
+                                            xaxis_title="Semana Operativa (Corte Sáb-Vie)", 
+                                            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
+                                            margin=dict(t=50, b=20)
+                                        )
+                                        
+                                        fig_simulador.update_yaxes(title_text="Monto Facturado ($ COP)", showgrid=False, secondary_y=False)
+                                        fig_simulador.update_yaxes(title_text="Diferencia ($ COP)", showgrid=False, secondary_y=True)
+                                        
+                                        st.plotly_chart(fig_simulador, use_container_width=True)
+
+                                        # =========================================================
+                                        # 🎯 ⚔️ PESTAÑAS EN LA INTERFAZ WEB CON TÍTULOS TÁCTICOS
+                                        # =========================================================
+                                        st.markdown("<br>", unsafe_allow_html=True)
+                                        tab_resumen, tab_detalle = st.tabs(["📊 1. Matriz Ejecutiva de Proyección Semanal", "📋 2. Radiografía Financiera por Misión (Detalle OS)"])
                                         
                                         with tab_resumen:
                                             st.markdown("#### Matriz Abstracta Semanal (Corte Sáb a Vie)")
@@ -3853,11 +3919,12 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 return ''
                                             st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL DE GALA DE DOS PESTAÑAS REALES ---
+                                        # --- 📥 EXPORTACIÓN EXCEL CON TÍTULOS TÁCTICOS ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
-                                            df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
+                                            # 🎯 Renombramos las pestañas del Excel
+                                            df_semanal.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
+                                            df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
@@ -3865,7 +3932,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             fuente_blanca = Font(color="FFFFFF", bold=True)
 
                                             # Formatear Pestaña 1
-                                            ws_sem = writer.sheets['Resumen_Semanal']
+                                            ws_sem = writer.sheets['Matriz_Ejecutiva']
                                             ws_sem.sheet_view.showGridLines = True
                                             for row in ws_sem.iter_rows(min_row=1, max_row=ws_sem.max_row, min_col=1, max_col=ws_sem.max_column):
                                                 for cell in row:
@@ -3878,7 +3945,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column >= 3: cell.number_format = '"$" #,##0'
 
                                             # Formatear Pestaña 2
-                                            ws_det = writer.sheets['Detalle_OS']
+                                            ws_det = writer.sheets['Radiografia_Misiones']
                                             ws_det.sheet_view.showGridLines = True
                                             for row in ws_det.iter_rows(min_row=1, max_row=ws_det.max_row, min_col=1, max_col=ws_det.max_column):
                                                 for cell in row:
@@ -3898,7 +3965,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME DUAL: RESUMEN + DETALLE (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME DUAL: MATRIZ + RADIOGRAFÍA (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
                                             file_name=f"Auditoria_Tarifas_Completas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
