@@ -3725,12 +3725,13 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                 if col_pista_sim and sim_pista != "TODAS":
                                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
-                                # 2. Filtrar solo filas donde el área fumigada sea válida (Sin multiplicadores fantasma)
+                                # 2. Filtrar solo filas donde el área fumigada sea válida (RESPETANDO DECIMALES)
                                 col_ha = 'AREA_MAESTRA'
                                 if col_ha in df_sim.columns:
-                                    df_sim[col_ha] = df_sim[col_ha].apply(extraer_numero)
+                                    # Forzar la conversión a número real respetando el punto o coma decimal
+                                    df_sim[col_ha] = pd.to_numeric(df_sim[col_ha].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
                                     df_sim = df_sim[df_sim[col_ha] > 0]
-
+                                    
                                 if df_sim.empty:
                                     st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros seleccionados. Intente cambiar la Pista o el Mes.")
                                 else:
