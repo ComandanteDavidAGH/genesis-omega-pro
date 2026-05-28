@@ -3955,10 +3955,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
 
                                             # =======================================================
-                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO BLINDADO
+                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (TÁCTICA FRANCOTIRADOR)
                                             # =======================================================
                                             
-                                            # 1. Crear el Gráfico de Barras (Eje Primario)
                                             chart_bar = BarChart()
                                             chart_bar.type = "col"
                                             chart_bar.style = 10
@@ -3966,37 +3965,22 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
                                             chart_bar.x_axis.title = "Semana Operativa"
                                             chart_bar.height = 15
-                                            chart_bar.width = 26 # 🎯 Más ancho para que los números respiren
+                                            chart_bar.width = 26 
                                             
-                                            # 🎯 BLINDAJE DE ETIQUETAS: Apagar basura visual de Excel
-                                            labels_bar = DataLabelList()
-                                            labels_bar.showVal = True         # Mostrar SOLO el dinero
-                                            labels_bar.showCatName = False    # Ocultar "Semana 19"
-                                            labels_bar.showSerName = False    # Ocultar "NUEVO TOTAL"
-                                            labels_bar.showLegendKey = False  # Ocultar el cuadrito
-                                            labels_bar.showLeaderLines = False
-                                            chart_bar.dataLabels = labels_bar
-                                            
-                                            # Datos para Barras: Columnas C y D
+                                            # 1. Agregamos los datos al gráfico de barras
                                             data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
                                             cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
-                                            
                                             chart_bar.add_data(data_bar, titles_from_data=True)
                                             chart_bar.set_categories(cats)
+                                            
+                                            # 🎯 BLINDAJE FRANCOTIRADOR: Limpiar textos basura SERIE POR SERIE
+                                            for serie in chart_bar.series:
+                                                serie.dLbls = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False)
+                                                
                                             chart_bar.y_axis.crosses = "autoZero"
                                             
-                                            # 2. Crear el Gráfico de Línea (Eje Secundario)
+                                            # 2. Crear el Gráfico de Línea
                                             chart_line = LineChart()
-                                            
-                                            # 🎯 BLINDAJE DE ETIQUETAS PARA LA LÍNEA ROJA
-                                            labels_line = DataLabelList()
-                                            labels_line.showVal = True
-                                            labels_line.showCatName = False
-                                            labels_line.showSerName = False
-                                            labels_line.showLegendKey = False
-                                            chart_line.dataLabels = labels_line
-                                            
-                                            # Datos para Línea: Columna E
                                             data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
                                             chart_line.add_data(data_line, titles_from_data=True)
                                             chart_line.set_categories(cats)
@@ -4005,8 +3989,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_line.y_axis.title = "Diferencia ($ COP)"
                                             chart_line.y_axis.crosses = "max"
                                             
-                                            # Estética de la Línea Letal
+                                            # 🎯 BLINDAJE DE LA LÍNEA ROJA (Limpieza y Estética)
                                             sline = chart_line.series[0]
+                                            sline.dLbls = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False)
+                                            
                                             sline.graphicalProperties.line.solidFill = "C00000"
                                             sline.graphicalProperties.line.width = 35000 
                                             sline.smooth = True 
