@@ -3068,7 +3068,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             elif not fecha_ok and col_u == 'FECHA':
                 renombres[col] = 'FECHA_MAESTRA'
                 fecha_ok = True
-            elif not area_ok and ('FUMIG' in col_u or 'AREA' in col_u or col_u == 'HAS'):
+            # 🛡️ BLINDAJE ANTI-ÁREA BRUTA: Obligamos al escáner a saltarse la palabra "BRUTA"
+            elif not area_ok and ('FUMIG' in col_u or ('AREA' in col_u and 'BRUTA' not in col_u) or col_u == 'HAS'):
                 renombres[col] = 'AREA_MAESTRA'
                 area_ok = True
                 
