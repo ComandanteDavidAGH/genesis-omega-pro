@@ -3931,9 +3931,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                                            from openpyxl.chart import BarChart, LineChart, Reference, Series
+                                            from openpyxl.chart import BarChart, LineChart, Reference
                                             from openpyxl.chart.marker import Marker
-                                            from openpyxl.chart.label import DataLabelList # 🎯 CRÍTICO PARA ETIQUETAS DE DATOS
+                                            from openpyxl.chart.label import DataLabelList
                                             
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
@@ -3955,55 +3955,70 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
 
                                             # =======================================================
-                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (BARRAS + LÍNEA ROJA)
+                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (BLINDAJE TOTAL)
                                             # =======================================================
                                             
-                                            # 1. Crear el Gráfico de Barras (Eje Primario)
                                             chart_bar = BarChart()
                                             chart_bar.type = "col"
                                             chart_bar.style = 10
                                             chart_bar.title = f"Proyección Financiera - {sim_pista}"
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
+                                            
+                                            # 🎯 BLINDAJE EJE X: Forzar Semanas como texto estricto
                                             chart_bar.x_axis.title = "Semana Operativa"
-                                            chart_bar.height = 14
-                                            chart_bar.width = 24
+                                            chart_bar.x_axis.type = "str"
+                                            chart_bar.x_axis.tickLblSkip = 1 # Obligar a mostrar TODOS los textos
+                                            chart_bar.x_axis.tickLblPos = "low"
                                             
-                                            # 🎯 ACTIVAR LOS NÚMEROS SOBRE LAS BARRAS
-                                            chart_bar.dataLabels = DataLabelList()
-                                            chart_bar.dataLabels.showVal = True
+                                            # 🎯 Ensanchar para que los números no choquen
+                                            chart_bar.height = 15
+                                            chart_bar.width = 28 
                                             
-                                            # Datos para Barras: Columnas C y D
+                                            # Cargar Datos
                                             data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
                                             cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
                                             chart_bar.add_data(data_bar, titles_from_data=True)
                                             chart_bar.set_categories(cats)
+                                            
+                                            # 🎯 CIRUGÍA DE ETIQUETAS: Apagar basura, dejar solo dinero y poner ARRIBA
+                                            for serie in chart_bar.series:
+                                                serie.dLbls = DataLabelList()
+                                                serie.dLbls.showVal = True
+                                                serie.dLbls.showCatName = False
+                                                serie.dLbls.showSerName = False
+                                                serie.dLbls.showPercent = False
+                                                serie.dLbls.showLegendKey = False
+                                                serie.dLbls.position = "outEnd" # Coloca el número FLOTANDO arriba de la barra
+                                                
                                             chart_bar.y_axis.crosses = "autoZero"
                                             
-                                            # 2. Crear el Gráfico de Línea (Eje Secundario)
+                                            # --- GRÁFICO DE LÍNEA SECUNDARIA ---
                                             chart_line = LineChart()
-                                            
-                                            # 🎯 ACTIVAR LOS NÚMEROS SOBRE LA LÍNEA ROJA
-                                            chart_line.dataLabels = DataLabelList()
-                                            chart_line.dataLabels.showVal = True
-                                            
                                             data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
                                             chart_line.add_data(data_line, titles_from_data=True)
-                                            chart_line.set_categories(cats) # El mismo eje X
+                                            chart_line.set_categories(cats)
                                             
                                             chart_line.y_axis.axId = 200
                                             chart_line.y_axis.title = "Diferencia ($ COP)"
                                             chart_line.y_axis.crosses = "max"
                                             
-                                            # Estética de la Línea Letal
+                                            # 🎯 BLINDAJE LÍNEA ROJA
                                             sline = chart_line.series[0]
+                                            sline.dLbls = DataLabelList()
+                                            sline.dLbls.showVal = True
+                                            sline.dLbls.showCatName = False
+                                            sline.dLbls.showSerName = False
+                                            sline.dLbls.showPercent = False
+                                            sline.dLbls.showLegendKey = False
+                                            sline.dLbls.position = "t" # Arriba del punto
+                                            
                                             sline.graphicalProperties.line.solidFill = "C00000"
-                                            sline.graphicalProperties.line.width = 35000 # Grosor de la línea
-                                            sline.smooth = True # 🎯 LÍNEA CURVA (Efecto Aerodinámico NASA)
+                                            sline.graphicalProperties.line.width = 30000 
+                                            sline.smooth = True 
                                             sline.marker = Marker('diamond')
                                             sline.marker.graphicalProperties.solidFill = "C00000"
                                             sline.marker.graphicalProperties.line.solidFill = "C00000"
                                             
-                                            # 3. FUSIÓN TÁCTICA
                                             chart_bar += chart_line
                                             ws_sem.add_chart(chart_bar, "G2")
 
@@ -4031,9 +4046,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME DUAL AUTOMATIZADO CON GRÁFICA HÍBRIDA (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME DUAL CON GRÁFICO HÍBRIDO NATIVO (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
-                                            file_name=f"Auditoria_Tarifas_Completas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
+                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                             type="primary",
                                             use_container_width=True
