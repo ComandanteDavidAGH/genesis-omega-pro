@@ -3919,21 +3919,25 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 return ''
                                             st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL CON TÍTULOS TÁCTICOS ---
+                                        # --- 📥 EXPORTACIÓN EXCEL CON TÍTULOS TÁCTICOS E INYECTOR DE GRÁFICOS ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            # 🎯 Renombramos las pestañas del Excel
+                                            # 🎯 Renombramos las pestañas del Excel de Gala
                                             df_semanal.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
                                             df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                                            from openpyxl.chart import BarChart, Reference
+                                            
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                                             fuente_blanca = Font(color="FFFFFF", bold=True)
 
-                                            # Formatear Pestaña 1
+                                            # --- FORMATEAR PESTAÑA 1: MATRIZ EJECUTATIVA SEMANAL ---
                                             ws_sem = writer.sheets['Matriz_Ejecutiva']
                                             ws_sem.sheet_view.showGridLines = True
+                                            ws_sem.row_dimensions[1].height = 25
+                                            
                                             for row in ws_sem.iter_rows(min_row=1, max_row=ws_sem.max_row, min_col=1, max_col=ws_sem.max_column):
                                                 for cell in row:
                                                     cell.border = borde_pro
@@ -3941,12 +3945,35 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        if cell.column == 2: cell.number_format = '#,##0.00'
-                                                        if cell.column >= 3: cell.number_format = '"$" #,##0'
+                                                        if cell.column == 2: cell.number_format = '#,##0.00' # Hectáreas
+                                                        if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
 
-                                            # Formatear Pestaña 2
+                                            # 📊 INYECCIÓN DEL GRÁFICO NATIVO EN EXCEL (Resumen Semanal)
+                                            chart_xl = BarChart()
+                                            chart_xl.type = "col"
+                                            chart_xl.style = 10
+                                            chart_xl.title = f"Comparativo de Costos - Mayo ({sim_pista})"
+                                            chart_xl.y_axis.title = "Monto ($ COP)"
+                                            chart_xl.x_axis.title = "Semana Operativa"
+                                            chart_xl.height = 14
+                                            chart_xl.width = 22
+                                            
+                                            # Referencia de datos: Columnas C (Actual) y D (Proyectado) desde Fila 1 a la última
+                                            data_xl = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
+                                            # Referencia de categorías: Columna A (SEMANA)
+                                            cats_xl = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
+                                            
+                                            chart_xl.add_data(data_xl, titles_from_data=True)
+                                            chart_xl.set_categories(cats_xl)
+                                            
+                                            # Ubicar el gráfico en la celda G2 para dejar espacio libre después de la tabla
+                                            ws_sem.add_chart(chart_xl, "G2")
+
+                                            # --- FORMATEAR PESTAÑA 2: RADIOGRAFÍA DE MISIONES DETALLADA ---
                                             ws_det = writer.sheets['Radiografia_Misiones']
                                             ws_det.sheet_view.showGridLines = True
+                                            ws_det.row_dimensions[1].height = 25
+                                            
                                             for row in ws_det.iter_rows(min_row=1, max_row=ws_det.max_row, min_col=1, max_col=ws_det.max_column):
                                                 for cell in row:
                                                     cell.border = borde_pro
@@ -3954,9 +3981,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        if cell.column == 6: cell.number_format = '#,##0.00'
-                                                        if cell.column >= 7: cell.number_format = '"$" #,##0'
+                                                        if cell.column == 6: cell.number_format = '#,##0.00' # Hectáreas
+                                                        if cell.column >= 7: cell.number_format = '"$" #,##0' # Tarifas y Totales
 
+                                            # Auto-ajustar el ancho de las columnas en ambas hojas
                                             for sheet in [ws_sem, ws_det]:
                                                 for col in sheet.columns:
                                                     max_length = max(len(str(cell.value or '')) for cell in col)
@@ -3965,7 +3993,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME DUAL: MATRIZ + RADIOGRAFÍA (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME DUAL AUTOMATIZADO CON GRÁFICAS (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
                                             file_name=f"Auditoria_Tarifas_Completas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
