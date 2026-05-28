@@ -3683,6 +3683,169 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         st.error(f"🚨 Error en el cruce de históricos: {e}")
                         else:
                             st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
+# =====================================================================
+                        # --- 🤝 NUEVO: SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
+                        # =====================================================================
+                        st.markdown("<hr>", unsafe_allow_html=True)
+                        st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
+                        st.info("💡 Utilice este radar para aplicar ingeniería inversa a las facturas actuales, extraer el costo neto del proveedor y proyectar nuevos escenarios.")
+
+                        # Filtros del simulador
+                        c_sim1, c_sim2, c_sim3 = st.columns(3)
+
+                        # Detectar Pistas disponibles
+                        col_pista_sim = 'PISTA' if 'PISTA' in super_base_bi.columns else ('ALMACEN' if 'ALMACEN' in super_base_bi.columns else None)
+                        if col_pista_sim:
+                            pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist())
+                        else:
+                            pistas_sim_disp = ["TODAS"]
+
+                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio")
+                        sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) # Mayo por defecto
+                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista")
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
+                        margen_actual = c_sim_m1.number_input("📉 Margen Actual Aplicado (%)", value=8.0, step=0.5, help="Ej: 8.0 para indicar el 8% actual.")
+                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, help="Ej: 11.0 para la nueva propuesta.")
+                        
+                        with c_sim_m3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True)
+
+                        if btn_simular:
+                            with st.spinner("Desensamblando costos y calculando proyecciones..."):
+                                df_sim = super_base_bi.copy()
+
+                                # Aplicar filtros de tiempo y pista
+                                df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
+                                df_sim = df_sim[df_sim['MES'] == int(sim_mes)]
+                                if col_pista_sim and sim_pista != "TODAS":
+                                    df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
+
+                                # Filtrar solo misiones de avión
+                                if 'MODELO' in df_sim.columns:
+                                    df_sim = df_sim[df_sim['MODELO'].astype(str).str.upper().str.contains("AVION|AVIÓN", na=False)]
+
+                                if df_sim.empty:
+                                    st.warning("⚠️ No se encontraron Órdenes de Servicio de avión para los parámetros seleccionados.")
+                                else:
+                                    # Extraer columnas clave
+                                    col_os = next((c for c in df_sim.columns if c in ["OS", "ORDEN", "ORDEN DE SERVICIO"]), None)
+                                    col_finca = 'FINCA_MAESTRA'
+                                    col_ha = 'AREA_MAESTRA'
+
+                                    # Identificar costo total facturado (Avión)
+                                    col_costo_avion = next((c for c in df_sim.columns if "COSTO_AVION" in c or "COSTO AVION" in c), 'COSTO_MAESTRO')
+
+                                    matriz_simulacion = []
+
+                                    for _, row in df_sim.iterrows():
+                                        os_val = str(row[col_os]) if col_os else "S/N"
+                                        if os_val.strip() == "" or os_val == "nan": continue
+
+                                        finca_val = str(row[col_finca])
+                                        ha_val = convertir_pesos(row[col_ha]) if col_ha in row else 0.0
+
+                                        # Obtener Costo Total Actual (Total Avión de la OS)
+                                        costo_total_actual = convertir_pesos(row[col_costo_avion])
+
+                                        if costo_total_actual > 0 and ha_val > 0:
+                                            # Ingeniería inversa: Quitar el margen actual para hallar el NETO PURO
+                                            costo_neto_puro = costo_total_actual / (1 + (margen_actual / 100))
+
+                                            # Proyección: Aplicar nuevo margen
+                                            costo_simulado = costo_neto_puro * (1 + (margen_nuevo / 100))
+
+                                            # Diferencia por OS
+                                            diferencia_total = costo_simulado - costo_total_actual
+
+                                            matriz_simulacion.append({
+                                                "Nº OS": os_val,
+                                                "FINCA": finca_val,
+                                                "HECTÁREAS": ha_val,
+                                                "COSTO NETO (Sin Margen)": costo_neto_puro,
+                                                f"FACTURADO ACTUAL ({margen_actual}%)": costo_total_actual,
+                                                f"PROYECCIÓN ({margen_nuevo}%)": costo_simulado,
+                                                "DIFERENCIA ($)": diferencia_total
+                                            })
+
+                                    if not matriz_simulacion:
+                                        st.warning("⚠️ No se pudieron calcular costos para estas OS. Verifique que tengan valor facturado en SAP.")
+                                    else:
+                                        df_resultados = pd.DataFrame(matriz_simulacion)
+
+                                        # --- 🏆 MÉTRICAS DE IMPACTO ---
+                                        total_actual = df_resultados[f"FACTURADO ACTUAL ({margen_actual}%)"].sum()
+                                        total_simulado = df_resultados[f"PROYECCIÓN ({margen_nuevo}%)"].sum()
+                                        total_diferencia = df_resultados["DIFERENCIA ($)"].sum()
+
+                                        st.markdown("### 🎯 Impacto Financiero Global")
+                                        k1, k2, k3 = st.columns(3)
+                                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {total_actual:,.0f}")
+                                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {total_simulado:,.0f}")
+                                        
+                                        color_delta = "normal" if total_diferencia > 0 else "inverse"
+                                        k3.metric("⚖️ Diferencia en Juego", f"$ {abs(total_diferencia):,.0f}", delta=f"$ {total_diferencia:,.0f}", delta_color=color_delta)
+
+                                        # --- 📋 MATRIZ DETALLADA ---
+                                        st.markdown("#### 📋 Desglose Quirúrgico por Orden de Servicio (OS)")
+
+                                        # Formatear a moneda para la vista web
+                                        df_vista = df_resultados.copy()
+                                        for col in ["COSTO NETO (Sin Margen)", f"FACTURADO ACTUAL ({margen_actual}%)", f"PROYECCIÓN ({margen_nuevo}%)", "DIFERENCIA ($)"]:
+                                            df_vista[col] = df_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
+
+                                        # Pintura táctica para diferencias
+                                        def colorear_diferencia(val):
+                                            if isinstance(val, str) and "-" in val: return 'color: #721c24; background-color: #f8d7da; font-weight: bold;'
+                                            elif isinstance(val, str) and "$" in val: return 'color: #155724; background-color: #d4edda; font-weight: bold;'
+                                            return ''
+
+                                        st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
+
+                                        # --- 📥 EXPORTACIÓN EXCEL DE GALA ---
+                                        buffer_neg = io.BytesIO()
+                                        with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
+                                            df_resultados.to_excel(writer, sheet_name='Simulador_Tarifas', index=False)
+                                            worksheet = writer.sheets['Simulador_Tarifas']
+
+                                            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                                            borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
+                                            fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                                            fuente_blanca = Font(color="FFFFFF", bold=True)
+
+                                            for row in worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column):
+                                                for cell in row:
+                                                    cell.border = borde_pro
+                                                    if cell.row == 1:
+                                                        cell.fill = fondo_navy
+                                                        cell.font = fuente_blanca
+                                                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                                                    else:
+                                                        if cell.column >= 4: # Formato moneda contable
+                                                            cell.number_format = '"$" #,##0.00'
+
+                                            # Auto-ajuste de columnas
+                                            for col in worksheet.columns:
+                                                max_length = 0
+                                                column = col[0].column_letter
+                                                for cell in col:
+                                                    try:
+                                                        if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                                                    except: pass
+                                                worksheet.column_dimensions[column].width = min(max_length + 4, 30)
+
+                                        st.markdown("<br>", unsafe_allow_html=True)
+                                        st.download_button(
+                                            label="📥 DESCARGAR INFORME PARA MESA DE NEGOCIACIÓN (EXCEL OFICIAL)",
+                                            data=buffer_neg.getvalue(),
+                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
+                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            type="primary",
+                                            use_container_width=True
+                                        )
+                    
                     else:
                         st.error("❌ **ERROR DE RADAR:** No se detectó la columna 'FECHA' unificada.")
                 else:
