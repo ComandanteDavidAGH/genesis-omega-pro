@@ -3963,7 +3963,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.style = 10
                                             chart_bar.title = f"Proyección Financiera - {sim_pista}"
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
+                                            
+                                            # 🎯 BLINDAJE DEL EJE X: Forzar a Excel a mostrar "Semana 18", "Semana 19", etc.
                                             chart_bar.x_axis.title = "Semana Operativa"
+                                            chart_bar.x_axis.tickLblPos = "low" # <--- ORDEN DIRECTA PARA NO OCULTAR LAS SEMANAS
+                                            
                                             chart_bar.height = 15
                                             chart_bar.width = 26 
                                             
