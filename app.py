@@ -3922,11 +3922,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         # --- 📥 EXPORTACIÓN EXCEL CON GRÁFICO HÍBRIDO (NIVEL NASA) ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            # 🎯 TRUCO NASA: Convertir la semana a texto para obligar a Excel a mostrar el eje X
+                                            # 🎯 Convertir a texto puro para obligar a Excel
                                             df_excel_sem = df_semanal.copy()
                                             df_excel_sem['SEMANA'] = "Semana " + df_excel_sem['SEMANA'].astype(str)
 
-                                            # Renombramos las pestañas del Excel
                                             df_excel_sem.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
                                             df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
@@ -3939,7 +3938,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                                             fuente_blanca = Font(color="FFFFFF", bold=True)
 
-                                            # --- FORMATEAR PESTAÑA 1: MATRIZ EJECUTATIVA SEMANAL ---
                                             ws_sem = writer.sheets['Matriz_Ejecutiva']
                                             ws_sem.sheet_view.showGridLines = True
                                             ws_sem.row_dimensions[1].height = 25
@@ -3951,11 +3949,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        if cell.column == 2: cell.number_format = '#,##0.00' # Hectáreas
-                                                        if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
+                                                        if cell.column == 2: cell.number_format = '#,##0.00'
+                                                        if cell.column >= 3: cell.number_format = '"$" #,##0'
 
                                             # =======================================================
-                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (BLINDAJE TOTAL)
+                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (SIN CONFLICTO DE EJES)
                                             # =======================================================
                                             
                                             chart_bar = BarChart()
@@ -3964,54 +3962,34 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.title = f"Proyección Financiera - {sim_pista}"
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
                                             
-                                            # 🎯 BLINDAJE EJE X: Forzar Semanas como texto estricto
+                                            # 🎯 BLINDAJE EJE X
                                             chart_bar.x_axis.title = "Semana Operativa"
-                                            chart_bar.x_axis.type = "str"
-                                            chart_bar.x_axis.tickLblSkip = 1 # Obligar a mostrar TODOS los textos
-                                            chart_bar.x_axis.tickLblPos = "low"
+                                            chart_bar.x_axis.delete = False # Prohibir a Excel borrarlo
                                             
-                                            # 🎯 Ensanchar para que los números no choquen
                                             chart_bar.height = 15
                                             chart_bar.width = 28 
                                             
-                                            # Cargar Datos
                                             data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
                                             cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
                                             chart_bar.add_data(data_bar, titles_from_data=True)
                                             chart_bar.set_categories(cats)
                                             
-                                            # 🎯 CIRUGÍA DE ETIQUETAS: Apagar basura, dejar solo dinero y poner ARRIBA
                                             for serie in chart_bar.series:
-                                                serie.dLbls = DataLabelList()
-                                                serie.dLbls.showVal = True
-                                                serie.dLbls.showCatName = False
-                                                serie.dLbls.showSerName = False
-                                                serie.dLbls.showPercent = False
-                                                serie.dLbls.showLegendKey = False
-                                                serie.dLbls.position = "outEnd" # Coloca el número FLOTANDO arriba de la barra
+                                                serie.dLbls = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False, position="outEnd")
                                                 
                                             chart_bar.y_axis.crosses = "autoZero"
                                             
-                                            # --- GRÁFICO DE LÍNEA SECUNDARIA ---
                                             chart_line = LineChart()
                                             data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
                                             chart_line.add_data(data_line, titles_from_data=True)
-                                            chart_line.set_categories(cats)
+                                            # 🎯 SE ELIMINÓ chart_line.set_categories(cats) PARA EVITAR EL CONFLICTO EN EXCEL
                                             
                                             chart_line.y_axis.axId = 200
                                             chart_line.y_axis.title = "Diferencia ($ COP)"
                                             chart_line.y_axis.crosses = "max"
                                             
-                                            # 🎯 BLINDAJE LÍNEA ROJA
                                             sline = chart_line.series[0]
-                                            sline.dLbls = DataLabelList()
-                                            sline.dLbls.showVal = True
-                                            sline.dLbls.showCatName = False
-                                            sline.dLbls.showSerName = False
-                                            sline.dLbls.showPercent = False
-                                            sline.dLbls.showLegendKey = False
-                                            sline.dLbls.position = "t" # Arriba del punto
-                                            
+                                            sline.dLbls = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False, position="t")
                                             sline.graphicalProperties.line.solidFill = "C00000"
                                             sline.graphicalProperties.line.width = 30000 
                                             sline.smooth = True 
@@ -4022,7 +4000,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar += chart_line
                                             ws_sem.add_chart(chart_bar, "G2")
 
-                                            # --- FORMATEAR PESTAÑA 2: RADIOGRAFÍA DE MISIONES DETALLADA ---
                                             ws_det = writer.sheets['Radiografia_Misiones']
                                             ws_det.sheet_view.showGridLines = True
                                             ws_det.row_dimensions[1].height = 25
@@ -4034,10 +4011,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        if cell.column == 6: cell.number_format = '#,##0.00' # Hectáreas
-                                                        if cell.column >= 7: cell.number_format = '"$" #,##0' # Tarifas
+                                                        if cell.column == 6: cell.number_format = '#,##0.00'
+                                                        if cell.column >= 7: cell.number_format = '"$" #,##0'
 
-                                            # Auto-ajustar columnas
                                             for sheet in [ws_sem, ws_det]:
                                                 for col in sheet.columns:
                                                     max_length = max(len(str(cell.value or '')) for cell in col)
