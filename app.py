@@ -3704,7 +3704,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                         sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v6")
                         sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) # Mayo por defecto
-                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistes_sim_disp if 'pistes_sim_disp' in locals() else pitches_disp if 'pitches_disp' in locals() else pistas_sim_disp, key="sim_pista_v6")
+                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v6")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
