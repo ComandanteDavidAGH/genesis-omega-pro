@@ -3746,10 +3746,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                     col_finca = 'FINCA_MAESTRA'
 
-                                    # Detectar columnas de tarifa
-                                    col_tarifa_vuelo = next((c for c in df_sim.columns if "COSTO AVION" in str(c).upper() and "/" in str(c).upper()), None)
+                                    # 🎯 CIRUGÍA 1: Detectar estrictamente la TARIFA y evadir los Costos Internos
+                                    col_tarifa_vuelo = None
+                                    for c in df_sim.columns:
+                                        if "TARIFA" in str(c).upper():
+                                            col_tarifa_vuelo = c
+                                            break
+                                            
                                     if not col_tarifa_vuelo:
-                                        col_tarifa_vuelo = next((c for c in df_sim.columns if "TARIFA" in str(c).upper()), 'COSTO_MAESTRO')
+                                        col_tarifa_vuelo = next((c for c in df_sim.columns if "VALOR" in str(c).upper() and "HA" in str(c).upper()), 'COSTO_MAESTRO')
 
                                     col_dominical = next((c for c in df_sim.columns if "DOMINIC" in str(c).upper()), None)
 
@@ -3764,7 +3769,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         ha_val = float(row[col_ha])
                                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
                                         
-                                        # Captura de fecha y cálculo de semana (Corte Sábado a Viernes)
+                                        # Captura de fecha y cálculo de semana
                                         if pd.notna(row['FECHA_DT']):
                                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
                                             semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
@@ -3773,18 +3778,29 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        # Limpieza contable
                                         tarifa_vuelo = convertir_pesos(row[col_tarifa_vuelo]) if col_tarifa_vuelo in row else 0.0
                                         tarifa_dom = convertir_pesos(row[col_dominical]) if col_dominical in row else 0.0
                                         tarifa_actual_ha = tarifa_vuelo + tarifa_dom
 
                                         if tarifa_actual_ha > 0 and ha_val > 0:
+                                            # Desinflar y Proyectar
                                             base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
                                             tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
                                             
-                                            total_actual = round(tarifa_actual_ha * ha_val, 0)
-                                            total_nuevo = round(tarifa_nueva_ha * ha_val, 0)
-                                            diferencia_total = total_nuevo - total_actual
+                                            # 🎯 CIRUGÍA 2: LA MATEMÁTICA EXACTA DEL COMANDANTE
+                                            # 1. Redondeamos las tarifas para que queden enteras (como en Excel)
+                                            t_act_redondeada = round(tarifa_actual_ha, 0)
+                                            t_nue_redondeada = round(tarifa_nueva_ha, 0)
+                                            
+                                            # 2. LA RESTA DIRECTA (Tarifa Nueva - Tarifa Vieja)
+                                            resta_tarifas = t_nue_redondeada - t_act_redondeada
+                                            
+                                            # 3. MULTIPLICAR LA RESTA POR HECTÁREAS
+                                            diferencia_total = round(resta_tarifas * ha_val, 0)
+                                            
+                                            # 4. Totales finales
+                                            total_actual = round(t_act_redondeada * ha_val, 0)
+                                            total_nuevo = round(t_nue_redondeada * ha_val, 0)
 
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
@@ -3793,14 +3809,12 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
-                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": round(tarifa_actual_ha, 0),
-                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": round(tarifa_nueva_ha, 0),
+                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_redondeada,
+                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_redondeada,
                                                 "TOTAL ACTUAL ($)": total_actual,
                                                 "NUEVO TOTAL ($)": total_nuevo,
                                                 "DIFERENCIA ($)": diferencia_total
                                             })
-
-                                    if not matriz_simulacion:
                                         st.warning("⚠️ Se encontraron misiones, pero sus valores de tarifa están en $0.")
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
