@@ -3762,10 +3762,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         ha_val = float(row[col_ha])
                                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
                                         
-                                        # 🎯 CAPTURA DE FECHA Y CÁLCULO DE SEMANA (Corte Sábado a Viernes)
+                                        # Captura de fecha y cálculo de semana (Corte Sábado a Viernes)
                                         if pd.notna(row['FECHA_DT']):
                                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
-                                            # Truco Táctico: Sumamos 2 días. El Sábado (día 5) pasa a ser Lunes y salta a la nueva semana ISO.
                                             semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
                                         else:
                                             fecha_val = str(row['FECHA_MAESTRA'])
@@ -3779,12 +3778,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         tarifa_actual_ha = tarifa_vuelo + tarifa_dom
 
                                         if tarifa_actual_ha > 0 and ha_val > 0:
-                                            # Ingeniería inversa: Extraer costo base puro
                                             base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
-                                            # Aplicar la nueva propuesta simulación
                                             tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
                                             
-                                            # Totales contables redondeados estilo SAP
                                             total_actual = round(tarifa_actual_ha * ha_val, 0)
                                             total_nuevo = round(tarifa_nueva_ha * ha_val, 0)
                                             diferencia_total = total_nuevo - total_actual
@@ -3792,7 +3788,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
                                                 "FECHA": fecha_val,
-                                                "SEMANA": semana_val, # 🎯 NUEVA COLUMNA INYECTADA
+                                                "SEMANA": int(semana_val) if str(semana_val).isdigit() else semana_val,
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
@@ -3808,6 +3804,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
 
+                                        # --- 📊 NUEVA EXTRACTOR: CONSOLIDADO MACRO POR SEMANA ---
+                                        df_semanal = df_resultados.groupby("SEMANA").agg({
+                                            "HECTÁREAS": "sum",
+                                            "TOTAL ACTUAL ($)": "sum",
+                                            "NUEVO TOTAL ($)": "sum",
+                                            "DIFERENCIA ($)": "sum"
+                                        }).reset_index()
+                                        df_semanal = df_semanal.sort_values(by="SEMANA").reset_index(drop=True)
+
                                         # --- 🏆 KPIs DE IMPACTO GLOBAL ---
                                         total_actual_global = df_resultados["TOTAL ACTUAL ($)"].sum()
                                         total_simulado_global = df_resultados["NUEVO TOTAL ($)"].sum()
@@ -3821,9 +3826,17 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         color_delta = "normal" if total_diferencia_global > 0 else "inverse"
                                         k3.metric("⚖️ Dinero Real en Juego", f"$ {abs(total_diferencia_global):,.0f}".replace(",", "."), delta=f"$ {total_diferencia_global:,.0f}".replace(",", "."), delta_color=color_delta)
 
-                                        # --- 📋 MATRIZ DETALLADA EN WEB ---
-                                        st.markdown("#### 📋 Análisis por Orden de Servicio (OS) de Avión")
+                                        # --- 📊 DESPLIEGUE VISUAL 1: TABLA RESUMIDA POR SEMANA ---
+                                        st.markdown("#### 📊 Resumen Macroeconómico por Semana (Corte Sáb a Vie)")
+                                        df_sem_vista = df_semanal.copy()
+                                        df_sem_vista["HECTÁREAS"] = df_sem_vista["HECTÁREAS"].map("{:,.2f}".format)
+                                        for col in ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]:
+                                            df_sem_vista[col] = df_sem_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
+                                        
+                                        st.dataframe(df_sem_vista, use_container_width=True, hide_index=True)
 
+                                        # --- 📋 DESPLIEGUE VISUAL 2: TABLA DETALLADA POR OS ---
+                                        st.markdown("#### 📋 Desglose Quirúrgico por Orden de Servicio (OS)")
                                         df_vista = df_resultados.copy()
                                         df_vista["HECTÁREAS"] = df_vista["HECTÁREAS"].map("{:,.2f}".format)
                                         columnas_moneda = [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]
@@ -3838,38 +3851,54 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL DE GALA ---
+                                        # --- 📥 EXPORTACIÓN EXCEL DE GALA DE DOS PESTAÑAS ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            df_resultados.to_excel(writer, sheet_name='Simulador_Tarifas', index=False)
-                                            worksheet = writer.sheets['Simulador_Tarifas']
-
+                                            # Inyectar las dos matrices
+                                            df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
+                                            df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
+                                            
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                                             fuente_blanca = Font(color="FFFFFF", bold=True)
 
-                                            for row in worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column):
+                                            # Formatear Pestaña 1: Resumen Semanal
+                                            ws_sem = writer.sheets['Resumen_Semanal']
+                                            for row in ws_sem.iter_rows(min_row=1, max_row=ws_sem.max_row, min_col=1, max_col=ws_sem.max_column):
                                                 for cell in row:
                                                     cell.border = borde_pro
                                                     if cell.row == 1:
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        # 🎯 AJUSTE DE COLUMNAS EXCEL DEBIDO A LA NUEVA COLUMNA DE SEMANA
+                                                        if cell.column == 2: cell.number_format = '#,##0.00' # Hectáreas
+                                                        if cell.column >= 3: cell.number_format = '"$" #,##0' # Dinero
+
+                                            # Formatear Pestaña 2: Detalle OS
+                                            ws_det = writer.sheets['Detalle_OS']
+                                            for row in ws_det.iter_rows(min_row=1, max_row=ws_det.max_row, min_col=1, max_col=ws_det.max_column):
+                                                for cell in row:
+                                                    cell.border = borde_pro
+                                                    if cell.row == 1:
+                                                        cell.fill = fondo_navy; cell.font = fuente_blanca
+                                                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                                                    else:
                                                         if cell.column == 6: cell.number_format = '#,##0.00' # Columna F: Hectáreas
                                                         if cell.column >= 7: cell.number_format = '"$" #,##0' # Columna G en adelante: Monedas
 
-                                            for col in worksheet.columns:
-                                                max_length = max(len(str(cell.value or '')) for cell in col)
-                                                column = col[0].column_letter
-                                                worksheet.column_dimensions[column].width = min(max_length + 4, 32)
+                                            # Auto-ajustar ambas hojas
+                                            for sheet in [ws_sem, ws_det]:
+                                                for col in sheet.columns:
+                                                    max_length = max(len(str(cell.value or '')) for cell in col)
+                                                    column = col[0].column_letter
+                                                    sheet.column_dimensions[column].width = min(max_length + 4, 32)
 
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME CON FECHAS Y SEMANAS (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME DUAL: RESUMEN + DETALLE (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
-                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
+                                            file_name=f"Auditoria_Tarifas_Completas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                             type="primary",
                                             use_container_width=True
