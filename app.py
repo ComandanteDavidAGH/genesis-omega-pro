@@ -3966,35 +3966,41 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
                                             chart_bar.x_axis.title = "Semana Operativa"
                                             chart_bar.height = 15
-                                            chart_bar.width = 24
+                                            chart_bar.width = 26 # 🎯 Más ancho para que los números respiren
                                             
-                                            # 🎯 Mostrar valores en las barras (Etiquetas Automáticas)
-                                            chart_bar.dataLabels = DataLabelList()
-                                            chart_bar.dataLabels.showVal = True
+                                            # 🎯 BLINDAJE DE ETIQUETAS: Apagar basura visual de Excel
+                                            labels_bar = DataLabelList()
+                                            labels_bar.showVal = True         # Mostrar SOLO el dinero
+                                            labels_bar.showCatName = False    # Ocultar "Semana 19"
+                                            labels_bar.showSerName = False    # Ocultar "NUEVO TOTAL"
+                                            labels_bar.showLegendKey = False  # Ocultar el cuadrito
+                                            labels_bar.showLeaderLines = False
+                                            chart_bar.dataLabels = labels_bar
                                             
                                             # Datos para Barras: Columnas C y D
                                             data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
-                                            # 🎯 REFERENCIA DEL EJE X (Las semanas forzadas como texto)
                                             cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
                                             
                                             chart_bar.add_data(data_bar, titles_from_data=True)
                                             chart_bar.set_categories(cats)
-                                            # 🎯 Anclaje del eje primario para no pisar el secundario
                                             chart_bar.y_axis.crosses = "autoZero"
                                             
                                             # 2. Crear el Gráfico de Línea (Eje Secundario)
                                             chart_line = LineChart()
                                             
-                                            # Mostrar valores en la línea (Etiquetas Automáticas)
-                                            chart_line.dataLabels = DataLabelList()
-                                            chart_line.dataLabels.showVal = True
+                                            # 🎯 BLINDAJE DE ETIQUETAS PARA LA LÍNEA ROJA
+                                            labels_line = DataLabelList()
+                                            labels_line.showVal = True
+                                            labels_line.showCatName = False
+                                            labels_line.showSerName = False
+                                            labels_line.showLegendKey = False
+                                            chart_line.dataLabels = labels_line
                                             
                                             # Datos para Línea: Columna E
                                             data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
                                             chart_line.add_data(data_line, titles_from_data=True)
-                                            chart_line.set_categories(cats) # El mismo eje X
+                                            chart_line.set_categories(cats)
                                             
-                                            # 🎯 BLINDAJE ANTI-CAÍDA: Forzar el eje secundario
                                             chart_line.y_axis.axId = 200
                                             chart_line.y_axis.title = "Diferencia ($ COP)"
                                             chart_line.y_axis.crosses = "max"
@@ -4003,7 +4009,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             sline = chart_line.series[0]
                                             sline.graphicalProperties.line.solidFill = "C00000"
                                             sline.graphicalProperties.line.width = 35000 
-                                            sline.smooth = True # Línea curva aerodinámica
+                                            sline.smooth = True 
                                             sline.marker = Marker('diamond')
                                             sline.marker.graphicalProperties.solidFill = "C00000"
                                             sline.marker.graphicalProperties.line.solidFill = "C00000"
