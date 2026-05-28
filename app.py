@@ -3922,7 +3922,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         # --- 📥 EXPORTACIÓN EXCEL CON GRÁFICO HÍBRIDO (NIVEL NASA) ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
-                                            # 🎯 Convertir a texto puro para obligar a Excel
+                                            # 🎯 TRUCO NASA: Convertir la semana a texto
                                             df_excel_sem = df_semanal.copy()
                                             df_excel_sem['SEMANA'] = "Semana " + df_excel_sem['SEMANA'].astype(str)
 
@@ -3953,7 +3953,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column >= 3: cell.number_format = '"$" #,##0'
 
                                             # =======================================================
-                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (SIN CONFLICTO DE EJES)
+                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (CORRECCIÓN CRÍTICA)
                                             # =======================================================
                                             
                                             chart_bar = BarChart()
@@ -3962,9 +3962,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.title = f"Proyección Financiera - {sim_pista}"
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
                                             
-                                            # 🎯 BLINDAJE EJE X
+                                            # BLINDAJE EJE X
                                             chart_bar.x_axis.title = "Semana Operativa"
-                                            chart_bar.x_axis.delete = False # Prohibir a Excel borrarlo
+                                            chart_bar.x_axis.tickLblPos = "low"
                                             
                                             chart_bar.height = 15
                                             chart_bar.width = 28 
@@ -3974,22 +3974,28 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.add_data(data_bar, titles_from_data=True)
                                             chart_bar.set_categories(cats)
                                             
+                                            # 🎯 CORRECCIÓN DEL ERROR: Usar dLblPos en lugar de 'position'
                                             for serie in chart_bar.series:
-                                                serie.dLbls = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False, position="outEnd")
+                                                labels = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False)
+                                                labels.dLblPos = "outEnd" # Ordena que quede flotando arriba
+                                                serie.dLbls = labels
                                                 
                                             chart_bar.y_axis.crosses = "autoZero"
                                             
                                             chart_line = LineChart()
                                             data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
                                             chart_line.add_data(data_line, titles_from_data=True)
-                                            # 🎯 SE ELIMINÓ chart_line.set_categories(cats) PARA EVITAR EL CONFLICTO EN EXCEL
                                             
                                             chart_line.y_axis.axId = 200
                                             chart_line.y_axis.title = "Diferencia ($ COP)"
                                             chart_line.y_axis.crosses = "max"
                                             
+                                            # 🎯 CORRECCIÓN LÍNEA ROJA
                                             sline = chart_line.series[0]
-                                            sline.dLbls = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False, position="t")
+                                            labels_line = DataLabelList(showVal=True, showCatName=False, showSerName=False, showLegendKey=False, showPercent=False)
+                                            labels_line.dLblPos = "t" # Ordena que quede arriba del punto
+                                            sline.dLbls = labels_line
+                                            
                                             sline.graphicalProperties.line.solidFill = "C00000"
                                             sline.graphicalProperties.line.width = 30000 
                                             sline.smooth = True 
