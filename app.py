@@ -3919,16 +3919,21 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 return ''
                                             st.dataframe(df_vista.style.map(colorear_diferencia, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- 📥 EXPORTACIÓN EXCEL CON GRÁFICO HÍBRIDO AUTOMATIZADO ---
+                                        # --- 📥 EXPORTACIÓN EXCEL CON GRÁFICO HÍBRIDO (NIVEL NASA) ---
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
+                                            # 🎯 TRUCO NASA: Convertir la semana a texto para obligar a Excel a mostrar el eje X
+                                            df_excel_sem = df_semanal.copy()
+                                            df_excel_sem['SEMANA'] = "Semana " + df_excel_sem['SEMANA'].astype(str)
+
                                             # Renombramos las pestañas del Excel
-                                            df_semanal.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
+                                            df_excel_sem.to_excel(writer, sheet_name='Matriz_Ejecutiva', index=False)
                                             df_resultados.to_excel(writer, sheet_name='Radiografia_Misiones', index=False)
                                             
                                             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                                            from openpyxl.chart import BarChart, LineChart, Reference, Series
+                                            from openpyxl.chart import BarChart, LineChart, Reference
                                             from openpyxl.chart.marker import Marker
+                                            from openpyxl.chart.label import DataLabelList # 🎯 CRÍTICO PARA ETIQUETAS DE DATOS
                                             
                                             borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                                             fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
@@ -3950,7 +3955,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         if cell.column >= 3: cell.number_format = '"$" #,##0' # Monedas
 
                                             # =======================================================
-                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO (BARRAS + LÍNEA ROJA)
+                                            # 📊 INYECCIÓN DEL GRÁFICO HÍBRIDO CON ETIQUETAS
                                             # =======================================================
                                             
                                             # 1. Crear el Gráfico de Barras (Eje Primario)
@@ -3960,38 +3965,45 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             chart_bar.title = f"Proyección Financiera - {sim_pista}"
                                             chart_bar.y_axis.title = "Monto Facturado ($ COP)"
                                             chart_bar.x_axis.title = "Semana Operativa"
-                                            chart_bar.height = 14
-                                            chart_bar.width = 22
+                                            chart_bar.height = 15
+                                            chart_bar.width = 24
                                             
-                                            # Datos para Barras: Columnas C (Total Actual) y D (Nuevo Total)
+                                            # 🎯 ACTIVAR LOS NÚMEROS SOBRE LAS BARRAS
+                                            chart_bar.dataLabels = DataLabelList()
+                                            chart_bar.dataLabels.showVal = True
+                                            
+                                            # Datos para Barras: Columnas C y D
                                             data_bar = Reference(ws_sem, min_col=3, max_col=4, min_row=1, max_row=ws_sem.max_row)
                                             cats = Reference(ws_sem, min_col=1, min_row=2, max_row=ws_sem.max_row)
                                             chart_bar.add_data(data_bar, titles_from_data=True)
                                             chart_bar.set_categories(cats)
                                             
-                                            # 2. Crear el Gráfico de Línea (Eje Secundario para la DIFERENCIA)
+                                            # 2. Crear el Gráfico de Línea (Eje Secundario)
                                             chart_line = LineChart()
-                                            # Datos para Línea: Columna E (Diferencia $)
+                                            
+                                            # 🎯 ACTIVAR LOS NÚMEROS SOBRE LA LÍNEA ROJA
+                                            chart_line.dataLabels = DataLabelList()
+                                            chart_line.dataLabels.showVal = True
+                                            
                                             data_line = Reference(ws_sem, min_col=5, max_col=5, min_row=1, max_row=ws_sem.max_row)
                                             chart_line.add_data(data_line, titles_from_data=True)
+                                            chart_line.set_categories(cats) # 🎯 Sincronizar eje X estrictamente
                                             
-                                            # Configurar para que use el eje Y de la derecha
                                             chart_line.y_axis.axId = 200
                                             chart_line.y_axis.title = "Diferencia ($ COP)"
                                             chart_line.y_axis.crosses = "max"
                                             
-                                            # Pintar la línea de Rojo Sangre Letal
+                                            # Estética de la Línea Letal
                                             sline = chart_line.series[0]
                                             sline.graphicalProperties.line.solidFill = "C00000"
-                                            sline.graphicalProperties.line.width = 30000 # Grosor de la línea
+                                            sline.graphicalProperties.line.width = 35000 
+                                            sline.smooth = True # 🎯 LÍNEA CURVA (Efecto Aerodinámico NASA)
                                             sline.marker = Marker('diamond')
                                             sline.marker.graphicalProperties.solidFill = "C00000"
                                             sline.marker.graphicalProperties.line.solidFill = "C00000"
                                             
-                                            # 3. FUSIÓN: Acoplar el gráfico de línea dentro del de barras
+                                            # 3. FUSIÓN
                                             chart_bar += chart_line
-                                            
-                                            # 4. Ubicar el radar en el Excel (Celda G2)
                                             ws_sem.add_chart(chart_bar, "G2")
 
                                             # --- FORMATEAR PESTAÑA 2: RADIOGRAFÍA DE MISIONES DETALLADA ---
@@ -4007,9 +4019,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
                                                         if cell.column == 6: cell.number_format = '#,##0.00' # Hectáreas
-                                                        if cell.column >= 7: cell.number_format = '"$" #,##0' # Tarifas y Totales
+                                                        if cell.column >= 7: cell.number_format = '"$" #,##0' # Tarifas
 
-                                            # Auto-ajustar el ancho de las columnas en ambas hojas
+                                            # Auto-ajustar columnas
                                             for sheet in [ws_sem, ws_det]:
                                                 for col in sheet.columns:
                                                     max_length = max(len(str(cell.value or '')) for cell in col)
