@@ -3685,7 +3685,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
 # =====================================================================
-                        # =====================================================================
                         # --- 🤝 NUEVO: SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
@@ -3702,18 +3701,18 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         else:
                             pistas_sim_disp = ["TODAS"]
 
-                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v4")
+                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v5")
                         sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) # Mayo por defecto
-                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v4")
+                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v5")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
-                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v4")
-                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v4")
+                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v5")
+                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v5")
                         
                         with c_sim_m3:
                             st.markdown("<br>", unsafe_allow_html=True)
-                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v4")
+                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v5")
 
                         if btn_simular:
                             with st.spinner("Desensamblando tarifas por hectárea y calculando proyecciones..."):
@@ -3763,8 +3762,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         ha_val = float(row[col_ha])
                                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
                                         
-                                        # 🎯 CAPTURA DE FECHA: Formateada limpia DD/MM/YYYY
-                                        fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y') if pd.notna(row['FECHA_DT']) else str(row['FECHA_MAESTRA'])
+                                        # 🎯 CAPTURA DE FECHA Y CÁLCULO DE SEMANA (Corte Sábado a Viernes)
+                                        if pd.notna(row['FECHA_DT']):
+                                            fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
+                                            # Truco Táctico: Sumamos 2 días. El Sábado (día 5) pasa a ser Lunes y salta a la nueva semana ISO.
+                                            semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
+                                        else:
+                                            fecha_val = str(row['FECHA_MAESTRA'])
+                                            col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
+                                            semana_val = row[col_sem] if col_sem else "N/A"
 
                                         # Limpieza financiera para dinero
                                         tarifa_vuelo = convertir_pesos(row[col_tarifa_vuelo]) if col_tarifa_vuelo in row else 0.0
@@ -3785,7 +3791,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
-                                                "FECHA": fecha_val, # 🎯 INYECTADA EN EL SEGUNDO PUESTO
+                                                "FECHA": fecha_val,
+                                                "SEMANA": semana_val, # 🎯 NUEVA COLUMNA INYECTADA
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
@@ -3849,9 +3856,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         cell.fill = fondo_navy; cell.font = fuente_blanca
                                                         cell.alignment = Alignment(horizontal='center', vertical='center')
                                                     else:
-                                                        # 🎯 AJUSTE DE COLUMNAS EXCEL DEBIDO A LA FECHA
-                                                        if cell.column == 5: cell.number_format = '#,##0.00' # Columna E: Hectáreas
-                                                        if cell.column >= 6: cell.number_format = '"$" #,##0' # Columna F en adelante: Monedas
+                                                        # 🎯 AJUSTE DE COLUMNAS EXCEL DEBIDO A LA NUEVA COLUMNA DE SEMANA
+                                                        if cell.column == 6: cell.number_format = '#,##0.00' # Columna F: Hectáreas
+                                                        if cell.column >= 7: cell.number_format = '"$" #,##0' # Columna G en adelante: Monedas
 
                                             for col in worksheet.columns:
                                                 max_length = max(len(str(cell.value or '')) for cell in col)
@@ -3860,7 +3867,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
-                                            label="📥 DESCARGAR INFORME CON FECHAS DETALLADAS (EXCEL OFICIAL)",
+                                            label="📥 DESCARGAR INFORME CON FECHAS Y SEMANAS (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
                                             file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
                                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
