@@ -3690,7 +3690,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 Seleccione la columna de la TARIFA UNITARIA (por hectárea) para calcular los totales reales.")
+                        st.info("💡 Seleccione la columna de la TARIFA UNITARIA (ej. TARIFA VUELO / HA) para que el sistema calcule los totales correctos.")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -3711,9 +3711,9 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v6")
                         margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v6")
                         
-                        # 🎯 SELECCIÓN DE LA TARIFA UNITARIA
+                        # 🎯 SELECCIÓN DE LA TARIFA UNITARIA (El usuario elegirá "TARIFA VUELO / HA")
                         columnas_numericas = [c for c in super_base_bi.columns if super_base_bi[c].dtype in ['float64', 'int64'] or 'COSTO' in str(c).upper() or 'TARIFA' in str(c).upper() or 'VALOR' in str(c).upper()]
-                        col_tarifa_elegida = c_sim_m3.selectbox("💵 Columna de Tarifa Unit. por Ha:", columnas_numericas, key="col_tar_ele")
+                        col_tarifa_elegida = c_sim_m3.selectbox("💵 Columna de Tarifa Unitaria:", columnas_numericas, key="col_tar_ele")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
@@ -3768,15 +3768,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         tarifa_actual_ha = convertir_pesos(row[col_tarifa_elegida]) if col_tarifa_elegida in row else 0.0
 
                                         if tarifa_actual_ha > 0 and ha_val > 0:
-                                            # 🎯 2. CALCULAMOS LA NUEVA TARIFA
+                                            # 🎯 2. REDONDEAMOS LA TARIFA ACTUAL (ej. 43.222)
+                                            t_act_red = red_excel(tarifa_actual_ha)
+                                            
+                                            # 🎯 3. CALCULAMOS LA NUEVA TARIFA Y LA REDONDEAMOS (ej. 44.423)
                                             base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
                                             tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
+                                            t_nue_red = red_excel(tarifa_nueva_ha)
                                             
-                                            # 🎯 3. MULTIPLICAMOS AMBAS POR LAS HECTÁREAS PARA SACAR LOS TOTALES
-                                            total_actual = red_excel(tarifa_actual_ha * ha_val)
-                                            total_nuevo = red_excel(tarifa_nueva_ha * ha_val)
+                                            # 🎯 4. MULTIPLICAMOS LAS TARIFAS REDONDEADAS POR LAS HECTÁREAS
+                                            total_actual = red_excel(t_act_red * ha_val)
+                                            total_nuevo = red_excel(t_nue_red * ha_val)
                                             
-                                            # 🎯 4. LA DIFERENCIA EXACTA
+                                            # 🎯 5. SACAMOS LA DIFERENCIA DE LOS TOTALES
                                             diferencia_total = total_nuevo - total_actual
 
                                             matriz_simulacion.append({
@@ -3786,15 +3790,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
-                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": red_excel(tarifa_actual_ha),
-                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": red_excel(tarifa_nueva_ha),
+                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_red,
+                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_red,
                                                 "TOTAL ACTUAL ($)": total_actual,
                                                 "NUEVO TOTAL ($)": total_nuevo,
                                                 "DIFERENCIA ($)": diferencia_total
                                             })
 
                                     if not matriz_simulacion:
-                                        st.warning("⚠️ Se encontraron misiones, pero sus valores de costo están en $0.")
+                                        st.warning("⚠️ Se encontraron misiones, pero sus valores de tarifa están en $0.")
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
 
@@ -3863,8 +3867,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                         else:
                                                             if "HECTÁREAS" in str(ws.cell(1, cell.column).value): cell.number_format = '#,##0.00'
                                                             elif "($" in str(ws.cell(1, cell.column).value) or "%" in str(ws.cell(1, cell.column).value): cell.number_format = '"$" #,##0'
-                                                for col in ws.columns:
-                                                    ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or '')) for c in col) + 4, 32)
+                                                    for col in ws.columns:
+                                                        ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or '')) for c in col) + 4, 32)
                                         
                                         st.markdown("<br>", unsafe_allow_html=True)
                                         st.download_button(
