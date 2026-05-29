@@ -880,6 +880,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with c_p2:
             st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
             
+                    
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             with st.spinner("🚀 Inyectando datos con Precisión de Francotirador..."):
                 try:
