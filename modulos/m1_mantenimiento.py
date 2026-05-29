@@ -67,6 +67,14 @@ def ejecutar(extraer_numero):
                 radar = df_conf.iloc[:, [8, 9, 10]].copy()
                 radar.columns = ['PRODUCTO', 'PRECIO_ACTUAL', 'PRECIO_SAP']
                 
+                # 🛡️ FILTRO ANTI-FANTASMAS: Elimina filas vacías, ceros y textos basura
+                radar['PROD_CLEAN'] = radar['PRODUCTO'].astype(str).str.strip().str.upper()
+                radar = radar[
+                    (radar['PROD_CLEAN'] != "") & 
+                    (radar['PROD_CLEAN'] != "0") & 
+                    (~radar['PROD_CLEAN'].isin(["NAN", "NONE", "PRODUCTO"]))
+                ].drop(columns=['PROD_CLEAN'])
+                
                 radar['PRECIO_ACTUAL'] = radar['PRECIO_ACTUAL'].apply(extraer_numero)
                 radar['PRECIO_SAP'] = radar['PRECIO_SAP'].apply(extraer_numero)
                 radar['DIFERENCIA'] = (radar['PRECIO_SAP'] - radar['PRECIO_ACTUAL']).round(2)
