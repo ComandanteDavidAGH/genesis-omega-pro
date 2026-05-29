@@ -172,6 +172,36 @@ def procesar_fecha_pesada(v):
     except: pass
     return None
 
+# =====================================================================
+# --- 3.5 🛡️ MOTOR DE CACHÉ Y CONEXIÓN SATELITAL (ANTIBLOQUEOS) ---
+# =====================================================================
+
+@st.cache_resource(show_spinner=False)
+def conectar_satelite():
+    """Abre la conexión a Google una sola vez por sesión."""
+    if "gcp_credentials" in st.secrets:
+        return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+    else:
+        return gspread.service_account(filename='credenciales.json')
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def descargar_matriz_rapida(url, pestaña):
+    """Descarga los miles de datos y los guarda en RAM ultrarrápida."""
+    try:
+        gc = conectar_satelite()
+        boveda = gc.open_by_url(url)
+        try:
+            hoja = boveda.worksheet(pestaña)
+        except:
+            if "TABLA 1" in pestaña.upper():
+                hoja = next((s for s in boveda.worksheets() if "TABLA 1" in s.title.upper()), boveda.sheet1)
+            else:
+                hoja = boveda.worksheet(pestaña)
+        return hoja.get_all_values(value_render_option='UNFORMATTED_VALUE')
+    except Exception as e:
+        st.error(f"🚨 Falla en el satélite al descargar {pestaña}: {e}")
+        return []
+
 # --- 4. MENÚ MAESTRO (CUARTEL GENERAL) ---
 with st.sidebar:
     st.markdown(f"<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
@@ -2813,15 +2843,9 @@ elif menu == "📈 9. Dashboard Táctico":
 
     with st.spinner("📡 Conectando con la Bóveda de Datos (TABLA 1)..."):
         try:
-            # 1. CONEXIÓN A LA BASE DE DATOS
-            if "gcp_credentials" in st.secrets:
-                gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-            else:
-                gc = gspread.service_account(filename='credenciales.json')
-            
-            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-            hoja_maestra = boveda.worksheet("TABLA 1")
-            datos_brutos = hoja_maestra.get_all_values()
+            # 1. CONEXIÓN BLINDADA CON CACHÉ (Velocidad de la luz)
+            url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+            datos_brutos = descargar_matriz_rapida(url_maestra, "TABLA 1")
             
             if len(datos_brutos) > 5:
                 columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
