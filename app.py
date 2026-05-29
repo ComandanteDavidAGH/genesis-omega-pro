@@ -2536,15 +2536,9 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)":
     st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
     try:
-        with st.spinner("🛰️ Escaneando la Bóveda Maestra (TABLA 1)..."):
-            if "gcp_credentials" in st.secrets:
-                gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-            else:
-                gc = gspread.service_account(filename='credenciales.json')
-            
-            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-            hoja_maestra = boveda.worksheet("TABLA 1")
-            datos_brutos = hoja_maestra.get_all_values()
+        with st.spinner("🛰️ Escaneando la Bóveda Maestra con Motor Turbo (TABLA 1)..."):
+            url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+            datos_brutos = descargar_matriz_rapida(url_maestra, "TABLA 1")
             
         if len(datos_brutos) > 5:
             columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
