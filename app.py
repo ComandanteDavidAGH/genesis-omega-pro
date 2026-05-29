@@ -3690,7 +3690,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 El sistema ahora rastrea EXCLUSIVAMENTE las columnas T (Tarifa Vuelo/Ha) y U (Dominicales), ignorando los valores de facturación al productor para evitar cifras infladas.")
+                        st.info("💡 Matemática calibrada: Resta de Tarifas Unitarias Redondeadas × Hectáreas (Ciencia Exacta).")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -3716,7 +3716,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
 
                         if btn_simular:
-                            with st.spinner("Aislando Columnas T y U... calculando diferencias reales..."):
+                            with st.spinner("Aplicando la ciencia exacta: Resta de tarifas redondeadas por hectárea..."):
                                 df_sim = super_base_bi.copy()
 
                                 df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
@@ -3736,14 +3736,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     def red_excel(num):
                                         return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
 
-                                    # 🎯 RADAR RESTRINGIDO: Buscar SOLO la columna T y la U, bloqueando la V y la W
                                     col_tarifa_unitaria = None
                                     for c in df_sim.columns:
                                         c_upper = str(c).upper().strip()
-                                        # Bloqueo total a las columnas que inflan los datos
                                         if "FACTURAR" in c_upper or "PRODUCTOR" in c_upper or "COSTO" in c_upper or "TOTAL" in c_upper:
                                             continue
-                                        # Apuntar solo a la Tarifa por Hectárea (Columna T)
                                         if "TARIFA VUELO" in c_upper or ("TARIFA" in c_upper and "HA" in c_upper):
                                             col_tarifa_unitaria = c
                                             break
@@ -3751,7 +3748,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     if not col_tarifa_unitaria:
                                         col_tarifa_unitaria = next((c for c in df_sim.columns if "TARIFA" in str(c).upper()), 'COSTO_MAESTRO')
 
-                                    # Apuntar a los Dominicales (Columna U)
                                     col_dominical = next((c for c in df_sim.columns if "DOMINIC" in str(c).upper()), None)
 
                                     col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
@@ -3779,7 +3775,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        # 🎯 LECTURA ESTRICTA DE COLUMNAS T y U
                                         val_tarifa = convertir_pesos(row[col_tarifa_unitaria]) if col_tarifa_unitaria in row else 0.0
                                         val_dom = convertir_pesos(row[col_dominical]) if col_dominical in row else 0.0
                                         
@@ -3787,20 +3782,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
 
                                         if tarifa_unitaria_actual > 0 and ha_val > 0:
                                             
-                                            # 1. Tarifa Unitaria Actual Redondeada
+                                            # 🎯 1. LA CIENCIA DEL COMANDANTE: Tarifas Redondeadas
                                             t_act_red = red_excel(tarifa_unitaria_actual)
                                             
-                                            # 2. Desinflar y Proyectar Nueva Tarifa Unitaria
                                             base_neta_ha = tarifa_unitaria_actual / (1 + (margen_actual / 100))
-                                            tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
-                                            t_nue_red = red_excel(tarifa_nueva_ha)
+                                            t_nue_red = red_excel(base_neta_ha * (1 + (margen_nuevo / 100)))
                                             
-                                            # 3. Multiplicar por Hectáreas para los Totales Finales
+                                            # 🎯 2. LA RESTA SE MULTIPLICA POR HECTÁREAS (Exactamente como en Excel)
+                                            resta_tarifas = t_nue_red - t_act_red
+                                            diferencia_total = red_excel(resta_tarifas * ha_val)
+
+                                            # 🎯 3. TOTALES INDEPENDIENTES 
                                             total_actual = red_excel(t_act_red * ha_val)
                                             total_nuevo = red_excel(t_nue_red * ha_val)
-                                            
-                                            # 4. Diferencia Neta
-                                            diferencia_total = total_nuevo - total_actual
 
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
@@ -3865,7 +3859,6 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 return ''
                                             st.dataframe(df_vista.style.map(col_dif, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
-                                        # --- EXPORTACIÓN EXCEL ---
                                         import io
                                         buffer_neg = io.BytesIO()
                                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
