@@ -9,7 +9,7 @@ import math
 import io
 import openpyxl
 
-# --- 🧪 APARTADO DE BARREDORAS Y AUXILIARES GLOBALES (ESTRUCTURA PLANA) ---
+# --- 🧪 APARTADO DE BARREDORAS Y AUXILIARES GLOBALES ---
 def limpiar_encabezados(df):
     df.columns = [
         str(col).upper()
@@ -561,7 +561,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
         st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical). Lógica: (Nueva Tarifa Redondeada - Tarifa Actual Redondeada) × Hectáreas.")
 
-        # 📅 BÚNKER ESTÁTICO DE ENCAPSULAMIENTO CONTRA GLITCHES VISUALES DOM
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
             col_pista_sim = next((c for c in super_base_bi.columns if "PISTA" in c or "ALMACEN" in c), None)
@@ -570,19 +569,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             else:
                 pistas_sim_disp = ["TODAS"]
 
-            # OPCIÓN A REAL: Rango selecto con 2 selectores independientes estables
-            sim_fecha_inicio = c_sim1.date_input("📅 Fecha Inicial:", value=datetime.now().date(), key="sim_f_ini_final")
-            sim_fecha_fin = c_sim2.date_input("📅 Fecha Final:", value=datetime.now().date(), key="sim_f_fin_final")
-            sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_final")
+            sim_fecha_inicio = c_sim1.date_input("📅 Fecha Inicial:", value=datetime.now().date(), key="sim_f_ini_f")
+            sim_fecha_fin = c_sim2.date_input("📅 Fecha Final:", value=datetime.now().date(), key="sim_f_fin_f")
+            sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_f")
 
         st.markdown("<br>", unsafe_allow_html=True)
         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
-        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_final")
-        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_final")
+        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_f")
+        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_f")
         
         with c_sim_m3:
             st.markdown("<br>", unsafe_allow_html=True)
-            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_final")
+            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_f")
 
         if btn_simular:
             with st.spinner("Procesando auditoría con las columnas unitarias correctas..."):
@@ -706,5 +704,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(label="📥 DESCARGAR INFORME DUAL (EXCEL OFICIAL)", data=buffer_neg.getvalue(), file_name=f"Auditoria_Tarifas_{sim_pista}_{sim_fecha_inicio}_a_{sim_fecha_fin}.xlsx", type="primary", use_container_width=True)
+
     except Exception as e:
-        st.error(f"🚨 Falla en los motores del Dashboard: {e}")
+        st.error(f"🚨 Falla crítica en los motores del Dashboard: {e}")
