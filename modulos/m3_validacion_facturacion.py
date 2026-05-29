@@ -8,6 +8,8 @@ import math
 from datetime import datetime
 
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
+    st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
+    
     # -----------------------------------------------------------------
     # 🔮 MODO SIMULADOR (MEGAZORD)
     # -----------------------------------------------------------------
