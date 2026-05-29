@@ -6,15 +6,23 @@ import re
 import unicodedata
 from datetime import datetime
 import dateutil.parser
+import openpyxl
+import gspread
+import plotly.express as px
+import plotly.graph_objects as go  
+
+# --- 🛰️ CONEXIÓN DE HANGARES MODULARES (ESCUADRONES) ---
 import modulos.m0_centro_mando as m0
-import modulos.m8_reporte_hectareas as m8
-import modulos.m9_dashboard_tactico as m9
-import modulos.m7_arqueo_inventarios as m7
-import modulos.m6_rastreo_dominicales as m6
-import modulos.m5_sincronizacion_precios as m5
-import modulos.m4_ingreso_manual as m4
 import modulos.m1_mantenimiento as m1
 import modulos.m2_facturacion as m2
+import modulos.m3_validacion_facturacion as m3  # 🎯 ¡RECONECTADO AL RADAR MAESTRO!
+import modulos.m4_ingreso_manual as m4
+import modulos.m5_sincronizacion_precios as m5
+import modulos.m6_rastreo_dominicales as m6
+import modulos.m7_arqueo_inventarios as m7
+import modulos.m8_reporte_hectareas as m8
+import modulos.m9_dashboard_tactico as m9
+import modulos.m10_bi_tarifas as m10             # 🎯 ¡RECONECTADO AL RADAR MAESTRO!
 
 # Aquí definimos quiénes tienen acceso al sistema extrayendo claves de la bóveda
 USUARIOS_CREDENTIALS = {
@@ -39,12 +47,6 @@ if 'usuario_rol' not in st.session_state:
     st.session_state['usuario_rol'] = None
 if 'usuario_nombre' not in st.session_state:
     st.session_state['usuario_nombre'] = None
-    
-# Imports de conexiones y apis
-import openpyxl
-import gspread
-import plotly.express as px
-import plotly.graph_objects as go  # <-- AGREGUE ESTA LÍNEA AQUÍ
 
 # Intentar importar matplotlib para el mapa de calor, si falla, el sistema sigue
 try:
@@ -52,6 +54,7 @@ try:
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
+
 
 # --- 1. CONFIGURACIÓN DEL NÚCLEO ---
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
