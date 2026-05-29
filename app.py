@@ -3779,9 +3779,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                         tar_avion_raw = convertir_pesos(row[col_tarifa_avion]) if col_tarifa_avion and col_tarifa_avion in row else 0.0
                                         tar_dom_raw = convertir_pesos(row[col_dominical]) if col_dominical and col_dominical in row else 0.0
                                         
-                                        tarifa_actual_unitaria = tar_avion_raw + tar_dom_raw
+                                        # CORRECCIÓN DE VARIABLE CRÍTICA UNIFICADA
+                                        tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
 
-                                        if tarifa_actual_unitaria > 0 and ha_val > 0:
+                                        if tarifa_unitaria_actual > 0 and ha_val > 0:
                                             
                                             # 1. Tarifa Actual Redondeada (ej. 51.906)
                                             t_act_red = red_excel(tarifa_unitaria_actual)
