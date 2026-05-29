@@ -25,8 +25,15 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     for row in raw_config:
                         if len(row) > 9:
                             prod = str(row[8]).upper().strip()
-                            # 🛡️ FILTRO ANTI-FANTASMAS: Bloquea el "0" y los vacíos
-                            if prod and prod not in ["PRODUCTO", "0", "NAN", "NONE", ""] and "INVENTARIO" not in prod:
+                            
+                            # 🛡️ FILTRO ANTI-FANTASMAS (Destruye 0, 0.0, 0.00 y vacíos)
+                            es_cero_basura = False
+                            try:
+                                if float(prod) == 0: es_cero_basura = True
+                            except ValueError:
+                                pass
+                                
+                            if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
                                 costo_base = extraer_numero(row[9])
                                 if costo_base > 0:
                                     lista_precios.append({
