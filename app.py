@@ -3119,14 +3119,11 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
             return num
         except: return 0.0
 
-    with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
+    with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico (Motor Turbo)..."):
         try:
-            if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-            else: gc = gspread.service_account(filename='credenciales.json')
-                
-            # CANAL A: Datos Vivos
-            boveda_actual = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-            datos_brutos_act = boveda_actual.worksheet("TABLA 1").get_all_values()
+            # CANAL A: Datos Vivos (Conectado a Caché)
+            url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+            datos_brutos_act = descargar_matriz_rapida(url_act, "TABLA 1")
             
             if len(datos_brutos_act) > 5:
                 df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
@@ -3134,12 +3131,10 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                 df_vivos['ORIGEN_BI'] = 'ACTUAL'
             else: df_vivos = pd.DataFrame()
 
-            # CANAL B: Datos Históricos
-            boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-            try: hoja_hist = boveda_hist.worksheet("Datos")
-            except: hoja_hist = boveda_hist.get_worksheet(0)
-                
-            datos_brutos_hist = hoja_hist.get_all_values()
+            # CANAL B: Datos Históricos (Conectado a Caché)
+            url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+            datos_brutos_hist = descargar_matriz_rapida(url_hist, "Datos")
+            
             if len(datos_brutos_hist) > 0:
                 df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
                 df_historico = estandarizar_base(limpiar_encabezados(df_historico))
