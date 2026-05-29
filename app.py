@@ -3690,7 +3690,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 Utilice este radar para evaluar propuestas. Seleccione la columna que contiene el TOTAL facturado de la Orden de Servicio.")
+                        st.info("💡 Seleccione la columna de la TARIFA UNITARIA (por hectárea) para calcular los totales reales.")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -3711,15 +3711,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v6")
                         margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v6")
                         
-                        # 🎯 SELECCIÓN MANUAL DEL COSTO TOTAL DE LA OS
+                        # 🎯 SELECCIÓN DE LA TARIFA UNITARIA
                         columnas_numericas = [c for c in super_base_bi.columns if super_base_bi[c].dtype in ['float64', 'int64'] or 'COSTO' in str(c).upper() or 'TARIFA' in str(c).upper() or 'VALOR' in str(c).upper()]
-                        col_tarifa_elegida = c_sim_m3.selectbox("💵 Columna del Valor Total de la OS:", columnas_numericas, key="col_tar_ele")
+                        col_tarifa_elegida = c_sim_m3.selectbox("💵 Columna de Tarifa Unit. por Ha:", columnas_numericas, key="col_tar_ele")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
 
                         if btn_simular:
-                            with st.spinner("Desensamblando ingeniería inversa de totales..."):
+                            with st.spinner("Multiplicando tarifas por hectáreas y calculando diferencias..."):
                                 df_sim = super_base_bi.copy()
 
                                 df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
@@ -3764,16 +3764,19 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        # 🎯 LÓGICA PURA Y DIRECTA: Tomar el Total, desinflarlo y proyectarlo
-                                        total_facturado_raw = convertir_pesos(row[col_tarifa_elegida]) if col_tarifa_elegida in row else 0.0
+                                        # 🎯 1. TOMAMOS LA TARIFA UNITARIA DE SU EXCEL
+                                        tarifa_actual_ha = convertir_pesos(row[col_tarifa_elegida]) if col_tarifa_elegida in row else 0.0
 
-                                        if total_facturado_raw > 0 and ha_val > 0:
-                                            total_actual = red_excel(total_facturado_raw)
+                                        if tarifa_actual_ha > 0 and ha_val > 0:
+                                            # 🎯 2. CALCULAMOS LA NUEVA TARIFA
+                                            base_neta_ha = tarifa_actual_ha / (1 + (margen_actual / 100))
+                                            tarifa_nueva_ha = base_neta_ha * (1 + (margen_nuevo / 100))
                                             
-                                            # (Total / 1.08) * 1.11
-                                            base_neta_total = total_facturado_raw / (1 + (margen_actual / 100))
-                                            total_nuevo = red_excel(base_neta_total * (1 + (margen_nuevo / 100)))
+                                            # 🎯 3. MULTIPLICAMOS AMBAS POR LAS HECTÁREAS PARA SACAR LOS TOTALES
+                                            total_actual = red_excel(tarifa_actual_ha * ha_val)
+                                            total_nuevo = red_excel(tarifa_nueva_ha * ha_val)
                                             
+                                            # 🎯 4. LA DIFERENCIA EXACTA
                                             diferencia_total = total_nuevo - total_actual
 
                                             matriz_simulacion.append({
@@ -3783,6 +3786,8 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
+                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": red_excel(tarifa_actual_ha),
+                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": red_excel(tarifa_nueva_ha),
                                                 "TOTAL ACTUAL ($)": total_actual,
                                                 "NUEVO TOTAL ($)": total_nuevo,
                                                 "DIFERENCIA ($)": diferencia_total
@@ -3827,7 +3832,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             st.markdown("#### Historial por OS")
                                             df_vista = df_resultados.copy()
                                             df_vista["HECTÁREAS"] = df_vista["HECTÁREAS"].map("{:,.2f}".format)
-                                            columnas_moneda = ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]
+                                            columnas_moneda = [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]
                                             for col in columnas_moneda:
                                                 df_vista[col] = df_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
                                             
