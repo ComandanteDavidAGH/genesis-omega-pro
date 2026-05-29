@@ -3690,7 +3690,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 RADAR FIJADO: El sistema lee estrictamente 'TARIFA VUELO / HA' y 'DOMINICAL / FESTIVO'. Lógica: (Nueva Tarifa - Tarifa Actual) × Hectáreas.")
+                        st.info("💡 LÓGICA APLICADA: (Total Proyectado al 11% - Total Actual al 8%). Basado estrictamente en Tarifas Unitarias de Avión y Dominical.")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -3716,7 +3716,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                             btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
 
                         if btn_simular:
-                            with st.spinner("Procesando 'TARIFA VUELO / HA' y aplicando ciencia matemática exacta..."):
+                            with st.spinner("Ejecutando auditoría de tarifas unitarias..."):
                                 df_sim = super_base_bi.copy()
 
                                 df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
@@ -3736,23 +3736,16 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                     def red_excel(num):
                                         return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
 
+                                    # 🎯 IDENTIFICACIÓN DIRECTA Y FORZADA DE COLUMNAS (MÉTODO FRANCOTIRADOR)
+                                    col_tarifa_avion = next((c for c in df_sim.columns if "COSTO" in str(c).upper() and "AVION" in str(c).upper()), None)
+                                    col_dominical = next((c for c in df_sim.columns if "DOMINIC" in str(c).upper()), None)
+
                                     col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
                                     for c in df_sim.columns:
                                         if str(c).upper().strip() in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
                                             col_os = c; break
 
                                     col_finca = 'FINCA_MAESTRA'
-                                    
-                                    # 🎯 RADAR FIJO (NIVEL DIOS): Cero adivinanzas, búsqueda exacta
-                                    col_tarifa_unitaria = next((c for c in df_sim.columns if "TARIFA VUELO" in str(c).upper() and "HA" in str(c).upper()), None)
-                                    col_dominical = next((c for c in df_sim.columns if "DOMINICAL" in str(c).upper() and "FESTIVO" in str(c).upper()), None)
-                                    
-                                    # Fallbacks por si hay un espacio de más en el Excel
-                                    if not col_tarifa_unitaria:
-                                        col_tarifa_unitaria = next((c for c in df_sim.columns if "TARIFA" in str(c).upper() and "VUELO" in str(c).upper()), None)
-                                    if not col_dominical:
-                                        col_dominical = next((c for c in df_sim.columns if "DOMINIC" in str(c).upper()), None)
-
                                     matriz_simulacion = []
 
                                     for _, row in df_sim.iterrows():
@@ -3772,28 +3765,25 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        # 🎯 1. LEER LOS DATOS EXACTOS
-                                        val_tarifa = convertir_pesos(row[col_tarifa_unitaria]) if col_tarifa_unitaria and col_tarifa_unitaria in row else 0.0
-                                        val_dom = convertir_pesos(row[col_dominical]) if col_dominical and col_dominical in row else 0.0
+                                        # 🎯 EXTRACCIÓN DIRECTA Y SUMA DE LAS TARIFAS UNITARIAS (T + U)
+                                        tar_avion_raw = convertir_pesos(row[col_tarifa_avion]) if col_tarifa_avion and col_tarifa_avion in row else 0.0
+                                        tar_dom_raw = convertir_pesos(row[col_dominical]) if col_dominical and col_dominical in row else 0.0
                                         
-                                        tarifa_unitaria_actual = val_tarifa + val_dom
+                                        tarifa_actual_unitaria = tar_avion_raw + tar_dom_raw
 
-                                        if tarifa_unitaria_actual > 0 and ha_val > 0:
+                                        if tarifa_actual_unitaria > 0 and ha_val > 0:
+                                            # 1. Extraer precio base puro desinflando el porcentaje actual
+                                            base_pura_unitaria = tarifa_actual_unitaria / (1 + (margen_actual / 100))
                                             
-                                            # 🎯 2. LA CIENCIA EXACTA: REDONDEAMOS LA TARIFA ACTUAL (ej. 43.222)
-                                            t_act_red = red_excel(tarifa_unitaria_actual)
+                                            # 2. Proyectar nueva tarifa unitaria con el nuevo porcentaje
+                                            tarifa_nueva_unitaria = base_pura_unitaria * (1 + (margen_nuevo / 100))
                                             
-                                            # 🎯 3. CALCULAMOS Y REDONDEAMOS LA NUEVA (ej. 44.423)
-                                            base_neta = tarifa_unitaria_actual / (1 + (margen_actual / 100))
-                                            t_nue_red = red_excel(base_neta * (1 + (margen_nuevo / 100)))
+                                            # 3. Multiplicar ambos valores unitarios por las hectáreas totales del vuelo
+                                            total_actual_vuelo = red_excel(tarifa_actual_unitaria * ha_val)
+                                            total_nuevo_vuelo = red_excel(tarifa_nueva_unitaria * ha_val)
                                             
-                                            # 🎯 4. RESTAMOS LAS TARIFAS Y MULTIPLICAMOS POR HECTÁREAS (44423 - 43222) * 80.37 = 96.494
-                                            resta_tarifas = t_nue_red - t_act_red
-                                            diferencia_total = red_excel(resta_tarifas * ha_val)
-
-                                            # 🎯 5. TOTALES PARA VISUALIZACIÓN
-                                            total_actual = red_excel(t_act_red * ha_val)
-                                            total_nuevo = red_excel(t_nue_red * ha_val)
+                                            # 4. Restar los valores resultantes para obtener la diferencia real
+                                            diferencia_vuelo = total_nuevo_vuelo - total_actual_vuelo
 
                                             matriz_simulacion.append({
                                                 "Nº OS": os_val,
@@ -3802,15 +3792,15 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                                 "FINCA": finca_val,
                                                 "PISTA": pista_val,
                                                 "HECTÁREAS": ha_val,
-                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_red,
-                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_red,
-                                                "TOTAL ACTUAL ($)": total_actual,
-                                                "NUEVO TOTAL ($)": total_nuevo,
-                                                "DIFERENCIA ($)": diferencia_total
+                                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": red_excel(tarifa_actual_unitaria),
+                                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": red_excel(tarifa_nueva_unitaria),
+                                                "TOTAL ACTUAL ($)": total_actual_vuelo,
+                                                "NUEVO TOTAL ($)": total_nuevo_vuelo,
+                                                "DIFERENCIA ($)": diferencia_vuelo
                                             })
 
                                     if not matriz_simulacion:
-                                        st.warning("⚠️ Se encontraron misiones, pero sus valores de tarifa están en $0. Revise si el archivo tiene la columna 'TARIFA VUELO / HA'.")
+                                        st.warning("⚠️ No se encontraron valores válidos para procesar en las columnas de tarifa unitaria.")
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
 
