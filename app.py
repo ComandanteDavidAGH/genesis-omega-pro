@@ -3690,7 +3690,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         # =====================================================================
                         st.markdown("<hr>", unsafe_allow_html=True)
                         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-                        st.info("💡 LÓGICA APLICADA: (Nueva Tarifa Redondeada - Tarifa Actual Redondeada) × Hectáreas.")
+                        st.info("💡 RADAR FIJADO: El sistema lee estrictamente 'TARIFA VUELO / HA' y 'DOMINICAL / FESTIVO'. Lógica: (Nueva Tarifa - Tarifa Actual) × Hectáreas.")
 
                         # Filtros del simulador
                         c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -3706,23 +3706,17 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                         sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v6")
 
                         st.markdown("<br>", unsafe_allow_html=True)
-                        c_sim_m1, c_sim_m2 = st.columns(2)
+                        c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
+                        
                         margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v6")
                         margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v6")
-
-                        # 🎯 CONTROL MANUAL ABSOLUTO PARA EL COMANDANTE
-                        st.markdown("#### 🎯 Asignación Manual de Columnas Unitarias")
-                        c_sel1, c_sel2 = st.columns(2)
-                        columnas_numericas = [c for c in super_base_bi.columns if super_base_bi[c].dtype in ['float64', 'int64'] or 'COSTO' in str(c).upper() or 'TARIFA' in str(c).upper() or 'VALOR' in str(c).upper()]
                         
-                        col_tarifa_elegida = c_sel1.selectbox("💵 Elija la Columna TARIFA UNITARIA (Ej. Tarifa Vuelo / Ha):", columnas_numericas, key="col_tar_ele")
-                        col_dom_elegida = c_sel2.selectbox("💵 Elija la Columna DOMINICAL UNITARIO (Opcional):", ["NINGUNA"] + columnas_numericas, key="col_dom_ele")
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
+                        with c_sim_m3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
 
                         if btn_simular:
-                            with st.spinner("Calculando con la ciencia exacta (Resta x Hectáreas)..."):
+                            with st.spinner("Procesando 'TARIFA VUELO / HA' y aplicando ciencia matemática exacta..."):
                                 df_sim = super_base_bi.copy()
 
                                 df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
@@ -3748,6 +3742,17 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_os = c; break
 
                                     col_finca = 'FINCA_MAESTRA'
+                                    
+                                    # 🎯 RADAR FIJO (NIVEL DIOS): Cero adivinanzas, búsqueda exacta
+                                    col_tarifa_unitaria = next((c for c in df_sim.columns if "TARIFA VUELO" in str(c).upper() and "HA" in str(c).upper()), None)
+                                    col_dominical = next((c for c in df_sim.columns if "DOMINICAL" in str(c).upper() and "FESTIVO" in str(c).upper()), None)
+                                    
+                                    # Fallbacks por si hay un espacio de más en el Excel
+                                    if not col_tarifa_unitaria:
+                                        col_tarifa_unitaria = next((c for c in df_sim.columns if "TARIFA" in str(c).upper() and "VUELO" in str(c).upper()), None)
+                                    if not col_dominical:
+                                        col_dominical = next((c for c in df_sim.columns if "DOMINIC" in str(c).upper()), None)
+
                                     matriz_simulacion = []
 
                                     for _, row in df_sim.iterrows():
@@ -3767,22 +3772,22 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                                        # 🎯 1. LEER LOS DATOS EXACTOS QUE USTED ELIGIÓ
-                                        val_tarifa = convertir_pesos(row[col_tarifa_elegida]) if col_tarifa_elegida in row else 0.0
-                                        val_dom = convertir_pesos(row[col_dom_elegida]) if col_dom_elegida != "NINGUNA" and col_dom_elegida in row else 0.0
+                                        # 🎯 1. LEER LOS DATOS EXACTOS
+                                        val_tarifa = convertir_pesos(row[col_tarifa_unitaria]) if col_tarifa_unitaria and col_tarifa_unitaria in row else 0.0
+                                        val_dom = convertir_pesos(row[col_dominical]) if col_dominical and col_dominical in row else 0.0
                                         
                                         tarifa_unitaria_actual = val_tarifa + val_dom
 
                                         if tarifa_unitaria_actual > 0 and ha_val > 0:
                                             
-                                            # 🎯 2. LA CIENCIA EXACTA: REDONDEAMOS LA TARIFA ACTUAL (ej. 51.906)
+                                            # 🎯 2. LA CIENCIA EXACTA: REDONDEAMOS LA TARIFA ACTUAL (ej. 43.222)
                                             t_act_red = red_excel(tarifa_unitaria_actual)
                                             
-                                            # 🎯 3. CALCULAMOS Y REDONDEAMOS LA NUEVA (ej. 53.348)
+                                            # 🎯 3. CALCULAMOS Y REDONDEAMOS LA NUEVA (ej. 44.423)
                                             base_neta = tarifa_unitaria_actual / (1 + (margen_actual / 100))
                                             t_nue_red = red_excel(base_neta * (1 + (margen_nuevo / 100)))
                                             
-                                            # 🎯 4. RESTAMOS LAS TARIFAS Y MULTIPLICAMOS POR HECTÁREAS (53348 - 51906) * 87.8 = 126.608
+                                            # 🎯 4. RESTAMOS LAS TARIFAS Y MULTIPLICAMOS POR HECTÁREAS (44423 - 43222) * 80.37 = 96.494
                                             resta_tarifas = t_nue_red - t_act_red
                                             diferencia_total = red_excel(resta_tarifas * ha_val)
 
@@ -3805,7 +3810,7 @@ elif menu == "📊 10. Inteligencia de Costos (BI)":
                                             })
 
                                     if not matriz_simulacion:
-                                        st.warning("⚠️ Se encontraron misiones, pero sus valores de tarifa están en $0.")
+                                        st.warning("⚠️ Se encontraron misiones, pero sus valores de tarifa están en $0. Revise si el archivo tiene la columna 'TARIFA VUELO / HA'.")
                                     else:
                                         df_resultados = pd.DataFrame(matriz_simulacion)
 
