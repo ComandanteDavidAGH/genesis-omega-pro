@@ -516,7 +516,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
-        idx_pista = pistes_disponibles.index(pista_sel) if 'pista_sel' in locals() and pista_sel in pistes_disponibles else 0
+        idx_pista = pistas_disponibles.index(pista_sel) if 'pista_sel' in locals() and pista_sel in pistas_disponibles else 0
         
         pista_sel = st.selectbox("📍 Seleccione la Pista para extraer Inventario de SAP:", pistas_disponibles, index=idx_pista, key="pista_matriz_maestra")
         
