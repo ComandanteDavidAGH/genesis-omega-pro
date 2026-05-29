@@ -665,26 +665,27 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         else:
                             pistas_sim_disp = ["TODAS"]
 
-                        sim_anio = c_sim1.selectbox("📅 Año a Auditar:", años_disp, key="sim_anio_v6")
-                        sim_mes = c_sim2.selectbox("📆 Mes a Auditar:", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=4) 
-                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v6")
+                        # 📅 INYECCIÓN DE LA OPCIÓN A: FILTROS SELECTOS INDEPENDIENTES
+                        sim_fecha_inicio = c_sim1.date_input("📅 Fecha Inicial:", value=datetime.now().date(), key="sim_f_ini_v7")
+                        sim_fecha_fin = c_sim2.date_input("📅 Fecha Final:", value=datetime.now().date(), key="sim_f_fin_v7")
+                        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_v7")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
                         
-                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v6")
-                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v6")
+                        margen_actual = c_sim_m1.number_input("📉 Margen Actual en Factura (%)", value=8.0, step=0.5, key="marg_act_v7")
+                        margen_nuevo = c_sim_m2.number_input("📈 Nuevo Margen a Simular (%)", value=11.0, step=0.5, key="marg_nue_v7")
                         
                         with c_sim_m3:
                             st.markdown("<br>", unsafe_allow_html=True)
-                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v6")
+                            btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_v7")
 
                         if btn_simular:
                             with st.spinner("Procesando auditoría con las columnas unitarias correctas..."):
                                 df_sim = super_base_bi.copy()
 
-                                df_sim = df_sim[df_sim['AÑO'] == int(sim_anio)]
-                                df_sim = df_sim[df_sim['MES'] == int(sim_mes)]
+                                # 🛡️ FILTRADO VECTORIAL DE RANGO TEMPORAL CONTABLE
+                                df_sim = df_sim[(df_sim['FECHA_DT'].dt.date >= sim_fecha_inicio) & (df_sim['FECHA_DT'].dt.date <= sim_fecha_fin)]
                                 if col_pista_sim and sim_pista != "TODAS":
                                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
@@ -694,7 +695,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                     df_sim = df_sim[df_sim[col_ha] > 0]
 
                                 if df_sim.empty:
-                                    st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros seleccionados.")
+                                    st.warning("⚠️ No se encontraron Órdenes de Servicio para el rango de fechas seleccionado.")
                                 else:
                                     def red_excel(num):
                                         return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
@@ -835,8 +836,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                         st.download_button(
                                             label="📥 DESCARGAR INFORME DUAL (EXCEL OFICIAL)",
                                             data=buffer_neg.getvalue(),
-                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{meses_dict[sim_mes]}_{sim_anio}.xlsx",
-                                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            file_name=f"Auditoria_Tarifas_{sim_pista}_{sim_fecha_inicio}_a_{sim_fecha_fin}.xlsx",
                                             type="primary",
                                             use_container_width=True
                                         )
