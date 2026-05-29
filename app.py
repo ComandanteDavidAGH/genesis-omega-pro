@@ -7,18 +7,17 @@ import unicodedata
 from datetime import datetime
 import dateutil.parser
 
-# --- 🔐 BÓVEDA DE SEGURIDAD OMEGA ---
-# Aquí definimos quiénes tienen acceso al sistema
+# Aquí definimos quiénes tienen acceso al sistema extrayendo claves de la bóveda
 USUARIOS_CREDENTIALS = {
     "usernames": {
         "comandante": {
             "name": "Comandante Omega",
-            "password": "Alfa123*", # 🚨 CAMBIE ESTA CLAVE DESPUÉS
+            "password": st.secrets["passwords"]["comandante"], 
             "role": "ADMIN"
         },
         "gerencia": {
             "name": "Visor Gerencial / Cliente",
-            "password": "Omega456*", # 🚨 CAMBIE ESTA CLAVE DESPUÉS
+            "password": st.secrets["passwords"]["gerencia"], 
             "role": "VIEWER"
         }
     }
