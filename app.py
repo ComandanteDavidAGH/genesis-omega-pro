@@ -89,12 +89,15 @@ if not st.session_state['autenticado']:
 # si el código llega aquí, significa que el usuario ya se autenticó
 # =====================================================================
 
-# --- 2. ARTILLERÍA VISUAL Y CSS (MODO SIGILO SELECTIVO) ---
+# --- 2. ARTILLERÍA VISUAL Y CSS (MODO SIGILO ABSOLUTO) ---
 st.markdown("""
 <style>
-/* 🛡️ NEUTRALIZACIÓN DE GITHUB Y DEPLOY (MANTIENE LA HAMBURGUESA) */
-[data-testid="stToolbarActions"] { display: none !important; }
-.stDeployButton { display: none !important; }
+/* 🛡️ DESTRUCCIÓN TOTAL DE LA BARRA SUPERIOR (GitHub, Deploy, Hamburguesa) */
+[data-testid="stHeader"] { display: none !important; visibility: hidden !important; }
+[data-testid="stToolbarActions"] { display: none !important; visibility: hidden !important; }
+.stAppDeployButton { display: none !important; visibility: hidden !important; }
+#MainMenu { display: none !important; visibility: hidden !important; }
+header { display: none !important; visibility: hidden !important; }
 
 /* Resto de la Artillería Visual */
 .stApp { background-color: #f4f6f9; }
