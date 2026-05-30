@@ -45,7 +45,7 @@ try:
     .stApp::before {{
         content: ""; background-image: url('{bg_image}');
         background-size: 450px; background-repeat: no-repeat; background-position: center;
-        opacity: 0.04; position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
+        opacity: 0.15; position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
     }}
     </style>
     """, unsafe_allow_html=True)
