@@ -89,15 +89,20 @@ if not st.session_state['autenticado']:
 # si el código llega aquí, significa que el usuario ya se autenticó
 # =====================================================================
 
-# --- 2. ARTILLERÍA VISUAL Y CSS (MODO SIGILO ABSOLUTO) ---
+# --- 2. ARTILLERÍA VISUAL Y CSS (SIGILO + HAMBURGUESA PROTEGIDA) ---
 st.markdown("""
 <style>
-/* 🛡️ DESTRUCCIÓN TOTAL DE LA BARRA SUPERIOR (GitHub, Deploy, Hamburguesa) */
-[data-testid="stHeader"] { display: none !important; visibility: hidden !important; }
-[data-testid="stToolbarActions"] { display: none !important; visibility: hidden !important; }
-.stAppDeployButton { display: none !important; visibility: hidden !important; }
-#MainMenu { display: none !important; visibility: hidden !important; }
-header { display: none !important; visibility: hidden !important; }
+/* 🛡️ DESTRUCCIÓN DE GITHUB Y DEPLOY (Pero dejando la barra superior viva) */
+[data-testid="stToolbarActions"] { display: none !important; }
+.stAppDeployButton { display: none !important; }
+
+/* 🛡️ DESTRUCCIÓN DE LA MARCA DE AGUA (Manage App) Y FOOTER */
+.viewerBadge_container { display: none !important; visibility: hidden !important; opacity: 0 !important; }
+div[class^="viewerBadge"] { display: none !important; }
+footer { display: none !important; visibility: hidden !important; }
+
+/* 🛡️ PROTECCIÓN ABSOLUTA DE LA HAMBURGUESA */
+#MainMenu { visibility: visible !important; display: block !important; }
 
 /* Resto de la Artillería Visual */
 .stApp { background-color: #f4f6f9; }
@@ -114,7 +119,6 @@ div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !impo
 th { background-color: #f0f2f6 !important; color: black !important; }
 </style>
 """, unsafe_allow_html=True)
-
 # --- 3. FUNCIONES GLOBALES TÁCTICAS ---
 def purificar_lote(lote):
     if pd.isna(lote) or lote is None: return ""
