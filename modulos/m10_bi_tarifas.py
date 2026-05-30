@@ -203,44 +203,42 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🚜 1. EL SECRETO MATEMÁTICO BLINDADO: PROMEDIO POR MISIÓN (Misión = 1 Fila)
+        # 🎯 EL CAMBIO QUIRÚRGICO SOLICITADO: Área arriba y Promedio Matemático Real (Dinero / Ha)
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
+        
         if col_area:
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
-            # 🛡️ FILTRO MILITAR: Dejamos 1 sola fila por cada vuelo real para no multiplicar facturas.
-            df_unicos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
-            df_unicos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
+            # SU FILTRO ORIGINAL (El que no se daña):
+            df_unicos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
+            df_unicos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
             
             area_a = df_unicos_a['AREA_NUM'].sum() if not df_unicos_a.empty else 0.0
             area_b = df_unicos_b['AREA_NUM'].sum() if not df_unicos_b.empty else 0.0
             
-            # Sumamos directamente el Total Facturado de esos vuelos únicos
-            dinero_total_a = df_unicos_a['COSTO_NUM'].sum() if not df_unicos_a.empty else 0.0
-            dinero_total_b = df_unicos_b['COSTO_NUM'].sum() if not df_unicos_b.empty else 0.0
-            
-            costo_a = (dinero_total_a / area_a) if area_a > 0 else 0
-            costo_b = (dinero_total_b / area_b) if area_b > 0 else 0
+            # Reemplazamos el .mean() por la fórmula perfecta:
+            costo_a = (df_unicos_a['COSTO_NUM'].sum() / area_a) if area_a > 0 else 0
+            costo_b = (df_unicos_b['COSTO_NUM'].sum() / area_b) if area_b > 0 else 0
         else:
             area_a, area_b = 0.0, 0.0
-            costo_a = 0
-            costo_b = 0
+            costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
+            costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
         st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
         k1, k2, k3 = st.columns(3)
-        k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}".replace(",", "."))
-        k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}".replace(",", "."))
+        k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
+        k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
         
         st.markdown("#### 🚜 Volumen Operativo (Hectáreas Aplicadas)")
         var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
 
         h1, h2, h3 = st.columns(3)
-        h1.metric(f"Total Hectáreas ({año_base})", f"{area_a:,.1f} Ha".replace(",", "."))
-        h2.metric(f"Total Hectáreas ({año_comp})", f"{area_b:,.1f} Ha".replace(",", "."))
+        h1.metric(f"Total Hectáreas ({año_base})", f"{area_a:,.1f} Ha")
+        h2.metric(f"Total Hectáreas ({año_comp})", f"{area_b:,.1f} Ha")
         if area_a > 0: h3.metric("Variación de Área", f"{var_area:+.1f} %", delta=f"{var_area:+.1f}%", delta_color="normal")
         else: h3.metric("Variación de Área", "N/A")
         
@@ -273,39 +271,42 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("---")
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
         
-        # 🛡️ 2. AJUSTE EN GRÁFICA DE TENDENCIAS: Cálculos de Total / Área por lapso de tiempo.
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
-            df_tendencia = df_tendencia.copy()
-            df_tendencia.loc[:, 'AREA_NUM'] = df_tendencia[col_area].apply(limpiar_area) if col_area else 1.0
-            df_tend_unicos = df_tendencia.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
-            
-            # Filtro militar de saneamiento
-            df_tend_unicos = df_tend_unicos[df_tend_unicos['AREA_NUM'] > 0.1]
-            
+            # 🎯 EL CAMBIO QUIRÚRGICO EN LA GRÁFICA (Mismo filtro original)
+            if col_area:
+                df_tendencia.loc[:, 'AREA_NUM'] = df_tendencia[col_area].apply(limpiar_area)
+                df_tendencia = df_tendencia.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
+
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'MES']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
-                tendencia_agrupa['COSTO_PROMEDIO_HA'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
+                if col_area:
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
+                    tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
+                    tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
+                else:
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                    
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                 titulo_x = "Meses Operativos"
             else:
-                df_tend_unicos['DIA'] = df_tend_unicos['FECHA_DT'].dt.day
-                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'DIA']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
-                tendencia_agrupa['COSTO_PROMEDIO_HA'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
+                df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
+                if col_area:
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
+                    tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
+                    tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
+                else:
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                 titulo_x = f"Días Operativos ({etiq_periodo})"
                 
             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
-            fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_PROMEDIO_HA', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#ef4444'])
+            fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#ef4444'])
             fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
-            
-            max_y = tendencia_agrupa['COSTO_PROMEDIO_HA'].max() * 1.2
-            if not pd.isna(max_y) and max_y > 0: fig_tendencia.update_yaxes(range=[0, max_y])
-            
+            max_y = tendencia_agrupa['COSTO_NUM'].max() * 1.2
+            if not pd.isna(max_y): fig_tendencia.update_yaxes(range=[0, max_y])
             fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center", hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>")
             st.plotly_chart(fig_tendencia, use_container_width=True)
         else:
@@ -327,27 +328,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AVION_NUM'] = 0.0
             df_periodo_b.loc[:, 'AVION_NUM'] = 0.0
 
-        # 🛡️ 3. PROMEDIO PONDERADO PARA EL COSTO DEL AVIÓN (Recuperación de la barra verde)
-        df_barras_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
-        df_barras_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
+        # 🎯 EL CAMBIO QUIRÚRGICO EN EL AVIÓN (Mismo filtro original)
+        if col_area:
+            vuelo_a = (df_unicos_a['AVION_NUM'].sum() / area_a) if area_a > 0 else 0
+            vuelo_b = (df_unicos_b['AVION_NUM'].sum() / area_b) if area_b > 0 else 0
+        else:
+            vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
+            vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
 
-        # Si 'AVION_NUM' es Costo Unitario, Dinero de Avión = Unitario * Area.
-        df_barras_a['DINERO_AVION_FILA'] = df_barras_a['AVION_NUM'] * df_barras_a['AREA_NUM']
-        df_barras_b['DINERO_AVION_FILA'] = df_barras_b['AVION_NUM'] * df_barras_b['AREA_NUM']
-
-        dinero_avion_a = df_barras_a['DINERO_AVION_FILA'].sum() if not df_barras_a.empty else 0
-        dinero_avion_b = df_barras_b['DINERO_AVION_FILA'].sum() if not df_barras_b.empty else 0
-
-        vuelo_a = (dinero_avion_a / area_a) if area_a > 0 else 0
-        vuelo_b = (dinero_avion_b / area_b) if area_b > 0 else 0
-        
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
 
-        vuelo_tot_a = dinero_avion_a
-        vuelo_tot_b = dinero_avion_b
-        insumos_tot_a = max(0, dinero_total_a - dinero_avion_a)
-        insumos_tot_b = max(0, dinero_total_b - dinero_avion_b)
+        vuelo_tot_a = vuelo_a * area_a
+        vuelo_tot_b = vuelo_b * area_b
+        insumos_tot_a = insumos_a * area_a
+        insumos_tot_b = insumos_b * area_b
 
         st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
@@ -378,36 +373,37 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
-            df_coctel_un_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
-            df_coctel_un_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM']).copy()
-            
-            if col_gln:
-                g_a = df_coctel_un_a.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum', col_gln: 'mean'}).reset_index()
-                g_a['COSTO_HA_REAL'] = g_a['COSTO_NUM'] / g_a['AREA_NUM']
-                g_b = df_coctel_un_b.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum', col_gln: 'mean'}).reset_index()
-                g_b['COSTO_HA_REAL'] = g_b['COSTO_NUM'] / g_b['AREA_NUM']
+            # 🎯 EL CAMBIO QUIRÚRGICO EN CÓCTELES
+            if col_area:
+                if col_gln:
+                    g_a = df_unicos_a.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum', col_gln: 'mean'}).reset_index()
+                    g_a['COSTO_NUM'] = g_a['COSTO_NUM'] / g_a['AREA_NUM']
+                    g_b = df_unicos_b.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum', col_gln: 'mean'}).reset_index()
+                    g_b['COSTO_NUM'] = g_b['COSTO_NUM'] / g_b['AREA_NUM']
+                else:
+                    g_a = df_unicos_a.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
+                    g_a['COSTO_NUM'] = g_a['COSTO_NUM'] / g_a['AREA_NUM']
+                    g_b = df_unicos_b.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
+                    g_b['COSTO_NUM'] = g_b['COSTO_NUM'] / g_b['AREA_NUM']
             else:
-                g_a = df_coctel_un_a.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                g_a['COSTO_HA_REAL'] = g_a['COSTO_NUM'] / g_a['AREA_NUM']
-                g_b = df_coctel_un_b.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                g_b['COSTO_HA_REAL'] = g_b['COSTO_NUM'] / g_b['AREA_NUM']
-
-            if 'AREA_NUM' in g_a.columns: g_a = g_a.drop(columns=['AREA_NUM', 'COSTO_NUM'])
-            if 'AREA_NUM' in g_b.columns: g_b = g_b.drop(columns=['AREA_NUM', 'COSTO_NUM'])
+                agg_dict = {'COSTO_NUM': 'mean'}
+                if col_gln: agg_dict[col_gln] = 'mean'
+                g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
+                g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
             
             tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL'))
             tabla_autopsia.fillna(0, inplace=True)
             
-            tabla_autopsia.rename(columns={col_coctel: 'CÓCTEL APLICADO', 'COSTO_HA_REAL_BASE': f'Costo/Ha ({año_base})', 'COSTO_HA_REAL_ACTUAL': f'Costo/Ha ({año_comp})'}, inplace=True)
+            tabla_autopsia.rename(columns={col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM_BASE': f'Costo/Ha ({año_base})', 'COSTO_NUM_ACTUAL': f'Costo/Ha ({año_comp})'}, inplace=True)
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
             
             if col_gln:
                 tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
             df_vista = tabla_autopsia.copy()
-            df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format).str.replace(",", ".")
+            df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
+            df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
+            df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
             st.dataframe(df_vista, use_container_width=True)
             
         st.markdown("<hr>", unsafe_allow_html=True)
@@ -561,30 +557,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             matriz_mol.append({"INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}", f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}", f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}", f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a})
 
                         df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
-                        df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format).str.replace(",", ".")
-                        df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format).str.replace(",", ".")
-                        df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format).str.replace(",", ".")
+                        df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
+                        df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
+                        df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format)
                         st.dataframe(df_vista_mol, use_container_width=True, hide_index=True)
                         
                         c1, c2, c3 = st.columns(3)
-                        c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}".replace(",", "."))
-                        c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}".replace(",", "."))
-                        c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}".replace(",", "."), delta=f"$ {costo_total_b - costo_total_a:,.0f}".replace(",", "."), delta_color="inverse")
+                        c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
+                        c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}")
+                        c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
                         
                         if 'AVION_NUM' in df_periodo_b.columns:
-                            df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel].copy()
-                            
-                            # Auditoría IA con misiones agrupadas
-                            df_coctel_b = df_coctel_b.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM'])
-                            
-                            area_coctel_b = df_coctel_b['AREA_NUM'].sum()
-                            dinero_tot_coctel = df_coctel_b['COSTO_NUM'].sum()
-                            
-                            df_coctel_b['DINERO_AVION_FILA'] = df_coctel_b['AVION_NUM'] * df_coctel_b['AREA_NUM']
-                            dinero_avion_coctel = df_coctel_b['DINERO_AVION_FILA'].sum()
-                            
-                            costo_total_facturado_b = (dinero_tot_coctel / area_coctel_b) if area_coctel_b > 0 else 0
-                            vuelo_facturado_b = (dinero_avion_coctel / area_coctel_b) if area_coctel_b > 0 else 0
+                            df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
+                            costo_total_facturado_b = df_coctel_b['COSTO_NUM'].mean() if not df_coctel_b.empty else 0
+                            vuelo_facturado_b = df_coctel_b['AVION_NUM'].mean() if not df_coctel_b.empty else 0
                             insumos_facturados_b = max(0, costo_total_facturado_b - vuelo_facturado_b)
                             
                             if costo_total_b > 0 and insumos_facturados_b > 0:
@@ -593,7 +579,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 st.markdown("### 🤖 Deliberador IA: Auditoría de Facturación SAP vs Receta Teórica")
                                 if abs(diff_b) <= 2000: st.success(f"✅ **AUDITORÍA PERFECTA:** El costo de químicos facturados en SAP ($ {insumos_facturados_b:,.0f}) coincide con la receta ($ {costo_total_b:,.0f}).")
                                 else:
-                                    st.warning(f"⚠️ **DISCREPANCIA DETECTADA:** Los insumos facturados ($ {insumos_facturados_b:,.0f}) no cuadran con el teórico ($ {costo_total_b:,.0f}). Diferencia: **$ {diff_b:,.0f} / Ha**".replace(",", "."))
+                                    st.warning(f"⚠️ **DISCREPANCIA DETECTADA:** Los insumos facturados ($ {insumos_facturados_b:,.0f}) no cuadran con el teórico ($ {costo_total_b:,.0f}). Diferencia: **$ {diff_b:,.0f} / Ha**")
                                     st.markdown("#### 🔍 Conclusiones del Deliberador:")
                                     if diff_b > 0: st.write(f"- 📈 **Sobrecosto:** Se cobró más de lo que indica la sigla. Es probable que se haya aplicado **SPRAYFIX**, **ADHERENTE** extra o mayor dosis de **ACEITE**.")
                                     else: st.write(f"- 📉 **Ahorro/Faltante:** Se cobró menos. Si la finca es orgánica, se facturó correctamente (sin adherente), o hubo un error a favor en SAP.")
@@ -606,7 +592,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                             for d in [0.02, 0.06, 0.13, 0.2, 0.5, 1.0, 2.0]:
                                                 costo_teorico = precio_p * d
                                                 if costo_teorico > 0 and abs(costo_teorico - abs(diff_b)) <= (abs(diff_b) * 0.15 + 500):
-                                                    st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})".replace(",", "."))
+                                                    st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})")
                                                     candidatos_encontrados = True; break
                                             if candidatos_encontrados: break
                                         if not candidatos_encontrados: st.write("No se detectó un químico individual que coincida exacto.")
@@ -718,9 +704,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         st.markdown("### 🎯 Impacto Financiero Real de la Simulación")
                         k1, k2, k3 = st.columns(3)
-                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {total_actual_global:,.0f}".replace(",", "."))
-                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {total_simulado_global:,.0f}".replace(",", "."))
-                        k3.metric("⚖️ Dinero Real en Juego", f"$ {abs(total_diferencia_global):,.0f}".replace(",", "."), delta=f"$ {total_diferencia_global:,.0f}".replace(",", "."), delta_color="normal" if total_diferencia_global > 0 else "inverse")
+                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {total_actual_global:,.0f}")
+                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {total_simulado_global:,.0f}")
+                        k3.metric("⚖️ Dinero Real en Juego", f"$ {abs(total_diferencia_global):,.0f}", delta=f"$ {total_diferencia_global:,.0f}", delta_color="normal" if total_diferencia_global > 0 else "inverse")
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         tab_resumen, tab_detalle = st.tabs(["📊 1. Resumen Macroeconómico", "📋 2. Desglose Quirúrgico"])
@@ -728,13 +714,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         with tab_resumen:
                             df_sem_vista = df_semanal.copy()
                             df_sem_vista["HECTÁREAS"] = df_sem_vista["HECTÁREAS"].map("{:,.2f}".format)
-                            for col in ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_sem_vista[col] = df_sem_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
+                            for col in ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_sem_vista[col] = df_sem_vista[col].map("$ {:,.0f}".format)
                             st.dataframe(df_sem_vista, use_container_width=True, hide_index=True)
                         
                         with tab_detalle:
                             df_vista = df_resultados.copy()
                             df_vista["HECTÁREAS"] = df_vista["HECTÁREAS"].map("{:,.2f}".format)
-                            for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_vista[col] = df_vista[col].map("$ {:,.0f}".format).str.replace(",", ".")
+                            for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_vista[col] = df_vista[col].map("$ {:,.0f}".format)
                             
                             def col_dif(val):
                                 if isinstance(val, str) and "-" in val: return 'color: #721c24; background-color: #f8d7da; font-weight: bold; text-align: center;'
