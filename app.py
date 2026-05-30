@@ -89,10 +89,14 @@ if not st.session_state['autenticado']:
 # si el código llega aquí, significa que el usuario ya se autenticó
 # =====================================================================
 
-# --- 2. ARTILLERÍA VISUAL Y CSS ---
-arsenal_css = """
+# --- 2. ARTILLERÍA VISUAL Y CSS (MODO SIGILO SELECTIVO) ---
+st.markdown("""
 <style>
+/* 🛡️ NEUTRALIZACIÓN DE GITHUB Y DEPLOY (MANTIENE LA HAMBURGUESA) */
 [data-testid="stToolbarActions"] { display: none !important; }
+.stDeployButton { display: none !important; }
+
+/* Resto de la Artillería Visual */
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
@@ -106,8 +110,7 @@ button[kind="secondary"]:hover { background-color: #0d1b2a !important; color: #d
 div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
 th { background-color: #f0f2f6 !important; color: black !important; }
 </style>
-"""
-st.markdown(arsenal_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- 3. FUNCIONES GLOBALES TÁCTICAS ---
 def purificar_lote(lote):
