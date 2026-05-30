@@ -45,7 +45,23 @@ try:
     .stApp::before {{
         content: ""; background-image: url('{bg_image}');
         background-size: 450px; background-repeat: no-repeat; background-position: center;
-        opacity: 0.15; position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
+        opacity: 0.12; position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+except: pass
+
+# --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA ---
+try:
+    with open("escudo.png", "rb") as image_file:
+        bg_image = f"data:image/png;base64,{base64.b64encode(image_file.read()).decode()}"
+    st.markdown(f"""
+    <style>
+    .stApp::before {{
+        content: ""; background-image: url('{bg_image}');
+        background-size: 550px; background-repeat: no-repeat; background-position: center;
+        opacity: 0.04; /* 🎯 OPACIDAD REDUCIDA AL 4% PARA NO ESTORBAR */
+        position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -73,6 +89,18 @@ button[kind="secondary"]:hover { background-color: #0d1b2a !important; color: #d
 div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
+
+/* 🎯 ALTO CONTRASTE: BORDES Y FONDOS SÓLIDOS PARA CASILLAS Y ALERTAS */
+div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div {
+    background-color: #ffffff !important;
+    border: 2px solid #0d1b2a !important; /* Borde azul marino fuerte */
+    box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important;
+}
+[data-testid="stNotification"] {
+    background-color: #ffffff !important;
+    border: 2px solid #0d1b2a !important; /* Borde firme para las alertas */
+    box-shadow: 3px 3px 10px rgba(0,0,0,0.15) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
