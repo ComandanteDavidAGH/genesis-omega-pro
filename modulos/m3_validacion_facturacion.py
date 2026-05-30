@@ -875,7 +875,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_p1, c_p2 = st.columns(2)
         with c_p1:
             pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
-            pista_manual = st.selectbox("📍 Confirmar Pista de Operación:", pistas_disponibles, index=pistas_disponibles.index(pista_sel) if pista_sel in pistas_disponibles else 0)
+            # 🎯 CLAVE DINÁMICA: Fuerza a la caja a sincronizarse con la de arriba
+            pista_manual = st.selectbox(
+                "📍 Confirmar Pista de Operación:", 
+                pistas_disponibles, 
+                index=pistas_disponibles.index(pista_sel) if pista_sel in pistas_disponibles else 0,
+                key=f"confirmador_final_{pista_sel}_{vuelo_ref}"
+            )
 
         with c_p2:
             st.info(f"🚀 Misión: {tipo_mision} | 📋 Referencia: {vuelo_ref}")
