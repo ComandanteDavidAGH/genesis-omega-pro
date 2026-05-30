@@ -143,7 +143,7 @@ def ejecutar(quitar_tildes, purificar_lote):
 
         st.markdown("---")
         
-        # --- ZONA DUAL: EXCEL Y VISOR HTML PARA PDF ---
+        # --- ZONA DUAL: EXCEL Y VISOR HTML PARA PDF (CON DESCARGA DIRECTA INYECTADA) ---
         col_dw1, col_dw2 = st.columns(2)
         
         with col_dw1:
@@ -170,16 +170,44 @@ def ejecutar(quitar_tildes, purificar_lote):
                             elif cell.column == 8: cell.alignment = Alignment(horizontal='center')
                     for col in worksheet.columns: worksheet.column_dimensions[col[0].column_letter].width = min(max(max(len(str(c.value or '')) for c in col) + 4, 12), 42)
 
-            st.download_button("📊 DESCARGAR EXCEL VIVO", buffer.getvalue(), f"Arqueo_Excel_Sem__{st.session_state.semana_actual}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+            st.download_button("📊 DESCARGAR EXCEL VIVO", buffer.getvalue(), f"Arqueo_Excel_Semana_{st.session_state.semana_actual}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
         with col_dw2:
-            if st.button("📄 PREPARAR REPORTE PDF (IMPRESIÓN)", type="primary", use_container_width=True):
+            if st.button("📄 ACTIVAR CENTRO DE EMISIÓN DE PDF", type="primary", use_container_width=True):
                 css_vip = """<style>body { font-family: Helvetica, sans-serif; background: white; color: black; font-size: 11px; } .b-print { padding: 20px; } table { width: 100%; border-collapse: collapse; margin-bottom: 20px; } th { background-color: #0d1b2a; color: #d4af37; border: 1px solid #000; padding: 6px; text-align: center; font-size: 12px; } td { border: 1px solid #000; padding: 4px; text-align: center; } .td-left { text-align: left; } .title { font-size: 20px; color: #0d1b2a; font-weight: bold; text-align: center; margin: 0; } .subtitle { font-size: 14px; color: #d4af37; text-align: center; margin: 0 0 20px 0; font-weight: bold; } .firmas-container { display: flex; justify-content: space-around; margin-top: 50px; page-break-inside: avoid; } .firma-box { text-align: center; width: 40%; border-top: 2px solid #0d1b2a; padding-top: 5px; font-weight: bold; color: #0d1b2a; } @media print { @page { size: A4 landscape; margin: 10mm; } body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .no-print { display: none !important; } .salto-pagina { page-break-after: always; } }</style>"""
                 
                 df_agrupado = st.session_state.cruce_final.copy()
                 pistas = sorted(df_agrupado['PISTA'].unique())
                 
-                html_masivo = f"""<html><head><script>function imprimir() {{ window.print(); }}</script>{css_vip}</head><body><div class="no-print" style="position: sticky; top: 0; background: white; padding: 10px; z-index: 100; border-bottom: 2px solid #0d1b2a; text-align: right;"><button onclick="imprimir()" style="background:#0d1b2a; color:#d4af37; border:2px solid #d4af37; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black';">🖨️ IMPRIMIR / GUARDAR COMO PDF</button></div>"""
+                # 🧪 INYECTOR DEL CDN DE HTML2PDF PARA DESCARGA DIRECTA SIN REQUISITOS EN EL SERVIDOR
+                html_masivo = f"""
+                <html>
+                <head>
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+                    <script>
+                        function imprimir() {{ window.print(); }}
+                        function descargarPDF() {{
+                            var element = document.getElementById('contenido-reporte');
+                            var opt = {{
+                                margin:       [10, 10, 10, 10],
+                                filename:     'Reporte_Arqueo_Semana_{st.session_state.semana_actual}.pdf',
+                                image:        {{ type: 'jpeg', quality: 0.98 }},
+                                html2canvas:  {{ scale: 2, useCORS: true }},
+                                jsPDF:        {{ unit: 'mm', format: 'a4', orientation: 'landscape' }},
+                                pagebreak:    {{ mode: ['css', 'legacy'] }}
+                            }};
+                            html2pdf().set(opt).from(element).save();
+                        }}
+                    </script>
+                    {css_vip}
+                </head>
+                <body>
+                    <div class="no-print" style="position: sticky; top: 0; background: white; padding: 10px; z-index: 100; border-bottom: 2px solid #0d1b2a; text-align: right;">
+                        <button onclick="descargarPDF()" style="background:#0d1b2a; color:#d4af37; border:2px solid #d4af37; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black'; margin-right: 10px;">📥 DESCARGAR PDF DIRECTO</button>
+                        <button onclick="imprimir()" style="background:#4a5568; color:white; border:2px solid #4a5568; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black';">🖨️ PANEL DE IMPRESIÓN</button>
+                    </div>
+                    <div id="contenido-reporte">
+                """
                 
                 for i, pista in enumerate(pistas):
                     df_pista = df_agrupado[df_agrupado['PISTA'] == pista]
@@ -202,6 +230,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                             <div class='firma-box'>FIRMA AUDITOR DE INVENTARIOS</div>
                         </div></div>"""
                 
-                html_masivo += "</body></html>"
-                st.info("💡 **Tip Táctico:** Al abrirse la ventana abajo, presione el botón negro de imprimir y seleccione **'Guardar como PDF'** o seleccione su impresora. Asegúrese de elegir orientación **Horizontal** en las opciones.")
+                html_masivo += "</div></body></html>"
+                st.info("💡 **Coordenada Activada:** Use el botón azul de arriba para forzar la descarga del PDF de forma directa a su disco local.")
                 components.html(html_masivo, height=600, scrolling=True)
