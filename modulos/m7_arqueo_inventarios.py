@@ -5,7 +5,7 @@ import io
 def ejecutar(quitar_tildes, purificar_lote):
     st.markdown("<h1 class='titulo-principal'>⚖️ Arqueo de Inventarios y Conciliación</h1>", unsafe_allow_html=True)
     
-    # 📦 ZONA DE CARGA EN PANTALLA PRINCIPAL (Descamuflada)
+    # 📦 ZONA DE CARGA EN PANTALLA PRINCIPAL
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown("### 📁 1. Sábana SAP")
@@ -28,12 +28,14 @@ def ejecutar(quitar_tildes, purificar_lote):
         cruce['ITEM'] = cruce['ITEM'].fillna("---")
         cruce['PRODUCTO'] = cruce['PRODUCTO'].fillna(cruce['PRODUCTO_SUP']).fillna("N/A")
         cruce['LOTE'] = cruce['LOTE'].fillna(cruce['LOTE_SUP'])
-        cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(2)
-        cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(2)
+        
+        # 🎯 AJUSTE: Pasamos a precisión de 3 decimales
+        cruce['SALDO_SAP'] = cruce['SALDO_SAP'].fillna(0).round(3)
+        cruce['SALDO_FISICO'] = cruce['SALDO_FISICO'].fillna(0).round(3)
         
         cruce = cruce[~((cruce['SALDO_SAP'] == 0) & (cruce['SALDO_FISICO'] == 0))]
         
-        cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(2)
+        cruce['DIFERENCIA'] = (cruce['SALDO_FISICO'] - cruce['SALDO_SAP']).round(3)
         cruce['ESTADO'] = cruce['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
         
         cruce['OBSERVACIONES'] = ""
@@ -48,7 +50,6 @@ def ejecutar(quitar_tildes, purificar_lote):
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Botón en la pantalla principal
     if st.button("🚀 INICIAR ARQUEO ESTRATÉGICO", type="primary", use_container_width=True):
         if not archivo_sap or not archivos_sup or not semana_obj:
             st.error("❌ Faltan suministros. Asegúrese de cargar ambos archivos y escribir la semana.")
@@ -80,7 +81,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                     df_sap_clean.columns = ['ITEM', 'PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                     df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
                     df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().str.upper()
-                    df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).replace(',', '.'), errors='coerce').fillna(0)
+                    df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
                     
                     st.session_state.df_sap_raw = df_sap_clean 
                     st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
@@ -122,10 +123,10 @@ def ejecutar(quitar_tildes, purificar_lote):
                         generar_cruce()
                         st.session_state.arqueo_procesado = True
                     else:
-                        st.error("❌ No se encontraron datos válidos.")
+                        st.error("❌ No se encontraron datos válidos en las pestañas de supervisores para la semana indicada.")
 
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"🚨 Error crítico en el procesamiento: {e}")
                 
     if st.session_state.arqueo_procesado:
         tab1, tab2, tab3 = st.tabs(["⚠️ Discrepancias y Notas", "🛠️ Conciliador Inteligente", "📋 Inventario Completo"])
@@ -135,14 +136,20 @@ def ejecutar(quitar_tildes, purificar_lote):
             df_err = st.session_state.cruce_final[st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA"].copy()
             
             if df_err.empty:
-                st.success("✅ ¡Inventario cuadrado!")
+                st.success("✅ ¡Inventario perfectamente cuadrado!")
             else:
+                # 🎯 CONFIGURACIÓN: Forzamos visualización de 3 decimales en el editor
                 edited_df = st.data_editor(
                     df_err.drop(columns=['LOTE_KEY']),
                     use_container_width=True,
                     hide_index=True,
                     disabled=["PISTA", "ITEM", "PRODUCTO", "LOTE", "SALDO_SAP", "SALDO_FISICO", "DIFERENCIA", "ESTADO"],
-                    column_config={"OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES (Editable)", width="large")}
+                    column_config={
+                        "SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"),
+                        "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"),
+                        "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f"),
+                        "OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES (Editable)", width="large")
+                    }
                 )
                 
                 for _, row in edited_df.iterrows():
@@ -197,30 +204,84 @@ def ejecutar(quitar_tildes, purificar_lote):
 
         with tab3:
             st.subheader("Inventario Consolidado (Libre de Ceros)")
-            st.dataframe(st.session_state.cruce_final.drop(columns=['LOTE_KEY']).style.map(
-                lambda x: 'background-color: #d4edda; color: #155724' if x == "✅ OK" else '', subset=['ESTADO']
-            ), use_container_width=True, hide_index=True)
+            # 🎯 CONFIGURACIÓN: Forzamos visualización de 3 decimales en la tabla completa
+            st.dataframe(
+                st.session_state.cruce_final.drop(columns=['LOTE_KEY']).style.map(
+                    lambda x: 'background-color: #d4edda; color: #155724' if x == "✅ OK" else '', subset=['ESTADO']
+                ), 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"),
+                    "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"),
+                    "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")
+                }
+            )
 
         st.markdown("---")
         buffer = io.BytesIO()
+        
+        # =====================================================================
+        # 🧪 INYECTOR DE FÓRMULAS VIVAS Y ESTILOS DE GRADO CORPORATIVO (openpyxl)
+        # =====================================================================
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             f_df = st.session_state.cruce_final.drop(columns=['LOTE_KEY'])
             f_df[f_df['ESTADO'] == "❌ DISCREPANCIA"].to_excel(writer, index=False, sheet_name='Diferencias')
             f_df.to_excel(writer, index=False, sheet_name='Total')
             
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            
+            borde_fino = Border(
+                left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'),
+                top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1')
+            )
+            fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+            texto_blanco = Font(color="FFFFFF", bold=True)
+            
             for sheetname in writer.sheets:
                 worksheet = writer.sheets[sheetname]
+                worksheet.sheet_view.showGridLines = True
                 worksheet.auto_filter.ref = worksheet.dimensions 
+                
+                # Inyección celda por celda (Desde la fila 2 hasta el final)
+                for r_idx in range(2, worksheet.max_row + 1):
+                    # 🧪 Columna G (Diferencia) = F (Físico) - E (SAP)
+                    worksheet.cell(row=r_idx, column=7).value = f"=F{r_idx}-E{r_idx}"
+                    
+                    # 🧪 Columna H (Estado) = Condicional dinámica de Excel
+                    worksheet.cell(row=r_idx, column=8).value = f'=IF(ABS(G{r_idx})<=0.05, "✅ OK", "❌ DISCREPANCIA")'
+                    
+                    # 🎯 FORMATO: Forzar estrictamente 3 decimales en las columnas numéricas (E, F, G)
+                    worksheet.cell(row=r_idx, column=5).number_format = '0.000'
+                    worksheet.cell(row=r_idx, column=6).number_format = '0.000'
+                    worksheet.cell(row=r_idx, column=7).number_format = '0.000'
+                
+                # Aplicar Estilos de Estructura y Alineaciones
+                for row_cells in worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column):
+                    for cell in row_cells:
+                        cell.border = borde_fino
+                        if cell.row == 1:
+                            cell.fill = fondo_navy
+                            cell.font = texto_blanco
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                        else:
+                            if cell.column in [5, 6, 7]:  # Valores numéricos a la derecha
+                                cell.alignment = Alignment(horizontal='right')
+                            elif cell.column == 8:        # Estados al centro
+                                cell.alignment = Alignment(horizontal='center')
+                
+                # Ajuste Automático de Ancho de Columnas Inteligente
                 for col in worksheet.columns:
-                    max_length = 0
-                    column = col[0].column_letter
-                    for cell in col:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 40)
-                    worksheet.column_dimensions[column].width = adjusted_width
+                    max_len = max(len(str(c.value or '')) for c in col)
+                    col_letter = col[0].column_letter
+                    worksheet.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 42)
 
-        st.download_button("📥 Descargar Reporte Ejecutivo", buffer.getvalue(), f"Arqueo_Ejecutivo_Semana_{st.session_state.semana_actual}.xlsx")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.download_button(
+            label="📥 Descargar Reporte Ejecutivo (Excel con Fórmulas Activas)",
+            data=buffer.getvalue(),
+            file_name=f"Arqueo_Ejecutivo_Semana_{st.session_state.semana_actual}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True
+        )
