@@ -276,8 +276,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_tendencia.loc[:, 'AREA_NUM'] = df_tendencia[col_area].apply(limpiar_area) if col_area else 1.0
             df_tend_unicos = df_tendencia.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM', 'COSTO_NUM'])
             
+            # 🎯 PARCHE DE EXCLUSIÓN MILITAR: Eliminar anomalías de área cero o costos imposibles
+            df_tend_unicos = df_tend_unicos[df_tend_unicos['AREA_NUM'] > 0.1]
+            df_tend_unicos = df_tend_unicos[df_tend_unicos['COSTO_NUM'] < 5000000] # Filtra si un registro individual supera 5 millones por Ha por error
+            
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
                 tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'MES']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
+                # Evitar división por cero explícita
+                tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
                 tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
@@ -286,6 +292,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_tend_unicos = df_tend_unicos.copy()
                 df_tend_unicos['DIA'] = df_tend_unicos['FECHA_DT'].dt.day
                 tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'DIA']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
+                tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
                 tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
@@ -294,8 +301,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
             fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#ef4444'])
             fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
+            
+            # Ajuste de escala automático e inteligente para que la gráfica respire bien
             max_y = tendencia_agrupa['COSTO_NUM'].max() * 1.2
-            if not pd.isna(max_y): fig_tendencia.update_yaxes(range=[0, max_y])
+            if not pd.isna(max_y) and max_y > 0: fig_tendencia.update_yaxes(range=[0, max_y])
+            
             fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center", hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>")
             st.plotly_chart(fig_tendencia, use_container_width=True)
         else:
