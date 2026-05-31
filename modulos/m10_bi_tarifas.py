@@ -26,29 +26,27 @@ def estandarizar_base(df):
     renombres = {}
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
+        
+        # 🛑 REGLA DE ORO DE SUS FLECHAS ROJAS: 
+        # Ignorar la Columna V (Costo Avión $/finca) para que no se filtren los Millones.
+        if 'FINCA' in col_u and 'COSTO' in col_u:
+            continue
+            
+        # 🎯 Asignación estricta de las columnas correctas
         if 'FACTURAR' in col_u:
             renombres[col] = 'COSTO_MAESTRO'
-            break
-            
-    if 'COSTO_MAESTRO' not in renombres.values():
-        for col in df.columns:
-            col_u = str(col).upper().replace('\n', ' ').strip()
-            if 'COSTO AVION ($/HA)' in col_u or col_u == 'COSTO_HA':
-                renombres[col] = 'COSTO_MAESTRO'
-                break
-                
-    finca_ok = False; fecha_ok = False; area_ok = False
-    for col in df.columns:
-        col_u = str(col).upper().replace('\n', ' ').strip()
-        if not finca_ok and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
+        elif 'AVION' in col_u and ('HA' in col_u or '/HA' in col_u):
+            renombres[col] = 'AVION_MAESTRO' # Columna T
+        elif 'DOMINIC' in col_u:
+            renombres[col] = 'DOMINIC_MAESTRO' # Columna U
+        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
             renombres[col] = 'FINCA_MAESTRA'
-            finca_ok = True
-        elif not fecha_ok and col_u == 'FECHA':
+        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA':
             renombres[col] = 'FECHA_MAESTRA'
-            fecha_ok = True
-        elif not area_ok and ('FUMIG' in col_u or ('AREA' in col_u and 'BRUTA' not in col_u) or col_u == 'HAS'):
+        elif not ('AREA_MAESTRA' in renombres.values()) and ('FUMIG' in col_u or ('AREA' in col_u and 'BRUTA' not in col_u) or col_u == 'HAS'):
             renombres[col] = 'AREA_MAESTRA'
-            area_ok = True
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u):
+            renombres[col] = 'OS_MAESTRA'
             
     df.rename(columns=renombres, inplace=True)
     return df
@@ -102,7 +100,7 @@ def calcular_frecuencia(df):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
     st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Extrayendo memoria histórica y datos vivos...")
+    st.info("🤖 **MOTOR IA BI:** Procesando datos con extracción directa de Columnas T, U y W...")
 
     try:
         with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico (Motor Turbo)..."):
@@ -126,27 +124,23 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             else:
                 df_historico = pd.DataFrame()
 
-        if df_vivos.empty or df_historico.empty:
+        if df_vivos.empty and df_historico.empty:
             st.warning("⚠️ Los sistemas de almacenamiento temporal están vacíos.")
             return
 
-        columnas_comunes = list(set(df_vivos.columns).intersection(set(df_historico.columns)))
-        if 'ORIGEN_BI' in columnas_comunes: columnas_comunes.remove('ORIGEN_BI')
-        
-        if 'COSTO_MAESTRO' not in columnas_comunes or 'FINCA_MAESTRA' not in columnas_comunes:
-            st.error("🚨 Las columnas de indexación maestra fallaron. Verifique cabeceras en Drive.")
+        # Concatenación segura (evita perder las columnas T y U si faltan en históricos viejos)
+        super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
+
+        if 'FINCA_MAESTRA' not in super_base_bi.columns or 'FECHA_MAESTRA' not in super_base_bi.columns:
+            st.error("🚨 No se encontraron las columnas clave de Finca o Fecha. Verifique Drive.")
             return
 
-        df_vivos_trim = df_vivos[columnas_comunes + ['ORIGEN_BI']].copy()
-        df_historico_trim = df_historico[columnas_comunes + ['ORIGEN_BI']].copy()
-        
-        super_base_bi = pd.concat([df_historico_trim, df_vivos_trim], ignore_index=True)
+        # Asegurar que las columnas maestras existan para que el código no falle
+        for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA']:
+            if col_req not in super_base_bi.columns:
+                super_base_bi[col_req] = 0.0 if 'COSTO' in col_req or 'AVION' in col_req or 'DOMINIC' in col_req else ""
+
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
-
-        if 'FECHA_MAESTRA' not in super_base_bi.columns:
-            st.error("🚨 No se ubicó un sensor cronológico válido.")
-            return
-
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
@@ -191,19 +185,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
             
+        # 🎯 CÁLCULO SEGURO: Extraemos precios exactamente de W, T y U
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
-
-        col_avion_ha = None
-        for col in df_finca.columns:
-            col_u = str(col).upper().replace('Ó', 'O')
-            if 'AVION' in col_u and ('/HA' in col_u or ' HA' in col_u or '(HA)' in col_u):
-                col_avion_ha = col
-                break
         
-        if col_avion_ha:
-            df_finca['AVION_NUM'] = df_finca[col_avion_ha].apply(convertir_pesos)
-        else:
-            df_finca['AVION_NUM'] = 0.0
+        # El costo del avión real es Columna T + Columna U
+        v_avion = df_finca['AVION_MAESTRO'].apply(convertir_pesos)
+        v_dom = df_finca['DOMINIC_MAESTRO'].apply(convertir_pesos)
+        df_finca['AVION_NUM'] = v_avion + v_dom
 
         df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
@@ -215,22 +203,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # =========================================================
-        # 🎯 CÓDIGO ORIGINAL PURO: SIN CORTAFUEGOS, SIN FILTROS INVENTADOS
-        # =========================================================
-        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
+        # 🎯 RESTAURACIÓN DEL PROMEDIO PURO ORIGINAL (Cero filtros inventados)
+        df_periodo_a['AREA_NUM'] = df_periodo_a['AREA_MAESTRA'].apply(limpiar_area)
+        df_periodo_b['AREA_NUM'] = df_periodo_b['AREA_MAESTRA'].apply(limpiar_area)
         
-        if col_area:
-            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
-            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
-            
-            # Cálculo de área original (el que daba los 2400 Ha perfectos)
-            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
-            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
-        else:
-            area_a, area_b = 0.0, 0.0
+        # Para el área total, usamos el drop_duplicates para no sumar 5 veces el mismo lote
+        area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
+        area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
 
-        # Cálculo de costo original puro
+        # Para el costo, se promedian TODAS las filas puramente, tal cual como le funcionaba perfecto antes
         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
@@ -529,7 +510,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}")
                         c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
                         
-                        if 'AVION_NUM' in df_periodo_b.columns:
+                        if 'AVION_MAESTRO' in df_periodo_b.columns:
                             df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
                             costo_total_facturado_b = df_coctel_b['COSTO_NUM'].mean() if not df_coctel_b.empty else 0
                             vuelo_facturado_b = df_coctel_b['AVION_NUM'].mean() if not df_coctel_b.empty else 0
@@ -566,7 +547,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -596,45 +577,28 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 if col_pista_sim and sim_pista != "TODAS":
                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
-                col_ha = 'AREA_MAESTRA'
-                if col_ha in df_sim.columns:
-                    df_sim[col_ha] = pd.to_numeric(df_sim[col_ha].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-                    df_sim = df_sim[df_sim[col_ha] > 0]
+                if 'AREA_MAESTRA' in df_sim.columns:
+                    df_sim['AREA_NUM'] = pd.to_numeric(df_sim['AREA_MAESTRA'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+                    df_sim = df_sim[df_sim['AREA_NUM'] > 0]
 
                 if df_sim.empty:
                     st.warning("⚠️ No se encontraron Órdenes de Servicio para el rango de fechas seleccionado.")
                 else:
                     def red_excel(num):
                         return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
-
-                    col_tarifa_avion, col_dominical = None, None
-                    for c in df_sim.columns:
-                        c_upper = str(c).upper().strip()
-                        if "AVION" in c_upper and "HA" in c_upper and "COSTO" in c_upper: col_tarifa_avion = c
-                        if "DOMINIC" in c_upper: col_dominical = c
-                        
-                    if not col_tarifa_avion:
-                        for c in df_sim.columns:
-                            c_upper = str(c).upper().strip()
-                            if "AVION" in c_upper and "HA" in c_upper: col_tarifa_avion = c; break
-
-                    col_finca = 'FINCA_MAESTRA'
                     
-                    # Filtro Seguro para el Simulador
-                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_ha])
+                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])
 
                     matriz_simulacion = []
 
                     for _, row in df_sim_unicos.iterrows():
-                        finca_val = str(row[col_finca]).upper().strip()
-                        ha_val = float(row[col_ha])
+                        os_val = str(row['OS_MAESTRA']).strip() if 'OS_MAESTRA' in row else "N/A"
+                        if os_val == "" or os_val == "nan": 
+                            continue
+
+                        finca_val = str(row['FINCA_MAESTRA']).upper().strip() if 'FINCA_MAESTRA' in row else "N/A"
+                        ha_val = float(row['AREA_NUM'])
                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
-                        
-                        col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
-                        for c in df_sim.columns:
-                            if str(c).upper().strip() in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
-                                col_os = c; break
-                        os_val = str(row[col_os]).strip()
                         
                         if pd.notna(row['FECHA_DT']):
                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
@@ -644,8 +608,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                        tar_avion_raw = convertir_pesos(row[col_tarifa_avion]) if col_tarifa_avion and col_tarifa_avion in row else 0.0
-                        tar_dom_raw = convertir_pesos(row[col_dominical]) if col_dominical and col_dominical in row else 0.0
+                        tar_avion_raw = convertir_pesos(row['AVION_MAESTRO']) if 'AVION_MAESTRO' in row else 0.0
+                        tar_dom_raw = convertir_pesos(row['DOMINIC_MAESTRO']) if 'DOMINIC_MAESTRO' in row else 0.0
                         
                         tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
 
@@ -675,7 +639,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             })
 
                     if not matriz_simulacion:
-                        st.warning("⚠️ No se pudieron extraer tarifas válidas. Verifique columnas T y U.")
+                        st.warning("⚠️ No se pudieron extraer tarifas válidas. Verifique sus columnas de Costo Avión y Dominical.")
                     else:
                         df_resultados = pd.DataFrame(matriz_simulacion)
                         df_semanal = df_resultados.groupby("SEMANA").agg({"HECTÁREAS": "sum", "TOTAL ACTUAL ($)": "sum", "NUEVO TOTAL ($)": "sum", "DIFERENCIA ($)": "sum"}).reset_index().sort_values(by="SEMANA").reset_index(drop=True)
