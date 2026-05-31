@@ -193,6 +193,19 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
+        # 🎯 BLINDAJE INVISIBLE: Pre-crear la columna AVION_NUM aquí para evitar fallas críticas después
+        col_avion_ha = None
+        for col in df_finca.columns:
+            col_u = str(col).upper().replace('Ó', 'O')
+            if 'AVION' in col_u and ('/HA' in col_u or ' HA' in col_u or '(HA)' in col_u):
+                col_avion_ha = col
+                break
+        
+        if col_avion_ha:
+            df_finca['AVION_NUM'] = df_finca[col_avion_ha].apply(convertir_pesos)
+        else:
+            df_finca['AVION_NUM'] = 0.0
+
         df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
         
@@ -203,28 +216,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🎯 EL CAMBIO QUIRÚRGICO SOLICITADO: Área arriba y Promedio Matemático Real (Dinero / Ha)
-        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
-        
-        if col_area:
-            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
-            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
-            
-            # SU FILTRO ORIGINAL (El que no se daña):
-            df_unicos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
-            df_unicos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
-            
-            area_a = df_unicos_a['AREA_NUM'].sum() if not df_unicos_a.empty else 0.0
-            area_b = df_unicos_b['AREA_NUM'].sum() if not df_unicos_b.empty else 0.0
-            
-            # Reemplazamos el .mean() por la fórmula perfecta:
-            costo_a = (df_unicos_a['COSTO_NUM'].sum() / area_a) if area_a > 0 else 0
-            costo_b = (df_unicos_b['COSTO_NUM'].sum() / area_b) if area_b > 0 else 0
-        else:
-            area_a, area_b = 0.0, 0.0
-            costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
-            costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
-
+        # 🎯 LÓGICA ORIGINAL RESTAURADA (Cálculos directos como usted los diseñó)
+        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
+        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
         st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
@@ -234,6 +228,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
         
         st.markdown("#### 🚜 Volumen Operativo (Hectáreas Aplicadas)")
+        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
+        
+        if col_area:
+            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
+            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
+            # Su filtro intacto para áreas perfectas
+            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
+            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
+        else:
+            area_a, area_b = 0.0, 0.0
+
         var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
 
         h1, h2, h3 = st.columns(3)
@@ -273,31 +278,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
-            # 🎯 EL CAMBIO QUIRÚRGICO EN LA GRÁFICA (Mismo filtro original)
-            if col_area:
-                df_tendencia.loc[:, 'AREA_NUM'] = df_tendencia[col_area].apply(limpiar_area)
-                df_tendencia = df_tendencia.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
-
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                if col_area:
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                    tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
-                    tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
-                else:
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
-                    
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                 titulo_x = "Meses Operativos"
             else:
                 df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
-                if col_area:
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA']).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                    tendencia_agrupa = tendencia_agrupa[tendencia_agrupa['AREA_NUM'] > 0]
-                    tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'] / tendencia_agrupa['AREA_NUM']
-                else:
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
-
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                 titulo_x = f"Días Operativos ({etiq_periodo})"
@@ -314,28 +302,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        col_avion_ha = None
-        for col in df_finca.columns:
-            col_u = str(col).upper().replace('Ó', 'O')
-            if 'AVION' in col_u and ('/HA' in col_u or ' HA' in col_u or '(HA)' in col_u):
-                col_avion_ha = col
-                break
-        
-        if col_avion_ha:
-            df_periodo_a.loc[:, 'AVION_NUM'] = df_periodo_a[col_avion_ha].apply(convertir_pesos)
-            df_periodo_b.loc[:, 'AVION_NUM'] = df_periodo_b[col_avion_ha].apply(convertir_pesos)
-        else:
-            df_periodo_a.loc[:, 'AVION_NUM'] = 0.0
-            df_periodo_b.loc[:, 'AVION_NUM'] = 0.0
-
-        # 🎯 EL CAMBIO QUIRÚRGICO EN EL AVIÓN (Mismo filtro original)
-        if col_area:
-            vuelo_a = (df_unicos_a['AVION_NUM'].sum() / area_a) if area_a > 0 else 0
-            vuelo_b = (df_unicos_b['AVION_NUM'].sum() / area_b) if area_b > 0 else 0
-        else:
-            vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
-            vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
-
+        vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
+        vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
 
@@ -373,23 +341,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
-            # 🎯 EL CAMBIO QUIRÚRGICO EN CÓCTELES
-            if col_area:
-                if col_gln:
-                    g_a = df_unicos_a.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum', col_gln: 'mean'}).reset_index()
-                    g_a['COSTO_NUM'] = g_a['COSTO_NUM'] / g_a['AREA_NUM']
-                    g_b = df_unicos_b.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum', col_gln: 'mean'}).reset_index()
-                    g_b['COSTO_NUM'] = g_b['COSTO_NUM'] / g_b['AREA_NUM']
-                else:
-                    g_a = df_unicos_a.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                    g_a['COSTO_NUM'] = g_a['COSTO_NUM'] / g_a['AREA_NUM']
-                    g_b = df_unicos_b.groupby(col_coctel).agg({'COSTO_NUM': 'sum', 'AREA_NUM': 'sum'}).reset_index()
-                    g_b['COSTO_NUM'] = g_b['COSTO_NUM'] / g_b['AREA_NUM']
-            else:
-                agg_dict = {'COSTO_NUM': 'mean'}
-                if col_gln: agg_dict[col_gln] = 'mean'
-                g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
-                g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+            agg_dict = {'COSTO_NUM': 'mean'}
+            if col_gln: agg_dict[col_gln] = 'mean'
+            
+            g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
+            g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
             
             tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL'))
             tabla_autopsia.fillna(0, inplace=True)
