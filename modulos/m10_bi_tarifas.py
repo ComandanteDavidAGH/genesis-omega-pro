@@ -216,7 +216,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 CORTAFUEGOS INTELIGENTE (LA CURA DEFINITIVA)
+        # 🎯 RESTAURACIÓN TOTAL + CORTAFUEGOS INVISIBLE
         # =========================================================
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
@@ -224,39 +224,27 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
-            # 1. Regresamos a la validación por FECHA y ÁREA para NO borrar vuelos legítimos
-            df_vuelos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM']).copy()
-            df_vuelos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM']).copy()
-            
-            # 2. El Cortafuegos Inteligente: Divide SOLO si el resultado tiene sentido
-            def curar_costo(row):
-                c = row['COSTO_NUM']
-                a = row.get('AREA_NUM', 0)
-                if pd.notna(c) and c > 350000 and pd.notna(a) and a > 0:
-                    unit = c / a
-                    # Si al dividirlo da un costo normal (entre 30k y 450k), entonces era facturación total
-                    if 30000 <= unit <= 450000:
-                        return unit
-                return c
+            # El Cortafuegos: Actúa SOLO en la sombra si lee facturaciones millonarias.
+            # Mantiene TODAS las filas vivas para alimentar las gráficas de manera perfecta.
+            def aplicar_cortafuegos(row):
+                costo = row['COSTO_NUM']
+                area = row.get('AREA_NUM', 0)
+                if pd.notna(costo) and costo > 500000 and pd.notna(area) and area > 0:
+                    return costo / area
+                return costo
 
-            df_vuelos_a['COSTO_NUM'] = df_vuelos_a.apply(curar_costo, axis=1)
-            df_vuelos_b['COSTO_NUM'] = df_vuelos_b.apply(curar_costo, axis=1)
+            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(aplicar_cortafuegos, axis=1)
+            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(aplicar_cortafuegos, axis=1)
             
-            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(curar_costo, axis=1)
-            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(curar_costo, axis=1)
-
-            area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
-            area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
-            
-            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
-            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+            # El filtro de áreas perfecto original (Solo se agrupa para sumar hectáreas exactas)
+            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
+            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
         else:
-            # Respaldo si no hay columna de área
-            df_vuelos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT'])
-            df_vuelos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT'])
             area_a, area_b = 0.0, 0.0
-            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
-            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+
+        # Su media original restaurada al 100% (Usa todas las filas)
+        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
+        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
@@ -306,19 +294,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
-            if col_area:
-                df_tend_unicos = df_tendencia.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
-            else:
-                df_tend_unicos = df_tendencia.drop_duplicates(subset=['FECHA_DT'])
-
+            # Restauración de su gráfico de líneas original (Aprovecha las filas sanadas)
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                 titulo_x = "Meses Operativos"
             else:
-                df_tend_unicos['DIA'] = df_tend_unicos['FECHA_DT'].dt.day
-                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+                df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                 titulo_x = f"Días Operativos ({etiq_periodo})"
@@ -335,8 +319,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        vuelo_a = df_vuelos_a['AVION_NUM'].mean() if not df_vuelos_a.empty else 0
-        vuelo_b = df_vuelos_b['AVION_NUM'].mean() if not df_vuelos_b.empty else 0
+        vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
+        vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
         
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
