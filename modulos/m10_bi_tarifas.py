@@ -23,7 +23,6 @@ def limpiar_encabezados(df):
     return df
     
 def estandarizar_base(df):
-    # ¡CÓDIGO PURO RESTAURADO! Cero banderas tóxicas.
     renombres = {}
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
@@ -194,13 +193,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
-        col_os_maestra = df_finca.columns[0]
-        for c in df_finca.columns:
-            c_upper = str(c).upper().strip()
-            if "Nº ORDEN" in c_upper or "ORDEN DE" in c_upper or "OS" == c_upper:
-                col_os_maestra = c
-                break
-
         col_avion_ha = None
         for col in df_finca.columns:
             col_u = str(col).upper().replace('Ó', 'O')
@@ -224,7 +216,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 CORTAFUEGOS TÁCTICO: EL UMBRAL DE LOS 500K (Puro y Seguro)
+        # 🎯 CORTAFUEGOS INTELIGENTE (LA CURA DEFINITIVA)
         # =========================================================
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
@@ -232,22 +224,26 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
-            df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM']).copy()
-            df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM']).copy()
+            # 1. Regresamos a la validación por FECHA y ÁREA para NO borrar vuelos legítimos
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM']).copy()
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM']).copy()
             
-            # Lógica pura: Solo si el costo es absurdamente alto (>500k), se divide. 
-            def aplicar_cortafuegos(row):
-                costo = row['COSTO_NUM']
-                area = row.get('AREA_NUM', 0)
-                if pd.notna(costo) and costo > 500000 and pd.notna(area) and area > 0:
-                    return costo / area
-                return costo
+            # 2. El Cortafuegos Inteligente: Divide SOLO si el resultado tiene sentido
+            def curar_costo(row):
+                c = row['COSTO_NUM']
+                a = row.get('AREA_NUM', 0)
+                if pd.notna(c) and c > 350000 and pd.notna(a) and a > 0:
+                    unit = c / a
+                    # Si al dividirlo da un costo normal (entre 30k y 450k), entonces era facturación total
+                    if 30000 <= unit <= 450000:
+                        return unit
+                return c
 
-            df_vuelos_a['COSTO_NUM'] = df_vuelos_a.apply(aplicar_cortafuegos, axis=1)
-            df_vuelos_b['COSTO_NUM'] = df_vuelos_b.apply(aplicar_cortafuegos, axis=1)
+            df_vuelos_a['COSTO_NUM'] = df_vuelos_a.apply(curar_costo, axis=1)
+            df_vuelos_b['COSTO_NUM'] = df_vuelos_b.apply(curar_costo, axis=1)
             
-            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(aplicar_cortafuegos, axis=1)
-            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(aplicar_cortafuegos, axis=1)
+            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(curar_costo, axis=1)
+            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(curar_costo, axis=1)
 
             area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
             area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
@@ -255,8 +251,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
             costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
         else:
-            df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra])
-            df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra])
+            # Respaldo si no hay columna de área
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT'])
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT'])
             area_a, area_b = 0.0, 0.0
             costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
             costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
@@ -284,7 +281,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         elif delta_pct < 0:
             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
         else:
-            st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los margins normales de variación.")
+            st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
             
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo")
@@ -310,9 +307,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
             if col_area:
-                df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
+                df_tend_unicos = df_tendencia.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
             else:
-                df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra])
+                df_tend_unicos = df_tendencia.drop_duplicates(subset=['FECHA_DT'])
 
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
                 tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
@@ -597,7 +594,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) sin inflar los totales de facturación.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) asegurada por Fecha + Finca.")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
