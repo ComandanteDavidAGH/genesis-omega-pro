@@ -614,6 +614,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             col_os = c; break
 
                     col_finca = 'FINCA_MAESTRA'
+
+                    # 🎯 REGLA DE ORO APLICADA: ELIMINAMOS LOS QUÍMICOS DUPLICADOS PARA NO INFLAR LA FACTURA DEL SIMULADOR
+                    df_sim = df_sim.drop_duplicates(subset=[col_os, col_ha])
+
                     matriz_simulacion = []
 
                     for _, row in df_sim.iterrows():
