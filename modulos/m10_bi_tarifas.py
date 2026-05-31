@@ -31,28 +31,27 @@ def estandarizar_base(df):
         if 'FINCA' in col_u and 'COSTO' in col_u:
             continue
             
-        # 🎯 ASIGNACIÓN ESTRICTA
-        # 1. Columna W: VALOR A FACTURAR AL PRODUCTOR
-        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u:
+        # 🎯 CAPTURA LÁSER A LA COLUMNA W: "Valor a Facturar a ($/ha-ciclo)"
+        if 'FACTURAR' in col_u and 'CICLO' in col_u:
             renombres[col] = 'COSTO_MAESTRO'
         elif 'FACTURAR' in col_u and 'COSTO_MAESTRO' not in renombres.values():
             renombres[col] = 'COSTO_MAESTRO' 
             
-        # 2. Columna T: COSTO AVIÓN ($/ha)
+        # 🎯 CAPTURA LÁSER A LA COLUMNA T: COSTO AVIÓN ($/ha)
         elif 'AVION' in col_u and ('HA' in col_u or '/HA' in col_u):
             renombres[col] = 'AVION_MAESTRO'
             
-        # 3. Columna U: DOMINIC. ($/ha)
+        # 🎯 CAPTURA LÁSER A LA COLUMNA U: DOMINIC. ($/ha)
         elif 'DOMINIC' in col_u:
             renombres[col] = 'DOMINIC_MAESTRO'
             
-        # 4. Columna F: ÁREA FUMIG (ha)
+        # 🎯 CAPTURA LÁSER A LA COLUMNA F: ÁREA FUMIG (ha)
         elif 'FUMIG' in col_u and 'AREA' in col_u:
             renombres[col] = 'AREA_MAESTRA'
         elif 'FUMIG' in col_u and 'AREA_MAESTRA' not in renombres.values():
             renombres[col] = 'AREA_MAESTRA'
             
-        # Variables maestras de control
+        # Variables maestras
         elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
             renombres[col] = 'FINCA_MAESTRA'
         elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA':
@@ -77,7 +76,6 @@ def convertir_pesos(val):
             if len(partes[-1]) == 3: v_limpio = v_limpio.replace('.', '')
                 
         num = float(v_limpio)
-        if 0 < num < 2000: num = num * 1000 
         return num
     except: return 0.0
 
@@ -212,20 +210,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 CÁLCULO PERFECTO Y LÓGICO
+        # 🎯 LÓGICA PURA Y EXACTA (Cero multiplicadores)
         # =========================================================
         
-        # 1. PARA EL ÁREA (Limpiamos duplicados para no inflar hectáreas)
         subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM']
-        df_area_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
-        df_area_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
+        df_vuelos_a = df_periodo_a.drop_duplicates(subset=subset_unicos).copy()
+        df_vuelos_b = df_periodo_b.drop_duplicates(subset=subset_unicos).copy()
 
-        area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
-        area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
+        # 1. SUMATORIA REAL DE HECTÁREAS
+        area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
+        area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
 
-        # 2. PARA EL COSTO W (Promedio global de la columna entera SIN borrar filas, igual a Excel)
-        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
-        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
+        # 2. PROMEDIO SIMPLE DE LA COLUMNA W
+        costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+        costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
 
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
@@ -255,8 +253,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo")
         
-        ciclos_a, int_a = calcular_frecuencia(df_periodo_a)
-        ciclos_b, int_b = calcular_frecuencia(df_periodo_b)
+        ciclos_a, int_a = calcular_frecuencia(df_vuelos_a)
+        ciclos_b, int_b = calcular_frecuencia(df_vuelos_b)
         
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(f"Ciclos ({año_base})", f"{ciclos_a} ciclos")
@@ -273,7 +271,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("---")
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
         
-        df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
+        df_tendencia = pd.concat([df_vuelos_a, df_vuelos_b])
         if not df_tendencia.empty:
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
                 tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
@@ -299,9 +297,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # Para barras usamos el DF de áreas (vuelos únicos) para no duplicar el costo del avión
-        vuelo_a = df_area_a['AVION_NUM'].mean() if not df_area_a.empty else 0
-        vuelo_b = df_area_b['AVION_NUM'].mean() if not df_area_b.empty else 0
+        vuelo_a = df_vuelos_a['AVION_NUM'].mean() if not df_vuelos_a.empty else 0
+        vuelo_b = df_vuelos_b['AVION_NUM'].mean() if not df_vuelos_b.empty else 0
         
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
@@ -337,14 +334,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
         
         if col_coctel:
-            df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
-            df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+            df_vuelos_a.loc[:, col_coctel] = df_vuelos_a[col_coctel].astype(str).str.strip().str.upper()
+            df_vuelos_b.loc[:, col_coctel] = df_vuelos_b[col_coctel].astype(str).str.strip().str.upper()
             
             agg_dict = {'COSTO_NUM': 'mean'}
             if col_gln: agg_dict[col_gln] = 'mean'
             
-            g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
-            g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+            g_a = df_vuelos_a.groupby(col_coctel).agg(agg_dict).reset_index()
+            g_b = df_vuelos_b.groupby(col_coctel).agg(agg_dict).reset_index()
             
             tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL'))
             tabla_autopsia.fillna(0, inplace=True)
@@ -365,7 +362,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
 
         if col_coctel:
-            cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
+            cocteles_disponibles = sorted(list(set(df_vuelos_a[col_coctel].dropna().unique()) | set(df_vuelos_b[col_coctel].dropna().unique())))
             coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
             if coctel_sel != "SELECCIONE UN CÓCTEL...":
@@ -523,7 +520,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
                         
                         if 'AVION_MAESTRO' in df_periodo_b.columns:
-                            df_coctel_b = df_periodo_b[df_periodo_b[col_coctel] == coctel_sel]
+                            df_coctel_b = df_vuelos_b[df_vuelos_b[col_coctel] == coctel_sel]
                             costo_total_facturado_b = df_coctel_b['COSTO_NUM'].mean() if not df_coctel_b.empty else 0
                             vuelo_facturado_b = df_coctel_b['AVION_NUM'].mean() if not df_coctel_b.empty else 0
                             insumos_facturados_b = max(0, costo_total_facturado_b - vuelo_facturado_b)
