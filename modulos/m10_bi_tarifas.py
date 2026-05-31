@@ -203,20 +203,44 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🎯 RESTAURACIÓN DEL PROMEDIO PURO ORIGINAL (Cero filtros inventados)
-        df_periodo_a['AREA_NUM'] = df_periodo_a['AREA_MAESTRA'].apply(limpiar_area)
-        df_periodo_b['AREA_NUM'] = df_periodo_b['AREA_MAESTRA'].apply(limpiar_area)
+        # =========================================================
+        # PASO 1: AUDITORÍA DE COSTOS (IMPACTO GENERAL POR HECTÁREA)
+        # =========================================================
+        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
-        # Para el área total, usamos el drop_duplicates para no sumar 5 veces el mismo lote
-        area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
-        area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
+        if col_area:
+            # 1. Limpiamos las hectáreas para que el sistema las lea como números exactos
+            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
+            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
+            
+            # 2. AISLAMIENTO DEL VUELO ÚNICO (Los Cuatro Candados)
+            # Esto evita sumar los químicos del mismo vuelo, pero salva los vuelos con OS genéricos
+            subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', col_os_maestra, 'AREA_NUM']
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=subset_unicos).copy()
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=subset_unicos).copy()
+            
+            # 3. Calculamos las Hectáreas Totales (Sumadas)
+            area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
+            area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
+            
+            # 4. EL PROMEDIO PURO DE LA COLUMNA W
+            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+            
+        else:
+            # Respaldo en caso de que un archivo viejo no tenga columna de Área
+            subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', col_os_maestra]
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
+            
+            area_a, area_b = 0.0, 0.0
+            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
 
-        # Para el costo, se promedian TODAS las filas puramente, tal cual como le funcionaba perfecto antes
-        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
-        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
-
+        # Cálculo de la variación porcentual entre los dos periodos
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
+        # --- DESPLIEGUE VISUAL DE LAS TARJETAS ---
         st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
         k1, k2, k3 = st.columns(3)
         k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
