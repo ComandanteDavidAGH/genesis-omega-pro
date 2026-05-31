@@ -23,6 +23,7 @@ def limpiar_encabezados(df):
     return df
     
 def estandarizar_base(df):
+    # ¡CÓDIGO PURO RESTAURADO! Cero banderas tóxicas.
     renombres = {}
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
@@ -193,7 +194,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
-        # 🎯 EXTRACCIÓN DE LA LLAVE MAESTRA (Nº ORDEN)
         col_os_maestra = df_finca.columns[0]
         for c in df_finca.columns:
             c_upper = str(c).upper().strip()
@@ -201,7 +201,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 col_os_maestra = c
                 break
 
-        # BLINDAJE PARA EVITAR EL KEY ERROR DE AVION_NUM
         col_avion_ha = None
         for col in df_finca.columns:
             col_u = str(col).upper().replace('Ó', 'O')
@@ -225,7 +224,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 CORTAFUEGOS TÁCTICO: EL UMBRAL DE LOS 400K
+        # 🎯 CORTAFUEGOS TÁCTICO: EL UMBRAL DE LOS 500K (Puro y Seguro)
         # =========================================================
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
@@ -233,24 +232,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
-            # Filtro Maestro con Nº ORDEN + AREA
             df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM']).copy()
             df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM']).copy()
             
-            # Aplicar el Cortafuegos de los 400k
+            # Lógica pura: Solo si el costo es absurdamente alto (>500k), se divide. 
             def aplicar_cortafuegos(row):
                 costo = row['COSTO_NUM']
                 area = row.get('AREA_NUM', 0)
-                # Lógica pura: Si el costo es mayor a 400k, es facturación total. Dividir por área.
-                if pd.notna(costo) and costo > 400000 and pd.notna(area) and area > 0:
+                if pd.notna(costo) and costo > 500000 and pd.notna(area) and area > 0:
                     return costo / area
                 return costo
 
-            # Se inyecta la curación a los vuelos únicos
             df_vuelos_a['COSTO_NUM'] = df_vuelos_a.apply(aplicar_cortafuegos, axis=1)
             df_vuelos_b['COSTO_NUM'] = df_vuelos_b.apply(aplicar_cortafuegos, axis=1)
             
-            # Se replica la curación a la base general para que la gráfica de líneas no enloquezca
             df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(aplicar_cortafuegos, axis=1)
             df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(aplicar_cortafuegos, axis=1)
 
@@ -260,7 +255,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
             costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
         else:
-            # Si no hay área, filtra solo por Nº ORDEN (sin cortafuegos porque no hay contra qué dividir)
             df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra])
             df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra])
             area_a, area_b = 0.0, 0.0
@@ -290,7 +284,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         elif delta_pct < 0:
             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
         else:
-            st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
+            st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los margins normales de variación.")
             
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo")
@@ -315,7 +309,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
-            # LLAVE MAESTRA APLICADA AL GRÁFICO
             if col_area:
                 df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
             else:
@@ -345,7 +338,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # LLAVE MAESTRA APLICADA A LAS BARRAS
         vuelo_a = df_vuelos_a['AVION_NUM'].mean() if not df_vuelos_a.empty else 0
         vuelo_b = df_vuelos_b['AVION_NUM'].mean() if not df_vuelos_b.empty else 0
         
@@ -605,7 +597,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) y filtrado por Nº Orden para evitar duplicados químicos.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) sin inflar los totales de facturación.")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -657,25 +649,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             c_upper = str(c).upper().strip()
                             if "AVION" in c_upper and "HA" in c_upper: col_tarifa_avion = c; break
 
-                    col_os = df_sim.columns[0]
-                    for c in df_sim.columns:
-                        if "Nº ORDEN" in str(c).upper().strip() or "OS" == str(c).upper().strip():
-                            col_os = c; break
-
                     col_finca = 'FINCA_MAESTRA'
                     
-                    df_sim_unicos = df_sim.drop_duplicates(subset=[col_os, col_finca, col_ha])
+                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_ha, col_tarifa_avion])
 
                     matriz_simulacion = []
 
                     for _, row in df_sim_unicos.iterrows():
-                        os_val = str(row[col_os]).strip()
-                        if os_val == "" or os_val == "nan": 
-                            continue
-
                         finca_val = str(row[col_finca]).upper().strip()
                         ha_val = float(row[col_ha])
                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
+                        
+                        col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
+                        for c in df_sim.columns:
+                            if str(c).upper().strip() in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
+                                col_os = c; break
+                        os_val = str(row[col_os]).strip()
                         
                         if pd.notna(row['FECHA_DT']):
                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
