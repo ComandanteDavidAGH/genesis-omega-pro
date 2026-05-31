@@ -225,7 +225,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 AJUSTE DE FRANCOTIRADOR: FILTRO POR Nº DE ORDEN (Vuelos Puros)
+        # 🎯 NIVELADOR AUTOMÁTICO DE SUPERVIVENCIA FINANCIERA
         # =========================================================
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
@@ -233,6 +233,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
+            # Lógica: Si el costo supera los 500k, asumimos que es el costo total y lo dividimos por sus hectáreas.
+            def nivelar_costos_historicos(row):
+                costo = row['COSTO_NUM']
+                area = row.get('AREA_NUM', 0)
+                if pd.notna(costo) and costo > 500000 and pd.notna(area) and area > 0:
+                    return costo / area
+                return costo
+
+            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(nivelar_costos_historicos, axis=1)
+            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(nivelar_costos_historicos, axis=1)
+
             # Filtro Maestro con Nº ORDEN + AREA
             df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
             df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
