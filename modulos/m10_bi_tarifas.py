@@ -38,7 +38,6 @@ def limpiar_area(val):
 
 # --- Conexión a Google Sheets ---
 def cargar_datos_google(url, hoja):
-    # Autenticación con credenciales
     if "gcp_credentials" in st.secrets:
         gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
     else:
@@ -63,7 +62,6 @@ def main():
     df_actual = cargar_datos_google(url_actual, "TABLA 1")
     df_historico = cargar_datos_google(url_historico, "Datos")
 
-    # Unir bases
     super_base = pd.concat([df_actual, df_historico], ignore_index=True)
 
     # Conversión de columnas clave
@@ -73,24 +71,59 @@ def main():
         super_base['AREA_NUM'] = super_base['AREA'].apply(limpiar_area)
     if 'FECHA' in super_base.columns:
         super_base['FECHA'] = pd.to_datetime(super_base['FECHA'], errors='coerce')
+        super_base['AÑO'] = super_base['FECHA'].dt.year
+        super_base['MES'] = super_base['FECHA'].dt.month
+        super_base['TRIMESTRE'] = super_base['FECHA'].dt.quarter
 
-    st.subheader("Vista previa de los datos")
-    st.dataframe(super_base.head())
+    # --- Selectores interactivos ---
+    fincas = ["TODAS"] + sorted(super_base['FINCA'].dropna().unique().tolist()) if 'FINCA' in super_base.columns else ["TODAS"]
+    años = sorted(super_base['AÑO'].dropna().unique().tolist(), reverse=True) if 'AÑO' in super_base.columns else []
 
-    # Métricas
-    if 'COSTO_NUM' in super_base.columns:
-        costo_promedio = super_base['COSTO_NUM'].mean()
+    f1, f2 = st.columns(2)
+    finca_sel = f1.selectbox("📍 Selecciona Finca", fincas)
+    año_sel = f2.selectbox("📅 Selecciona Año", años)
+
+    periodo = st.radio("⏱️ Periodo de análisis", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES"])
+    if periodo == "POR TRIMESTRE":
+        trimestre_sel = st.selectbox("📊 Trimestre", [1,2,3,4])
+    elif periodo == "POR MES":
+        meses_dict = {1:'Ene',2:'Feb',3:'Mar',4:'Abr',5:'May',6:'Jun',7:'Jul',8:'Ago',9:'Sep',10:'Oct',11:'Nov',12:'Dic'}
+        mes_sel = st.selectbox("📅 Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
+
+    # --- Filtrado de datos ---
+    df_filtro = super_base.copy()
+    if finca_sel != "TODAS" and 'FINCA' in df_filtro.columns:
+        df_filtro = df_filtro[df_filtro['FINCA'] == finca_sel]
+    if 'AÑO' in df_filtro.columns:
+        df_filtro = df_filtro[df_filtro['AÑO'] == año_sel]
+    if periodo == "POR TRIMESTRE":
+        df_filtro = df_filtro[df_filtro['TRIMESTRE'] == trimestre_sel]
+    elif periodo == "POR MES":
+        df_filtro = df_filtro[df_filtro['MES'] == mes_sel]
+
+    # --- Métricas ---
+    st.subheader("📌 Métricas del periodo seleccionado")
+    if 'COSTO_NUM' in df_filtro.columns:
+        costo_promedio = df_filtro['COSTO_NUM'].mean()
         st.metric("Costo Promedio por Ha", f"$ {costo_promedio:,.0f}")
-
-    if 'AREA_NUM' in super_base.columns:
-        area_total = super_base['AREA_NUM'].sum()
+    if 'AREA_NUM' in df_filtro.columns:
+        area_total = df_filtro['AREA_NUM'].sum()
         st.metric("Área Total Aplicada", f"{area_total:,.1f} Ha")
 
-    # Gráfico de tendencia
-    if 'FECHA' in super_base.columns and 'COSTO_NUM' in super_base.columns:
-        tendencia = super_base.groupby(super_base['FECHA'].dt.month)['COSTO_NUM'].mean().reset_index()
-        tendencia['MES'] = tendencia['FECHA'].map({1:'Ene',2:'Feb',3:'Mar',4:'Abr',5:'May',6:'Jun',7:'Jul',8:'Ago',9:'Sep',10:'Oct',11:'Nov',12:'Dic'})
-        fig = px.line(tendencia, x='MES', y='COSTO_NUM', markers=True, title="Tendencia de Costos por Mes")
+    # --- Gráfico de tendencia ---
+    if 'FECHA' in df_filtro.columns and 'COSTO_NUM' in df_filtro.columns:
+        if periodo == "AÑO COMPLETO":
+            tendencia = df_filtro.groupby(df_filtro['MES'])['COSTO_NUM'].mean().reset_index()
+            meses_dict = {1:'Ene',2:'Feb',3:'Mar',4:'Abr',5:'May',6:'Jun',7:'Jul',8:'Ago',9:'Sep',10:'Oct',11:'Nov',12:'Dic'}
+            tendencia['MES'] = tendencia['MES'].map(meses_dict)
+            fig = px.line(tendencia, x='MES', y='COSTO_NUM', markers=True, title="Tendencia de Costos por Mes")
+        elif periodo == "POR TRIMESTRE":
+            tendencia = df_filtro.groupby(df_filtro['MES'])['COSTO_NUM'].mean().reset_index()
+            fig = px.line(tendencia, x='MES', y='COSTO_NUM', markers=True, title=f"Tendencia de Costos - Trimestre {trimestre_sel}")
+        else:
+            tendencia = df_filtro.groupby(df_filtro['FECHA'].dt.day)['COSTO_NUM'].mean().reset_index()
+            tendencia['DIA'] = tendencia['FECHA']
+            fig = px.line(tendencia, x='DIA', y='COSTO_NUM', markers=True, title=f"Tendencia de Costos - Mes {mes_sel}")
         st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
