@@ -193,6 +193,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
+        # 🎯 EXTRACCIÓN DE LA LLAVE MAESTRA (Nº ORDEN) PARA TODO EL MÓDULO
+        col_os_maestra = df_finca.columns[0]
+        for c in df_finca.columns:
+            c_upper = str(c).upper().strip()
+            if "Nº ORDEN" in c_upper or "ORDEN DE" in c_upper or "OS" == c_upper:
+                col_os_maestra = c
+                break
+
         # BLINDAJE PARA EVITAR EL KEY ERROR DE AVION_NUM
         col_avion_ha = None
         for col in df_finca.columns:
@@ -216,9 +224,32 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🎯 LÓGICA ORIGINAL INTACTA: Su promedio en base a la columna "W"
-        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
-        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
+        # =========================================================
+        # 🎯 AJUSTE DE FRANCOTIRADOR: FILTRO POR Nº DE ORDEN (Vuelos Puros)
+        # =========================================================
+        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
+        
+        if col_area:
+            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
+            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
+            
+            # Filtro Maestro con Nº ORDEN + AREA
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
+            
+            area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
+            area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
+            
+            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+        else:
+            # Si no hay área, filtra solo por Nº ORDEN
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra])
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra])
+            area_a, area_b = 0.0, 0.0
+            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
         st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
@@ -228,17 +259,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
         
         st.markdown("#### 🚜 Volumen Operativo (Hectáreas Aplicadas)")
-        col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
-        
-        if col_area:
-            df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
-            df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
-            # Filtro intacto para calcular hectáreas exactas
-            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
-            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
-        else:
-            area_a, area_b = 0.0, 0.0
-
         var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
 
         h1, h2, h3 = st.columns(3)
@@ -278,14 +298,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
+            # 🎯 LLAVE MAESTRA APLICADA AL GRÁFICO
+            if col_area:
+                df_tendencia.loc[:, 'AREA_NUM'] = df_tendencia[col_area].apply(limpiar_area)
+                df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
+            else:
+                df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra])
+
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                 titulo_x = "Meses Operativos"
             else:
-                df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
-                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+                df_tend_unicos['DIA'] = df_tend_unicos['FECHA_DT'].dt.day
+                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                 titulo_x = f"Días Operativos ({etiq_periodo})"
@@ -302,8 +329,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
-        vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
+        # 🎯 LLAVE MAESTRA APLICADA A LAS BARRAS
+        vuelo_a = df_vuelos_a['AVION_NUM'].mean() if not df_vuelos_a.empty else 0
+        vuelo_b = df_vuelos_b['AVION_NUM'].mean() if not df_vuelos_b.empty else 0
+        
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
 
