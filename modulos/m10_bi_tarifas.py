@@ -193,14 +193,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
-        # 🎯 EXTRACCIÓN DE LA LLAVE MAESTRA (Nº ORDEN) PARA TODO EL MÓDULO
-        col_os_maestra = df_finca.columns[0]
-        for c in df_finca.columns:
-            c_upper = str(c).upper().strip()
-            if "Nº ORDEN" in c_upper or "ORDEN DE" in c_upper or "OS" == c_upper:
-                col_os_maestra = c
-                break
-
         # BLINDAJE PARA EVITAR EL KEY ERROR DE AVION_NUM
         col_avion_ha = None
         for col in df_finca.columns:
@@ -225,7 +217,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 NIVELADOR AUTOMÁTICO DE SUPERVIVENCIA FINANCIERA
+        # 🎯 RESTAURACIÓN TOTAL: SU CÓDIGO ORIGINAL INTACTO
         # =========================================================
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
@@ -233,33 +225,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
-            # Lógica: Si el costo supera los 500k, asumimos que es el costo total y lo dividimos por sus hectáreas.
-            def nivelar_costos_historicos(row):
-                costo = row['COSTO_NUM']
-                area = row.get('AREA_NUM', 0)
-                if pd.notna(costo) and costo > 500000 and pd.notna(area) and area > 0:
-                    return costo / area
-                return costo
-
-            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(nivelar_costos_historicos, axis=1)
-            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(nivelar_costos_historicos, axis=1)
-
-            # Filtro Maestro con Nº ORDEN + AREA
-            df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
-            df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
-            
-            area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
-            area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
-            
-            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
-            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+            # El filtro de áreas perfecto
+            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
+            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
         else:
-            # Si no hay área, filtra solo por Nº ORDEN
-            df_vuelos_a = df_periodo_a.drop_duplicates(subset=[col_os_maestra])
-            df_vuelos_b = df_periodo_b.drop_duplicates(subset=[col_os_maestra])
             area_a, area_b = 0.0, 0.0
-            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
-            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
+
+        # Su media original, sin filtros ni inventos, para mantener los pesos reales
+        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
+        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
@@ -309,21 +283,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
-            # 🎯 LLAVE MAESTRA APLICADA AL GRÁFICO
-            if col_area:
-                df_tendencia.loc[:, 'AREA_NUM'] = df_tendencia[col_area].apply(limpiar_area)
-                df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra, 'AREA_NUM'])
-            else:
-                df_tend_unicos = df_tendencia.drop_duplicates(subset=[col_os_maestra])
-
+            # Restauración de su gráfico de líneas original
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                 titulo_x = "Meses Operativos"
             else:
-                df_tend_unicos['DIA'] = df_tend_unicos['FECHA_DT'].dt.day
-                tendencia_agrupa = df_tend_unicos.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+                df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                 titulo_x = f"Días Operativos ({etiq_periodo})"
@@ -340,9 +308,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # 🎯 LLAVE MAESTRA APLICADA A LAS BARRAS
-        vuelo_a = df_vuelos_a['AVION_NUM'].mean() if not df_vuelos_a.empty else 0
-        vuelo_b = df_vuelos_b['AVION_NUM'].mean() if not df_vuelos_b.empty else 0
+        vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
+        vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
         
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
@@ -600,7 +567,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) y filtrado por Nº Orden para evitar duplicados químicos.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) sin inflar los totales de facturación.")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -648,33 +615,29 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         if "AVION" in c_upper and "HA" in c_upper and "COSTO" in c_upper: col_tarifa_avion = c
                         if "DOMINIC" in c_upper: col_dominical = c
                         
-                    # Si no encuentra por el nombre completo, fallback
                     if not col_tarifa_avion:
                         for c in df_sim.columns:
                             c_upper = str(c).upper().strip()
                             if "AVION" in c_upper and "HA" in c_upper: col_tarifa_avion = c; break
 
-                    # 🎯 Buscar Nº ORDEN
-                    col_os = df_sim.columns[0] # Fallback
-                    for c in df_sim.columns:
-                        if "Nº ORDEN" in str(c).upper().strip() or "OS" == str(c).upper().strip():
-                            col_os = c; break
-
                     col_finca = 'FINCA_MAESTRA'
                     
-                    # 🎯 LA REGLA DE ORO DEL SIMULADOR: Filtrar duplicados por OS + Finca + Ha
-                    df_sim_unicos = df_sim.drop_duplicates(subset=[col_os, col_finca, col_ha])
+                    # 🎯 LA REGLA DE ORO DEL SIMULADOR: Filtrar duplicados seguros para no inflar la factura
+                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_ha, col_tarifa_avion])
 
                     matriz_simulacion = []
 
                     for _, row in df_sim_unicos.iterrows():
-                        os_val = str(row[col_os]).strip()
-                        if os_val == "" or os_val == "nan": 
-                            continue
-
+                        # Ya no descartamos por Nº de Orden vacío para no perder vuelos legítimos
                         finca_val = str(row[col_finca]).upper().strip()
                         ha_val = float(row[col_ha])
                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
+                        
+                        col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
+                        for c in df_sim.columns:
+                            if str(c).upper().strip() in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
+                                col_os = c; break
+                        os_val = str(row[col_os]).strip()
                         
                         if pd.notna(row['FECHA_DT']):
                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
@@ -684,11 +647,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                        # Extraer Tarifa Avión (T) y Dominical (U)
                         tar_avion_raw = convertir_pesos(row[col_tarifa_avion]) if col_tarifa_avion and col_tarifa_avion in row else 0.0
                         tar_dom_raw = convertir_pesos(row[col_dominical]) if col_dominical and col_dominical in row else 0.0
                         
-                        # Sumar tarifas unitarias
                         tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
 
                         if tarifa_unitaria_actual > 0 and ha_val > 0:
@@ -698,7 +659,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             t_nue_red = red_excel(tarifa_nueva_unitaria)
                             resta_tarifas = t_nue_red - t_act_red
                             
-                            # Multiplicar diferencia por Hectáreas para saber el dinero real en juego
                             diferencia_total = red_excel(resta_tarifas * ha_val)
                             total_actual = red_excel(t_act_red * ha_val)
                             total_nuevo = red_excel(t_nue_red * ha_val)
