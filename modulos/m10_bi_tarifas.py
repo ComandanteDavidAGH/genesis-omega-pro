@@ -193,6 +193,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
 
+        col_os_maestra = df_finca.columns[0]
+        for c in df_finca.columns:
+            c_upper = str(c).upper().strip()
+            if "Nº ORDEN" in c_upper or "ORDEN DE" in c_upper or "OS" == c_upper:
+                col_os_maestra = c
+                break
+
         col_avion_ha = None
         for col in df_finca.columns:
             col_u = str(col).upper().replace('Ó', 'O')
@@ -216,7 +223,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 RESTAURACIÓN TOTAL + CORTAFUEGOS INVISIBLE
+        # 🎯 FILTRADO MATEMÁTICO PERFECTO (SIN CORTAFUEGOS TÓXICOS)
         # =========================================================
         col_area = 'AREA_MAESTRA' if 'AREA_MAESTRA' in df_finca.columns else None
         
@@ -224,27 +231,26 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, 'AREA_NUM'] = df_periodo_a[col_area].apply(limpiar_area)
             df_periodo_b.loc[:, 'AREA_NUM'] = df_periodo_b[col_area].apply(limpiar_area)
             
-            # El Cortafuegos: Actúa SOLO en la sombra si lee facturaciones millonarias.
-            # Mantiene TODAS las filas vivas para alimentar las gráficas de manera perfecta.
-            def aplicar_cortafuegos(row):
-                costo = row['COSTO_NUM']
-                area = row.get('AREA_NUM', 0)
-                if pd.notna(costo) and costo > 500000 and pd.notna(area) and area > 0:
-                    return costo / area
-                return costo
-
-            df_periodo_a['COSTO_NUM'] = df_periodo_a.apply(aplicar_cortafuegos, axis=1)
-            df_periodo_b['COSTO_NUM'] = df_periodo_b.apply(aplicar_cortafuegos, axis=1)
+            # Filtro Maestro Inquebrantable: Fecha + Finca + OS + Área. Así no se borran vuelos distintos.
+            subset_duplicados = ['FECHA_DT', 'FINCA_MAESTRA', col_os_maestra, 'AREA_NUM']
             
-            # El filtro de áreas perfecto original (Solo se agrupa para sumar hectáreas exactas)
-            area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_a.empty else 0.0
-            area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])['AREA_NUM'].sum() if not df_periodo_b.empty else 0.0
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=subset_duplicados).copy()
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=subset_duplicados).copy()
+            
+            area_a = df_vuelos_a['AREA_NUM'].sum() if not df_vuelos_a.empty else 0.0
+            area_b = df_vuelos_b['AREA_NUM'].sum() if not df_vuelos_b.empty else 0.0
+            
+            # Promedio puro, leyendo lo que usted digitó en Excel.
+            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
         else:
+            subset_duplicados = ['FECHA_DT', 'FINCA_MAESTRA', col_os_maestra]
+            df_vuelos_a = df_periodo_a.drop_duplicates(subset=subset_duplicados)
+            df_vuelos_b = df_periodo_b.drop_duplicates(subset=subset_duplicados)
+            
             area_a, area_b = 0.0, 0.0
-
-        # Su media original restaurada al 100% (Usa todas las filas)
-        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
-        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
+            costo_a = df_vuelos_a['COSTO_NUM'].mean() if not df_vuelos_a.empty else 0
+            costo_b = df_vuelos_b['COSTO_NUM'].mean() if not df_vuelos_b.empty else 0
 
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
@@ -292,9 +298,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("---")
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
         
-        df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
+        # Gráfico alimentado con vuelos puros
+        df_tendencia_a = df_vuelos_a.copy()
+        df_tendencia_b = df_vuelos_b.copy()
+        df_tendencia = pd.concat([df_tendencia_a, df_tendencia_b])
+
         if not df_tendencia.empty:
-            # Restauración de su gráfico de líneas original (Aprovecha las filas sanadas)
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
                 tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
@@ -319,8 +328,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        vuelo_a = df_periodo_a['AVION_NUM'].mean() if not df_periodo_a.empty else 0
-        vuelo_b = df_periodo_b['AVION_NUM'].mean() if not df_periodo_b.empty else 0
+        vuelo_a = df_vuelos_a['AVION_NUM'].mean() if not df_vuelos_a.empty else 0
+        vuelo_b = df_vuelos_b['AVION_NUM'].mean() if not df_vuelos_b.empty else 0
         
         insumos_a = max(0, costo_a - vuelo_a)
         insumos_b = max(0, costo_b - vuelo_b)
@@ -578,7 +587,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) asegurada por Fecha + Finca.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Avión + Dominical) asegurada.")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -631,21 +640,23 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             if "AVION" in c_upper and "HA" in c_upper: col_tarifa_avion = c; break
 
                     col_finca = 'FINCA_MAESTRA'
+                    col_os = df_sim.columns[0]
+                    for c in df_sim.columns:
+                        if "Nº ORDEN" in str(c).upper().strip() or "OS" == str(c).upper().strip():
+                            col_os = c; break
                     
-                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_ha, col_tarifa_avion])
+                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_os, col_ha])
 
                     matriz_simulacion = []
 
                     for _, row in df_sim_unicos.iterrows():
+                        os_val = str(row[col_os]).strip()
+                        if os_val == "" or os_val == "nan": 
+                            continue
+
                         finca_val = str(row[col_finca]).upper().strip()
                         ha_val = float(row[col_ha])
                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
-                        
-                        col_os = next((c for c in df_sim.columns if "OS" in str(c).upper() and "COSTO" not in str(c).upper()), df_sim.columns[0])
-                        for c in df_sim.columns:
-                            if str(c).upper().strip() in ["OS", "ORDEN", "Nº OS", "Nº ORDEN", "ORDEN DE SERVICIO"]:
-                                col_os = c; break
-                        os_val = str(row[col_os]).strip()
                         
                         if pd.notna(row['FECHA_DT']):
                             fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
