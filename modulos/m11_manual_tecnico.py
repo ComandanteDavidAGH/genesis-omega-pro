@@ -17,8 +17,8 @@ def a_numero_limpio(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# --- 🖨️ MOTOR EXCRIPTOR DE REPORTE PLANO ---
-def generar_reporte_semanal_limpio(url_maestra, pestaña_nombre="TABLA 1"):
+# --- 🖨️ MOTOR EXTRACTOR ADAPTABLE (HISTÓRICO O SEMANAL) ---
+def generar_reporte_filtrado(url_maestra, filtrar_semana=False, pestaña_nombre="TABLA 1"):
     try:
         gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
         sh = gc.open_by_url(url_maestra)
@@ -27,30 +27,33 @@ def generar_reporte_semanal_limpio(url_maestra, pestaña_nombre="TABLA 1"):
         data = worksheet.get_all_values()
         if not data or len(data) < 6: return pd.DataFrame()
         
-        # Lectura estricta alineada a la Fila 5 del Comandante
+        # Lectura alineada a la Fila 5 de su matriz
         encabezados = [str(c).upper().strip() for c in data[4]]
         filas_datos = data[5:]
         
         df = pd.DataFrame(filas_datos, columns=encabezados)
-        df['FECHA_DT'] = pd.to_datetime(df['FECHA'], dayfirst=True, errors='coerce')
-        df = df.dropna(subset=['FECHA_DT'])
         
-        # Filtro temporal estricto (Últimos 7 días de operación)
-        fecha_limite = datetime.now() - timedelta(days=7)
-        df_semanal = df[df['FECHA_DT'] >= fecha_limite].copy()
+        # 🎯 FILTRO FRANCOTIRADOR: Columnas autorizadas para la empresa (Protección de costos y fórmulas)
+        columnas_validas = [col for col in df.columns if any(c in col for c in ['ORDEN', 'BLOQUE', 'FINCA', 'SECTOR', 'BRUTA', 'FUMIG', 'COCTEL', 'FECHA', 'SEM', 'PILOTO', 'MODELO', 'PISTA'])]
+        df_filtrado = df[columnas_validas].copy()
+        df_filtrado.columns = [c.replace('\n', ' ').strip() for c in df_filtrado.columns]
         
-        if df_semanal.empty: return pd.DataFrame()
-        
-        df_semanal['FECHA'] = df_semanal['FECHA_DT'].dt.strftime('%d/%m/%Y')
-        
-        # 🎯 FILTRO FRANCOTIRADOR: Columnas autorizadas para la empresa (Sin dinero interno)
-        columnas_validas = [col for col in df_semanal.columns if any(c in col for c in ['ORDEN', 'BLOQUE', 'FINCA', 'SECTOR', 'BRUTA', 'FUMIG', 'COCTEL', 'FECHA', 'SEM', 'PILOTO', 'MODELO', 'PISTA'])]
-        df_reporte = df_semanal[columnas_validas].copy()
-        df_reporte.columns = [c.replace('\n', ' ').strip() for c in df_reporte.columns]
-        
-        return df_reporte
+        # Si la opción es solo la información semanal, aplicamos el filtro de fecha
+        if filtrar_semana:
+            df_filtrado['FECHA_DT'] = pd.to_datetime(df_filtrado['FECHA'], dayfirst=True, errors='coerce')
+            df_filtrado = df_filtrado.dropna(subset=['FECHA_DT'])
+            
+            fecha_limite = datetime.now() - timedelta(days=7)
+            df_filtrado = df_filtrado[df_filtrado['FECHA_DT'] >= fecha_limite].copy()
+            
+            if df_filtrado.empty: return pd.DataFrame()
+            
+            df_filtrado['FECHA'] = df_filtrado['FECHA_DT'].dt.strftime('%d/%m/%Y')
+            df_filtrado = df_filtrado.drop(columns=['FECHA_DT'], errors='ignore')
+            
+        return df_filtrado
     except Exception as e:
-        st.error(f"🚨 Error en el procesamiento del reporte: {str(e)}")
+        st.error(f"🚨 Error en el procesamiento de datos: {str(e)}")
         return pd.DataFrame()
 
 # --- 📡 INTERFAZ LINEAL CORPORATIVA ---
@@ -62,36 +65,61 @@ def ejecutar(*args, **kwargs):
     st.markdown("---")
     st.markdown("### 📤 Extractor de Datos Seguro para la Empresa")
     st.write(
-        "Presione el botón para compilar la información de los **últimos 7 días**. "
-        "El sistema generará un archivo de Excel plano descargable en su computador, **limpio de costos "
-        "confidenciales y fórmulas de origen**, listo para que usted lo guarde o envíe por sus canales oficiales."
+        "Utilice estos dos controles tácticos para descargar la información estructurada. "
+        "Ambos archivos están **100% limpios de costos financieros confidenciales y fórmulas nativas de origen**, "
+        "permitiéndole entregar reportes planos e impecables a la gerencia externa."
     )
     
     url_archivo_maestro = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     
-    if st.button("🚀 EJECUTAR ESCÁNER Y COMPILAR REPORTE EXCEL", type="primary", use_container_width=True):
-        with st.spinner("Escaneando la TABLA 1 y aislando registros de la última semana..."):
-            df_limpio = generar_reporte_semanal_limpio(url_archivo_maestro)
-            
-            if df_limpio is not None and not df_limpio.empty:
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_limpio.to_excel(writer, index=False, sheet_name='Reporte Semanal Operaciones')
-                buffer.seek(0)
-                
-                # Nombre de archivo dinámico con la fecha de hoy
-                nombre_archivo = f"Reporte_Semanal_Operaciones_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                st.success(f"✅ **¡EXTRACCIÓN FILTRADA CON ÉXITO!** Se aislaron {len(df_limpio)} misiones operativas.")
-                
-                st.download_button(
-                    label="📥 DESCARGAR EXCEL PLANO SEGURO",
-                    data=buffer,
-                    file_name=nombre_archivo,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            else:
-                st.warning("⚠️ **ATENCIÓN:** El motor no detectó misiones u operaciones registradas en los últimos 7 días dentro de la TABLA 1.")
+    # Diseño en dos columnas para los dos botones de descarga
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 📂 Operación Inicial (Todo el Histórico)")
+        st.caption("Ideal para enviar por primera vez o restablecer auditorías completas.")
+        if st.button("🚀 COMPILAR HISTÓRICO COMPLETO", key="btn_historico", use_container_width=True):
+            with st.spinner("Descargando matriz completa y purificando columnas..."):
+                df_hist = generar_reporte_filtrado(url_archivo_maestro, filtrar_semana=False)
+                if not df_hist.empty:
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df_hist.to_excel(writer, index=False, sheet_name='Histórico Operaciones')
+                    buffer.seek(0)
+                    
+                    st.success(f"✅ Compilados {len(df_hist)} registros históricos.")
+                    st.download_button(
+                        label="📥 DESCARGAR EXCEL MAESTRO PLANO",
+                        data=buffer,
+                        file_name=f"Reporte_Historico_Operaciones_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("⚠️ No se encontraron datos en la TABLA 1.")
+                    
+    with col2:
+        st.markdown("#### 📅 Operación Rutinaria (Últimos 7 Días)")
+        st.caption("Ideal para alimentaciones semanales fijas de la empresa.")
+        if st.button("⚡ COMPILAR INFORMACIÓN SEMANAL", key="btn_semanal", type="primary", use_container_width=True):
+            with st.spinner("Aislando misiones de los últimos 7 días operativos..."):
+                df_sem = generar_reporte_filtrado(url_archivo_maestro, filtrar_semana=True)
+                if not df_sem.empty:
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df_sem.to_excel(writer, index=False, sheet_name='Reporte Semanal')
+                    buffer.seek(0)
+                    
+                    st.success(f"✅ Purgadas {len(df_sem)} misiones de esta semana.")
+                    st.download_button(
+                        label="📥 DESCARGAR EXCEL SEMANAL",
+                        data=buffer,
+                        file_name=f"Reporte_Semanal_Operaciones_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("⚠️ No se detectaron misiones en los últimos 7 días dentro de la TABLA 1.")
 
     # 🔬 MARCO DOCUMENTAL Y TEÓRICO EN LA PARTE INFERIOR
     st.markdown("<br><hr>", unsafe_allow_html=True)
@@ -110,13 +138,8 @@ def ejecutar(*args, **kwargs):
     with st.expander("📋 2. Diccionario de Variables Estables"):
         st.write("Mapeo de dependencias analíticas configuradas para la auditoría de misiones:")
         datos_diccionario = [
-            {"Variable del Sistema": "FINCA_MAESTRA", "Origen en Matriz (Excel)": "Columna C (FINCA)", "Propósito Operacional": "Segmentación estricta de ciclos agrícolas por lote."},
+            {"Variable del Sistema": "FINCA_MAESTRA", "Origen en Matriz (Excel)": "Columna C (FINCA)", "Propósito Operativo": "Segmentación estricta de ciclos agrícolas por lote."},
             {"Variable del Sistema": "COSTO_MAESTRO", "Origen en Matriz (Excel)": "Columna W (VALOR FACTURAR)", "Propósito Operativo": "Cálculo real de la Media analítica de eficiencia financiera."},
             {"Variable del Sistema": "AREA_MAESTRA", "Origen en Matriz (Excel)": "Columna F (ÁREA FUMIG.)", "Propósito Operativo": "Sumatoria neta de hectáreas aplicadas sin duplicidad de compuestos."}
         ]
         st.table(pd.DataFrame(datos_diccionario))
-
-    with st.expander("📥 3. Biblioteca de Documentación Corporativa"):
-        st.write("Descargue los respaldos oficiales de la arquitectura del software:")
-        texto_manual_md = f"MEMORIA TÉCNICA MAESTRA - AGROAÉREO TÁCTICO\nEmitido de forma segura: {datetime.now().strftime('%Y-%m-%d %H:%M')}\nEstatus de la Regla de Oro: PROTEGIDA Y ACTIVA"
-        st.download_button("📥 DESCARGAR MANUAL TÉCNICO (.TXT)", texto_manual_md, "Manual_Genesis_BI.txt", use_container_width=True)
