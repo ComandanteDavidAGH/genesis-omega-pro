@@ -27,29 +27,31 @@ def estandarizar_base(df):
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
         
-        # 🛑 BLOQUEO ABSOLUTO A LA COLUMNA V (Jamás atrapará "Costo Avión $/Finca")
+        # 🛑 REGLA DE ORO DE SUS FLECHAS ROJAS: 
+        # Bloqueo absoluto a la Columna V (Costo Avión $/finca) para evitar el millón fantasma
         if 'FINCA' in col_u and 'COSTO' in col_u:
             continue
             
-        # 🎯 ASIGNACIÓN ESTRICTA (COLUMNA W)
-        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u:
+        # 🎯 ASIGNACIÓN ESTRICTA (Basado en el esqueleto limpio verificado)
+        # 1. Columna W: VALOR A FACTURAR AL PRODUCTOR ($/ha-ciclo)
+        if 'FACTURAR' in col_u and ('PRODUCTOR' in col_u or 'CICLO' in col_u):
             renombres[col] = 'COSTO_MAESTRO'
         elif 'FACTURAR' in col_u and 'COSTO_MAESTRO' not in renombres.values():
             renombres[col] = 'COSTO_MAESTRO' 
             
-        # 🎯 ASIGNACIÓN ESTRICTA (COLUMNA T)
+        # 2. Columna T: COSTO AVIÓN ($/ha)
         elif 'AVION' in col_u and ('HA' in col_u or '/HA' in col_u):
             renombres[col] = 'AVION_MAESTRO'
             
-        # 🎯 ASIGNACIÓN ESTRICTA (COLUMNA U)
+        # 3. Columna U: DOMINIC. ($/ha)
         elif 'DOMINIC' in col_u:
             renombres[col] = 'DOMINIC_MAESTRO'
             
-        # 🎯 ASIGNACIÓN ESTRICTA (COLUMNA F)
+        # 4. Columna F: ÁREA FUMIG (ha)
         elif 'FUMIG' in col_u:
             renombres[col] = 'AREA_MAESTRA'
             
-        # Variables de control
+        # Variables de control de entorno
         elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
             renombres[col] = 'FINCA_MAESTRA'
         elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA':
@@ -66,20 +68,16 @@ def convertir_pesos(val):
         if not v: return 0.0
         v = "".join([c for c in v if c.isdigit() or c in ['.', ',']])
         
-        # Corrección regional para precios (ej: 250.000 o 250,000)
+        # Traductor Regional: Si vienen puntos de miles, los remueve para no alterar cifras
         if ',' in v and '.' in v:
             v = v.replace('.', '').replace(',', '.')
         elif ',' in v:
             partes = v.split(',')
-            if len(partes[-1]) == 3: # Formato en miles (250,000)
-                v = v.replace(',', '')
-            else:
-                v = v.replace(',', '.')
+            if len(partes[-1]) == 3: v = v.replace(',', '')
+            else: v = v.replace(',', '.')
         elif '.' in v:
             partes = v.split('.')
-            if len(partes[-1]) == 3: # Formato en miles (250.000)
-                v = v.replace('.', '')
-                
+            if len(partes[-1]) == 3: v = v.replace('.', '')
         return float(v)
     except: return 0.0
 
@@ -89,12 +87,11 @@ def limpiar_area(val):
         if not v: return 0.0
         v = "".join([c for c in v if c.isdigit() or c in ['.', ',']])
         
-        # Corrección regional estricta para hectáreas (ej: 55,4 o 55.4)
+        # Traductor Regional Estricto: La coma se vuelve punto decimal (ej: 55,4 -> 55.4)
         if ',' in v and '.' in v:
             v = v.replace('.', '').replace(',', '.')
         elif ',' in v:
             v = v.replace(',', '.')
-            
         return float(v)
     except: return 0.0
 
@@ -122,7 +119,7 @@ def calcular_frecuencia(df):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
     st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Extracción pura (Columnas W, F, T, U) activada y estabilizada.")
+    st.info("🤖 **MOTOR IA BI:** Radares sincronizados. Extracción directa de Columnas T, U y W activa.")
 
     try:
         with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico (Motor Turbo)..."):
@@ -205,7 +202,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
             
-        # 🎯 EXTRACCIÓN PURA (Sin alteradores)
+        # 🎯 EXTRACCIÓN PURA DESDE EL MOTOR LATINO
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
         df_finca['AREA_NUM'] = df_finca['AREA_MAESTRA'].apply(limpiar_area)
         
@@ -224,10 +221,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 LÓGICA PURA Y EXACTA DE EXCEL
+        # 🎯 OPERACIÓN MATEMÁTICA PURA (IDÉNTICO A EXCEL)
         # =========================================================
         
-        # 1. PARA LAS HECTÁREAS: Limpiamos los químicos repetidos para no inflar el volumen
+        # 1. PARA EL ÁREA (Candado estricto para no duplicar por químicos repetidos de SAP)
         subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM']
         df_area_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
         df_area_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
@@ -235,13 +232,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
 
-        # 2. PARA EL COSTO: Promedio puro de TODA la columna W (Igual que la "Media" de Excel)
+        # 2. PARA EL COSTO W: Promedio puro (.mean()) de toda la columna filtrada sin borrar datos
         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
-        st.markdown("### 📊 Auditoría de Costos: Impacto General por Hectárea")
+        st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
         k1, k2, k3 = st.columns(3)
         k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
         k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
@@ -258,7 +255,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         st.markdown("<br>", unsafe_allow_html=True)
         if delta_pct > 10:
-            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo en {finca_sel} presenta una desviación del **{delta_pct:.1f}%**. Se requiere análisis de causa raíz.")
+            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo presenta una desviación del **{delta_pct:.1f}%**. Se requiere análisis de causa raíz.")
         elif delta_pct < 0:
             st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
         else:
@@ -311,7 +308,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # Para barras usamos el DF de áreas (vuelos únicos) para no duplicar el costo del avión
+        # Costo Avión e Insumos desglosado de forma simple
         vuelo_a = df_area_a['AVION_NUM'].mean() if not df_area_a.empty else 0
         vuelo_b = df_area_b['AVION_NUM'].mean() if not df_area_b.empty else 0
         
@@ -571,7 +568,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
