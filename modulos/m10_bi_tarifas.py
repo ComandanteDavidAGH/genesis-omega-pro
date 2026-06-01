@@ -9,7 +9,37 @@ import math
 import io
 import openpyxl
 
-# --- 🧪 APARTADO DE BARREDORAS Y AUXILIARES GLOBALES ---
+# --- 🧪 EL NUEVO TRADUCTOR INDESTRUCTIBLE PARA COLOMBIA ---
+def limpiar_numero_latam(val):
+    try:
+        v = str(val).strip()
+        # Quitamos los signos $, letras y espacios. Dejamos solo números, puntos y comas.
+        v = re.sub(r'[^\d\.,\-]', '', v)
+        if not v: return 0.0
+        
+        # Si tiene formato gringo (1,234.56)
+        if ',' in v and '.' in v and v.rfind('.') > v.rfind(','):
+            v = v.replace(',', '')
+        # Si tiene formato LATAM (1.234,56)
+        elif ',' in v and '.' in v and v.rfind(',') > v.rfind('.'):
+            v = v.replace('.', '').replace(',', '.')
+        # Si solo tiene puntos (Puede ser 262.549 o 55.7)
+        elif '.' in v:
+            partes = v.split('.')
+            if len(partes) > 2 or len(partes[-1]) == 3:
+                v = v.replace('.', '') # Era separador de miles
+        # Si solo tiene comas (Puede ser 262,549 o 55,7)
+        elif ',' in v:
+            partes = v.split(',')
+            if len(partes) > 2 or len(partes[-1]) == 3:
+                v = v.replace(',', '') # Era separador de miles
+            else:
+                v = v.replace(',', '.') # Era coma decimal
+                
+        return float(v)
+    except:
+        return 0.0
+
 def limpiar_encabezados(df):
     df.columns = [
         str(col).upper()
@@ -27,31 +57,22 @@ def estandarizar_base(df):
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
         
-        # 🛑 REGLA DE ORO DE SUS FLECHAS ROJAS: 
-        # Bloqueo absoluto a la Columna V (Costo Avión $/finca) para evitar el millón fantasma
-        if 'FINCA' in col_u and 'COSTO' in col_u:
-            continue
-            
-        # 🎯 ASIGNACIÓN ESTRICTA (Basado en el esqueleto limpio verificado)
-        # 1. Columna W: VALOR A FACTURAR AL PRODUCTOR ($/ha-ciclo)
-        if 'FACTURAR' in col_u and ('PRODUCTOR' in col_u or 'CICLO' in col_u):
+        # 🎯 ASIGNACIÓN FRANCOTIRADOR (Letra por letra)
+        
+        # Columna W: COSTO MAESTRO
+        if 'VALOR A FACTURAR AL PRODUCTOR' in col_u:
             renombres[col] = 'COSTO_MAESTRO'
-        elif 'FACTURAR' in col_u and 'COSTO_MAESTRO' not in renombres.values():
-            renombres[col] = 'COSTO_MAESTRO' 
-            
-        # 2. Columna T: COSTO AVIÓN ($/ha)
-        elif 'AVION' in col_u and ('HA' in col_u or '/HA' in col_u):
+        # Columna F: HECTÁREAS REALES
+        elif 'AREA FUMIG' in col_u or 'ÁREA FUMIG' in col_u:
+            renombres[col] = 'AREA_MAESTRA'
+        # Columna T: COSTO AVIÓN
+        elif 'COSTO AVION' in col_u and '/HA' in col_u:
             renombres[col] = 'AVION_MAESTRO'
-            
-        # 3. Columna U: DOMINIC. ($/ha)
-        elif 'DOMINIC' in col_u:
+        # Columna U: DOMINICAL
+        elif 'DOMINIC' in col_u and '/HA' in col_u:
             renombres[col] = 'DOMINIC_MAESTRO'
             
-        # 4. Columna F: ÁREA FUMIG (ha)
-        elif 'FUMIG' in col_u:
-            renombres[col] = 'AREA_MAESTRA'
-            
-        # Variables de control de entorno
+        # Variables de control
         elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
             renombres[col] = 'FINCA_MAESTRA'
         elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA':
@@ -61,39 +82,6 @@ def estandarizar_base(df):
             
     df.rename(columns=renombres, inplace=True)
     return df
-    
-def convertir_pesos(val):
-    try:
-        v = str(val).strip()
-        if not v: return 0.0
-        v = "".join([c for c in v if c.isdigit() or c in ['.', ',']])
-        
-        # Traductor Regional: Si vienen puntos de miles, los remueve para no alterar cifras
-        if ',' in v and '.' in v:
-            v = v.replace('.', '').replace(',', '.')
-        elif ',' in v:
-            partes = v.split(',')
-            if len(partes[-1]) == 3: v = v.replace(',', '')
-            else: v = v.replace(',', '.')
-        elif '.' in v:
-            partes = v.split('.')
-            if len(partes[-1]) == 3: v = v.replace('.', '')
-        return float(v)
-    except: return 0.0
-
-def limpiar_area(val):
-    try:
-        v = str(val).strip()
-        if not v: return 0.0
-        v = "".join([c for c in v if c.isdigit() or c in ['.', ',']])
-        
-        # Traductor Regional Estricto: La coma se vuelve punto decimal (ej: 55,4 -> 55.4)
-        if ',' in v and '.' in v:
-            v = v.replace('.', '').replace(',', '.')
-        elif ',' in v:
-            v = v.replace(',', '.')
-        return float(v)
-    except: return 0.0
 
 def calcular_frecuencia(df):
     if df.empty or 'FECHA_DT' not in df.columns: return 0, 0
@@ -119,7 +107,7 @@ def calcular_frecuencia(df):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
     st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Radares sincronizados. Extracción directa de Columnas T, U y W activa.")
+    st.info("🤖 **MOTOR IA BI:** Traductor Regional Colombia y Francotirador de Columnas Activados.")
 
     try:
         with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico (Motor Turbo)..."):
@@ -202,12 +190,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
             
-        # 🎯 EXTRACCIÓN PURA DESDE EL MOTOR LATINO
-        df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(convertir_pesos)
-        df_finca['AREA_NUM'] = df_finca['AREA_MAESTRA'].apply(limpiar_area)
+        # 🎯 EXTRACCIÓN CON EL NUEVO MOTOR INDESTRUCTIBLE
+        df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(limpiar_numero_latam)
+        df_finca['AREA_NUM'] = df_finca['AREA_MAESTRA'].apply(limpiar_numero_latam)
         
-        v_avion = df_finca['AVION_MAESTRO'].apply(convertir_pesos)
-        v_dom = df_finca['DOMINIC_MAESTRO'].apply(convertir_pesos)
+        v_avion = df_finca['AVION_MAESTRO'].apply(limpiar_numero_latam)
+        v_dom = df_finca['DOMINIC_MAESTRO'].apply(limpiar_numero_latam)
         df_finca['AVION_NUM'] = v_avion + v_dom
 
         df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
@@ -221,18 +209,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 OPERACIÓN MATEMÁTICA PURA (IDÉNTICO A EXCEL)
+        # 🎯 OPERACIÓN MATEMÁTICA PURA 
         # =========================================================
         
-        # 1. PARA EL ÁREA (Candado estricto para no duplicar por químicos repetidos de SAP)
-        subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM']
-        df_area_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
-        df_area_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
+        # 1. HECTÁREAS: Retornamos a su Regla de Oro original (Fecha + Área) para volumen perfecto
+        df_area_a = df_periodo_a.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
+        df_area_b = df_periodo_b.drop_duplicates(subset=['FECHA_DT', 'AREA_NUM'])
 
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
 
-        # 2. PARA EL COSTO W: Promedio puro (.mean()) de toda la columna filtrada sin borrar datos
+        # 2. COSTO W: Promedio puro de Excel sobre la columna íntegra
         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
@@ -308,7 +295,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # Costo Avión e Insumos desglosado de forma simple
+        # Para las barras de Avión/Insumos
         vuelo_a = df_area_a['AVION_NUM'].mean() if not df_area_a.empty else 0
         vuelo_b = df_area_b['AVION_NUM'].mean() if not df_area_b.empty else 0
         
@@ -413,7 +400,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                     prod_str = str(row[col_prod]).strip().upper()
                                     if anio_str and prod_str:
                                         col_inicio_semanas = max(col_anio, col_prod) + 1
-                                        valores_semana = [extraer_numero(v) for v in row[col_inicio_semanas:] if extraer_numero(v) > 0]
+                                        valores_semana = [limpiar_numero_latam(v) for v in row[col_inicio_semanas:] if limpiar_numero_latam(v) > 0]
                                         promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
                                         precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': prod_str, 'PRECIO_PROM': promedio})
 
@@ -447,7 +434,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     if not receta_base.empty:
                         for idx, row in receta_base.iterrows():
                             prod = str(row.iloc[1]).strip().upper()
-                            dosis = extraer_numero(row.iloc[2])
+                            dosis = limpiar_numero_latam(row.iloc[2])
                             if dosis > 0 and prod not in ['NAN', '']: dict_prods_unicos[prod] = dosis
                     else:
                         if not df_dicc.empty:
@@ -459,7 +446,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                     match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
                                     if not match_sig.empty:
                                         prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
-                                        dict_prods_unicos[prod_name] = extraer_numero(match_sig.iloc[0]['DOSIS'])
+                                        dict_prods_unicos[prod_name] = limpiar_numero_latam(match_sig.iloc[0]['DOSIS'])
                                         resto_letras = resto_letras.replace(sigla, '', 1)
                             if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
                             dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
@@ -470,7 +457,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad]
                             if not match_sig.empty:
                                 prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
-                                dict_prods_unicos[prod_name] = extraer_numero(match_sig.iloc[0]['DOSIS'])
+                                dict_prods_unicos[prod_name] = limpiar_numero_latam(match_sig.iloc[0]['DOSIS'])
                             else:
                                 if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
                                 elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
@@ -508,7 +495,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
                                 match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
                                 if match_conf.empty: match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)]
-                                if not match_conf.empty: return extraer_numero(match_conf.iloc[0, 9])
+                                if not match_conf.empty: return limpiar_numero_latam(match_conf.iloc[0, 9])
                             return 0.0
 
                         costo_total_a, costo_total_b = 0.0, 0.0
@@ -568,7 +555,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
 
         with st.container():
             c_sim1, c_sim2, c_sim3 = st.columns(3)
@@ -599,7 +586,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
 
                 if 'AREA_MAESTRA' in df_sim.columns:
-                    df_sim['AREA_NUM'] = pd.to_numeric(df_sim['AREA_MAESTRA'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+                    df_sim['AREA_NUM'] = df_sim['AREA_MAESTRA'].apply(limpiar_numero_latam)
                     df_sim = df_sim[df_sim['AREA_NUM'] > 0]
 
                 if df_sim.empty:
@@ -632,8 +619,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
                             semana_val = row[col_sem] if col_sem else "N/A"
 
-                        tar_avion_raw = convertir_pesos(row['AVION_MAESTRO']) if 'AVION_MAESTRO' in row else 0.0
-                        tar_dom_raw = convertir_pesos(row['DOMINIC_MAESTRO']) if 'DOMINIC_MAESTRO' in row else 0.0
+                        tar_avion_raw = limpiar_numero_latam(row['AVION_MAESTRO']) if 'AVION_MAESTRO' in row else 0.0
+                        tar_dom_raw = limpiar_numero_latam(row['DOMINIC_MAESTRO']) if 'DOMINIC_MAESTRO' in row else 0.0
                         
                         tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
 
