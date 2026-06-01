@@ -18,6 +18,8 @@ import modulos.m7_arqueo_inventarios as m7
 import modulos.m8_reporte_hectareas as m8
 import modulos.m9_dashboard_tactico as m9
 import modulos.m10_bi_tarifas as m10
+import modulos.m11_manual_tecnico as m11 # 👈 COORDENADA 1: IMPORTACIÓN INSTALADA
+
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
@@ -31,27 +33,15 @@ if 'autenticado' not in st.session_state: st.session_state['autenticado'] = Fals
 if 'usuario_rol' not in st.session_state: st.session_state['usuario_rol'] = None
 if 'usuario_nombre' not in st.session_state: st.session_state['usuario_nombre'] = None
 
-try: import matplotlib; HAS_MATPLOTLIB = True
-except ImportError: HAS_MATPLOTLIB = False
+try: 
+    import matplotlib
+    HAS_MATPLOTLIB = True
+except ImportError: 
+    HAS_MATPLOTLIB = False
 
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
-# --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA ---
-try:
-    with open("escudo.png", "rb") as image_file:
-        bg_image = f"data:image/png;base64,{base64.b64encode(image_file.read()).decode()}"
-    st.markdown(f"""
-    <style>
-    .stApp::before {{
-        content: ""; background-image: url('{bg_image}');
-        background-size: 450px; background-repeat: no-repeat; background-position: center;
-        opacity: 0.12; position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-except: pass
-
-# --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA ---
+# --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA (4%) ---
 try:
     with open("escudo.png", "rb") as image_file:
         bg_image = f"data:image/png;base64,{base64.b64encode(image_file.read()).decode()}"
@@ -60,8 +50,7 @@ try:
     .stApp::before {{
         content: ""; background-image: url('{bg_image}');
         background-size: 550px; background-repeat: no-repeat; background-position: center;
-        opacity: 0.04; /* 🎯 OPACIDAD REDUCIDA AL 4% PARA NO ESTORBAR */
-        position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
+        opacity: 0.04; position: fixed; top: 0; left: 0; bottom: 0; right: 0; z-index: 0; pointer-events: none;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -89,18 +78,8 @@ button[kind="secondary"]:hover { background-color: #0d1b2a !important; color: #d
 div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
-
-/* 🎯 ALTO CONTRASTE: BORDES Y FONDOS SÓLIDOS PARA CASILLAS Y ALERTAS */
-div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div {
-    background-color: #ffffff !important;
-    border: 2px solid #0d1b2a !important; /* Borde azul marino fuerte */
-    box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important;
-}
-[data-testid="stNotification"] {
-    background-color: #ffffff !important;
-    border: 2px solid #0d1b2a !important; /* Borde firme para las alertas */
-    box-shadow: 3px 3px 10px rgba(0,0,0,0.15) !important;
-}
+div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important; }
+[data-testid="stNotification"] { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 3px 3px 10px rgba(0,0,0,0.15) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -149,8 +128,25 @@ with st.sidebar:
     
     if st.session_state['usuario_rol'] == "ADMIN":
         if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True): st.cache_data.clear(); st.rerun()
-        menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", ["🏠 Centro de Mando", "🛠️ 1. Mantenimiento Plantilla SAP", "📥 2. Carga Facturación", "⚙️ 3. Validación de Misión", "⌨️ 4. Ingreso Manual Acelerado (OS)", "📈 5. Sincronización Precios", "✈️ 6. Rastreo Dominicales", "⚖️ 7. Arqueo de Inventarios", "📊 8. Reporte Hectáreas (Pistas)", "📈 9. Dashboard Táctico", "📊 10. Inteligencia de Costos (BI)"])
-    else: menu = "📈 9. Dashboard Táctico"; st.info("🛰️ Modo Consulta Gerencial Activado.")
+        
+        # 🎯 COORDENADA 2: NUEVA CASILLA AGREGADA AL VECTOR DE RADIO LATERAL
+        menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
+            "🏠 Centro de Mando", 
+            "🛠️ 1. Mantenimiento Plantilla SAP", 
+            "📥 2. Carga Facturación", 
+            "⚙️ 3. Validación de Misión", 
+            "⌨️ 4. Ingreso Manual Acelerado (OS)", 
+            "📈 5. Sincronización Precios", 
+            "✈️ 6. Rastreo Dominicales", 
+            "⚖️ 7. Arqueo de Inventarios", 
+            "📊 8. Reporte Hectáreas (Pistas)", 
+            "📈 9. Dashboard Táctico", 
+            "📊 10. Inteligencia de Costos (BI)",
+            "📜 11. Manual de Gobierno Técnico" # 👈 Casilla instalada con éxito
+        ])
+    else: 
+        menu = "📈 9. Dashboard Táctico"
+        st.info("🛰️ Modo Consulta Gerencial Activado.")
 
 # --- 6. DELEGACIÓN A ESCUADRONES ---
 if menu == "🏠 Centro de Mando": m0.renderizar()
@@ -164,3 +160,4 @@ elif menu == "⚖️ 7. Arqueo de Inventarios": m7.ejecutar(quitar_tildes, purif
 elif menu == "📊 8. Reporte Hectáreas (Pistas)": m8.ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS_MATPLOTLIB)
 elif menu == "📈 9. Dashboard Táctico": m9.ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada)
 elif menu == "📊 10. Inteligencia de Costos (BI)": m10.ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
+elif menu == "📜 11. Manual de Gobierno Técnico": m11.ejecutar() # 👈 COORDENADA 3: DISPARADOR CONECTADO
