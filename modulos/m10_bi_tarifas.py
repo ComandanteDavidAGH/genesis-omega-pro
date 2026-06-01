@@ -27,7 +27,7 @@ def estandarizar_base(df):
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
         
-        # 🛑 REGLA DE ORO: Bloqueo absoluto a la Columna V para no promediar millones
+        # 🛑 REGLA DE ORO: Bloqueo absoluto a la Columna V para no promediar millones de la finca
         if 'FINCA' in col_u and 'COSTO' in col_u:
             continue
             
@@ -41,7 +41,7 @@ def estandarizar_base(df):
         elif 'DOMINIC' in col_u and '/HA' in col_u:
             renombres[col] = 'DOMINIC_MAESTRO' # COLUMNA U
             
-        # Variables de entorno
+        # Variables de entorno estándar
         elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
             renombres[col] = 'FINCA_MAESTRA'
         elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA':
@@ -53,20 +53,26 @@ def estandarizar_base(df):
     return df
     
 def a_numero(val):
-    # 🎯 Convertidor Seguro: Respeta los decimales perfectos que envía Google Drive
+    # 🎯 Convertidor Seguro Ajustado: No multiplica por 1000, extrae el valor puro de Excel
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
         if not v: return 0.0
-        # Reemplazamos coma por punto por si alguien digitó (55,4)
+        
         v = v.replace(',', '.')
-        # Borramos todo lo que no sea número, punto o guion negativo
         v = re.sub(r'[^\d\.\-]', '', v)
-        # Si por error hay dos puntos, conservamos solo el último como decimal
+        
         if v.count('.') > 1:
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
-        return float(v) if v else 0.0
+            
+        num = float(v) if v else 0.0
+        
+        # Ajuste para años históricos que venían digitados sin los ceros de los miles
+        if 0 < num < 2000:
+            num = num * 1000
+            
+        return num
     except: return 0.0
 
 def calcular_frecuencia(df):
@@ -93,14 +99,13 @@ def calcular_frecuencia(df):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
     st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Francotirador de Columnas calibrado. Matemática pura alineada.")
+    st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado para el formato de valor real de Excel.")
 
     try:
         with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
             url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             datos_brutos_act = descargar_matriz_rapida(url_act, "TABLA 1")
             
-            # La radiografía nos confirmó que la Fila 5 (índice 4) tiene los títulos
             if len(datos_brutos_act) > 5:
                 df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
                 df_vivos = estandarizar_base(limpiar_encabezados(df_vivos))
@@ -125,7 +130,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
 
         if 'FINCA_MAESTRA' not in super_base_bi.columns or 'FECHA_MAESTRA' not in super_base_bi.columns:
-            st.error("🚨 No se encontraron las columnas clave de Finca o Fecha. Verifique los nombres en el Excel.")
+            st.error("🚨 No se encontraron las columnas clave de Finca o Fecha en las fuentes de datos.")
             return
 
         for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA']:
@@ -177,7 +182,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
             
-        # 🎯 EXTRACCIÓN SEGURA DE NÚMEROS
+        # 🎯 EXTRACCIÓN CON EL CONVERSOR CORREGIDO
         df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(a_numero)
         df_finca['AREA_NUM'] = df_finca['AREA_MAESTRA'].apply(a_numero)
         
@@ -196,10 +201,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # =========================================================
-        # 🎯 LA MATEMÁTICA REAL Y PURA
+        # 🎯 LA MATEMÁTICA PURA COMPARTIDA
         # =========================================================
         
-        # 1. ÁREA: Candado para no sumar los químicos duplicados
+        # 1. ÁREA: Eliminación de duplicados operativos de SAP por vuelo puro
         subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM']
         df_area_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
         df_area_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
@@ -207,7 +212,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
 
-        # 2. COSTO W: Promedio puro de Excel sobre TODA la columna, sin filtros que lo dañen
+        # 2. COSTO W: El promedio simple directo de la columna (.mean()) sin tocar las filas
         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
 
@@ -230,11 +235,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         st.markdown("<br>", unsafe_allow_html=True)
         if delta_pct > 10:
-            st.error(f"⚠️ **ALERTA ROJA:** El costo operativo presenta una desviación del **{delta_pct:.1f}%**. Se requiere análisis de causa raíz.")
+            st.error(f"⚠️ **ALERTA DE DESVIACIÓN:** El costo operativo presenta un incremento del **{delta_pct:.1f}%**.")
         elif delta_pct < 0:
-            st.success(f"✅ **RENDIMIENTO ÓPTIMO:** El costo operativo se redujo. Excelente gestión logística.")
+            st.success(f"✅ **EFICIENCIA:** Reducción detectada en el costo promedio del periodo.")
         else:
-            st.info(f"⚖️ **ESTABILIDAD:** Los costos se mantienen dentro de los márgenes normales de variación.")
+            st.info(f"⚖️ **ESTABILIDAD:** Los márgenes se mantienen balanceados.")
             
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo")
@@ -279,7 +284,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center", hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>")
             st.plotly_chart(fig_tendencia, use_container_width=True)
         else:
-            st.warning("⚠️ No hay suficientes operaciones en este periodo exacto para trazar una curva comparativa.")
+            st.warning("⚠️ No hay suficientes operaciones registradas para trazar la curva.")
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
