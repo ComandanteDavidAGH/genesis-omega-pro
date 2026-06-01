@@ -65,14 +65,13 @@ def ejecutar(*args, **kwargs):
     st.markdown("---")
     st.markdown("### 📤 Extractor de Datos Seguro para la Empresa")
     st.write(
-        "Utilice estos dos controles tácticos para descargar la información estructurada. "
+        "Utilice estos dos controles de mando tácticos para descargar la información estructurada. "
         "Ambos archivos están **100% limpios de costos financieros confidenciales y fórmulas nativas de origen**, "
-        "permitiéndole entregar reportes planos e impecables a la gerencia externa."
+        "permitiéndole entregar reportes planos e impecables a la gerencia externa con su sello de calidad corporativo."
     )
     
     url_archivo_maestro = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     
-    # Diseño en dos columnas para los dos botones de descarga
     col1, col2 = st.columns(2)
     
     with col1:
@@ -121,7 +120,7 @@ def ejecutar(*args, **kwargs):
                 else:
                     st.warning("⚠️ No se detectaron misiones en los últimos 7 días dentro de la TABLA 1.")
 
-    # 🔬 MARCO DOCUMENTAL Y TEÓRICO EN LA PARTE INFERIOR
+    # 🔬 MARCO DOCUMENTAL Y TEÓRICO EN LA PARTE INFERIOR (COMPLETO DE 4 APARTADOS)
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown("### 🔬 Núcleo Teórico y Sustento del Sistema")
     
@@ -133,13 +132,41 @@ def ejecutar(*args, **kwargs):
             "Esto blinda las métricas corporativas contra variaciones artificiales cuando se evalúa la opción 'TODAS'."
         )
         st.latex(r"\text{Intervalo Promedio Zona} = \frac{\sum_{i=1}^{n} \text{Intervalo Finca}_i}{n}")
-        st.success("🎯 **Umbral Estructural de Ruptura:** Configurado en **> 5 días** de inactividad.")
+        st.success("🎯 **Umbral Estructural de Ruptura:** Configurado en **> 5 días** de inactividad por lote.")
 
-    with st.expander("📋 2. Diccionario de Variables Estables"):
-        st.write("Mapeo de dependencias analíticas configuradas para la auditoría de misiones:")
+    with st.expander("📋 2. Diccionario de Variables Estables (Mapeo de Francotirador)"):
+        st.write("Mapeo de dependencias analíticas configuradas para la estabilidad de la auditoría de misiones:")
         datos_diccionario = [
-            {"Variable del Sistema": "FINCA_MAESTRA", "Origen en Matriz (Excel)": "Columna C (FINCA)", "Propósito Operativo": "Segmentación estricta de ciclos agrícolas por lote."},
+            {"Variable del Sistema": "FINCA_MAESTRA", "Origen en Matriz (Excel)": "Columna C (FINCA)", "Propósito Operacional": "Segmentación estricta de ciclos agrícolas por lote."},
             {"Variable del Sistema": "COSTO_MAESTRO", "Origen en Matriz (Excel)": "Columna W (VALOR FACTURAR)", "Propósito Operativo": "Cálculo real de la Media analítica de eficiencia financiera."},
             {"Variable del Sistema": "AREA_MAESTRA", "Origen en Matriz (Excel)": "Columna F (ÁREA FUMIG.)", "Propósito Operativo": "Sumatoria neta de hectáreas aplicadas sin duplicidad de compuestos."}
         ]
         st.table(pd.DataFrame(datos_diccionario))
+
+    with st.expander("⚙️ 3. Lógica del Algoritmo Temporal y Segmentación"):
+        st.write(
+            "El sistema procesa los deltas cronológicos utilizando objetos indexados en memoria. "
+            "Al presionar el escáner, los datos sufren una transformación matemática limpia:"
+        )
+        st.markdown(
+            "* **Paso A:** Conversión de cadenas de texto de Google Sheets a formatos numéricos puros de coma flotante.\n"
+            "* **Paso B:** Purificación de duplicados operativos basados en la terna invariable (Fecha, Finca, Número de OS).\n"
+            "* **Paso C:** Medición de intervalos reales mediante cálculo vectorial directo de fechas."
+        )
+
+    with st.expander("📥 4. Biblioteca de Descarga de Manuales Oficiales"):
+        st.write("Descargue las versiones en texto plano de respaldo técnico para auditorías externas o archivos físicos de la mesa de mando:")
+        texto_manual_md = (
+            "INFORME DE ARQUITECTURA TÉCNICA INSTITUCIONAL - GÉNESIS OMEGA PRO\n"
+            f"Compilado el: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+            "Regla de Oro: ACTIVADA Y BLINDADA\n"
+            "Constante de ciclo: > 5 días\n"
+            "Mapeo de extracción de datos: Columna W, Columna F y Columna G del archivo maestro."
+        )
+        st.download_button(
+            label="📥 DESCARGAR MANUAL DE ARQUITECTURA EN TXT",
+            data=texto_manual_md,
+            file_name="Memoria_Tecnica_Completa_Genesis.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
