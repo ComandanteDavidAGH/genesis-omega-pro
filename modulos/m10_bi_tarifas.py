@@ -75,25 +75,51 @@ def a_numero(val):
         return num
     except: return 0.0
 
-def calcular_frecuencia(df):
-    if df.empty or 'FECHA_DT' not in df.columns: return 0, 0
-    fechas = sorted(df['FECHA_DT'].dt.date.unique())
-    if not fechas: return 0, 0
-    
-    ciclos = 1
-    inicios_ciclo = [fechas[0]]
-    for i in range(1, len(fechas)):
-        if (fechas[i] - fechas[i-1]).days > 5:
-            ciclos += 1
-            inicios_ciclo.append(fechas[i])
-            
-    if ciclos > 1:
-        diffs = [(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]
-        avg_int = sum(diffs) / len(diffs)
-    else:
-        avg_int = 0
-    return ciclos, avg_int
+def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
+    if df_area.empty or 'FECHA_DT' not in df_area.columns:
+        return 0, 0.0
+        
+    # --- CASO A: UNA FINCA ESPECÍFICA ---
+    if finca_seleccionada != "TODAS":
+        fechas = sorted(df_area['FECHA_DT'].dt.date.unique())
+        if not fechas: return 0, 0.0
+        ciclos = 1
+        inicios_ciclo = [fechas[0]]
+        for i in range(1, len(fechas)):
+            if (fechas[i] - fechas[i-1]).days > 5:
+                ciclos += 1
+                inicios_ciclo.append(fechas[i])
+        if ciclos > 1:
+            diffs = [(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]
+            avg_int = sum(diffs) / len(diffs)
+        else:
+            avg_int = 0.0
+        return ciclos, avg_int
 
+    # --- CASO B: VISIÓN GLOBAL ("TODAS") ---
+    # Aplica la Regla de Oro: calcula por separado cada finca y luego saca la media
+    fincas_presentes = df_area['FINCA_MAESTRA'].unique()
+    lista_ciclos = []
+    lista_intervalos = []
+    
+    for f in fincas_presentes:
+        df_sub = df_area[df_area['FINCA_MAESTRA'] == f]
+        fechas_f = sorted(df_sub['FECHA_DT'].dt.date.unique())
+        if not fechas_f: continue
+        c_f = 1
+        inicios_c_f = [fechas_f[0]]
+        for i in range(1, len(fechas_f)):
+            if (fechas_f[i] - fechas_f[i-1]).days > 5:
+                c_f += 1
+                inicios_c_f.append(fechas_f[i])
+        lista_ciclos.append(c_f)
+        if c_f > 1:
+            diffs_f = [(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)]
+            lista_intervalos.append(sum(diffs_f) / len(diffs_f))
+            
+    avg_ciclos_general = sum(lista_ciclos) / len(lista_ciclos) if lista_ciclos else 0
+    avg_int_general = sum(lista_intervalos) / len(lista_intervalos) if lista_intervalos else 0.0
+    return int(round(avg_ciclos_general)), avg_int_general
 
 # --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
@@ -242,22 +268,30 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.info(f"⚖️ **ESTABILIDAD:** Los márgenes se mantienen balanceados.")
             
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo")
-        
-        ciclos_a, int_a = calcular_frecuencia(df_area_a)
-        ciclos_b, int_b = calcular_frecuencia(df_area_b)
-        
+        st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo Promedio")
+
+        # Llamada calibrada pasando la finca seleccionada para activar el radar por separado
+        ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
+        ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
+
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"Ciclos ({año_base})", f"{ciclos_a} ciclos")
-        c2.metric(f"Ciclos ({año_comp})", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
+
+        # Ajuste de nombres según la selección para que sea impecable
+        label_ciclo = "Ciclos Prom. / Finca" if finca_sel == "TODAS" else "Ciclos Totales"
+        label_int = "Intervalo Prom. Zona" if finca_sel == "TODAS" else "Intervalo Promedio"
+
+        c1.metric(f"{label_ciclo} ({año_base})", f"{ciclos_a} ciclos")
+        c2.metric(f"{label_ciclo} ({año_comp})", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
+
         str_int_a = f"{int_a:.1f} días" if int_a > 0 else "N/A"
         str_int_b = f"{int_b:.1f} días" if int_b > 0 else "N/A"
-        c3.metric(f"Intervalo Prom. ({año_base})", str_int_a)
+
+        c3.metric(f"{label_int} ({año_base})", str_int_a)
         if int_a > 0 and int_b > 0:
             delta_int = int_b - int_a
-            c4.metric(f"Intervalo Prom. ({año_comp})", str_int_b, delta=f"{delta_int:+.1f} días", delta_color="normal")
+            c4.metric(f"{label_int} ({año_comp})", str_int_b, delta=f"{delta_int:+.1f} días", delta_color="normal")
         else:
-            c4.metric(f"Intervalo Prom. ({año_comp})", str_int_b)
+            c4.metric(f"{label_int} ({año_comp})", str_int_b)
         
         st.markdown("---")
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
