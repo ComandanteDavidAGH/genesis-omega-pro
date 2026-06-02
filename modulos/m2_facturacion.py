@@ -152,31 +152,38 @@ def ejecutar(extraer_numero):
                                         fila_textos = [str(x).strip() for x in df.iloc[r].tolist()]
                                         if any("TOTAL" in celda.upper() for celda in fila_textos): break
                                             
-                                        pedido_sap = ""
+                                        # 🎯 FILTRO RELAJADO: Buscamos SAP, pero si no hay, igual procesamos la misión
+                                        pedido_sap = "S/N"
                                         for celda in reversed(fila_textos):
-                                            if celda.isdigit() and len(celda) >= 8: 
+                                            if celda.isdigit() and len(celda) >= 6: 
                                                 pedido_sap = celda
                                                 break
                                                 
-                                        if pedido_sap:
-                                            fv = str(df.iloc[r, c_idx]).strip()
-                                            if fv.lower() in ['nan', '', 'none', 'nat'] and (c_idx + 1) < len(df.columns):
-                                                fv = str(df.iloc[r, c_idx + 1]).strip()
-                                            if fv.lower() in ['nan', '', 'none', 'nat']:
-                                                fv = "FINCA_SIN_NOMBRE"
-                                                
-                                            datos_fila = df.iloc[r].to_dict()
+                                        fv = str(df.iloc[r, c_idx]).strip()
+                                        if fv.lower() in ['nan', '', 'none', 'nat'] and (c_idx + 1) < len(df.columns):
+                                            fv = str(df.iloc[r, c_idx + 1]).strip()
+                                        if fv.lower() in ['nan', '', 'none', 'nat']:
+                                            fv = "FINCA_SIN_NOMBRE"
+                                            
+                                        datos_fila = df.iloc[r].to_dict()
+                                        
+                                        # 🎯 REGLA DE CAPTURA TOTAL: Agregamos si la fila tiene al menos algún dato numérico útil (hectáreas, etc)
+                                        valores_utiles = [v for v in fila_textos if v.lower() not in ['nan', '', 'none', '0', '0.0']]
+                                        if len(valores_utiles) > 1:
                                             lista_pistas.append({
-                                                "ORIGEN": f"{f.name} | {n}", 
+                                                "ORIGEN": f"{f.name} | Fila {r+1}",  # Marcador único
                                                 "COCTEL": coctel, 
                                                 "FINCA_INFORME": fv, 
                                                 "PEDIDO_SAP": pedido_sap,
                                                 "DATOS_FILA": datos_fila
                                             })
 
-                    # 🎯 REGLA DE SEGURIDAD EXTRÍNSECA: Guardado unificado y consolidado en el State principal
+                    # 🎯 GUARDADO BLINDADO EN LA SESIÓN GLOBAL
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                    else:
+                        st.session_state['df_pistas'] = pd.DataFrame()
+                        st.warning("⚠️ No se detectaron misiones válidas en los Informes de Pista.")
                     
                     st.success("🛰️ Enlace Satelital Establecido. Pase al Módulo de Validación.")
                     st.balloons()
