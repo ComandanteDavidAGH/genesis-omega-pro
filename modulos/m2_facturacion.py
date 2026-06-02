@@ -62,7 +62,7 @@ def ejecutar(extraer_numero):
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Desplegando la Trampa de Diagnóstico..."):
+            with st.spinner("Desplegando Anclaje de Extracción Inteligente..."):
                 try: 
                     # 1. CARGA DE MATRICES BASE
                     nombre_sabana = f_sabana.name.lower()
@@ -108,78 +108,96 @@ def ejecutar(extraer_numero):
                             
                     st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
 
-                    # 2. 🔥 TRAMPA EN EL ESCÁNER DE PISTAS
+                    # 2. 🔥 ESCÁNER DE ANCLAJE INTELIGENTE
                     lista_pistas = []
                     
-                    # 💡 EXPANDER DE DIAGNÓSTICO VISUAL
-                    with st.expander("🕵️ RADAR DE DIAGNÓSTICO ACTIVO (ABRIR PARA VER RADIOGRAFÍA)", expanded=True):
-                        st.warning("Analizando el archivo de pista tal como lo ve la máquina...")
+                    for f in f_pistas:
+                        nombre_archivo = f.name.lower()
+                        bytes_f = io.BytesIO(f.getvalue())
+                        dict_p = {}
                         
-                        for f in f_pistas:
-                            nombre_archivo = f.name.lower()
-                            bytes_f = io.BytesIO(f.getvalue())
-                            dict_p = {}
-                            
-                            if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
-                                wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
-                                hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
+                        if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
+                            wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
+                            hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
+                            bytes_f.seek(0)
+                            if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
+                        elif nombre_archivo.endswith('.xls'): dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
+                        else:
+                            try: dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
+                            except:
                                 bytes_f.seek(0)
-                                if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
-                            elif nombre_archivo.endswith('.xls'): dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
-                            else:
-                                try: dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
-                                except:
-                                    bytes_f.seek(0)
-                                    dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
+                                dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
+                            
+                        for n, df in dict_p.items():
+                            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
+                            
+                            idx_header = -1
+                            col_finca = -1
+                            col_pedido = -1
+                            
+                            # A. RASTREAR LA FILA EXACTA DE ENCABEZADOS (EL ANCLA)
+                            for r in range(min(20, len(df))):
+                                fila_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
+                                for c, val in enumerate(fila_textos):
+                                    if any(palabra in val for palabra in ["FINCA", "HACIENDA", "CLIENTE"]):
+                                        idx_header = r
+                                        col_finca = c
+                                    if any(palabra in val for palabra in ["PEDIDO", "ORDEN"]):
+                                        col_pedido = c
+                                if col_finca != -1: break # ¡Ancla fijada!
                                 
-                            for n, df in dict_p.items():
-                                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
-                                
-                                # IMPRIMIR LA RADIOGRAFÍA EN PANTALLA
-                                st.write(f"**Archivo:** {f.name} | **Pestaña:** {n}")
-                                st.dataframe(df.head(20)) # Muestra las primeras 20 filas crudas
-                                
-                                col_finca = -1
-                                coctel_actual = "S/N"
-                                
-                                for r in range(len(df)):
-                                    fila_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
+                            # B. EXTRAER MISIONES
+                            if col_finca != -1:
+                                for r in range(idx_header + 1, len(df)):
+                                    val_finca = str(df.iloc[r, col_finca]).strip()
                                     
-                                    # Rastreo muy suave de finca
-                                    for c_idx, celda in enumerate(fila_textos):
-                                        if any(palabra in celda for palabra in ["FINCA", "HACIENDA", "CLIENTE"]):
-                                            col_finca = c_idx
-                                            break
+                                    # Limpieza de basura y totales
+                                    if val_finca.upper() in ["", "NAN", "NONE", "TOTAL"] or "TOTAL" in val_finca.upper(): continue
+                                    if len(val_finca) < 2: continue # Ignorar celdas con 1 sola letra por error
+                                    
+                                    fila_actual_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
+                                    
+                                    # C. CAPTURAR EL PEDIDO
+                                    val_pedido = "S/N"
+                                    if col_pedido != -1 and col_pedido < len(df.columns):
+                                        v_p = str(df.iloc[r, col_pedido]).split('.')[0].strip()
+                                        if v_p.isdigit() and len(v_p) >= 6: val_pedido = v_p
                                             
-                                    if col_finca != -1:
-                                        val_finca = str(df.iloc[r, col_finca]).strip()
-                                        if any(palabra in val_finca.upper() for palabra in ["FINCA", "HACIENDA", "CLIENTE", "TOTAL", "NAN", "NONE"]): continue
-                                        if val_finca == "": continue
-                                            
-                                        datos_fila = df.iloc[r].to_dict()
-                                        lista_pistas.append({
-                                            "ORIGEN": f"{f.name} | Fila {r+1}", 
-                                            "COCTEL": "INTENTO CAPTURA", 
-                                            "FINCA_INFORME": val_finca, 
-                                            "PEDIDO_SAP": "S/N",
-                                            "DATOS_FILA": datos_fila
-                                        })
+                                    # Si la columna directa falló, busca en toda la fila (Fuerza Bruta)
+                                    if val_pedido == "S/N":
+                                        for celda in reversed(fila_actual_textos):
+                                            c_clean = celda.split('.')[0].strip()
+                                            if c_clean.isdigit() and len(c_clean) >= 6:
+                                                val_pedido = c_clean; break
+                                                
+                                    # D. CAPTURAR EL CÓCTEL (Incluso si no hay columna, busca arriba)
+                                    val_coctel = "S/N"
+                                    for r_up in range(idx_header):
+                                        fila_up = [str(x).strip().upper() for x in df.iloc[r_up].tolist()]
+                                        for c_up, val in enumerate(fila_up):
+                                            if "COCTEL" in val or "MEZCLA" in val:
+                                                if c_up + 1 < len(fila_up) and fila_up[c_up+1] not in ["", "NAN", "NONE"]: 
+                                                    val_coctel = str(df.iloc[r_up, c_up+1]).strip()
+                                                elif c_up + 2 < len(fila_up) and fila_up[c_up+2] not in ["", "NAN", "NONE"]: 
+                                                    val_coctel = str(df.iloc[r_up, c_up+2]).strip()
+                                                
+                                    # GUARDAR LA MISIÓN
+                                    lista_pistas.append({
+                                        "ORIGEN": f"{f.name} | Fila {r+1}", 
+                                        "COCTEL": val_coctel, 
+                                        "FINCA_INFORME": val_finca, 
+                                        "PEDIDO_SAP": val_pedido,
+                                        "DATOS_FILA": df.iloc[r].to_dict()
+                                    })
 
-                    # 🎯 INYECCIÓN DEL SEÑUELO SI TODO FALLA
-                    if not lista_pistas:
-                        st.error("🚨 El escáner no pudo encontrar NINGUNA finca real en el documento.")
-                        st.info("🎣 Inyectando SEÑUELO FANTASMA para probar la conexión con el Módulo 3...")
-                        lista_pistas.append({
-                            "ORIGEN": "SEÑUELO DE PRUEBA | IGNORAR",
-                            "COCTEL": "MEZCLA FANTASMA",
-                            "FINCA_INFORME": "FINCA FANTASMA DE PRUEBA",
-                            "PEDIDO_SAP": "1234567",
-                            "DATOS_FILA": {0: "Dato 1", 1: "Dato 2"}
-                        })
-
-                    st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                    st.success(f"🛰️ Enlace Satelital Establecido. Pase al Módulo de Validación.")
-                    st.balloons()
+                    # 3. GUARDADO FINAL EN LA MEMORIA MAESTRA
+                    if lista_pistas:
+                        st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                        st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones con precisión! Pase al Módulo de Validación.")
+                        st.balloons()
+                    else:
+                        st.session_state['df_pistas'] = pd.DataFrame()
+                        st.warning("⚠️ La inteligencia no encontró misiones operativas en el documento de pista.")
                         
                 except Exception as e: 
                     st.error(f"🚨 Error crítico en el escáner: {e}")
