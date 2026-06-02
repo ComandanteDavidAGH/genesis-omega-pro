@@ -7,10 +7,15 @@ import openpyxl
 def ejecutar(extraer_numero):
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
+    # Inicialización del Búnker de Memoria de Sesión
     if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
     if 'name_sabana' not in st.session_state: st.session_state['name_sabana'] = None
     if 'mem_pedidos' not in st.session_state: st.session_state['mem_pedidos'] = None
     if 'name_pedidos' not in st.session_state: st.session_state['name_pedidos'] = None
+    
+    # Aseguramos la existencia de las llaves maestras que busca el Módulo 3
+    if 'df_pistas' not in st.session_state: st.session_state['df_pistas'] = pd.DataFrame()
+    if 'df_apoyo' not in st.session_state: st.session_state['df_apoyo'] = pd.DataFrame()
 
     c1, c2, c3 = st.columns(3)
     
@@ -97,21 +102,19 @@ def ejecutar(extraer_numero):
                             
                     encabezados_crudos = datos_apoyo[fila_titulos]
                     encabezados_limpios = []
-                    vistos = {}
+                    vientos = {}
                     for col in encabezados_crudos:
                         col_str = str(col).strip()
                         if col_str == "": col_str = "Vacio"
-                        if col_str in vistos:
-                            vistos[col_str] += 1
-                            encabezados_limpios.append(f"{col_str}_{vistos[col_str]}")
+                        if col_str in vientos:
+                            vientos[col_str] += 1
+                            encabezados_limpios.append(f"{col_str}_{vientos[col_str]}")
                         else:
-                            vistos[col_str] = 0
+                            vientos[col_str] = 0
                             encabezados_limpios.append(col_str)
                             
                     st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
 
-                    st.success("🛰️ Enlace Satelital Establecido. Pase al Módulo de Validación.")
-                    
                     lista_pistas = []
                     for f in f_pistas:
                         nombre_archivo = f.name.lower()
@@ -122,10 +125,8 @@ def ejecutar(extraer_numero):
                             wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
                             hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
                             bytes_f.seek(0)
-                            
                             if hojas_visibles:
                                 dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
-                        
                         elif nombre_archivo.endswith('.xls'):
                             dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
                         else:
@@ -149,9 +150,7 @@ def ejecutar(extraer_numero):
                                     c_idx = (df.iloc[f_h].astype(str).str.contains('FINCAS', case=False)).values.argmax()
                                     for r in range(f_h + 1, lim):
                                         fila_textos = [str(x).strip() for x in df.iloc[r].tolist()]
-                                        
-                                        if any("TOTAL" in celda.upper() for celda in fila_textos):
-                                            break
+                                        if any("TOTAL" in celda.upper() for celda in fila_textos): break
                                             
                                         pedido_sap = ""
                                         for celda in reversed(fila_textos):
@@ -163,12 +162,10 @@ def ejecutar(extraer_numero):
                                             fv = str(df.iloc[r, c_idx]).strip()
                                             if fv.lower() in ['nan', '', 'none', 'nat'] and (c_idx + 1) < len(df.columns):
                                                 fv = str(df.iloc[r, c_idx + 1]).strip()
-                                                
                                             if fv.lower() in ['nan', '', 'none', 'nat']:
                                                 fv = "FINCA_SIN_NOMBRE"
                                                 
                                             datos_fila = df.iloc[r].to_dict()
-                                            
                                             lista_pistas.append({
                                                 "ORIGEN": f"{f.name} | {n}", 
                                                 "COCTEL": coctel, 
@@ -176,7 +173,12 @@ def ejecutar(extraer_numero):
                                                 "PEDIDO_SAP": pedido_sap,
                                                 "DATOS_FILA": datos_fila
                                             })
-                                            st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+
+                    # 🎯 REGLA DE SEGURIDAD EXTRÍNSECA: Guardado unificado y consolidado en el State principal
+                    if lista_pistas:
+                        st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                    
+                    st.success("🛰️ Enlace Satelital Establecido. Pase al Módulo de Validación.")
                     st.balloons()
                 except Exception as e: 
-                    st.error(f"🚨 Error: {e}")
+                    st.error(f"🚨 Error de procesamiento en el hangar: {e}")
