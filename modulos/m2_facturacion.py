@@ -7,13 +7,12 @@ import openpyxl
 def ejecutar(extraer_numero):
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
-    # Inicialización del Búnker de Memoria de Sesión
+    # --- 🛡️ BÚNKER DE MEMORIA ---
     if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
     if 'name_sabana' not in st.session_state: st.session_state['name_sabana'] = None
     if 'mem_pedidos' not in st.session_state: st.session_state['mem_pedidos'] = None
     if 'name_pedidos' not in st.session_state: st.session_state['name_pedidos'] = None
     
-    # Aseguramos la existencia de las llaves maestras que busca el Módulo 3
     if 'df_pistas' not in st.session_state: st.session_state['df_pistas'] = pd.DataFrame()
     if 'df_apoyo' not in st.session_state: st.session_state['df_apoyo'] = pd.DataFrame()
 
@@ -63,8 +62,9 @@ def ejecutar(extraer_numero):
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Sincronizando los 3 frentes..."):
+            with st.spinner("Desplegando Artillería de Extracción..."):
                 try: 
+                    # 1. CARGA DE MATRICES BASE
                     nombre_sabana = f_sabana.name.lower()
                     if nombre_sabana.endswith(('.xlsx', '.xls')):
                         st.session_state['df_sabana'] = pd.read_excel(f_sabana)
@@ -97,8 +97,7 @@ def ejecutar(extraer_numero):
                     fila_titulos = 0
                     for i, fila in enumerate(datos_apoyo[:20]):
                         if any('FINCA' in str(celda).upper() for celda in fila):
-                            fila_titulos = i
-                            break
+                            fila_titulos = i; break
                             
                     encabezados_crudos = datos_apoyo[fila_titulos]
                     encabezados_limpios = []
@@ -115,6 +114,7 @@ def ejecutar(extraer_numero):
                             
                     st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
 
+                    # 2. 🔥 ESCÁNER DE FUERZA BRUTA (ARTILLERÍA PESADA) PARA PISTAS
                     lista_pistas = []
                     for f in f_pistas:
                         nombre_archivo = f.name.lower()
@@ -125,67 +125,70 @@ def ejecutar(extraer_numero):
                             wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
                             hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
                             bytes_f.seek(0)
-                            if hojas_visibles:
-                                dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
-                        elif nombre_archivo.endswith('.xls'):
-                            dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
+                            if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
+                        elif nombre_archivo.endswith('.xls'): dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
                         else:
-                            try:
-                                dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
+                            try: dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
                             except:
                                 bytes_f.seek(0)
                                 dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
                             
                         for n, df in dict_p.items():
                             df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
-                            filas_c = df[df.astype(str).apply(lambda x: x.str.contains('COCTEL', case=False, na=False)).any(axis=1)].index.tolist()
-                            for i, f_idx in enumerate(filas_c):
-                                f_data = df.iloc[f_idx].dropna().tolist()
-                                coctel = f_data[1] if len(f_data) > 1 else "S/N"
-                                lim = filas_c[i+1] if i+1 < len(filas_c) else len(df)
-                                segment = df.iloc[f_idx:lim]
-                                idx_fin = segment[segment.astype(str).apply(lambda x: x.str.contains('FINCAS', case=False, na=False)).any(axis=1)].index
-                                if not idx_fin.empty:
-                                    f_h = idx_fin[0]
-                                    c_idx = (df.iloc[f_h].astype(str).str.contains('FINCAS', case=False)).values.argmax()
-                                    for r in range(f_h + 1, lim):
-                                        fila_textos = [str(x).strip() for x in df.iloc[r].tolist()]
-                                        if any("TOTAL" in celda.upper() for celda in fila_textos): break
+                            
+                            col_finca = -1
+                            coctel_actual = "S/N"
+                            
+                            for r in range(len(df)):
+                                fila_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
+                                
+                                # A. Rastrear Cóctel
+                                for c_idx, celda in enumerate(fila_textos):
+                                    if "COCTEL" in celda or "CÓCTEL" in celda or "MEZCLA" in celda:
+                                        if c_idx + 1 < len(fila_textos) and fila_textos[c_idx+1] not in ['NAN', 'NONE', '']:
+                                            coctel_actual = str(df.iloc[r, c_idx+1]).strip()
+                                        elif c_idx + 2 < len(fila_textos) and fila_textos[c_idx+2] not in ['NAN', 'NONE', '']:
+                                            coctel_actual = str(df.iloc[r, c_idx+2]).strip()
                                             
-                                        # 🎯 FILTRO RELAJADO: Buscamos SAP, pero si no hay, igual procesamos la misión
-                                        pedido_sap = "S/N"
-                                        for celda in reversed(fila_textos):
-                                            if celda.isdigit() and len(celda) >= 6: 
-                                                pedido_sap = celda
-                                                break
-                                                
-                                        fv = str(df.iloc[r, c_idx]).strip()
-                                        if fv.lower() in ['nan', '', 'none', 'nat'] and (c_idx + 1) < len(df.columns):
-                                            fv = str(df.iloc[r, c_idx + 1]).strip()
-                                        if fv.lower() in ['nan', '', 'none', 'nat']:
-                                            fv = "FINCA_SIN_NOMBRE"
-                                            
-                                        datos_fila = df.iloc[r].to_dict()
+                                # B. Fijar Mira en Columna FINCA
+                                for c_idx, celda in enumerate(fila_textos):
+                                    if celda in ["FINCA", "FINCAS", "HACIENDA", "CLIENTE"]:
+                                        col_finca = c_idx
+                                        break
                                         
-                                        # 🎯 REGLA DE CAPTURA TOTAL: Agregamos si la fila tiene al menos algún dato numérico útil (hectáreas, etc)
-                                        valores_utiles = [v for v in fila_textos if v.lower() not in ['nan', '', 'none', '0', '0.0']]
-                                        if len(valores_utiles) > 1:
-                                            lista_pistas.append({
-                                                "ORIGEN": f"{f.name} | Fila {r+1}",  # Marcador único
-                                                "COCTEL": coctel, 
-                                                "FINCA_INFORME": fv, 
-                                                "PEDIDO_SAP": pedido_sap,
-                                                "DATOS_FILA": datos_fila
-                                            })
+                                # C. Capturar la Misión a la fuerza
+                                if col_finca != -1:
+                                    val_finca = str(df.iloc[r, col_finca]).strip()
+                                    
+                                    # Ignorar cabeceras y totales
+                                    if val_finca.upper() in ["FINCA", "FINCAS", "HACIENDA", "CLIENTE", "TOTAL", "TOTALES", "NAN", "NONE", ""] or "TOTAL" in val_finca.upper():
+                                        continue
+                                        
+                                    # Misión Detectada: Buscamos SAP por si acaso, si no hay, manda S/N
+                                    pedido_sap = "S/N"
+                                    for celda in reversed(fila_textos):
+                                        c_clean = celda.split('.')[0].strip()
+                                        if c_clean.isdigit() and len(c_clean) >= 6:
+                                            pedido_sap = c_clean
+                                            break
+                                            
+                                    datos_fila = df.iloc[r].to_dict()
+                                    
+                                    lista_pistas.append({
+                                        "ORIGEN": f"{f.name} | Fila {r+1}", 
+                                        "COCTEL": coctel_actual, 
+                                        "FINCA_INFORME": val_finca, 
+                                        "PEDIDO_SAP": pedido_sap,
+                                        "DATOS_FILA": datos_fila
+                                    })
 
-                    # 🎯 GUARDADO BLINDADO EN LA SESIÓN GLOBAL
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                        st.success(f"🛰️ Enlace Satelital Establecido. ¡Se capturaron {len(lista_pistas)} misiones a la fuerza! Pase al Módulo de Validación.")
+                        st.balloons()
                     else:
                         st.session_state['df_pistas'] = pd.DataFrame()
-                        st.warning("⚠️ No se detectaron misiones válidas en los Informes de Pista.")
-                    
-                    st.success("🛰️ Enlace Satelital Establecido. Pase al Módulo de Validación.")
-                    st.balloons()
+                        st.warning("⚠️ El escáner de fuerza bruta no encontró nombres de fincas en el archivo de Pista.")
+                        
                 except Exception as e: 
-                    st.error(f"🚨 Error de procesamiento en el hangar: {e}")
+                    st.error(f"🚨 Error crítico en el escáner: {e}")
