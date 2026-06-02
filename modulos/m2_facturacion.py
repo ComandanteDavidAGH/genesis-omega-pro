@@ -3,11 +3,18 @@ import pandas as pd
 import gspread
 import io
 import openpyxl
+import re
+
+def extraer_numero_local(val):
+    try:
+        v = str(val).replace(',', '.')
+        v = re.sub(r'[^\d\.]', '', v)
+        return float(v) if v else 0.0
+    except: return 0.0
 
 def ejecutar(extraer_numero):
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
-    # --- 🛡️ BÚNKER DE MEMORIA ---
     if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
     if 'name_sabana' not in st.session_state: st.session_state['name_sabana'] = None
     if 'mem_pedidos' not in st.session_state: st.session_state['mem_pedidos'] = None
@@ -64,7 +71,6 @@ def ejecutar(extraer_numero):
         if f_sabana and f_pedidos and f_pistas:
             with st.spinner("Desplegando Anclaje de Extracción Inteligente..."):
                 try: 
-                    # 1. CARGA DE MATRICES BASE
                     nombre_sabana = f_sabana.name.lower()
                     if nombre_sabana.endswith(('.xlsx', '.xls')): st.session_state['df_sabana'] = pd.read_excel(f_sabana)
                     else:
@@ -108,7 +114,6 @@ def ejecutar(extraer_numero):
                             
                     st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
 
-                    # 2. 🔥 ESCÁNER DE ANCLAJE INTELIGENTE
                     lista_pistas = []
                     
                     for f in f_pistas:
@@ -116,8 +121,9 @@ def ejecutar(extraer_numero):
                         bytes_f = io.BytesIO(f.getvalue())
                         dict_p = {}
                         
+                        # 🎯 BLOQUEO DE HOJAS OCULTAS: data_only=True respeta la visibilidad del Excel
                         if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
-                            wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
+                            wb_temp = openpyxl.load_workbook(bytes_f, data_only=True)
                             hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
                             bytes_f.seek(0)
                             if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
@@ -131,46 +137,43 @@ def ejecutar(extraer_numero):
                         for n, df in dict_p.items():
                             df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
                             
-                            idx_header = -1
-                            col_finca = -1
-                            col_pedido = -1
+                            idx_header = -1; col_finca = -1; col_pedido = -1; col_ha = -1
                             
-                            # A. RASTREAR LA FILA EXACTA DE ENCABEZADOS (EL ANCLA)
                             for r in range(min(20, len(df))):
                                 fila_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
                                 for c, val in enumerate(fila_textos):
-                                    if any(palabra in val for palabra in ["FINCA", "HACIENDA", "CLIENTE"]):
-                                        idx_header = r
-                                        col_finca = c
-                                    if any(palabra in val for palabra in ["PEDIDO", "ORDEN"]):
-                                        col_pedido = c
-                                if col_finca != -1: break # ¡Ancla fijada!
+                                    if any(palabra in val for palabra in ["FINCA", "HACIENDA", "CLIENTE"]): col_finca = c
+                                    if any(palabra in val for palabra in ["PEDIDO", "ORDEN"]): col_pedido = c
+                                    
+                                    # 🎯 RADAR DE HECTÁREAS DE PISTA
+                                    val_sin_esp = val.replace(" ", "")
+                                    if ("HA" in val_sin_esp or "HECT" in val_sin_esp) and not "HORA" in val and not "H/H" in val and not "FECHA" in val:
+                                        if "APLIC" in val or "GPS" in val or "FUMIG" in val: col_ha = c
+                                        elif col_ha == -1: col_ha = c
+
+                                if col_finca != -1: 
+                                    idx_header = r
+                                    break 
                                 
-                            # B. EXTRAER MISIONES
                             if col_finca != -1:
                                 for r in range(idx_header + 1, len(df)):
                                     val_finca = str(df.iloc[r, col_finca]).strip()
-                                    
-                                    # Limpieza de basura y totales
                                     if val_finca.upper() in ["", "NAN", "NONE", "TOTAL"] or "TOTAL" in val_finca.upper(): continue
-                                    if len(val_finca) < 2: continue # Ignorar celdas con 1 sola letra por error
+                                    if len(val_finca) < 2: continue 
                                     
                                     fila_actual_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
                                     
-                                    # C. CAPTURAR EL PEDIDO
                                     val_pedido = "S/N"
                                     if col_pedido != -1 and col_pedido < len(df.columns):
                                         v_p = str(df.iloc[r, col_pedido]).split('.')[0].strip()
                                         if v_p.isdigit() and len(v_p) >= 6: val_pedido = v_p
                                             
-                                    # Si la columna directa falló, busca en toda la fila (Fuerza Bruta)
                                     if val_pedido == "S/N":
                                         for celda in reversed(fila_actual_textos):
                                             c_clean = celda.split('.')[0].strip()
                                             if c_clean.isdigit() and len(c_clean) >= 6:
                                                 val_pedido = c_clean; break
                                                 
-                                    # D. CAPTURAR EL CÓCTEL (Incluso si no hay columna, busca arriba)
                                     val_coctel = "S/N"
                                     for r_up in range(idx_header):
                                         fila_up = [str(x).strip().upper() for x in df.iloc[r_up].tolist()]
@@ -181,19 +184,23 @@ def ejecutar(extraer_numero):
                                                 elif c_up + 2 < len(fila_up) and fila_up[c_up+2] not in ["", "NAN", "NONE"]: 
                                                     val_coctel = str(df.iloc[r_up, c_up+2]).strip()
                                                 
-                                    # GUARDAR LA MISIÓN
+                                    # 🎯 EXTRACCIÓN DE HA DE PISTA
+                                    val_ha_pista = 0.0
+                                    if col_ha != -1 and col_ha < len(df.columns):
+                                        val_ha_pista = extraer_numero_local(df.iloc[r, col_ha])
+                                                
                                     lista_pistas.append({
-                                        "ORIGEN": f"{f.name} | Fila {r+1}", 
+                                        "ORIGEN": f"{f.name} | {n}", 
                                         "COCTEL": val_coctel, 
                                         "FINCA_INFORME": val_finca, 
                                         "PEDIDO_SAP": val_pedido,
+                                        "HA_PISTA": val_ha_pista,
                                         "DATOS_FILA": df.iloc[r].to_dict()
                                     })
 
-                    # 3. GUARDADO FINAL EN LA MEMORIA MAESTRA
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                        st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones con precisión! Pase al Módulo de Validación.")
+                        st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones visibles con precisión! Pase al Módulo de Validación.")
                         st.balloons()
                     else:
                         st.session_state['df_pistas'] = pd.DataFrame()
