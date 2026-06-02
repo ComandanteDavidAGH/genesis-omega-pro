@@ -137,7 +137,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         if st.button("🚀 Construir Matriz MEGAZORD"):
             try:
-                # 🎯 INTELIGENCIA DE MÁRGENES (Ajustado según Tabla de Configuración Oficial)
                 if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
                 elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
                 elif tipo_prod_sim == "COOPERATIVA": mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
@@ -150,12 +149,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
                 if match: val_tope = float(match.group(1).replace('.', ''))
 
-                # 🎯 INTELIGENCIA DE DRONES EN EL SIMULADOR SEGÚN PISTA
                 if vuelo_sim == "DRONE": 
-                    if "PLUC" in pista_sim: base_dron = 84428     # DATAROT
-                    elif "PDIV" in pista_sim: base_dron = 76916   # NORTE
-                    else: base_dron = 72600                       # AVIL / GENESYS
-                    
+                    if "PLUC" in pista_sim: base_dron = 84428
+                    elif "PDIV" in pista_sim: base_dron = 76916
+                    else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
@@ -227,13 +224,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.markdown("---")
                 st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
             except Exception as e: st.error(f"Error: {e}")
-        st.stop() # DETIENE LA EJECUCIÓN AQUÍ SI EL MODO SIMULADOR ESTÁ ACTIVO
+        st.stop()
 
     # -----------------------------------------------------------------
-    # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN (SE EJECUTA SI EL TOGGLE ESTÁ APAGADO)
+    # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN (SEGURO COMPLETO EN MEMORIA)
     # -----------------------------------------------------------------
+    # 🎯 COORDENADA BLINDADA: Validamos la presencia real en el State
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
-        st.warning("🚨 Cargue los archivos en el Módulo 2 e inicie el procesamiento.")
+        st.warning("🚨 No se detectan datos listos en el puente de mando.")
+        st.info("💡 Por favor, cargue los tres archivos fuente en el **Módulo 2 (Carga Facturación)** y presione el botón **'INICIAR PROCESAMIENTO MAESTRO'** antes de validar.")
     else:
         with st.container(border=True):
             st.markdown("### 📡 Panel de Operaciones")
@@ -251,14 +250,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             if not match_sap.empty:
                 try:
-                    # 🎯 RECONOCIMIENTO DE COLUMNAS EXACTAS
                     col_finca = [c for c in df_p.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
                     col_ha = [c for c in df_p.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
                     col_mat = [c for c in df_p.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper()][0]
                     
                     finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
                     
-                    # 🎯 REGLA DE ORO 459: Francotirador directo a la columna Material
                     ha_correcta = 0.0
                     for _, fila_ped in match_sap.iterrows():
                         valor_material = str(fila_ped[col_mat]).strip()
@@ -282,7 +279,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist()) if not df_t2.empty else []
         opciones_finca = ["---"] + lista_fincas
         
-        # 🎯 Inteligencia de auto-selección de Finca
         idx_finca = 0
         if finca_sap:
             for i, f in enumerate(opciones_finca):
@@ -486,7 +482,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     opciones_dr = list(dict_drones.keys()) if 'dict_drones' in locals() and dict_drones else ["DRONE DATAROT", "DRON GENESYS"]
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=opciones_dr), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f")}, use_container_width=True, hide_index=True)                
                 
-                # 🛡️ CÁLCULOS PROTEGIDOS E INTELIGENCIA NETA
                 for index, row in escuadron_aviones.iterrows():
                     av_sel = row["Avión"]
                     try: ha_av = float(row.get("Hectáreas", 0)) if str(row.get("Hectáreas", 0)) not in ["None", "", "nan"] else 0.0
@@ -728,14 +723,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ideal_sistema = row["D: Dosis Total (Sistema)"]
                 diferencia = abs(global_sap - ideal_sistema)
                 
-                if diferencia <= 0.5:
-                    color = 'background-color: #d4edda; color: #155724;' 
-                elif diferencia <= 5.0:
-                    color = 'background-color: #fff3cd; color: #856404;' 
-                elif diferencia <= 20.0:
-                    color = 'background-color: #f8d7da; color: #721c24;' 
-                else:
-                    color = 'background-color: #8b0000; color: white; font-weight: bold;' 
+                if diferencia <= 0.5: color = 'background-color: #d4edda; color: #155724;' 
+                elif diferencia <= 5.0: color = 'background-color: #fff3cd; color: #856404;' 
+                elif diferencia <= 20.0: color = 'background-color: #f8d7da; color: #721c24;' 
+                else: color = 'background-color: #8b0000; color: white; font-weight: bold;' 
                     
                 return [color] * len(row)
 
@@ -769,8 +760,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.markdown("---")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        def sap_round(n):
-            return math.floor(n + 0.5)
+        def sap_round(n): return math.floor(n + 0.5)
 
         unitario_st_bruto = d_ciclo_factura * tarifa_serv_tec_base
         unitario_vuelo_bruto = costo_total_vuegos / total_ha_cobro_escuadron if total_ha_cobro_escuadron > 0 else 0
@@ -790,18 +780,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if not escuadron_aviones.empty:
                     avion_principal = escuadron_aviones.iloc[0]['Avión']
                     precio_columna_referencia = dict_aviones.get(avion_principal, 0)
-            except:
-                precio_columna_referencia = 0
+            except: precio_columna_referencia = 0
 
         precio_dron_referencia = 0
         try:
-            df_busqueda_dron = escuadron_drones if mision_solo_dron else escuadron_drones
+            df_busqueda_dron = escuadron_drones
             if not df_busqueda_dron.empty:
                 dron_principal = df_busqueda_dron.iloc[0]['Drone']
                 if pd.notna(dron_principal) and str(dron_principal).strip() not in ["None", ""]:
                     precio_dron_referencia = dict_drones.get(dron_principal, 0)
-        except:
-            precio_dron_referencia = 0
+        except: precio_dron_referencia = 0
 
         st.markdown("---")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -820,29 +808,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with m2: 
             ha_avion_real = 0
             try:
-                if not mision_solo_dron and not escuadron_aviones.empty:
-                    ha_avion_real = float(escuadron_aviones['Hectáreas'].sum())
-            except:
-                ha_avion_real = 0
+                if not mision_solo_dron and not escuadron_aviones.empty: ha_avion_real = float(escuadron_aviones['Hectáreas'].sum())
+            except: ha_avion_real = 0
 
             es_dron_dominante = mision_solo_dron or (ha_avion_real == 0 and precio_dron_referencia > 0)
-            st.markdown(mini_metric("🛣️", "Pista", tipo_de_tope_finca if not es_dron_dominante else "DRON"), unsafe_allow_html=True)
+            st.markdown(mini_metric("¼️", "Pista", tipo_de_tope_finca if not es_dron_dominante else "DRON"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) 
             
-            if es_dron_dominante:
-                texto_valor_tope = f"$ {fmt_sap(precio_dron_referencia)}"
-            elif val_tope == 999999 or val_tope == 0:
-                texto_valor_tope = "Sin Tope"
-            else:
-                texto_valor_tope = f"$ {fmt_sap(val_tope)}"
+            if es_dron_dominante: texto_valor_tope = f"$ {fmt_sap(precio_dron_referencia)}"
+            elif val_tope == 999999 or val_tope == 0: texto_valor_tope = "Sin Tope"
+            else: texto_valor_tope = f"$ {fmt_sap(val_tope)}"
                 
             st.markdown(mini_metric("🚧", "Valor Tope", texto_valor_tope), unsafe_allow_html=True)
         with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
         with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {mult_avion_final}"), unsafe_allow_html=True)
-        
         with m5: 
             st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_referencia)}"), unsafe_allow_html=True)
             st.markdown(mini_metric("🚁", "Tarifa Dron", f"$ {fmt_sap(precio_dron_referencia)}"), unsafe_allow_html=True)
+        
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📋 Cajas de Copia para Digitación en SAP")
         
@@ -875,7 +858,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_p1, c_p2 = st.columns(2)
         with c_p1:
             pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
-            # 🎯 CLAVE DINÁMICA: Fuerza a la caja a sincronizarse con la de arriba
             pista_manual = st.selectbox(
                 "📍 Confirmar Pista de Operación:", 
                 pistas_disponibles, 
@@ -889,11 +871,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             with st.spinner("🚀 Inyectando datos con Precisión de Francotirador..."):
                 try:
-                    if "gcp_credentials" in st.secrets:
-                        cred_dict = dict(st.secrets["gcp_credentials"])
-                        gc = gspread.service_account_from_dict(cred_dict)
-                    else:
-                        gc = gspread.service_account(filename='credenciales.json')
+                    gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
                     
                     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                     boveda = gc.open_by_url(url_boveda)
@@ -915,15 +893,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             bloque_f = match_f.iloc[0, 3]
 
                     ha_f = float(ha_dosis_final)
-                    
-                    if mision_solo_dron:
-                        h_total_v = ha_f / 10
-                    else:
-                        h_total_v = (ha_f / total_ha_cobro_escuadron) * horometro_final_avion if total_ha_cobro_escuadron > 0 else 0.0
+                    h_total_v = ha_f / 10 if mision_solo_dron else ((ha_f / total_ha_cobro_escuadron) * horometro_final_avion if total_ha_cobro_escuadron > 0 else 0.0)
                         
                     vol_total_gln = ha_f * 6
                     rend_min = h_total_v * 60
-                    
                     piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
                     
                     if mision_solo_dron:
@@ -931,19 +904,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         elif "GENESYS" in tipo_mision.upper(): hk_f = "DR52"
                         elif "AVIL" in tipo_mision.upper(): hk_f = "DR53"
                         else: hk_f = "DRONE_GEN"
-                    else:
-                        hk_f = hk_sel if 'hk_sel' in locals() else "AVION_REG"
+                    else: hk_f = "AVION_REG"
 
-                    modelo_f = "DRONE" if mision_solo_dron else "AVION"
-
-                    try:
-                        fila_excel = len(st.session_state['df_azul_actual']) + 2 
-                    except:
-                        fila_excel = 6 
+                    try: fila_excel = len(st.session_state.get('df_azul_actual', [])) + 2 
+                    except: fila_excel = 6 
                     
                     tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                     valor_dominical = float(recargo_final)
-                    
                     total_pago_avion_neto = (tarifa_vuelo_neta_ha + valor_dominical) * ha_f
                     
                     row_azul = [""] * 34
@@ -965,7 +932,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     row_azul[15] = piloto_f
                     row_azul[16] = hk_f
                     row_azul[17] = tipo_mision
-                    
                     row_azul[18] = float(gran_total) 
                     row_azul[19] = round(tarifa_vuelo_neta_ha, 2) 
                     row_azul[20] = round(valor_dominical, 2) 
@@ -977,7 +943,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     row_azul[33] = "GÉNESIS_V2_PRO" 
                     
                     fila_apoyo = [""] * 15
-                    fila_apoyo[0] = "=IFERROR(ROW()-3, 0)" 
                     fila_apoyo[1] = finca_limpia
                     fila_apoyo[2] = ha_f
                     fila_apoyo[3] = float(costo_por_ha)
@@ -993,8 +958,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             fila_destino_azul = i + 2
                             break
                     
-                    if fila_destino_azul > hoja_maestra.row_count:
-                        hoja_maestra.add_rows(10)
+                    if fila_destino_azul > hoja_maestra.row_count: hoja_maestra.add_rows(10)
 
                     col_apoyo = hoja_apoyo.col_values(2)
                     fila_destino_apoyo = 1
@@ -1003,8 +967,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             fila_destino_apoyo = i + 2
                             break
                             
-                    if fila_destino_apoyo > hoja_apoyo.row_count:
-                        hoja_apoyo.add_rows(10)
+                    if fila_destino_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
 
                     fila_apoyo[0] = fila_destino_apoyo - 3
 
@@ -1021,7 +984,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     set_existentes.add(llave)
                         
                         bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron else "BODEGA PRINCIPAL AVIÓN"
-                        
                         filas_memoria = []
                         contador_nuevos = 0
                         
@@ -1029,7 +991,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             nombre_prod = str(row.get("A: Producto", "")).strip().upper()
                             if "⚠️" not in nombre_prod and nombre_prod != "" and nombre_prod != "NAN":
                                 llave_actual = f"{fecha_str}|{finca_limpia}|{nombre_prod}"
-                                
                                 if llave_actual not in set_existentes:
                                     dosis_prod = float(row.get("D: Dosis Total (Sistema)", 0))
                                     lote_prod = str(row.get("G: Lotes (SAP)", "S/N"))
@@ -1042,7 +1003,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     fila_m[4] = lote_prod 
                                     fila_m[5] = float(dosis_prod) 
                                     fila_m[6] = bodega_f 
-                                    fila_m[7] = "" 
                                     fila_m[8] = "X" 
                                     fila_m[9] = finca_limpia 
                                     
@@ -1051,18 +1011,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     
                         if filas_memoria:
                             hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
-                            st.toast(f"💾 Memoria Samurai: {contador_nuevos} productos nuevos guardados.")
+                            st.toast(f"💾 Memoria Samurai: {contador_nuevos} productos guardados.")
                         else:
-                            st.toast("⚠️ Memoria Samurai: Los productos ya existían. No se duplicaron.")
-                            
-                    except Exception as e_mem:
-                        st.warning(f"⚠️ Nota de sistema: Error al guardar en MEMORIA: {e_mem}")
+                            st.toast("⚠️ Memoria Samurai: Los productos ya existían.")
+                    except Exception as e_mem: st.warning(f"⚠️ Error en MEMORIA: {e_mem}")
 
                     st.balloons()
-                    st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} inyectada exactamente en la fila {fila_destino_azul}.")
-                    
-                    if 'memoria_excel' in st.session_state:
-                        del st.session_state['memoria_excel']
+                    st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Referencia {os_virtual} guardada en fila {fila_destino_azul}.")
+                    if 'memoria_excel' in st.session_state: del st.session_state['memoria_excel']
 
-                except Exception as e_save:
-                    st.error(f"🚨 Falla en el Gatillo de Guardado: {e_save}")
+                except Exception as e_save: st.error(f"🚨 Falla en el Guardado: {e_save}")
