@@ -62,27 +62,22 @@ def ejecutar(extraer_numero):
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Desplegando Artillería de Extracción..."):
+            with st.spinner("Desplegando la Trampa de Diagnóstico..."):
                 try: 
                     # 1. CARGA DE MATRICES BASE
                     nombre_sabana = f_sabana.name.lower()
-                    if nombre_sabana.endswith(('.xlsx', '.xls')):
-                        st.session_state['df_sabana'] = pd.read_excel(f_sabana)
+                    if nombre_sabana.endswith(('.xlsx', '.xls')): st.session_state['df_sabana'] = pd.read_excel(f_sabana)
                     else:
-                        try:
-                            st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='utf-8')
-                        except UnicodeDecodeError:
+                        try: st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='utf-8')
+                        except:
                             f_sabana.seek(0)
                             st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='latin1')
                     
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    if "gcp_credentials" in st.secrets:
-                        cred_dict = dict(st.secrets["gcp_credentials"])
-                        gc = gspread.service_account_from_dict(cred_dict)
-                    else:
-                        gc = gspread.service_account(filename='credenciales.json')
+                    if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+                    else: gc = gspread.service_account(filename='credenciales.json')
                     
                     url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                     boveda = gc.open_by_url(url_boveda)
@@ -96,8 +91,7 @@ def ejecutar(extraer_numero):
                     
                     fila_titulos = 0
                     for i, fila in enumerate(datos_apoyo[:20]):
-                        if any('FINCA' in str(celda).upper() for celda in fila):
-                            fila_titulos = i; break
+                        if any('FINCA' in str(celda).upper() for celda in fila): fila_titulos = i; break
                             
                     encabezados_crudos = datos_apoyo[fila_titulos]
                     encabezados_limpios = []
@@ -114,81 +108,78 @@ def ejecutar(extraer_numero):
                             
                     st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
 
-                    # 2. 🔥 ESCÁNER DE FUERZA BRUTA (ARTILLERÍA PESADA) PARA PISTAS
+                    # 2. 🔥 TRAMPA EN EL ESCÁNER DE PISTAS
                     lista_pistas = []
-                    for f in f_pistas:
-                        nombre_archivo = f.name.lower()
-                        bytes_f = io.BytesIO(f.getvalue())
-                        dict_p = {}
+                    
+                    # 💡 EXPANDER DE DIAGNÓSTICO VISUAL
+                    with st.expander("🕵️ RADAR DE DIAGNÓSTICO ACTIVO (ABRIR PARA VER RADIOGRAFÍA)", expanded=True):
+                        st.warning("Analizando el archivo de pista tal como lo ve la máquina...")
                         
-                        if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
-                            wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
-                            hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
-                            bytes_f.seek(0)
-                            if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
-                        elif nombre_archivo.endswith('.xls'): dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
-                        else:
-                            try: dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
-                            except:
+                        for f in f_pistas:
+                            nombre_archivo = f.name.lower()
+                            bytes_f = io.BytesIO(f.getvalue())
+                            dict_p = {}
+                            
+                            if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
+                                wb_temp = openpyxl.load_workbook(bytes_f, read_only=True)
+                                hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
                                 bytes_f.seek(0)
-                                dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
-                            
-                        for n, df in dict_p.items():
-                            df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
-                            
-                            col_finca = -1
-                            coctel_actual = "S/N"
-                            
-                            for r in range(len(df)):
-                                fila_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
+                                if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
+                            elif nombre_archivo.endswith('.xls'): dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
+                            else:
+                                try: dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
+                                except:
+                                    bytes_f.seek(0)
+                                    dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
                                 
-                                # A. Rastrear Cóctel
-                                for c_idx, celda in enumerate(fila_textos):
-                                    if "COCTEL" in celda or "CÓCTEL" in celda or "MEZCLA" in celda:
-                                        if c_idx + 1 < len(fila_textos) and fila_textos[c_idx+1] not in ['NAN', 'NONE', '']:
-                                            coctel_actual = str(df.iloc[r, c_idx+1]).strip()
-                                        elif c_idx + 2 < len(fila_textos) and fila_textos[c_idx+2] not in ['NAN', 'NONE', '']:
-                                            coctel_actual = str(df.iloc[r, c_idx+2]).strip()
-                                            
-                                # B. Fijar Mira en Columna FINCA
-                                for c_idx, celda in enumerate(fila_textos):
-                                    if celda in ["FINCA", "FINCAS", "HACIENDA", "CLIENTE"]:
-                                        col_finca = c_idx
-                                        break
-                                        
-                                # C. Capturar la Misión a la fuerza
-                                if col_finca != -1:
-                                    val_finca = str(df.iloc[r, col_finca]).strip()
+                            for n, df in dict_p.items():
+                                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
+                                
+                                # IMPRIMIR LA RADIOGRAFÍA EN PANTALLA
+                                st.write(f"**Archivo:** {f.name} | **Pestaña:** {n}")
+                                st.dataframe(df.head(20)) # Muestra las primeras 20 filas crudas
+                                
+                                col_finca = -1
+                                coctel_actual = "S/N"
+                                
+                                for r in range(len(df)):
+                                    fila_textos = [str(x).strip().upper() for x in df.iloc[r].tolist()]
                                     
-                                    # Ignorar cabeceras y totales
-                                    if val_finca.upper() in ["FINCA", "FINCAS", "HACIENDA", "CLIENTE", "TOTAL", "TOTALES", "NAN", "NONE", ""] or "TOTAL" in val_finca.upper():
-                                        continue
-                                        
-                                    # Misión Detectada: Buscamos SAP por si acaso, si no hay, manda S/N
-                                    pedido_sap = "S/N"
-                                    for celda in reversed(fila_textos):
-                                        c_clean = celda.split('.')[0].strip()
-                                        if c_clean.isdigit() and len(c_clean) >= 6:
-                                            pedido_sap = c_clean
+                                    # Rastreo muy suave de finca
+                                    for c_idx, celda in enumerate(fila_textos):
+                                        if any(palabra in celda for palabra in ["FINCA", "HACIENDA", "CLIENTE"]):
+                                            col_finca = c_idx
                                             break
                                             
-                                    datos_fila = df.iloc[r].to_dict()
-                                    
-                                    lista_pistas.append({
-                                        "ORIGEN": f"{f.name} | Fila {r+1}", 
-                                        "COCTEL": coctel_actual, 
-                                        "FINCA_INFORME": val_finca, 
-                                        "PEDIDO_SAP": pedido_sap,
-                                        "DATOS_FILA": datos_fila
-                                    })
+                                    if col_finca != -1:
+                                        val_finca = str(df.iloc[r, col_finca]).strip()
+                                        if any(palabra in val_finca.upper() for palabra in ["FINCA", "HACIENDA", "CLIENTE", "TOTAL", "NAN", "NONE"]): continue
+                                        if val_finca == "": continue
+                                            
+                                        datos_fila = df.iloc[r].to_dict()
+                                        lista_pistas.append({
+                                            "ORIGEN": f"{f.name} | Fila {r+1}", 
+                                            "COCTEL": "INTENTO CAPTURA", 
+                                            "FINCA_INFORME": val_finca, 
+                                            "PEDIDO_SAP": "S/N",
+                                            "DATOS_FILA": datos_fila
+                                        })
 
-                    if lista_pistas:
-                        st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                        st.success(f"🛰️ Enlace Satelital Establecido. ¡Se capturaron {len(lista_pistas)} misiones a la fuerza! Pase al Módulo de Validación.")
-                        st.balloons()
-                    else:
-                        st.session_state['df_pistas'] = pd.DataFrame()
-                        st.warning("⚠️ El escáner de fuerza bruta no encontró nombres de fincas en el archivo de Pista.")
+                    # 🎯 INYECCIÓN DEL SEÑUELO SI TODO FALLA
+                    if not lista_pistas:
+                        st.error("🚨 El escáner no pudo encontrar NINGUNA finca real en el documento.")
+                        st.info("🎣 Inyectando SEÑUELO FANTASMA para probar la conexión con el Módulo 3...")
+                        lista_pistas.append({
+                            "ORIGEN": "SEÑUELO DE PRUEBA | IGNORAR",
+                            "COCTEL": "MEZCLA FANTASMA",
+                            "FINCA_INFORME": "FINCA FANTASMA DE PRUEBA",
+                            "PEDIDO_SAP": "1234567",
+                            "DATOS_FILA": {0: "Dato 1", 1: "Dato 2"}
+                        })
+
+                    st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                    st.success(f"🛰️ Enlace Satelital Establecido. Pase al Módulo de Validación.")
+                    st.balloons()
                         
                 except Exception as e: 
                     st.error(f"🚨 Error crítico en el escáner: {e}")
