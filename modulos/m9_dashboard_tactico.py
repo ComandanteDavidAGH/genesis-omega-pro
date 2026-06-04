@@ -63,7 +63,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    # ⚡ EXTRACCIÓN MAESTRA EN RAM CACHEADA (Elimina retardos de red síncronos)
+    # EXTRACCIÓN MAESTRA EN RAM CACHEADA (Elimina retardos de red síncronos)
     df_dash = cargar_y_preprocesar_boveda_mando(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
@@ -97,10 +97,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
-    # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) CORRECTO ---
-    # ⚡ CORRECCIÓN: Sumatoria neta filtrada eliminando duplicados de la terna operativa
+    # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) ---
+    # ⚡ CORRECCIÓN DE LA LÍNEA 103: Sincronización perfecta de la variable con "O"
     df_area_unicos = df_filtrado.drop_duplicates(subset=['FECHA_DT', 'FINCA', 'OS', 'AREA_FUMIG'])
-    total_area = df_area_unicas['AREA_FUMIG'].sum() if not df_area_unicos.empty else 0.0
+    total_area = df_area_unicos['AREA_FUMIG'].sum() if not df_area_unicos.empty else 0.0
     
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
     total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
