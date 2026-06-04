@@ -1,11 +1,51 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 def renderizar():
+    # 🚀 MOTOR VISUAL VIP: Estilizado del Centro de Mando e Inyección CSS
+    st.markdown("""
+    <style>
+    .titulo-principal { 
+        color: #0d1b2a; 
+        border-bottom: 3px solid #d4af37; 
+        padding-bottom: 5px; 
+        font-family: 'Arial Black', sans-serif; 
+    }
+    
+    /* Contenedores Oficiales para Tablas */
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {
+        border: 3px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important;
+        overflow: hidden !important;
+    }
+    
+    /* Mini-KPIs del Centro de Mando */
+    .hud-mando {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-left: 5px solid #0d1b2a;
+        padding: 12px 20px;
+        border-radius: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+        border: 1px solid #dee2e6;
+    }
+    .hud-mando-item { text-align: center; }
+    .hud-mando-title { font-size: 11px; color: #6c757d; font-family: 'Arial Black', sans-serif; text-transform: uppercase; margin: 0; }
+    .hud-mando-value { font-size: 20px; color: #0d1b2a; font-weight: 900; margin: 0; }
+    .hud-mando-alert { color: #cc0000; font-family: 'Arial Black', sans-serif; }
+    .hud-mando-ok { color: #00994c; font-family: 'Arial Black', sans-serif; }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h1 class='titulo-principal'>🏠 Centro de Mando y Control</h1>", unsafe_allow_html=True)
     
     # --- SALUDO OFICIAL ---
-    st.info("📡 **Radar Principal:** Monitoreo activo de sistemas, escuadrones y logística.")
+    st.info("📡 **Radar Principal:** Monitoreo activo de sistemas, escuadrones y logística aérea.")
     st.markdown(f"### Bienvenido al Cuartel General, **{st.session_state.get('usuario_nombre', 'Comandante')}**.")
     st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos. Seleccione un hangar en el menú lateral para iniciar operaciones.")
     
@@ -14,85 +54,110 @@ def renderizar():
     # --- 🚨 RADAR LOGÍSTICO DE ALERTA TEMPRANA ---
     st.markdown("### 🚨 Radar Logístico: Alerta Temprana de Inventarios")
     
-    # El radar lee la memoria de la Sábana SAP cargada en el Módulo 2
     df_sabana = st.session_state.get('df_sabana', pd.DataFrame())
     
     if df_sabana.empty:
         st.warning("⚠️ **Radar en Modo Espera:** El sistema no detecta un inventario activo en la memoria. Para encender el radar, por favor cargue la **Sábana SAP** actualizada en el **📥 Módulo 2 (Carga Facturación)**.")
     else:
-        with st.spinner("Escaneando bodegas y cruzando saldos con niveles críticos..."):
-            # 1. Francotirador de columnas
-            col_mat = next((c for c in df_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper() or 'MATERIAL' in str(c).upper()), None)
-            col_pista = next((c for c in df_sabana.columns if 'ALMACEN' in str(c).upper() or 'PISTA' in str(c).upper() or 'CENTRO' in str(c).upper()), None)
-            col_saldo = next((c for c in df_sabana.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper() or 'CANTIDAD' in str(c).upper()), None)
+        with st.spinner("Escaneando bodegas mediante matriz paralela..."):
+            # 1. Francotirador optimizado de columnas
+            col_mat = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['TEXTO', 'DESC', 'MATERIAL'])), None)
+            col_pista = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['ALMACEN', 'PISTA', 'CENTRO'])), None)
+            col_saldo = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['LIBRE', 'SALDO', 'CANTIDAD'])), None)
             
             if not col_mat or not col_pista or not col_saldo:
-                st.error("❌ Error de Radar: No se pudieron identificar las columnas de Material, Almacén o Saldo en la Sábana SAP cargada.")
+                st.error("❌ Error de Radar: No se pudieron identificar las columnas estructurales de Material, Almacén o Saldo en la Sábana SAP cargada.")
             else:
-                alertas = []
-                
-                # 2. Agrupar saldos por Pista y Material (por si hay lotes separados)
+                # 2. Agrupamiento veloz vectorizado
                 df_temp = df_sabana.copy()
                 df_temp[col_saldo] = pd.to_numeric(df_temp[col_saldo].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                
+                # Filtrar de golpe registros irrelevantes antes de agrupar para liberar memoria
+                df_temp = df_temp[df_temp[col_saldo] > 0]
                 inventario_agrupado = df_temp.groupby([col_pista, col_mat])[col_saldo].sum().reset_index()
                 
-                # 3. Aplicación de las Reglas de Oro del Comandante
-                for _, row in inventario_agrupado.iterrows():
-                    pista = str(row[col_pista]).strip().upper()
-                    producto = str(row[col_mat]).strip().upper()
-                    saldo = row[col_saldo]
+                # 3. COMPILADOR VECTORIAL: Evaluamos las Reglas de Oro sin usar bucles row-by-row
+                pistas_series = inventario_agrupado[col_pista].astype(str).str.upper()
+                productos_series = inventario_agrupado[col_mat].astype(str).str.upper()
+                
+                es_pista_menor = pistas_series.str.contains("LUCI|TEHO", na=False)
+                es_aceite = productos_series.str.contains("ACEITE|GRANEL|COMBUSTIBLE", na=False)
+                es_mancol = productos_series.str.contains("MANCOL", na=False)
+                es_aditivo = productos_series.str.contains("ACONDICIONADOR|NATURAMIN", na=False)
+                
+                # Construcción de la matriz de condiciones condicionales de Sap
+                condiciones = [
+                    es_aceite & es_pista_menor,
+                    es_aceite & ~es_pista_menor,
+                    es_mancol & es_pista_menor,
+                    es_mancol & ~es_pista_menor,
+                    es_aditivo
+                ]
+                
+                valores_limite = [1000, 30280, 1000, 2500, 30]
+                reglas_texto = [
+                    "1.000 L (Aceite - Pista Menor)",
+                    "30,280 L (Aceite - Pista Principal)",
+                    "1,000 L (Mancol - Pista Menor)",
+                    "2,500 L (Mancol - Pista Principal)",
+                    "30 L/Kg (Aditivo de Alta Rotación)"
+                ]
+                
+                # Inyección atómica por lotes usando numpy
+                inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, valores_limite, default=100)
+                inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, reglas_texto, default="100 L/Kg (Estándar Global)")
+                
+                # 4. Filtrado masivo de alertas por máscara lógica
+                df_alertas = inventario_agrupado[inventario_agrupado[col_saldo] < inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD']].copy()
+                
+                # Preparar nombres finales para visualización limpia
+                df_alertas = df_alertas.rename(columns={
+                    col_pista: "📍 PISTA / ALMACÉN",
+                    col_mat: "🧪 PRODUCTO QUÍMICO",
+                    col_saldo: "⚠️ SALDO ACTUAL"
+                })
+                
+                # Columnas en el orden táctico estricto
+                columnas_finales = ["📍 PISTA / ALMACÉN", "🧪 PRODUCTO QUÍMICO", "⚠️ SALDO ACTUAL", "🛡️ LÍMITE DE SEGURIDAD", "📋 REGLA APLICADA"]
+                df_alertas_render = df_alertas[columnas_finales].sort_values(by="📍 PISTA / ALMACÉN")
+                
+                # 5. RENDERIZADO DEL HUD TÁCTICO INTEGRADO
+                total_almacenes = inventario_agrupado[col_pista].nunique()
+                total_insumos = inventario_agrupado[col_mat].nunique()
+                conteo_alertas = len(df_alertas_render)
+                
+                clase_alerta = "hud-mando-value hud-mando-alert" if conteo_alertas > 0 else "hud-mando-value hud-mando-ok"
+                texto_alerta = f"{conteo_alertas} Alertas" if conteo_alertas > 0 else "0 Críticos"
+                
+                st.markdown(f"""
+                <div class="hud-mando">
+                    <div class="hud-mando-item">
+                        <p class="hud-mando-title">Almacenes Escaneados</p>
+                        <p class="hud-mando-value">🛰️ {total_almacenes}</p>
+                    </div>
+                    <div class="hud-mando-item">
+                        <p class="hud-mando-title">Insumos Totales</p>
+                        <p class="hud-mando-value">🧪 {total_insumos}</p>
+                    </div>
+                    <div class="hud-mando-item">
+                        <p class="hud-mando-title">Estado de Carga</p>
+                        <p class="{clase_alerta}">{texto_alerta}</p>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 6. Despliegue de Resultados finales
+                if conteo_alertas > 0:
+                    st.error(f"🚨 **¡ALERTA ROJA! MARGEN OPERATIVO COMPROMETIDO EN {conteo_alertas} ÍTEMS:**")
                     
-                    if saldo <= 0: continue # Ignorar ítems vacíos o en cero absoluto
+                    # Formateo numérico estilizado responsivo
+                    df_alertas_render["⚠️ SALDO ACTUAL"] = df_alertas_render["⚠️ SALDO ACTUAL"].apply(lambda x: f"{x:,.1f}".replace(",", "."))
+                    df_alertas_render["🛡️ LÍMITE DE SEGURIDAD"] = df_alertas_render["🛡️ LÍMITE DE SEGURIDAD"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
                     
-                    es_pista_menor = "LUCI" in pista or "TEHO" in pista
-                    
-                    # Base Estándar Global
-                    limite = 100
-                    tipo_limite = "100 L/Kg (Estándar Global)"
-                    
-                    # Filtros de Alta Prioridad
-                    if "ACEITE" in producto or "GRANEL" in producto or "COMBUSTIBLE" in producto:
-                        if es_pista_menor:
-                            limite = 1000
-                            tipo_limite = "1,000 L (Aceite - Pista Menor)"
-                        else:
-                            limite = 30280
-                            tipo_limite = "30,280 L (Aceite - Pista Principal)"
-                            
-                    elif "MANCOL" in producto:
-                        if es_pista_menor:
-                            limite = 1000
-                            tipo_limite = "1,000 L (Mancol - Pista Menor)"
-                        else:
-                            limite = 2500
-                            tipo_limite = "2,500 L (Mancol - Pista Principal)"
-                            
-                    elif "ACONDICIONADOR" in producto or "NATURAMIN" in producto:
-                        limite = 30
-                        tipo_limite = "30 L/Kg (Aditivo de Alta Rotación)"
-                    
-                    # 4. Detonación de Alerta si se rompe el umbral
-                    if saldo < limite:
-                        alertas.append({
-                            "📍 PISTA / ALMACÉN": pista,
-                            "🧪 PRODUCTO QUÍMICO": producto,
-                            "⚠️ SALDO ACTUAL": saldo,
-                            "🛡️ LÍMITE DE SEGURIDAD": limite,
-                            "📋 REGLA APLICADA": tipo_limite
-                        })
+                    # Pintar filas con un rojo corporativo de alto contraste para máxima legibilidad
+                    def pintar_rojo_elegante(val):
+                        return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold; border-bottom: 1px solid #dee2e6;'] * len(val)
                         
-                # 5. Despliegue Visual
-                if alertas:
-                    st.error(f"🚨 **¡ALERTA ROJA! SE HAN DETECTADO {len(alertas)} INSUMOS POR DEBAJO DEL LÍMITE OPERATIVO:**")
-                    df_alertas = pd.DataFrame(alertas).sort_values(by="📍 PISTA / ALMACÉN")
-                    
-                    # Formateo de números para lectura fácil
-                    df_alertas["⚠️ SALDO ACTUAL"] = df_alertas["⚠️ SALDO ACTUAL"].apply(lambda x: f"{x:,.1f}".replace(",", "."))
-                    df_alertas["🛡️ LÍMITE DE SEGURIDAD"] = df_alertas["🛡️ LÍMITE DE SEGURIDAD"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
-                    
-                    def pintar_rojo(val):
-                        return ['background-color: #4a0000; color: white; font-weight: bold; border-bottom: 1px solid #ff4444;'] * len(val)
-                        
-                    st.dataframe(df_alertas.style.apply(pintar_rojo, axis=1), use_container_width=True, hide_index=True)
+                    st.dataframe(df_alertas_render.style.apply(pintar_rojo_elegante, axis=1), use_container_width=True, hide_index=True)
                 else:
-                    st.success("✅ **INVENTARIO ÓPTIMO:** Todos los insumos en todas las bodegas se encuentran por encima de los márgenes de seguridad. Operación asegurada.")
+                    st.success("✅ **INVENTARIO ÓPTIMO:** Todos los insumos químicos y energéticos en la totalidad de las pistas se encuentran por encima de los márgenes de seguridad establecidos. Operación aérea asegurada.")
