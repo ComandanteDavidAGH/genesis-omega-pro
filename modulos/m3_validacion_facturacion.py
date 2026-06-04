@@ -702,7 +702,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 use_container_width=True, hide_index=True
             )
 
-            st.markdown("<br>##### 📋 Copia Rápida para SAP (Costo Unitario)")
+            st.markdown("📋 Copia Rápida para SAP (Costo Unitario)")
             st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
         else:
             st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
