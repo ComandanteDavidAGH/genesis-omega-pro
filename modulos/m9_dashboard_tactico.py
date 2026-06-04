@@ -63,7 +63,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    # EXTRACCIÓN MAESTRA EN RAM CACHEADA (Elimina retardos de red síncronos)
     df_dash = cargar_y_preprocesar_boveda_mando(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
@@ -71,20 +70,22 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         return
 
     # --- 🎛️ FILTROS TÁCTICOS AVANZADOS ---
-    st.markdown("### 🎛️ Filtros de Operación (Incluye Meses)")
+    st.markdown("### 🎛️ Filtros de Operación y Tiempo")
     
     t1, t2 = st.columns(2)
     años_disp = ["TODOS"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
     año_sel = t1.selectbox("📅 AÑO FISCAL", años_disp, index=0)
     
-    # 🎯 AQUÍ ESTÁ SU AJUSTE: Selector combinado de Trimestres y Meses individuales
+    # =================================================================
+    # 🎯 AQUÍ ESTÁ EL AJUSTE EXACTO DE SU IMAGEN (TRIMESTRES Y MESES)
+    # =================================================================
     opciones_periodo = [
         "TODOS", 
         "Q1 (Ene-Mar)", "Q2 (Abr-Jun)", "Q3 (Jul-Sep)", "Q4 (Oct-Dic)",
         "Ene", "Feb", "Mar", "Abr", "May", "Jun", 
         "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
     ]
-    periodo_sel = t2.selectbox("📊 PERIODO (Trimestre o Mes)", opciones_periodo)
+    periodo_sel = t2.selectbox("📊 PERIODO (Trimestre/Mes)", opciones_periodo)
 
     f1, f2, f3 = st.columns(3)
     fincas_disp = ["TODAS"] + sorted(df_dash['FINCA'].astype(str).unique().tolist())
@@ -95,7 +96,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    # 🎯 MATEMÁTICA DEL FILTRADO EN LA RAM
+    # 🎯 MATEMÁTICA DEL FILTRADO EN LA RAM PARA TRIMESTRE O MES
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS": 
         df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
@@ -105,7 +106,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             trim_map = {"Q1 (Ene-Mar)": 1, "Q2 (Abr-Jun)": 2, "Q3 (Jul-Sep)": 3, "Q4 (Oct-Dic)": 4}
             df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trim_map[periodo_sel]]
         else:
-            # Si el usuario elige un mes específico (ej. "Ene"), filtra directamente la columna MES_NOMBRE
             df_filtrado = df_filtrado[df_filtrado['MES_NOMBRE'] == periodo_sel]
             
     if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
