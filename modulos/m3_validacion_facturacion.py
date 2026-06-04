@@ -437,12 +437,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         ha_dosis_detectada = 0.0
         match_ped = pd.DataFrame()
 
-        # Extraemos las etiquetas de columna reales para heredar al motor de mezclas de abajo
-        col_sap_cant = "Cantidad"
-        if not df_ped.empty:
-            col_ha_list = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
-            if col_ha_list: col_sap_cant = col_ha_list[0]
-
         if not df_ped.empty and num_pedido != "S/N":
             match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
             if not match_ped.empty:
@@ -451,7 +445,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_val in texto_pedido: pista_detectada = p_val; break
                 for _, r_p in match_ped.iterrows():
                     if len(r_p) >= 7 and "459" in str(r_p.iloc[5]):
-                        ha_dosis_detectada = extraer_numero(r_p[col_sap_cant])
+                        # ⚡ RESTAURACIÓN: Mantenemos el puntero original exacto que extrae la Hectárea del pedido
+                        ha_dosis_detectada = extraer_numero(r_p.iloc[6])
                         break
         
         ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
@@ -582,8 +577,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 cod_item = texto_material.split('.')[0].lstrip('0')
                 
-                # ⚡ RE-FOCALIZACIÓN ATÓMICA: Heredamos el puntero real col_sap_cant para anular los ceros del arsenal
-                cant_total = extraer_numero(fila_sap[col_sap_cant]) if col_sap_cant in fila_sap.index else 0.0
+                # ⚡ RESTAURACIÓN CRÍTICA (image_e13ea6.png): Volvemos a leer de la columna local de cantidades de químicos de SAP (iloc[6])
+                # para que el volumen Sugerido SAP Total deje de ser cero absoluto.
+                col_cant = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
+                cant_total = extraer_numero(fila_sap[col_cant[0]]) if col_cant else 0.0
                 dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
                 nombre_p = f"Item {cod_item}"
@@ -630,7 +627,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if not df_sab.empty:
                     col_0_limpia = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0') if str(x).lower() not in ['nan', 'none', '<na>', ''] else "")
                     match_sabana_global = df_sab[col_0_limpia == cod_item]
-                    if match_sabana_global.empty and nombre_limpio != "" and "ITEM" not in nombre_limpio:
+                    if match_sabana_global.empty && nombre_limpio != "" && "ITEM" not in nombre_limpio:
                         match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
                     if not match_sabana_global.empty:
@@ -695,7 +692,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_matriz.style.apply(colorear_matriz, axis=1), key='editor_valid',
                 column_config={
                     "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
-                    "C: X (Extra %)": st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
+                    "C: X (Extra %)" : st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
                     "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                     "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
                     "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
@@ -825,7 +822,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                     fila_apoyo[0] = f_apoyo - 3
                     
-                    # ⚡ DETONACIÓN COMPLETAMENTE PALABRA CLAVE: Evita colisiones posicionales en gspread v6
+                    # 🛠️ RESTAURACIÓN DE LLAMADAS CLAVE (Keywords unificadas inmunizadas para gspread v6)
                     hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                     hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                     
