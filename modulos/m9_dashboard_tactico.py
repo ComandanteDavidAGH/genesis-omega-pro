@@ -77,8 +77,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     años_disp = ["TODOS"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
     año_sel = t1.selectbox("📅 AÑO FISCAL", años_disp, index=0)
     
-    trimestres = {"TODOS": 0, "Q1 (Ene-Mar)": 1, "Q2 (Abr-Jun)": 2, "Q3 (Jul-Sep)": 3, "Q4 (Oct-Dic)": 4}
-    trim_sel = t2.selectbox("📊 TRIMESTRE", list(trimestres.keys()))
+    # 🎯 CORRECCIÓN QUIRÚRGICA: Selector combinado de Trimestres y Meses
+    opciones_periodo = [
+        "TODOS", 
+        "Q1 (Ene-Mar)", "Q2 (Abr-Jun)", "Q3 (Jul-Sep)", "Q4 (Oct-Dic)",
+        "Ene", "Feb", "Mar", "Abr", "May", "Jun", 
+        "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
+    ]
+    periodo_sel = t2.selectbox("📊 PERIODO (Trimestre/Mes)", opciones_periodo)
 
     f1, f2, f3 = st.columns(3)
     fincas_disp = ["TODAS"] + sorted(df_dash['FINCA'].astype(str).unique().tolist())
@@ -91,14 +97,21 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     # 🎯 FILTRADO EN MILISEGUNDOS DESDE LA RAM LOCAL
     df_filtrado = df_dash.copy()
-    if año_sel != "TODOS": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
-    if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
+    if año_sel != "TODOS": 
+        df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
+        
+    if periodo_sel != "TODOS":
+        if periodo_sel.startswith("Q"):
+            trim_map = {"Q1 (Ene-Mar)": 1, "Q2 (Abr-Jun)": 2, "Q3 (Jul-Sep)": 3, "Q4 (Oct-Dic)": 4}
+            df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trim_map[periodo_sel]]
+        else:
+            df_filtrado = df_filtrado[df_filtrado['MES_NOMBRE'] == periodo_sel]
+            
     if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
     if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
     # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) ---
-    # ⚡ RESTAURACIÓN ATÓMICA: Regresamos al cálculo original exacto (.max()) que requería la operación
     total_area = df_filtrado['AREA_FUMIG'].max() if not df_filtrado.empty else 0.0
     
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
