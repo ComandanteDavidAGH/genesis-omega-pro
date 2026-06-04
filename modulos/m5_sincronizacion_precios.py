@@ -1,24 +1,75 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import re
+import math
+import io
+
+# =================================================================
+# ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
+# =================================================================
+
+@st.cache_resource(show_spinner=False)
+def inicializar_cliente_gspread():
+    """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+    try:
+        if "gcp_credentials" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
+
+# =================================================================
+# 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
+# =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
+    # Inyección de la línea estética VIP Corporativa
+    st.markdown("""
+    <style>
+    .titulo-principal { 
+        color: #0d1b2a; 
+        border-bottom: 3px solid #d4af37; 
+        padding-bottom: 5px; 
+        font-family: 'Arial Black', sans-serif; 
+    }
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { 
+        border: 3px solid #0d1b2a !important; 
+        border-radius: 8px !important; 
+        overflow: hidden !important; 
+    }
+    
+    /* HUD de Mando de Tarifas */
+    .hud-tarifas {
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
+        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
+        justify-content: space-between; align-items: center;
+    }
+    .hud-tarifas-item { text-align: center; flex: 1; }
+    .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .hud-tarifas-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h1 class='titulo-principal'>Sincronización de Precios y Tarifas</h1>", unsafe_allow_html=True)
     
+    # Cliente acelerado en RAM único para todo el archivo
+    gc = inicializar_cliente_gspread()
+    if gc is None:
+        st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
+        return
+
     # --- 🧮 NUEVA SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
         st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
         
         if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
-            with st.spinner("📡 Conectando con la Bóveda de Configuración..."):
+            with st.spinner("📡 Conectando con la Bóveda de Configuración a alta velocidad..."):
                 try:
-                    if "gcp_credentials" in st.secrets:
-                        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-                    else:
-                        gc = gspread.service_account(filename='credenciales.json')
-                        
-                    sh_gen = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                    sh_gen = gc.open_by_url(url_gen)
                     raw_config = sh_gen.worksheet("Configuración").get_all_values()
                     
                     lista_precios = []
@@ -48,14 +99,38 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado: {len(lista_precios)} productos ordenados alfabéticamente (A-Z).")
+                        st.success(f"✅ Tarifario cargado en la caché local: {len(lista_precios)} productos ordenados alfabéticamente (A-Z).")
                     else:
-                        st.warning("⚠️ El escáner no encontró productos con precios válidos.")
+                        st.warning("⚠️ El escáner no encontró productos con precios válidos en la hoja.")
                 except Exception as e:
                     st.error(f"🚨 Error al generar tarifario: {e}")
                     
+        # Despliegue del Tarifario si existe en el estado de la sesión
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
+            
+            # 🚀 LANZAMIENTO DEL HUD DE CONTROL CORPORATIVO DE TARIFAS
+            total_quimicos_tarifados = len(df_t)
+            costo_maximo_comercial = df_t['TERCERO (+45.1%)'].max()
+            costo_medio_base = df_t['COSTO BASE'].mean()
+            
+            st.markdown(f"""
+            <div class="hud-tarifas">
+                <div class="hud-tarifas-item">
+                    <p class="hud-tarifas-title">Insumos Activos en Matriz</p>
+                    <p class="hud-tarifas-value">🧪 {total_quimicos_tarifados} Productos</p>
+                </div>
+                <div class="hud-tarifas-item">
+                    <p class="hud-tarifas-title">Costo Promedio Base</p>
+                    <p class="hud-tarifas-value">💵 $ {costo_medio_base:,.0f}</p>
+                </div>
+                <div class="hud-tarifas-item">
+                    <p class="hud-tarifas-title">Tope Máximo Tercero</p>
+                    <p class="hud-tarifas-value">📈 $ {costo_maximo_comercial:,.0f}</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
             t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Copia Individual (Por Producto)"])
             
             with t1:
@@ -72,12 +147,11 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
                 
                 incluir_nombres = st.toggle("🔘 Incluir Nombre del Producto (Alineación Perfecta)", value=False)
-                st.caption(f"2️⃣ Copie la lista haciendo clic en el ícono de la esquina superior derecha:")
+                st.caption("2️⃣ Copie la lista haciendo clic en el ícono de la esquina superior derecha:")
                 
                 if col_margen in df_t.columns:
                     if incluir_nombres:
                         max_len = df_t["PRODUCTO"].apply(len).max() + 4
-                        
                         lista_textos = []
                         for _, row in df_t.iterrows():
                             nombre = str(row["PRODUCTO"]).strip()
@@ -100,7 +174,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     st.info(f"🎯 Valores calculados para: **{prod_sel}**")
                     
                     c1, c2, c3, c4, c5 = st.columns(5)
-                    
                     with c1:
                         st.caption("Costo Base")
                         st.code(fmt_sap(datos_prod["COSTO BASE"]), language="text")
@@ -119,20 +192,15 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
-    semana_target = st.select_slider("Semana a actualizar:", options=list(range(1, 53)), value=19)
+    semana_target = st.select_slider("Semana a actualizar en el satélite financiero:", options=list(range(1, 53)), value=19)
 
     if st.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
         try:
-            with st.spinner(f"Sincronizando Semana {semana_target} al estilo Macro..."):
-                if "gcp_credentials" in st.secrets:
-                    cred_dict = dict(st.secrets["gcp_credentials"])
-                    gc = gspread.service_account_from_dict(cred_dict)
-                else:
-                    gc = gspread.service_account(filename='credenciales.json')
-
+            with st.spinner(f"Sincronizando Semana {semana_target} al estilo Macro sin latencias..."):
                 url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                 sh_gen = gc.open_by_url(url_gen)
                 
+                # Descarga unificada de configuraciones y dosis
                 raw_config = sh_gen.worksheet("Configuración").get_all_values(value_render_option='UNFORMATTED_VALUE')
                 dict_precios = {}
                 for row in raw_config:
@@ -149,6 +217,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         if prod_m:
                             dict_dosis[prod_m] = val_seguro(row[10])
 
+                # Conexión directa a la sábana destino
                 url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
@@ -161,7 +230,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         break
                 
                 if col_semana == -1:
-                    st.error(f"❌ No se halló la semana {semana_target} en la Fila 7.")
+                    st.error(f"❌ No se halló la columna correspondiente a la semana {semana_target} en la Fila 7.")
                 else:
                     updates = []
                     for r_idx, row in enumerate(datos_dest):
@@ -190,11 +259,12 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                             })
 
                     if updates:
+                        # Ejecución veloz por lotes atómicos (Batch update)
                         ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                        st.success(f"🎯 IMPACTO PERFECTO. {len(updates)} precios inyectados con precisión absoluta.")
+                        st.success(f"🎯 IMPACTO PERFECTO. {len(updates)} precios inyectados de forma masiva con precisión absoluta.")
                         st.balloons()
                     else:
-                        st.warning("⚠️ No se encontraron productos coincidentes.")
+                        st.warning("⚠️ No se encontraron productos coincidentes en el barrido actual.")
 
         except Exception as e:
-            st.error(f"🚨 FALLA DEL SISTEMA: {e}")
+            st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA TRANSACCIONAL V12: {e}")
