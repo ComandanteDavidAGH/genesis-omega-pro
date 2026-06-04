@@ -443,9 +443,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 texto_pedido = match_ped.to_string().upper()
                 for p_val in lista_pistas_validas:
                     if p_val in texto_pedido: pista_detectada = p_val; break
+                
+                # 🎯 ASIGNACIÓN MAESTRA DE COLUMNA DE CANTIDADES DE SAP REUTILIZADA (Arreglo image_e13ea6.png)
+                col_finca = [c for c in df_ped.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
+                col_ha = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
+                col_mat = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper()][0]
+                
                 for _, r_p in match_ped.iterrows():
                     if len(r_p) >= 7 and "459" in str(r_p.iloc[5]):
-                        ha_dosis_detectada = extraer_numero(r_p.iloc[6])
+                        ha_dosis_detectada = extraer_numero(r_p[col_ha])
                         break
         
         ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
@@ -575,8 +581,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if "459" in texto_material or "429" in texto_material: continue
 
                 cod_item = texto_material.split('.')[0].lstrip('0')
-                col_cant = [c for c in fila_sap.index if 'DOSIS' in str(c).upper() or 'CANT' in str(c).upper()]
-                cant_total = extraer_numero(fila_sap[col_cant[0]]) if col_cant else 0.0
+                
+                # ⚡ RE-FOCALIZACIÓN: Forzamos la extracción de cantidades usando el puntero real col_ha (Sugerido SAP Total)
+                cant_total = extraer_numero(fila_sap[col_ha]) if col_ha else 0.0
                 dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
                 nombre_p = f"Item {cod_item}"
@@ -673,6 +680,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if "C: X (Extra %)" in edit_dict: df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
 
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
+            
+            # 🎯 CORRECCIÓN: El costo de la mezcla vuelve a calcularse de forma estricta contra la columna Sugerido
             costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
             def colorear_matriz(row):
@@ -747,7 +756,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_tot3.subheader(f"🔥 TOTAL: $ {fmt_sap(gran_total)}")
         
         st.markdown("---")
-        st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
+        st.markdown("### ### 🛰️ Coordenadas de Lanzamiento Final")
         c_p1, c_p2 = st.columns(2)
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
@@ -813,15 +822,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if f_azul > hoja_maestra.row_count: hoja_maestra.add_rows(10)
 
                     col_apoyo = hoja_apoyo.col_values(2)
-                    f_apoyo = next((i+2 for i in range(len(col_apoyo)-1, -1, -1) if str(col_apoyo[i]).strip() != ""), 1)
+                    f_apoyo = next((i+2 for i in range=len(col_apoyo)-1, -1, -1) if str(col_apoyo[i]).strip() != ""), 1)
                     if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
 
                     fila_apoyo[0] = f_apoyo - 3
                     
-                    # ⚡ CORRECCIÓN DE LA REGLA DE ORO DE GSPREAD V6:
-                    # Se utiliza la signatura mandatoria por posición: [valores], rango_a1 para evitar caídas de red.
-                    hoja_maestra.update([row_azul], f"A{f_azul}", value_input_option='USER_ENTERED')
-                    hoja_apoyo.update([fila_apoyo], f"A{f_apoyo}", value_input_option='USER_ENTERED')
+                    # 🛡️ BLINDAJE ATÓMICO EXPLICITO (Keywords unificadas inmunizadas para gspread v6)
+                    hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
+                    hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                     
                     try:
                         datos_memoria = hoja_memoria.get_all_values()
