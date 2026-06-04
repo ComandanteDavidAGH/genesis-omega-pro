@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 
 def renderizar():
     # 🚀 MOTOR VISUAL VIP: Estilizado del Centro de Mando e Inyección CSS
@@ -59,33 +60,47 @@ def renderizar():
     if df_sabana.empty:
         st.warning("⚠️ **Radar en Modo Espera:** El sistema no detecta un inventario activo en la memoria. Para encender el radar, por favor cargue la **Sábana SAP** actualizada en el **📥 Módulo 2 (Carga Facturación)**.")
     else:
-        with st.spinner("Escaneando bodegas mediante matriz paralela..."):
-            # 1. Francotirador optimizado de columnas
-            col_mat = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['TEXTO', 'DESC', 'MATERIAL'])), None)
+        with st.spinner("Escaneando bodegas y decodificando nombres de productos SAP..."):
+            # 1. Francotirador de Columnas Inteligente (Separa Código de Descripción)
+            col_desc = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['TEXTO', 'DESC', 'NOMBRE', 'BREVE'])), None)
+            col_cod = next((c for c in df_sabana.columns if c != col_desc and any(k in str(c).upper() for k in ['MATERIAL', 'CODIGO', 'COD', 'ITEM'])), None)
             col_pista = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['ALMACEN', 'PISTA', 'CENTRO'])), None)
             col_saldo = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['LIBRE', 'SALDO', 'CANTIDAD'])), None)
             
-            if not col_mat or not col_pista or not col_saldo:
-                st.error("❌ Error de Radar: No se pudieron identificar las columnas estructurales de Material, Almacén o Saldo en la Sábana SAP cargada.")
+            # Fallback de emergencia si no se separaron limpiamente
+            if not col_cod:
+                col_cod = next((c for c in df_sabana.columns if any(k in str(c).upper() for k in ['MATERIAL', 'CODIGO', 'COD', 'ITEM'])), None)
+
+            if not col_cod or not col_pista or not col_saldo:
+                st.error("❌ Error de Radar: No se pudieron identificar las columnas estructurales en la Sábana SAP cargada.")
             else:
-                # 2. Agrupamiento veloz vectorizado
+                # 2. Preparación y Limpieza de la Matriz Temporal
                 df_temp = df_sabana.copy()
                 df_temp[col_saldo] = pd.to_numeric(df_temp[col_saldo].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
-                
-                # Filtrar de golpe registros irrelevantes antes de agrupar para liberar memoria
                 df_temp = df_temp[df_temp[col_saldo] > 0]
-                inventario_agrupado = df_temp.groupby([col_pista, col_mat])[col_saldo].sum().reset_index()
                 
-                # 3. COMPILADOR VECTORIAL: Evaluamos las Reglas de Oro sin usar bucles row-by-row
+                # ⚡ COMBINACIÓN DE COGNICIÓN LOGÍSTICA: Código + Nombre Comercial
+                if col_desc and col_cod != col_desc:
+                    df_temp['PRODUCTO_RADAR'] = (
+                        df_temp[col_cod].astype(str).str.split('.').str[0].str.strip() + 
+                        " | " + 
+                        df_temp[col_desc].astype(str).str.strip().str.upper()
+                    )
+                else:
+                    df_temp['PRODUCTO_RADAR'] = df_temp[col_cod].astype(str).str.split('.').str[0].str.strip().str.upper()
+                
+                # 3. Agrupamiento veloz vectorizado usando la nueva llave combinada
+                inventario_agrupado = df_temp.groupby([col_pista, 'PRODUCTO_RADAR'])[col_saldo].sum().reset_index()
+                
+                # 4. COMPILADOR VECTORIAL DE REGLAS DE ORO
                 pistas_series = inventario_agrupado[col_pista].astype(str).str.upper()
-                productos_series = inventario_agrupado[col_mat].astype(str).str.upper()
+                productos_series = inventario_agrupado['PRODUCTO_RADAR'].astype(str).str.upper()
                 
                 es_pista_menor = pistas_series.str.contains("LUCI|TEHO", na=False)
                 es_aceite = productos_series.str.contains("ACEITE|GRANEL|COMBUSTIBLE", na=False)
                 es_mancol = productos_series.str.contains("MANCOL", na=False)
                 es_aditivo = productos_series.str.contains("ACONDICIONADOR|NATURAMIN", na=False)
                 
-                # Construcción de la matriz de condiciones condicionales de Sap
                 condiciones = [
                     es_aceite & es_pista_menor,
                     es_aceite & ~es_pista_menor,
@@ -103,27 +118,25 @@ def renderizar():
                     "30 L/Kg (Aditivo de Alta Rotación)"
                 ]
                 
-                # Inyección atómica por lotes usando numpy
                 inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, valores_limite, default=100)
                 inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, reglas_texto, default="100 L/Kg (Estándar Global)")
                 
-                # 4. Filtrado masivo de alertas por máscara lógica
+                # 5. Filtrado masivo de alertas por máscara lógica
                 df_alertas = inventario_agrupado[inventario_agrupado[col_saldo] < inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD']].copy()
                 
                 # Preparar nombres finales para visualización limpia
                 df_alertas = df_alertas.rename(columns={
                     col_pista: "📍 PISTA / ALMACÉN",
-                    col_mat: "🧪 PRODUCTO QUÍMICO",
+                    'PRODUCTO_RADAR': "🧪 CÓDIGO | PRODUCTO QUÍMICO",
                     col_saldo: "⚠️ SALDO ACTUAL"
                 })
                 
-                # Columnas en el orden táctico estricto
-                columnas_finales = ["📍 PISTA / ALMACÉN", "🧪 PRODUCTO QUÍMICO", "⚠️ SALDO ACTUAL", "🛡️ LÍMITE DE SEGURIDAD", "📋 REGLA APLICADA"]
+                columnas_finales = ["📍 PISTA / ALMACÉN", "🧪 CÓDIGO | PRODUCTO QUÍMICO", "⚠️ SALDO ACTUAL", "🛡️ LÍMITE DE SEGURIDAD", "📋 REGLA APLICADA"]
                 df_alertas_render = df_alertas[columnas_finales].sort_values(by="📍 PISTA / ALMACÉN")
                 
-                # 5. RENDERIZADO DEL HUD TÁCTICO INTEGRADO
+                # 6. RENDERIZADO DEL HUD TÁCTICO INTEGRADO
                 total_almacenes = inventario_agrupado[col_pista].nunique()
-                total_insumos = inventario_agrupado[col_mat].nunique()
+                total_insumos = inventario_agrupado['PRODUCTO_RADAR'].nunique()
                 conteo_alertas = len(df_alertas_render)
                 
                 clase_alerta = "hud-mando-value hud-mando-alert" if conteo_alertas > 0 else "hud-mando-value hud-mando-ok"
@@ -146,15 +159,13 @@ def renderizar():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 6. Despliegue de Resultados finales
+                # 7. Despliegue del Dataframe Estilizado
                 if conteo_alertas > 0:
                     st.error(f"🚨 **¡ALERTA ROJA! MARGEN OPERATIVO COMPROMETIDO EN {conteo_alertas} ÍTEMS:**")
                     
-                    # Formateo numérico estilizado responsivo
                     df_alertas_render["⚠️ SALDO ACTUAL"] = df_alertas_render["⚠️ SALDO ACTUAL"].apply(lambda x: f"{x:,.1f}".replace(",", "."))
                     df_alertas_render["🛡️ LÍMITE DE SEGURIDAD"] = df_alertas_render["🛡️ LÍMITE DE SEGURIDAD"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
                     
-                    # Pintar filas con un rojo corporativo de alto contraste para máxima legibilidad
                     def pintar_rojo_elegante(val):
                         return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold; border-bottom: 1px solid #dee2e6;'] * len(val)
                         
