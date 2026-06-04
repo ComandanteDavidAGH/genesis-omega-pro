@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -8,16 +9,92 @@ import re
 import math
 import io
 import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+# =================================================================
+# ⚡ MOTORES DE CACHÉ Y VELOCIDAD DE DATOS (Aislamiento en RAM)
+# =================================================================
+
+@st.cache_data(show_spinner=False)
+def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
+    """ Descarga y unifica las bases actual e histórica una sola vez en caché """
+    url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+    datos_brutos_act = _descargar_matriz_rapida(url_act, "TABLA 1")
+    
+    if len(datos_brutos_act) > 5:
+        df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
+        df_vivos = estandarizar_base(limpiar_encabezados(df_vivos))
+        df_vivos['ORIGEN_BI'] = 'ACTUAL'
+    else:
+        df_vivos = pd.DataFrame()
+
+    url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+    datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
+    
+    if len(datos_brutos_hist) > 0:
+        df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
+        df_historico = estandarizar_base(limpiar_encabezados(df_historico))
+        df_historico['ORIGEN_BI'] = 'HISTORICO'
+    else:
+        df_historico = pd.DataFrame()
+
+    return df_vivos, df_historico
+
+@st.cache_data(show_spinner=False)
+def cargar_boveda_recetas_y_precios():
+    """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
+    try:
+        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
+        
+        # Cargar Bóveda de Recetas Básicas
+        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+        df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
+        if not df_mezclas.empty:
+            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:,0].astype(str).str.upper().str.replace(" ", "")
+            
+        df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
+
+        # Cargar Sabana de Precios Históricos de Insumos
+        url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+        sh_precios = gc.open_by_url(url_precios)
+        
+        precios_consolidados = []
+        for ws in sh_precios.worksheets():
+            datos_hoja = ws.get_all_values()
+            if not datos_hoja: continue
+            idx_header, col_anio, col_prod = -1, -1, -1
+            for i in range(min(10, len(datos_hoja))):
+                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO')
+                    break
+            if idx_header != -1:
+                for row in datos_hoja[idx_header+1:]:
+                    if len(row) > max(col_anio, col_prod):
+                        anio_str, prod_str = str(row[col_anio]).strip(), str(row[col_prod]).strip().upper()
+                        if anio_str and prod_str:
+                            col_inicio_semanas = max(col_anio, col_prod) + 1
+                            # Extracción veloz de promedios semanales
+                            valores_semana = []
+                            for v in row[col_inicio_semanas:]:
+                                try:
+                                    v_num = float(str(v).strip().replace(',', '.'))
+                                    if v_num > 0: valores_semana.append(v_num)
+                                except: pass
+                            promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
+                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': prod_str, 'PRECIO_PROM': promedio})
+
+        df_precios = pd.DataFrame(precios_consolidados)
+        return df_mezclas, df_conf, df_dicc, df_precios, df_t2
+    except:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # --- 🧪 APARTADO DE BARREDORAS Y AUXILIARES GLOBALES ---
 def limpiar_encabezados(df):
-    df.columns = [
-        str(col).upper()
-        .replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U')
-        .replace('À','A').replace('È','E').replace('Ì','I').replace('Ò','O').replace('Ù','U')
-        .strip()
-        for col in df.columns
-    ]
+    df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
     df = df.loc[:, ~df.columns.duplicated(keep='first')]
     if "" in df.columns: df = df.drop(columns=[""])
     return df
@@ -26,60 +103,37 @@ def estandarizar_base(df):
     renombres = {}
     for col in df.columns:
         col_u = str(col).upper().replace('\n', ' ').strip()
-        
-        # 🛑 REGLA DE ORO: Bloqueo absoluto a la Columna V para no promediar millones de la finca
-        if 'FINCA' in col_u and 'COSTO' in col_u:
-            continue
+        if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        # 🎯 ASIGNACIÓN FRANCOTIRADOR (Basada en la radiografía de su Excel)
-        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u:
-            renombres[col] = 'COSTO_MAESTRO' # COLUMNA W
-        elif 'FUMIG' in col_u and 'AREA' in col_u:
-            renombres[col] = 'AREA_MAESTRA' # COLUMNA F
-        elif 'AVION' in col_u and '/HA' in col_u:
-            renombres[col] = 'AVION_MAESTRO' # COLUMNA T
-        elif 'DOMINIC' in col_u and '/HA' in col_u:
-            renombres[col] = 'DOMINIC_MAESTRO' # COLUMNA U
-            
-        # Variables de entorno estándar
-        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'):
-            renombres[col] = 'FINCA_MAESTRA'
-        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA':
-            renombres[col] = 'FECHA_MAESTRA'
-        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u):
-            renombres[col] = 'OS_MAESTRA'
+        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
+        elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
+        elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
+        elif 'DOMINIC' in col_u and '/HA' in col_u: renombres[col] = 'DOMINIC_MAESTRO'
+        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): renombres[col] = 'FINCA_MAESTRA'
+        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': renombres[col] = 'FECHA_MAESTRA'
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): renombres[col] = 'OS_MAESTRA'
             
     df.rename(columns=renombres, inplace=True)
     return df
     
 def a_numero(val):
-    # 🎯 Convertidor Seguro Ajustado: No multiplica por 1000, extrae el valor puro de Excel
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
         if not v: return 0.0
-        
         v = v.replace(',', '.')
         v = re.sub(r'[^\d\.\-]', '', v)
-        
         if v.count('.') > 1:
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
-            
         num = float(v) if v else 0.0
-        
-        # Ajuste para años históricos que venían digitados sin los ceros de los miles
-        if 0 < num < 2000:
-            num = num * 1000
-            
+        if 0 < num < 2000: num = num * 1000
         return num
     except: return 0.0
 
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
-    if df_area.empty or 'FECHA_DT' not in df_area.columns:
-        return 0, 0.0
+    if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
-    # --- CASO A: UNA FINCA ESPECÍFICA ---
     if finca_seleccionada != "TODAS":
         fechas = sorted(df_area['FECHA_DT'].dt.date.unique())
         if not fechas: return 0, 0.0
@@ -89,18 +143,11 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
             if (fechas[i] - fechas[i-1]).days > 5:
                 ciclos += 1
                 inicios_ciclo.append(fechas[i])
-        if ciclos > 1:
-            diffs = [(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]
-            avg_int = sum(diffs) / len(diffs)
-        else:
-            avg_int = 0.0
+        avg_int = sum([(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]) / (ciclos - 1) if ciclos > 1 else 0.0
         return ciclos, avg_int
 
-    # --- CASO B: VISIÓN GLOBAL ("TODAS") ---
-    # Aplica la Regla de Oro: calcula por separado cada finca y luego saca la media
     fincas_presentes = df_area['FINCA_MAESTRA'].unique()
-    lista_ciclos = []
-    lista_intervalos = []
+    lista_ciclos, lista_intervalos = [], []
     
     for f in fincas_presentes:
         df_sub = df_area[df_area['FINCA_MAESTRA'] == f]
@@ -113,55 +160,48 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
                 c_f += 1
                 inicios_c_f.append(fechas_f[i])
         lista_ciclos.append(c_f)
-        if c_f > 1:
-            diffs_f = [(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)]
-            lista_intervalos.append(sum(diffs_f) / len(diffs_f))
+        if c_f > 1: lista_intervalos.append(sum([(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)]) / (c_f - 1))
             
-    avg_ciclos_general = sum(lista_ciclos) / len(lista_ciclos) if lista_ciclos else 0
-    avg_int_general = sum(lista_intervalos) / len(lista_intervalos) if lista_intervalos else 0.0
-    return int(round(avg_ciclos_general)), avg_int_general
+    return int(round(sum(lista_ciclos) / len(lista_ciclos))) if lista_ciclos else 0, sum(lista_intervalos) / len(lista_intervalos) if lista_intervalos else 0.0
 
 # --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
+    st.markdown("""
+    <style>
+    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    
+    /* HUD de Mando Corporativo */
+    .hud-bi {
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
+        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px;
+    }
+    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .hud-bi-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
     st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado para el formato de valor real de Excel.")
+    st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
 
     try:
-        with st.spinner("📡 Sincronizando Bóveda Maestra y Archivo Histórico..."):
-            url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-            datos_brutos_act = descargar_matriz_rapida(url_act, "TABLA 1")
-            
-            if len(datos_brutos_act) > 5:
-                df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
-                df_vivos = estandarizar_base(limpiar_encabezados(df_vivos))
-                df_vivos['ORIGEN_BI'] = 'ACTUAL'
-            else:
-                df_vivos = pd.DataFrame()
-
-            url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
-            datos_brutos_hist = descargar_matriz_rapida(url_hist, "Datos")
-            
-            if len(datos_brutos_hist) > 0:
-                df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
-                df_historico = estandarizar_base(limpiar_encabezados(df_historico))
-                df_historico['ORIGEN_BI'] = 'HISTORICO'
-            else:
-                df_historico = pd.DataFrame()
+        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS
+        df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
-            st.warning("⚠️ Los sistemas están vacíos.")
+            st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
             return
 
         super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
 
         if 'FINCA_MAESTRA' not in super_base_bi.columns or 'FECHA_MAESTRA' not in super_base_bi.columns:
-            st.error("🚨 No se encontraron las columnas clave de Finca o Fecha en las fuentes de datos.")
+            st.error("🚨 Columnas críticas estructurales ausentes en la Bóveda.")
             return
 
         for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA']:
-            if col_req not in super_base_bi.columns:
-                super_base_bi[col_req] = 0.0
+            if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
@@ -171,25 +211,34 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
+        # Cálculos puros optimizados para inyección de Datos
+        super_base_bi['COSTO_NUM'] = super_base_bi['COSTO_MAESTRO'].apply(a_numero)
+        super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
+        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
+
+        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
+        total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
+        costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
+        total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
+
+        hb1, hb2, hb3 = st.columns(3)
+        with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
+        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {costo_medio_historico:,.0f}</p></div>", unsafe_allow_html=True)
+        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
+
         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
         
         col_modelo = 'MODELO' if 'MODELO' in super_base_bi.columns else None
-        if col_modelo:
-            super_base_bi[col_modelo] = super_base_bi[col_modelo].astype(str).str.strip().str.upper()
-            modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist())
-        else:
-            modelos_disp = ["TODOS"]
+        modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist()) if col_modelo else ["TODOS"]
         
         f1, f2 = st.columns(2)
         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
         t1, t2, t3, t4 = st.columns(4)
-        idx_base = 1 if len(años_disp) > 1 else 0
-        año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=idx_base)
+        año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=(1 if len(años_disp) > 1 else 0))
         año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
-        
         tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES"])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
         
@@ -201,20 +250,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             etiq_periodo = meses_dict[periodo_sel]
         else:
             t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
-            periodo_sel = "TODOS"
-            etiq_periodo = "Total"
+            periodo_sel, etiq_periodo = "TODOS", "Total"
 
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
-        if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel]
-            
-        # 🎯 EXTRACCIÓN CON EL CONVERSOR CORREGIDO
-        df_finca['COSTO_NUM'] = df_finca['COSTO_MAESTRO'].apply(a_numero)
-        df_finca['AREA_NUM'] = df_finca['AREA_MAESTRA'].apply(a_numero)
-        
-        v_avion = df_finca['AVION_MAESTRO'].apply(a_numero)
-        v_dom = df_finca['DOMINIC_MAESTRO'].apply(a_numero)
-        df_finca['AVION_NUM'] = v_avion + v_dom
+        if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
 
         df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
         df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
@@ -226,22 +266,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # =========================================================
-        # 🎯 LA MATEMÁTICA PURA COMPARTIDA
-        # =========================================================
-        
-        # 1. ÁREA: Eliminación de duplicados operativos de SAP por vuelo puro
         subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM']
         df_area_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
         df_area_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
 
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
-
-        # 2. COSTO W: El promedio simple directo de la columna (.mean()) sin tocar las filas
         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
-
         delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
         st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
@@ -256,42 +288,25 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         h1, h2, h3 = st.columns(3)
         h1.metric(f"Total Hectáreas ({año_base})", f"{area_a:,.1f} Ha")
         h2.metric(f"Total Hectáreas ({año_comp})", f"{area_b:,.1f} Ha")
-        if area_a > 0: h3.metric("Variación de Área", f"{var_area:+.1f} %", delta=f"{var_area:+.1f}%", delta_color="normal")
-        else: h3.metric("Variación de Área", "N/A")
+        h3.metric("Variación de Área", f"{var_area:+.1f} %" if area_a > 0 else "N/A", delta=f"{var_area:+.1f}%" if area_a > 0 else None)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        if delta_pct > 10:
-            st.error(f"⚠️ **ALERTA DE DESVIACIÓN:** El costo operativo presenta un incremento del **{delta_pct:.1f}%**.")
-        elif delta_pct < 0:
-            st.success(f"✅ **EFICIENCIA:** Reducción detectada en el costo promedio del periodo.")
-        else:
-            st.info(f"⚖️ **ESTABILIDAD:** Los márgenes se mantienen balanceados.")
+        if delta_pct > 10: st.error(f"⚠️ **ALERTA DE DESVIACIÓN:** El costo operativo presenta un incremento del **{delta_pct:.1f}%**.")
+        elif delta_pct < 0: st.success(f"✅ **EFICIENCIA:** Reducción detectada en el costo promedio del periodo.")
+        else: st.info(f"⚖️ **ESTABILIDAD:** Los márgenes se mantienen balanceados.")
             
-        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo Promedio")
-
-        # Llamada calibrada pasando la finca seleccionada para activar el radar por separado
         ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
         ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
 
         c1, c2, c3, c4 = st.columns(4)
-
-        # Ajuste de nombres según la selección para que sea impecable
         label_ciclo = "Ciclos Prom. / Finca" if finca_sel == "TODAS" else "Ciclos Totales"
         label_int = "Intervalo Prom. Zona" if finca_sel == "TODAS" else "Intervalo Promedio"
 
         c1.metric(f"{label_ciclo} ({año_base})", f"{ciclos_a} ciclos")
         c2.metric(f"{label_ciclo} ({año_comp})", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
-
-        str_int_a = f"{int_a:.1f} días" if int_a > 0 else "N/A"
-        str_int_b = f"{int_b:.1f} días" if int_b > 0 else "N/A"
-
-        c3.metric(f"{label_int} ({año_base})", str_int_a)
-        if int_a > 0 and int_b > 0:
-            delta_int = int_b - int_a
-            c4.metric(f"{label_int} ({año_comp})", str_int_b, delta=f"{delta_int:+.1f} días", delta_color="normal")
-        else:
-            c4.metric(f"{label_int} ({año_comp})", str_int_b)
+        c3.metric(f"{label_int} ({año_base})", f"{int_a:.1f} días" if int_a > 0 else "N/A")
+        c4.metric(f"{label_int} ({año_comp})", f"{int_b:.1f} días" if int_b > 0 else "N/A", delta=f"{int_b - int_a:+.1f} días" if (int_a > 0 and int_b > 0) else None)
         
         st.markdown("---")
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
@@ -321,20 +336,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.warning("⚠️ No hay suficientes operaciones registradas para trazar la curva.")
             
         st.markdown("<hr>", unsafe_allow_html=True)
-        
         vuelo_a = df_area_a['AVION_NUM'].mean() if not df_area_a.empty else 0
         vuelo_b = df_area_b['AVION_NUM'].mean() if not df_area_b.empty else 0
-        
-        insumos_a = max(0, costo_a - vuelo_a)
-        insumos_b = max(0, costo_b - vuelo_b)
-
-        vuelo_tot_a = vuelo_a * area_a
-        vuelo_tot_b = vuelo_b * area_b
-        insumos_tot_a = insumos_a * area_a
-        insumos_tot_b = insumos_b * area_b
-
-        st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
+        insumos_a, insumos_b = max(0, costo_a - vuelo_a), max(0, costo_b - vuelo_b)
         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
+        
+        st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
         tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario (Promedio / Ha)", "💰 Impacto Global (Presupuesto Total)"])
         
         with tab_unit:
@@ -346,6 +353,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.plotly_chart(fig_unit, use_container_width=True)
             
         with tab_glob:
+            vuelo_tot_a, vuelo_tot_b = vuelo_a * area_a, vuelo_b * area_b
+            insumos_tot_a, insumos_tot_b = insumos_a * area_a, insumos_b * area_b
             fig_glob = go.Figure(data=[
                 go.Bar(name='Total Facturación Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[f"$ {vuelo_tot_a:,.0f}", f"$ {vuelo_tot_b:,.0f}"], textposition='auto'),
                 go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#548235', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
@@ -353,12 +362,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", margin=dict(t=20, b=20))
             st.plotly_chart(fig_glob, use_container_width=True)
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
+        # --- DESGLOSE OPERATIVO DE CÓCTELES ---
         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
         
         if col_coctel:
+            st.markdown("<br>#### 📋 Desglose Operativo: Cócteles y Variación")
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
@@ -368,86 +377,46 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
             
-            tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL'))
-            tabla_autopsia.fillna(0, inplace=True)
-            
+            tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL')).fillna(0)
             tabla_autopsia.rename(columns={col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM_BASE': f'Costo/Ha ({año_base})', 'COSTO_NUM_ACTUAL': f'Costo/Ha ({año_comp})'}, inplace=True)
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
-            
-            if col_gln:
-                tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
+            if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
             df_vista = tabla_autopsia.copy()
             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
             df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
-            st.dataframe(df_vista, use_container_width=True)
+            st.dataframe(df_vista, use_container_width=True, hide_index=True)
             
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
-
-        if col_coctel:
+            # =====================================================================
+            # 🔬 NIVEL 2: CACHÉ ABSOLUTA DE BÓVEDA DE RECETAS (Eliminado lag HTTP)
+            # =====================================================================
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
+            
             cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
             coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
             if coctel_sel != "SELECCIONE UN CÓCTEL...":
-                with st.spinner("Desplegando Deliberador IA..."):
-                    if "gcp_credentials" in st.secrets: gc_rec = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-                    else: gc_rec = gspread.service_account(filename='credenciales.json')
+                with st.spinner("Extrayendo matrices químicas desde la caché en RAM..."):
+                    # ⚡ EJECUCIÓN INSTANTÁNEA: Descolgamos todas las tablas de la RAM
+                    df_mezclas, df_conf, df_dicc, df_precios, df_t2 = cargar_boveda_recetas_y_precios()
                     
-                    df_mezclas = pd.DataFrame()
-                    boveda_recetas = gc_rec.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-                    hoja_mezclas = boveda_recetas.worksheet("DD_Mesclas")
-                    data_mez = hoja_mezclas.get('A:D')
-                    if data_mez and len(data_mez) > 1:
-                        df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-                        df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:,0].astype(str).str.upper().str.replace(" ", "")
-                    
-                    df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
-                    df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+                    if df_mezclas.empty or df_precios.empty:
+                        st.error("🚨 Enlace roto con la bóveda de ingredientes históricos.")
+                        st.stop()
 
-                    url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
-                    sh_precios = gc_rec.open_by_url(url_precios)
-                    
-                    precios_consolidados = []
-                    for ws in sh_precios.worksheets():
-                        datos_hoja = ws.get_all_values()
-                        if not datos_hoja: continue
-                        idx_header, col_anio, col_prod = -1, -1, -1
-                        for i in range(min(10, len(datos_hoja))):
-                            fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
-                            if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                                idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO')
-                                break
-                        if idx_header != -1:
-                            for row in datos_hoja[idx_header+1:]:
-                                if len(row) > max(col_anio, col_prod):
-                                    anio_str = str(row[col_anio]).strip()
-                                    prod_str = str(row[col_prod]).strip().upper()
-                                    if anio_str and prod_str:
-                                        col_inicio_semanas = max(col_anio, col_prod) + 1
-                                        valores_semana = [a_numero(v) for v in row[col_inicio_semanas:] if a_numero(v) > 0]
-                                        promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
-                                        precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': prod_str, 'PRECIO_PROM': promedio})
-
-                    df_precios = pd.DataFrame(precios_consolidados)
                     coctel_crudo = coctel_sel.upper().replace(" ", "")
                     partes_coctel = coctel_crudo.split('+')
-                    base_coctel = partes_coctel[0]
-                    aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
+                    base_coctel, aditivos = partes_coctel[0], partes_coctel[1:] if len(partes_coctel) > 1 else []
 
                     match_num = re.search(r'\d+', base_coctel)
                     dosis_aceite = int(match_num.group()) if match_num else 0
                     solo_letras = re.sub(r'\d+', '', base_coctel)
 
-                    dict_prods_unicos = {}
-                    es_organico = False
-
-                    try:
-                        df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
-                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
-                        if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
-                    except: pass
+                    dict_prods_unicos, es_organico = {}, False
+                    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()] if not df_t2.empty else pd.DataFrame()
+                    if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
 
                     receta_base = pd.DataFrame()
                     if not df_mezclas.empty:
@@ -459,8 +428,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                     if not receta_base.empty:
                         for idx, row in receta_base.iterrows():
-                            prod = str(row.iloc[1]).strip().upper()
-                            dosis = a_numero(row.iloc[2])
+                            prod, dosis = str(row.iloc[1]).strip().upper(), a_numero(row.iloc[2])
                             if dosis > 0 and prod not in ['NAN', '']: dict_prods_unicos[prod] = dosis
                     else:
                         if not df_dicc.empty:
@@ -471,56 +439,42 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 if sigla in resto_letras:
                                     match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
                                     if not match_sig.empty:
-                                        prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
-                                        dict_prods_unicos[prod_name] = a_numero(match_sig.iloc[0]['DOSIS'])
+                                        dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
                                         resto_letras = resto_letras.replace(sigla, '', 1)
                             if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
                             dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
                             dict_prods_unicos['ADHERENTE SV'] = 0.13
 
-                    if not df_dicc.empty:
-                        for ad in aditivos:
-                            match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad]
-                            if not match_sig.empty:
-                                prod_name = str(match_sig.iloc[0]['PRODUCTO']).strip().upper()
-                                dict_prods_unicos[prod_name] = a_numero(match_sig.iloc[0]['DOSIS'])
-                            else:
-                                if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
-                                elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
-
-                    if not df_dicc.empty:
-                        for prod_name in list(dict_prods_unicos.keys()):
-                            match_dicc = df_dicc[df_dicc['PRODUCTO'].astype(str).str.strip().str.upper() == prod_name]
-                            if not match_dicc.empty:
-                                if 'ORGANIC' in str(match_dicc.iloc[0].get('TIPO DE CULTIVO', '')).upper(): es_organico = True
+                    for ad in aditivos:
+                        match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad] if not df_dicc.empty else pd.DataFrame()
+                        if not match_sig.empty: dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
+                        else:
+                            if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
+                            elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
 
                     if dosis_aceite > 0:
-                        aceite_key = next((k for k in dict_prods_unicos.keys() if "ACEITE" in k), "ACEITE DICAM")
-                        dict_prods_unicos[aceite_key] = float(dosis_aceite)
+                        dict_prods_unicos[next((k for k in dict_prods_unicos.keys() if "ACEITE" in k), "ACEITE DICAM")] = float(dosis_aceite)
                     else:
                         for k in [k for k in dict_prods_unicos.keys() if "ACEITE" in k]: dict_prods_unicos.pop(k, None)
 
                     if es_organico:
                         for k in [k for k in dict_prods_unicos.keys() if "ADHERENTE" in k]: dict_prods_unicos.pop(k, None)
-                        sprayfix_key = next((k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k), "SPRAYFIX")
-                        if sprayfix_key not in dict_prods_unicos: dict_prods_unicos[sprayfix_key] = 0.2
+                        if next((k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k), "SPRAYFIX") not in dict_prods_unicos: dict_prods_unicos["SPRAYFIX"] = 0.2
                     else:
                         for k in [k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k]: dict_prods_unicos.pop(k, None)
-                        adherente_key = next((k for k in dict_prods_unicos.keys() if "ADHERENTE" in k), "ADHERENTE SV")
-                        if adherente_key not in dict_prods_unicos: dict_prods_unicos[adherente_key] = 0.13
+                        if next((k for k in dict_prods_unicos.keys() if "ADHERENTE" in k), "ADHERENTE SV") not in dict_prods_unicos: dict_prods_unicos["ADHERENTE SV"] = 0.13
 
                     prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
+                    
                     if prods_receta:
                         matriz_mol = []
-                        
                         def obtener_precio_promedio(producto, anio_obj):
                             if not df_precios.empty:
                                 match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)]
                                 if match_df.empty: match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))]
                                 if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0: return match_df['PRECIO_PROM'].mean()
-                            if str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year):
+                            if (str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year)) and not df_conf.empty:
                                 match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
-                                if match_conf.empty: match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip().str.contains(producto)]
                                 if not match_conf.empty: return a_numero(match_conf.iloc[0, 9])
                             return 0.0
 
@@ -534,10 +488,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             matriz_mol.append({"INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}", f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}", f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}", f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a})
 
                         df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
-                        df_vista_mol[f"Costo/Ha ({año_base})"] = df_vista_mol[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
-                        df_vista_mol[f"Costo/Ha ({año_comp})"] = df_vista_mol[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
-                        df_vista_mol["Variación ($)"] = df_vista_mol["Variación ($)"].map("$ {:,.0f}".format)
-                        st.dataframe(df_vista_mol, use_container_width=True, hide_index=True)
+                        df_vista_mol_print = df_vista_mol.copy()
+                        df_vista_mol_print[f"Costo/Ha ({año_base})"] = df_vista_mol_print[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
+                        df_vista_mol_print[f"Costo/Ha ({año_comp})"] = df_vista_mol_print[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
+                        df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].map("$ {:,.0f}".format)
+                        st.dataframe(df_vista_mol_print, use_container_width=True, hide_index=True)
                         
                         c1, c2, c3 = st.columns(3)
                         c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
@@ -558,42 +513,34 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 else:
                                     st.warning(f"⚠️ **DISCREPANCIA DETECTADA:** Los insumos facturados ($ {insumos_facturados_b:,.0f}) no cuadran con el teórico ($ {costo_total_b:,.0f}). Diferencia: **$ {diff_b:,.0f} / Ha**")
                                     st.markdown("#### 🔍 Conclusiones del Deliberador:")
-                                    if diff_b > 0: st.write(f"- 📈 **Sobrecosto:** Se cobró más de lo que indica la sigla. Es probable que se haya aplicado **SPRAYFIX**, **ADHERENTE** extra o mayor dosis de **ACEITE**.")
-                                    else: st.write(f"- 📉 **Ahorro/Faltante:** Se cobró menos. Si la finca es orgánica, se facturó correctamente (sin adherente), o hubo un error a favor en SAP.")
+                                    if diff_b > 0: st.write("- 📈 **Sobrecosto:** Se cobró más de lo que indica la sigla. Es probable que se haya aplicado **SPRAYFIX**, **ADHERENTE** extra o mayor dosis de **ACEITE**.")
+                                    else: st.write("- 📉 **Ahorle/Faltante:** Se cobró menos. Si la finca es orgánica, se facturó correctamente (sin adherente), o hubo un error a favor en SAP.")
                                     
-                                    if not df_precios.empty:
-                                        st.write("- **Posibles causantes de la diferencia:**")
-                                        candidatos_encontrados = False
-                                        for idx, p_row in df_precios[df_precios['AÑO'] == str(año_comp)].iterrows():
-                                            precio_p = p_row['PRECIO_PROM']
-                                            for d in [0.02, 0.06, 0.13, 0.2, 0.5, 1.0, 2.0]:
-                                                costo_teorico = precio_p * d
-                                                if costo_teorico > 0 and abs(costo_teorico - abs(diff_b)) <= (abs(diff_b) * 0.15 + 500):
-                                                    st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})")
-                                                    candidatos_encontrados = True; break
-                                            if candidatos_encontrados: break
-                                        if not candidatos_encontrados: st.write("No se detectó un químico individual que coincida exacto.")
+                                    candidatos_encontrados = False
+                                    for idx, p_row in df_precios[df_precios['AÑO'] == str(año_comp)].iterrows():
+                                        precio_p = p_row['PRECIO_PROM']
+                                        for d in [0.02, 0.06, 0.13, 0.2, 0.5, 1.0, 2.0]:
+                                            costo_teorico = precio_p * d
+                                            if costo_teorico > 0 and abs(costo_teorico - abs(diff_b)) <= (abs(diff_b) * 0.15 + 500):
+                                                st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})")
+                                                candidatos_encontrados = True; break
+                                        if candidatos_encontrados: break
                     else: st.info("No se encontraron ingredientes válidos para esta receta.")
-            else: st.warning("⚠️ No se encontró la columna 'COCTEL' en la base fusionada.")
-                
+
         # =====================================================================
-        # --- 🤝 NUEVO: SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
+        # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
         st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
 
-        with st.container():
-            c_sim1, c_sim2, c_sim3 = st.columns(3)
-            col_pista_sim = next((c for c in super_base_bi.columns if "PISTA" in c or "ALMACEN" in c), None)
-            if col_pista_sim:
-                pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist())
-            else:
-                pistas_sim_disp = ["TODAS"]
+        col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
+        pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
 
-            sim_fecha_inicio = c_sim1.date_input("📅 Fecha Inicial:", value=datetime.now().date(), key="sim_f_ini_f")
-            sim_fecha_fin = c_sim2.date_input("📅 Fecha Final:", value=datetime.now().date(), key="sim_f_fin_f")
-            sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_f")
+        c_sim1, c_sim2, c_sim3 = st.columns(3)
+        sim_fecha_inicio = c_sim1.date_input("📅 Fecha Inicial:", value=datetime.now().date(), key="sim_f_ini_f")
+        sim_fecha_fin = c_sim2.date_input("📅 Fecha Final:", value=datetime.now().date(), key="sim_f_fin_f")
+        sim_pista = c_sim3.selectbox("📍 Base / Pista:", pistas_sim_disp, key="sim_pista_f")
 
         st.markdown("<br>", unsafe_allow_html=True)
         c_sim_m1, c_sim_m2, c_sim_m3 = st.columns(3)
@@ -606,77 +553,46 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
         if btn_simular:
             with st.spinner("Procesando auditoría de simulación..."):
-                df_sim = super_base_bi.copy()
-                df_sim = df_sim[(df_sim['FECHA_DT'].dt.date >= sim_fecha_inicio) & (df_sim['FECHA_DT'].dt.date <= sim_fecha_fin)]
-                if col_pista_sim and sim_pista != "TODAS":
-                    df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
-
-                if 'AREA_MAESTRA' in df_sim.columns:
-                    df_sim['AREA_NUM'] = df_sim['AREA_MAESTRA'].apply(a_numero)
-                    df_sim = df_sim[df_sim['AREA_NUM'] > 0]
+                df_sim = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= sim_fecha_inicio) & (super_base_bi['FECHA_DT'].dt.date <= sim_fecha_fin)].copy()
+                if col_pista_sim and sim_pista != "TODAS": df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
+                df_sim = df_sim[df_sim['AREA_NUM'] > 0]
 
                 if df_sim.empty:
-                    st.warning("⚠️ No se encontraron Órdenes de Servicio para el rango de fechas seleccionado.")
+                    st.warning("⚠️ No se encontraron Órdenes de Servicio para los parámetros elegidos.")
                 else:
-                    def red_excel(num):
-                        return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
-                    
-                    col_finca = 'FINCA_MAESTRA'
-                    col_os = 'OS_MAESTRA' if 'OS_MAESTRA' in df_sim.columns else df_sim.columns[0]
-                    
+                    def red_excel(num): return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
+                    col_finca, col_os = 'FINCA_MAESTRA', 'OS_MAESTRA'
                     df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_os, 'AREA_NUM'])
 
                     matriz_simulacion = []
-
                     for _, row in df_sim_unicos.iterrows():
                         os_val = str(row[col_os]).strip()
-                        if os_val == "" or os_val == "nan": 
-                            continue
+                        if os_val in ["", "nan"]: continue
 
-                        finca_val = str(row[col_finca]).upper().strip()
-                        ha_val = float(row['AREA_NUM'])
+                        finca_val, ha_val = str(row[col_finca]).upper().strip(), float(row['AREA_NUM'])
                         pista_val = str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A"
-                        
-                        if pd.notna(row['FECHA_DT']):
-                            fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
-                            semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
-                        else:
-                            fecha_val = str(row['FECHA_MAESTRA'])
-                            col_sem = next((c for c in df_sim.columns if "SEMANA" in str(c).upper()), None)
-                            semana_val = row[col_sem] if col_sem else "N/A"
+                        fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
+                        semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
 
-                        tar_avion_raw = a_numero(row['AVION_MAESTRO']) if 'AVION_MAESTRO' in row else 0.0
-                        tar_dom_raw = a_numero(row['DOMINIC_MAESTRO']) if 'DOMINIC_MAESTRO' in row else 0.0
-                        
+                        tar_avion_raw = a_numero(row['AVION_MAESTRO'])
+                        tar_dom_raw = a_numero(row['DOMINIC_MAESTRO'])
                         tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
 
                         if tarifa_unitaria_actual > 0 and ha_val > 0:
                             t_act_red = red_excel(tarifa_unitaria_actual)
                             base_neta_ha = tarifa_unitaria_actual / (1 + (margen_actual / 100))
-                            tarifa_nueva_unitaria = base_neta_ha * (1 + (margen_nuevo / 100))
-                            t_nue_red = red_excel(tarifa_nueva_unitaria)
+                            t_nue_red = red_excel(base_neta_ha * (1 + (margen_nuevo / 100)))
                             resta_tarifas = t_nue_red - t_act_red
                             
-                            diferencia_total = red_excel(resta_tarifas * ha_val)
-                            total_actual = red_excel(t_act_red * ha_val)
-                            total_nuevo = red_excel(t_nue_red * ha_val)
-
                             matriz_simulacion.append({
-                                "Nº OS": os_val, 
-                                "FECHA": fecha_val, 
-                                "SEMANA": int(semana_val) if str(semana_val).isdigit() else semana_val, 
-                                "FINCA": finca_val, 
-                                "PISTA": pista_val, 
-                                "HECTÁREAS": ha_val, 
-                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_red, 
-                                f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_red, 
-                                "TOTAL ACTUAL ($)": total_actual, 
-                                "NUEVO TOTAL ($)": total_nuevo, 
-                                "DIFERENCIA ($)": diferencia_total
+                                "Nº OS": os_val, "FECHA": fecha_val, "SEMANA": int(semana_val) if str(semana_val).isdigit() else semana_val,
+                                "FINCA": finca_val, "PISTA": pista_val, "HECTÁREAS": ha_val,
+                                f"TARIFA ACTUAL / Ha ({margen_actual}%)": t_act_red, f"NUEVA TARIFA / Ha ({margen_nuevo}%)": t_nue_red,
+                                "TOTAL ACTUAL ($)": red_excel(t_act_red * ha_val), "NUEVO TOTAL ($)": red_excel(t_nue_red * ha_val), "DIFERENCIA ($)": red_excel(resta_tarifas * ha_val)
                             })
 
                     if not matriz_simulacion:
-                        st.warning("⚠️ No se pudieron extraer tarifas válidas. Verifique sus columnas T (Avión) y U (Dominical).")
+                        st.warning("⚠️ Tarifas unitarias inválidas en columnas T y U.")
                     else:
                         df_resultados = pd.DataFrame(matriz_simulacion)
                         df_semanal = df_resultados.groupby("SEMANA").agg({"HECTÁREAS": "sum", "TOTAL ACTUAL ($)": "sum", "NUEVO TOTAL ($)": "sum", "DIFERENCIA ($)": "sum"}).reset_index().sort_values(by="SEMANA").reset_index(drop=True)
@@ -711,27 +627,30 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 return ''
                             st.dataframe(df_vista.style.map(col_dif, subset=["DIFERENCIA ($)"]), use_container_width=True, hide_index=True)
 
+                        # --- CONSTRUCCIÓN DE EXCEL EMBEBIDO ULTRA VELOZ ---
                         buffer_neg = io.BytesIO()
                         with pd.ExcelWriter(buffer_neg, engine='openpyxl') as writer:
                             df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
                             df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
-                            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                            
                             borde = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                             fondo, blanca = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid"), Font(color="FFFFFF", bold=True)
+                            
                             for name in ['Resumen_Semanal', 'Detalle_OS']:
                                 ws = writer.sheets[name]
                                 ws.sheet_view.showGridLines = True
                                 for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
                                     for cell in row:
                                         cell.border = borde
-                                        if cell.row == 1: cell.fill = fondo; cell.font = blanca; cell.alignment = Alignment(horizontal='center', vertical='center')
+                                        if cell.row == 1: 
+                                            cell.fill = fondo; cell.font = blanca; cell.alignment = Alignment(horizontal='center', vertical='center')
                                         else:
                                             if "HECTÁREAS" in str(ws.cell(1, cell.column).value): cell.number_format = '#,##0.00'
                                             elif "($" in str(ws.cell(1, cell.column).value) or "%" in str(ws.cell(1, cell.column).value): cell.number_format = '"$" #,##0'
-                                    for col in ws.columns: ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or '')) for c in col) + 4, 32)
+                                for col in ws.columns: ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or '')) for c in col) + 4, 32)
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(label="📥 DESCARGAR INFORME DUAL (EXCEL OFICIAL)", data=buffer_neg.getvalue(), file_name=f"Auditoria_Tarifas_{sim_pista}_{sim_fecha_inicio}_a_{sim_fecha_fin}.xlsx", type="primary", use_container_width=True)
 
     except Exception as e:
-        st.error(f"🚨 Falla crítica en los motores: {e}")
+        st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
