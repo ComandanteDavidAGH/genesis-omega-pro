@@ -98,9 +98,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
     # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) ---
-    # ⚡ CORRECCIÓN DE LA LÍNEA 103: Sincronización perfecta de la variable con "O"
-    df_area_unicos = df_filtrado.drop_duplicates(subset=['FECHA_DT', 'FINCA', 'OS', 'AREA_FUMIG'])
-    total_area = df_area_unicos['AREA_FUMIG'].sum() if not df_area_unicos.empty else 0.0
+    # ⚡ RESTAURACIÓN ATÓMICA: Regresamos al cálculo original exacto (.max()) que requería la operación
+    total_area = df_filtrado['AREA_FUMIG'].max() if not df_filtrado.empty else 0.0
     
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
     total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
@@ -125,12 +124,12 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<hr>", unsafe_allow_html=True)
     
     if df_filtrado.empty:
-        st.warning(f"⚠️ El Escuadrón no registró operaciones financieras con los filtros actuales seleccionados.")
+        st.warning("⚠️ El Escuadrón no registró operaciones financieras con los filtros actuales seleccionados.")
     else:
         g1, g2 = st.columns(2)
 
         with g1:
-            st.markdown(f"<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES</h4>", unsafe_allow_html=True)
             df_area_chart = df_filtrado.groupby('MES_ORDEN')['AREA_FUMIG'].sum().reset_index().sort_values(by='MES_ORDEN')
             
             fig1 = px.bar(df_area_chart, x='MES_ORDEN', y='AREA_FUMIG', text='AREA_FUMIG', color_discrete_sequence=['#548235'])
@@ -139,7 +138,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig1, use_container_width=True)
 
         with g2:
-            st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO</h4>", unsafe_allow_html=True)
             
             df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({
                 'VALOR_FACTURAR': 'mean', 
@@ -159,27 +158,27 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:10] + '..' if len(str(x)) > 10 else str(x))
             df_costo['ETIQUETA'] = df_costo['COCTEL_CORTO'] + "<br>(" + df_costo['FECHA_CORTA'] + ")"
 
-            fig2 = go.Figure()
-            fig2.add_trace(go.Bar(
+            go_fig = go.Figure()
+            go_fig.add_trace(go.Bar(
                 x=df_costo['ETIQUETA'], y=df_costo['VALOR_FACTURAR'], name="Facturación/ha",
                 marker_color='#548235', text=df_costo['VALOR_FACTURAR'], 
                 texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(size=11),
                 hovertext=df_costo['COCTEL'], hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> $ %{y:,.0f} COP<extra></extra>'
             ))
             
-            fig2.add_trace(go.Scatter(
+            go_fig.add_trace(go.Scatter(
                 x=df_costo['ETIQUETA'], y=df_costo['LIMITE'], name="Límite Finca",
                 mode='lines+markers', line=dict(color='red', width=3), marker=dict(size=8),
                 hovertemplate='<b>Límite Fijo:</b> $ %{y:,.0f} COP<extra></extra>'
             ))
             
-            fig2.update_layout(
+            go_fig.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 yaxis=dict(title="Valor ($ COP / Ha)", rangemode='tozero'), margin=dict(b=100)
             )
-            fig2.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
-            st.plotly_chart(fig2, use_container_width=True)
+            go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
+            st.plotly_chart(go_fig, use_container_width=True)
             
         st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
@@ -200,7 +199,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig3, use_container_width=True)
             
         with g4:
-            st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL CONSOLIDADA</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL CONSOLIDADA</h4>", unsafe_allow_html=True)
             df_mes = df_filtrado.groupby('MES_ORDEN')['COSTO_TOTAL'].sum().reset_index().sort_values(by='MES_ORDEN')
             
             fig4 = px.bar(df_mes, x='MES_ORDEN', y='COSTO_TOTAL', text='COSTO_TOTAL', color_discrete_sequence=['#548235'])
