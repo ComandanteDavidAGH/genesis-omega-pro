@@ -785,10 +785,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
                     
                     if mision_solo_dron:
-                        hk_f = "DR51" if "DATAROT" in str(escuadron_drones.iloc[0].get('Drone')).upper() else ("DR52" if "GENESYS" in str(escuadron_drones.iloc[0].get('Drone')).upper() else "DRONE_GEN")
-                    else: hk_f = "AVION_REG"
+                        if not escuadron_drones.empty:
+                            dr_name_str = str(escuadron_drones.iloc[0].get('Drone', '')).upper()
+                            hk_f = "DR51" if "DATAROT" in dr_name_str else ("DR52" if "GENESYS" in dr_name_str else "DRONE_GEN")
+                        else:
+                            hk_f = "DRONE_GEN"
+                    else:
+                        if not escuadron_aviones.empty:
+                            hk_f = str(escuadron_aviones.iloc[0].get('Avión', 'AVION_REG')).upper()
+                        else:
+                            hk_f = "AVION_REG"
                     
-                    tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron)
+                    tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                     total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
                     
                     row_azul = [""] * 34
@@ -809,8 +817,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
 
                     fila_apoyo[0] = f_apoyo - 3
-                    hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
-                    hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
+                    
+                    # ⚡ CORRECCIÓN DE LA REGLA DE ORO DE GSPREAD V6:
+                    # Se utiliza la signatura mandatoria por posición: [valores], rango_a1 para evitar caídas de red.
+                    hoja_maestra.update([row_azul], f"A{f_azul}", value_input_option='USER_ENTERED')
+                    hoja_apoyo.update([fila_apoyo], f"A{f_apoyo}", value_input_option='USER_ENTERED')
                     
                     try:
                         datos_memoria = hoja_memoria.get_all_values()
