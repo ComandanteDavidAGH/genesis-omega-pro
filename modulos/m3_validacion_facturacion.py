@@ -11,12 +11,15 @@ from datetime import datetime
 # ⚡ MOTORES ACELERADORES INDUSTRIALES (Caché de Lógica y Datos)
 # =================================================================
 
-@st.cache_data(show_spinner=False)
+# 🎯 SOLUCIÓN AL CUELLO DE BOTELLA: Le ordenamos a la caché que ignore el hash de las credenciales de GCP
+@st.cache_data(show_spinner=False, hash_funcs={dict: lambda _: None, st.runtime.secrets.Secrets: lambda _: None})
 def preprocesar_flota_gspread(gcp_secrets_dict=None):
     """ Extrae y estructura las tarifas de la flota una sola vez en RAM """
     try:
         if gcp_secrets_dict:
-            gc = gspread.service_account_from_dict(gcp_secrets_dict)
+            # 🎯 Forzamos la conversión a diccionario nativo de Python por seguridad extra
+            credenciales_puras = dict(gcp_secrets_dict)
+            gc = gspread.service_account_from_dict(credenciales_puras)
         else:
             gc = gspread.service_account(filename='credenciales.json')
             
@@ -35,6 +38,11 @@ def preprocesar_flota_gspread(gcp_secrets_dict=None):
         precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
         dict_drones = dict(zip(nombres_dr, precios_dr))
         
+        return dict_aviones, dict_drones
+    except:
+        # Fallback de Seguridad en caso de pérdida de enlace satelital
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
+        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
     except:
         # Fallback de Seguridad en caso de pérdida de enlace satelital
