@@ -11,14 +11,14 @@ from datetime import datetime
 # ⚡ MOTORES ACELERADORES INDUSTRIALES (Caché de Lógica y Datos)
 # =================================================================
 
-# 🎯 SOLUCIÓN AL CUELLO DE BOTELLA: Le ordenamos a la caché que ignore el hash de las credenciales de GCP
+# 🎯 SOLUCIÓN DEFINITIVA: Le ordenamos a la caché que ignore el hash del parámetro si es un objeto de secrets de Streamlit
 @st.cache_data(show_spinner=False, hash_funcs={dict: lambda _: None, st.runtime.secrets.Secrets: lambda _: None})
-def preprocesar_flota_gspread(gcp_secrets_dict=None):
+def preprocesar_flota_gspread(gcp_secrets_input=None):
     """ Extrae y estructura las tarifas de la flota una sola vez en RAM """
     try:
-        if gcp_secrets_dict:
-            # 🎯 Forzamos la conversión a diccionario nativo de Python por seguridad extra
-            credenciales_puras = dict(gcp_secrets_dict)
+        if gcp_secrets_input is not None:
+            # ⚡ BYPASS DE SEGURIDAD ATÓMICO: Forzamos la conversión a diccionario puro aquí dentro
+            credenciales_puras = dict(gcp_secrets_input)
             gc = gspread.service_account_from_dict(credenciales_puras)
         else:
             gc = gspread.service_account(filename='credenciales.json')
@@ -38,11 +38,6 @@ def preprocesar_flota_gspread(gcp_secrets_dict=None):
         precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
         dict_drones = dict(zip(nombres_dr, precios_dr))
         
-        return dict_aviones, dict_drones
-    except:
-        # Fallback de Seguridad en caso de pérdida de enlace satelital
-        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
-        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
     except:
         # Fallback de Seguridad en caso de pérdida de enlace satelital
@@ -105,7 +100,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 # =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
-    # Inyección de estilos de alto impacto visual (Bordes de Titanio y HUDs)
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
@@ -120,7 +114,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    # Pre-carga de flota ultra-rápida desde la memoria caché
+    # 🎯 AQUÍ ESTÁ EL CAMBIO: Extraemos de forma segura el objeto de secrets
     gcp_secrets = st.secrets["gcp_credentials"] if "gcp_credentials" in st.secrets else None
     dict_aviones, dict_drones = preprocesar_flota_gspread(gcp_secrets)
     
@@ -128,17 +122,215 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     if modo_simulacro:
         st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico.")
-        # [El simulador permanece activo y aislado de la lógica de facturación real]
-        # ... (su bloque de simulador se mantiene estable)
+        
+        # --- 📡 1. CONEXIÓN A LA BÓVEDA EN SIMULADOR ---
+        if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
+            st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
+            url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
+            if url_drive:
+                try:
+                    file_id = url_drive.split('/d/')[1].split('/')[0] if '/d/' in url_drive else None
+                    if file_id:
+                        dl_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx' if 'spreadsheets' in url_drive else f'https://drive.google.com/uc?export=download&id={file_id}'
+                        with st.spinner("📥 Descargando matrices y TABLA 2..."):
+                            resp = requests.get(dl_url, timeout=30)
+                            if resp.status_code == 200:
+                                xls = pd.ExcelFile(io.BytesIO(resp.content))
+                                st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
+                                st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
+                                st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
+                                
+                                hojas = xls.sheet_names
+                                nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
+                                st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
+                                
+                                st.success("✅ Matrices cargadas y listas.")
+                                st.rerun()
+                            else: st.error(f"❌ Error de descarga: {resp.status_code}")
+                    else: st.error("❌ Link inválido.")
+                except Exception as e: st.error(f"🚨 Error: {e}")
+            st.stop()
+
+        df_cfg = st.session_state['df_cfg']
+        df_recetas = st.session_state['df_recetas']
+        df_vd = st.session_state['df_vd']
+        df_t2 = st.session_state['df_t2']
+
+        # --- 📡 2. EXTRACCIÓN ROBUSTA DE TOPES ---
+        pistas_con_tope = []
+        try:
+            filas_a_revisar = [[str(c).upper().strip() for c in df_vd.columns]]
+            for i in range(min(10, len(df_vd))): filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
+            
+            p_idx, t_idx, pr_idx = -1, -1, -1
+            for idx_fila, row_vals in enumerate(filas_a_revisar):
+                for i, val in enumerate(row_vals):
+                    if val.startswith('TOPE'):
+                        t_idx = i
+                        for k in range(max(0, i-3), i):
+                            if row_vals[k].startswith('PISTA'): p_idx = k
+                            if 'PRECIO' in row_vals[k]: pr_idx = k
+                if p_idx != -1 and t_idx != -1: break
+                    
+            if p_idx != -1 and t_idx != -1:
+                for j in range(0, len(df_vd)):
+                    p_name = str(df_vd.iloc[j, p_idx]).strip()
+                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
+                    p_tope = str(df_vd.iloc[j, t_idx]).strip()
+                    if p_tope in ['NAN', 'NONE', '']: continue
+                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
+                    if pd.isna(p_precio): p_precio = 0
+                    texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
+                    if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
+        except: pass
+        
+        if not pistas_con_tope: 
+            pistas_con_tope = ["PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", "PDIV - PORCION TERRESTRE ($8.504)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"]
+
+        # --- 🧠 3. CEREBRO DINÁMICO (TABLA 2) ---
+        diccionario_fincas = {}
+        lista_fincas = []
+        try:
+            for idx, row in df_t2.iterrows():
+                f_name = str(row.iloc[0]).strip().upper()
+                if f_name not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']:
+                    p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "TERCERO"
+                    t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
+                    diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
+                    if f_name not in lista_fincas: lista_fincas.append(f_name)
+        except: pass
+            
+        if not lista_fincas: lista_fincas = ["NUEVO MUNDO"]
+        lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
+
+        if 'finca_anterior' not in st.session_state:
+            st.session_state.finca_anterior = lista_fincas[0]
+            st.session_state.idx_prod = 3
+            st.session_state.idx_tope = 0
+
+        # --- 🎛️ 4. PANEL DE CONSTRUCCIÓN DINÁMICO ---
+        st.markdown("#### 📝 Parámetros de la Operación")
+        cs1, cs2, cs3, cs4 = st.columns(4)
+        coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
+        ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
+        finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+        
+        if finca_sim != st.session_state.finca_anterior:
+            datos = diccionario_fincas.get(finca_sim, {})
+            if datos.get("Productor") in lista_productores: st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
+            st.session_state.idx_tope = 0
+            tope_k = datos.get("Tope_Key", "")
+            if tope_k:
+                for i, p_t in enumerate(pistas_con_tope):
+                    if tope_k in p_t: st.session_state.idx_tope = i; break
+            st.session_state.finca_anterior = finca_sim
+            st.rerun()
+
+        tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
+        
+        st.markdown("<br>", unsafe_allow_html=True) 
+        cs5, cs6, cs7, cs8 = st.columns(4)
+        vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
+        pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
+        horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+        dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
+        
+        recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
+
+        if st.button("🚀 Construir Matriz MEGAZORD"):
+            try:
+                if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
+                elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "COOPERATIVA": mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
+                else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
+                
+                tarifa_vuelo_base = 4606562.0 
+
+                val_tope = 0.0
+                match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
+                if match: val_tope = float(match.group(1).replace('.', ''))
+
+                if vuelo_sim == "DRONE": 
+                    if "PLUC" in pista_sim: base_dron = 84428
+                    elif "PDIV" in pista_sim: base_dron = 76916
+                    else: base_dron = 72600
+                    unitario_vuelo = base_dron * mult_v
+                else:
+                    costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                    if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
+                    unitario_vuelo = costo_bruto * mult_v
+
+                subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
+                subtotal_st = round(st_base, 0) * dias_ciclo_sim * ha_sim
+
+                coctel_u = coctel_sim.upper().strip()
+                partes = coctel_u.split(" ")
+                base_c = partes[0]
+                sigla_f = partes[1] if len(partes) > 1 else ""
+
+                receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
+                prods_f = []
+                for idx, row in receta_c.iterrows():
+                    p = str(row.iloc[1]).upper().strip()
+                    d = pd.to_numeric(row.iloc[2], errors='coerce')
+                    if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
+
+                if sigla_f:
+                    if "ZN" in sigla_f: prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
+                    elif "BT" in sigla_f: prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
+
+                for item in prods_f:
+                    if "ACONDICIONADOR" in item["PRODUCTO"]: item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u) else 0.02
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: item["DOSIS"] = 1.0 if sigla_f else 1.5
+
+                tabla_visual = []
+                mezcla_total = 0
+                
+                c_p_i, c_c_i = 8, 9 
+                for i in range(5):
+                    r_c = df_cfg.iloc[i].astype(str).str.upper().tolist()
+                    if 'PRODUCTO' in r_c and 'COSTO' in r_c: c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO'); break
+
+                for item in prods_f:
+                    p, d = item["PRODUCTO"], item["DOSIS"]
+                    mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                    if mask.any():
+                        p_b = pd.to_numeric(df_cfg[mask].iloc[0, c_c_i], errors='coerce')
+                        if pd.notna(p_b):
+                            p_m = p_b * mult_m
+                            c_t_p = round((d * ha_sim) * p_m, 0)
+                            mezcla_total += c_t_p
+                            tabla_visual.append({"PRODUCTO": p, "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": f"$ {p_b:,.0f}".replace(",","."), "P. + MARGEN": f"$ {p_m:,.0f}".replace(",","."), "COSTO TOTAL": f"$ {c_t_p:,.0f}".replace(",",".")})
+                    else:
+                        tabla_visual.append({"PRODUCTO": f"⚠️ {p}", "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": "$ 0", "P. + MARGEN": "$ 0", "COSTO TOTAL": "$ 0"})
+
+                recargo_m = round(recargo_sim * mult_v, 0)
+                valor_recargo_t = recargo_m * ha_sim
+                total_finca = subtotal_vuelo + subtotal_st + mezcla_total + valor_recargo_t
+                costo_ha = total_finca / ha_sim if ha_sim > 0 else 0
+
+                st.markdown("---")
+                st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
+                st.caption(f"🗓️ **Días Ciclo:** {dias_ciclo_sim} | 🚜 **Área:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
+                st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                r1, r2, r3, r4, r5 = st.columns(5)
+                r1.metric("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
+                r2.metric("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
+                r3.metric("🧪 Mezcla", f"$ {mezcla_total:,.0f}".replace(",", "."))
+                r4.metric("⚠️ Recargo", f"$ {valor_recargo_t:,.0f}".replace(",", "."))
+                r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px;'>💰 COSTO x HA</p><h4 style='margin:0; color:white;'>$ {costo_ha:,.0f}</h4></div>", unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
+            except Exception as e: st.error(f"Error: {e}")
+        st.stop()
 
     # -----------------------------------------------------------------
     # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN (BLINDADO Y ACELERADO)
     # -----------------------------------------------------------------
-    if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
-        st.warning("🚨 No se detectan datos listos en el puente de mando.")
-        st.info("💡 Por favor, cargue los tres archivos fuente en el Módulo 2 y procese antes de validar.")
-        st.stop()
-
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operaciones")
     
@@ -300,7 +492,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
         
         # =================================================================
-        # 🛡️ COORDENADA BLINDADA: EL HANGAR DE DESPLIEGUE NACE 100% VACÍO
+        # HANGAR DE DESPLIEGUE (Nace 100% Vacío de forma segura)
         # =================================================================
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
@@ -311,8 +503,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             if mision_solo_dron:
                 st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
-                
-                # 🎯 EL CAMBIO INDUSTRIAL: Estructura vacía para evitar cobros fantasma
                 df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                 escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                 
@@ -330,7 +520,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 with c_av: 
                     st.markdown("##### 🛩️ Base Aviones")
-                    # 🎯 EL CAMBIO INDUSTRIAL: Estructura vacía, CESSNA ASA por defecto erradicada
                     df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
                     escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     
@@ -425,7 +614,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
             coctel_piloto_base = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")[0]
 
-            # ⚡ LLAMADA AL COMPILADOR DE COCTEL OPTIMIZADO EN RAM
+            # ⚡ LLAMADA AL MOTOR IA MAESTRO EN MEMORIA RAM
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
             
@@ -567,7 +756,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
         # =================================================================
-        # 🛡️ FILTRO DE CRÍTICO DE SEGURIDAD CONTRA MISIONES EN CERO
+        # 🛡️ FILTRO CRÍTICO DE SEGURIDAD CONTRA MISIONES EN CERO
         # =================================================================
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
