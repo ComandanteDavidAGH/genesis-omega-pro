@@ -63,6 +63,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
+    # EXTRACCIÓN MAESTRA EN RAM CACHEADA (Elimina retardos de red síncronos)
     df_dash = cargar_y_preprocesar_boveda_mando(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
@@ -70,23 +71,23 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         return
 
     # --- 🎛️ FILTROS TÁCTICOS AVANZADOS ---
-    st.markdown("### 🎛️ Filtros de Operación y Tiempo")
+    st.markdown("### 🎛️ Filtros de Operación (Incluye Meses)")
     
+    # --- Reemplazo: tres casillas para seleccionar periodo ---
     t1, t2 = st.columns(2)
     años_disp = ["TODOS"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
     año_sel = t1.selectbox("📅 AÑO FISCAL", años_disp, index=0)
-    
-    # =================================================================
-    # 🎯 AQUÍ ESTÁ EL AJUSTE EXACTO DE SU IMAGEN (TRIMESTRES Y MESES)
-    # =================================================================
-    opciones_periodo = [
-        "TODOS", 
-        "Q1 (Ene-Mar)", "Q2 (Abr-Jun)", "Q3 (Jul-Sep)", "Q4 (Oct-Dic)",
-        "Ene", "Feb", "Mar", "Abr", "May", "Jun", 
-        "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
-    ]
-    periodo_sel = t2.selectbox("📊 PERIODO (Trimestre/Mes)", opciones_periodo)
 
+    # En la segunda columna mostramos 3 casillas en una fila: Tipo / Trimestre / Mes
+    with t2:
+        c_tipo, c_trim, c_mes = st.columns([1,1,1])
+        tipo_periodo = c_tipo.selectbox("Tipo de periodo", ["TODOS", "TRIMESTRE", "MES"])
+        trimestres = ["Q1 (Ene-Mar)", "Q2 (Abr-Jun)", "Q3 (Jul-Sep)", "Q4 (Oct-Dic)"]
+        meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+        trim_sel = c_trim.selectbox("Trimestre (si aplica)", ["N/A"] + trimestres, index=0)
+        mes_sel = c_mes.selectbox("Mes (si aplica)", ["N/A"] + meses, index=0)
+
+    # Otros filtros
     f1, f2, f3 = st.columns(3)
     fincas_disp = ["TODAS"] + sorted(df_dash['FINCA'].astype(str).unique().tolist())
     pilotos_disp = ["TODOS"] + sorted(df_dash['PILOTO'].astype(str).unique().tolist())
@@ -96,18 +97,20 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    # 🎯 MATEMÁTICA DEL FILTRADO EN LA RAM PARA TRIMESTRE O MES
+    # 🎯 MATEMÁTICA DEL FILTRADO EN LA RAM
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS": 
         df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
         
-    if periodo_sel != "TODOS":
-        if periodo_sel.startswith("Q"):
+    # Lógica de filtrado por tipo/trimestre/mes (nueva)
+    if tipo_periodo != "TODOS":
+        if tipo_periodo == "TRIMESTRE" and trim_sel != "N/A":
             trim_map = {"Q1 (Ene-Mar)": 1, "Q2 (Abr-Jun)": 2, "Q3 (Jul-Sep)": 3, "Q4 (Oct-Dic)": 4}
-            df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trim_map[periodo_sel]]
-        else:
-            df_filtrado = df_filtrado[df_filtrado['MES_NOMBRE'] == periodo_sel]
-            
+            df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trim_map[trim_sel]]
+        elif tipo_periodo == "MES" and mes_sel != "N/A":
+            df_filtrado = df_filtrado[df_filtrado['MES_NOMBRE'] == mes_sel]
+    # Si tipo_periodo == "TODOS" no se aplica filtro adicional
+
     if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
     if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
