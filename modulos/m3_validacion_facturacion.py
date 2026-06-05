@@ -484,7 +484,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
                 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (Auténtico, Cacheado y Multi-Tabla)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (Traductor Textual Español)
         # =======================================================
         dias_ciclo_calc = 0
         try:
@@ -492,6 +492,35 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             fechas_encontradas = []
             f_obj = str(finca_limpia).strip().upper()
             palabra_clave = f_obj.replace("-", " ").split()[0] if len(f_obj) > 4 else f_obj
+
+            def parsear_fecha_robusta(val):
+                if pd.isna(val): return pd.NaT
+                s = str(val).strip().lower()
+                if s.isdigit(): 
+                    return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+                
+                # Diccionario de meses en español
+                meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
+                
+                # Formato Texto Google Sheets: "viernes, mayo 08, 2026"
+                match1 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
+                if match1:
+                    mes_str, dia_str, anio_str = match1.groups()
+                    if mes_str in meses:
+                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                
+                # Formato Texto Alternativo: "08 de mayo de 2026"
+                match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+                if match2:
+                    dia_str, mes_str, anio_str = match2.groups()
+                    if mes_str in meses:
+                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                
+                # Formato Estándar: DD/MM/YYYY
+                try:
+                    return pd.to_datetime(s.split(" ")[0], dayfirst=True)
+                except:
+                    return pd.NaT
 
             def extraer_fechas(df_temp):
                 if df_temp.empty: return
@@ -502,29 +531,25 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     mask = df_temp[col_f].astype(str).str.upper().str.contains(palabra_clave, na=False)
                     df_fil = df_temp[mask]
                     for d in df_fil[col_d]:
-                        try:
-                            v = str(d).strip().split(" ")[0]
-                            if v.isdigit(): fechas_encontradas.append(pd.to_datetime('1899-12-30') + pd.to_timedelta(int(v), 'D'))
-                            elif v: fechas_encontradas.append(pd.to_datetime(v, dayfirst=True))
-                        except: pass
+                        fecha_valida = parsear_fecha_robusta(d)
+                        if pd.notna(fecha_valida):
+                            fechas_encontradas.append(fecha_valida)
 
-            # Extraemos fechas de ambas tablas para que no se nos escape el 2026
+            # Extraemos y traducimos fechas de ambas tablas
             extraer_fechas(df_viva)
             extraer_fechas(df_hist)
             
             if fechas_encontradas:
                 fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
-                # Buscamos solo fechas que sean estrictamente anteriores al vuelo
                 fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
                 if fechas_validas:
                     fecha_max = max(fechas_validas)
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
                     
-                    # Evitamos saltos locos o negativos
                     if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
                         dias_ciclo_calc = 0
         except Exception as e:
-            pass # Falla segura para no romper la interfaz
+            pass # Falla segura
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
