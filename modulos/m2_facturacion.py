@@ -69,8 +69,9 @@ def ejecutar(extraer_numero):
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Desplegando Anclaje de Extracción Inteligente..."):
+            with st.spinner("Desplegando Anclaje de Extracción Inteligente a Velocidad Luz..."):
                 try: 
+                    # 1. Lectura veloz de archivos locales
                     nombre_sabana = f_sabana.name.lower()
                     if nombre_sabana.endswith(('.xlsx', '.xls')): st.session_state['df_sabana'] = pd.read_excel(f_sabana)
                     else:
@@ -82,29 +83,30 @@ def ejecutar(extraer_numero):
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    if "gcp_credentials" in st.secrets: gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-                    else: gc = gspread.service_account(filename='credenciales.json')
+                    # ⚡ 2. EXTRACCIÓN ULTRA RÁPIDA (Vía CSV directo de Google Sheets en lugar de gspread)
+                    url_base = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet="
                     
-                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                    boveda = gc.open_by_url(url_boveda)
+                    # Peticiones simultáneas y ligeras
+                    st.session_state['df_config'] = pd.read_csv(f"{url_base}TABLA 2", skiprows=1)
+                    st.session_state['df_mezclas'] = pd.read_csv(f"{url_base}DD_Mesclas", skiprows=1)
+                    st.session_state['df_config_base'] = pd.read_csv(f"{url_base}Configuración", skiprows=1)
                     
-                    st.session_state['df_config'] = pd.DataFrame(boveda.worksheet("TABLA 2").get_all_values()[1:], columns=boveda.worksheet("TABLA 2").get_all_values()[0])
-                    st.session_state['df_mezclas'] = pd.DataFrame(boveda.worksheet("DD_Mesclas").get_all_values()[1:], columns=boveda.worksheet("DD_Mesclas").get_all_values()[0])
-                    st.session_state['df_config_base'] = pd.DataFrame(boveda.worksheet("Configuración").get_all_values()[1:], columns=boveda.worksheet("Configuración").get_all_values()[0])
+                    # Carga y limpieza de TABLA DE APOYO2023 (Idéntica lógica a la suya pero veloz)
+                    df_apoyo_raw = pd.read_csv(f"{url_base}TABLA DE APOYO2023")
                     
-                    hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023") 
-                    datos_apoyo = hoja_apoyo.get_all_values()
-                    
+                    # Encontrar la fila de títulos reales en el CSV (donde dice 'FINCA')
                     fila_titulos = 0
-                    for i, fila in enumerate(datos_apoyo[:20]):
-                        if any('FINCA' in str(celda).upper() for celda in fila): fila_titulos = i; break
+                    for i in range(min(20, len(df_apoyo_raw))):
+                        if df_apoyo_raw.iloc[i].astype(str).str.upper().str.contains('FINCA').any():
+                            fila_titulos = i
+                            break
                             
-                    encabezados_crudos = datos_apoyo[fila_titulos]
+                    encabezados_crudos = df_apoyo_raw.iloc[fila_titulos].tolist()
                     encabezados_limpios = []
                     vientos = {}
                     for col in encabezados_crudos:
                         col_str = str(col).strip()
-                        if col_str == "": col_str = "Vacio"
+                        if col_str in ["", "nan", "NaN"]: col_str = "Vacio"
                         if col_str in vientos:
                             vientos[col_str] += 1
                             encabezados_limpios.append(f"{col_str}_{vientos[col_str]}")
@@ -112,8 +114,11 @@ def ejecutar(extraer_numero):
                             vientos[col_str] = 0
                             encabezados_limpios.append(col_str)
                             
-                    st.session_state['df_apoyo'] = pd.DataFrame(datos_apoyo[fila_titulos+1:], columns=encabezados_limpios)
+                    df_apoyo_final = df_apoyo_raw.iloc[fila_titulos+1:].copy()
+                    df_apoyo_final.columns = encabezados_limpios
+                    st.session_state['df_apoyo'] = df_apoyo_final
 
+                    # Continúa su código original procesando los informes de pista...
                     lista_pistas = []
                     
                     for f in f_pistas:
