@@ -855,13 +855,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
+        # =================================================================
+        # 🛡️ FILTRO CRÍTICO DE SEGURIDAD Y GUARDADO MULTIHILO ULTRA-VELOZ
+        # =================================================================
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
                 st.error("🚫 OPERACIÓN RECHAZADA: No ha ingresado ninguna aeronave en el Hangar de Despliegue.")
                 st.stop()
                 
-            with st.spinner("🚀 Inyectando datos con Precisión de Francotirador..."):
+            with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz (Multihilo)..."):
                 try:
+                    import concurrent.futures
+                    
                     gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
                     boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                     hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
@@ -875,7 +880,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     bloque_f, sector_f, ha_bruta_f = "", "", ""
                     if not df_t2.empty:
-                        match_f = df_t2[df_t2.iloc[:, 0].str.upper().str.strip() == finca_limpia.upper().strip()]
+                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_limpia.upper().strip()]
                         if not match_f.empty:
                             sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
 
@@ -908,44 +913,57 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", ('DRONE' if mision_solo_dron else 'AVION'), ""]
                     
-                    col_azul = hoja_maestra.col_values(1)
+                    # ⚡ FASE 1: DESCARGA PARALELA DEL ESTADO DE LA BÓVEDA (Identifica filas vacías al mismo tiempo)
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        fut_col_azul = executor.submit(hoja_maestra.col_values, 1)
+                        fut_col_apoyo = executor.submit(hoja_apoyo.col_values, 2)
+                        fut_memoria = executor.submit(hoja_memoria.get_all_values)
+                        
+                        col_azul = fut_col_azul.result()
+                        col_apoyo = fut_col_apoyo.result()
+                        datos_memoria = fut_memoria.result()
+
                     f_azul = next((i+2 for i in range(len(col_azul)-1, -1, -1) if str(col_azul[i]).strip() != ""), 1)
-                    if f_azul > hoja_maestra.row_count: 
-                        hoja_maestra.add_rows(10)
-
-                    col_apoyo = hoja_apoyo.col_values(2)
                     f_apoyo = next((i+2 for i in range(len(col_apoyo)-1, -1, -1) if str(col_apoyo[i]).strip() != ""), 1)
-                    if f_apoyo > hoja_apoyo.row_count: 
-                        hoja_apoyo.add_rows(10)
-
                     fila_apoyo[0] = f_apoyo - 3
                     
-                    # 🛠️ BLINDAJE DE ACTUALIZACIÓN GSPREAD EN LA NUBE (Batch Update)
-                    hoja_maestra.update(values=[row_azul], range_name=f"A{f_azul}", value_input_option='USER_ENTERED')
-                    hoja_apoyo.update(values=[fila_apoyo], range_name=f"A{f_apoyo}", value_input_option='USER_ENTERED')
+                    # ⚡ FASE 2: EXPANSIÓN PARALELA (Si falta espacio en las hojas, lo agrega a la vez)
+                    def expandir_hoja(hoja, req):
+                        if req > hoja.row_count: hoja.add_rows(10)
                     
-                    try:
-                        datos_memoria = hoja_memoria.get_all_values()
-                        set_existentes = {f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}" for r in datos_memoria[1:] if len(r) >= 10}
-                        
-                        bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron else "BODEGA PRINCIPAL AVIÓN"
-                        filas_memoria = []
-                        
-                        for idx, row_m in edited_df.iterrows():
-                            nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
-                            if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
-                                if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
-                                    fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
-                                    filas_memoria.append(fila_m)
-                        
-                        if filas_memoria:
-                            hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
-                            st.toast(f"💾 Memoria Samurai Sincronizada.", icon="⚔️")
-                    except: 
-                        pass
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        executor.submit(expandir_hoja, hoja_maestra, f_azul)
+                        executor.submit(expandir_hoja, hoja_apoyo, f_apoyo)
+                    
+                    # ⚡ PREPARACIÓN DE MEMORIA QUÍMICA EN RAM
+                    set_existentes = {f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}" for r in datos_memoria[1:] if len(r) >= 10}
+                    bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron else "BODEGA PRINCIPAL AVIÓN"
+                    filas_memoria = []
+                    
+                    for idx, row_m in edited_df.iterrows():
+                        nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
+                        if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
+                            if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
+                                fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
+                                filas_memoria.append(fila_m)
+                    
+                    # ⚡ FASE 3: IMPACTO DE ESCRITURA MULTIHILO (Guarda todo al tiempo)
+                    def inyectar_maestra():
+                        hoja_maestra.update(values=[row_azul], range_name=f"A{f_azul}", value_input_option='USER_ENTERED')
+                    def inyectar_apoyo():
+                        hoja_apoyo.update(values=[fila_apoyo], range_name=f"A{f_apoyo}", value_input_option='USER_ENTERED')
+                    def inyectar_memoria():
+                        if filas_memoria: hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        executor.submit(inyectar_maestra)
+                        executor.submit(inyectar_apoyo)
+                        executor.submit(inyectar_memoria)
 
                     st.balloons()
                     st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul}.")
+                    st.toast(f"💾 Memoria Samurai Sincronizada a velocidad luz.", icon="⚔️")
+                    
                     if 'memoria_excel' in st.session_state: 
                         del st.session_state['memoria_excel']
                 except Exception as e_save: 
