@@ -102,22 +102,22 @@ def estandarizar_base(df):
         col_u = str(col).upper().replace('\n', ' ').strip()
         if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        # 🎯 CORRECCIÓN QUIRÚRGICA: Lee COSTO_HA real de 2026 para rellenar la gráfica comparativa
-        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or (col_u == 'COSTO_HA'): 
+        # 🎯 TRADUCTOR UNIVERSAL: Integra formatos Viejos (2024-2025) y Nuevos de TABLA 1 (2026)
+        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or col_u == 'VALOR_FACTURAR': 
             renombres[col] = 'COSTO_MAESTRO'
-        elif 'FUMIG' in col_u and 'AREA' in col_u: 
+        elif ('FUMIG' in col_u and 'AREA' in col_u) or col_u == 'AREA_FUMIG': 
             renombres[col] = 'AREA_MAESTRA'
-        elif ('AVION' in col_u and '/HA' in col_u) or (col_u == 'COSTO_AVION'): 
+        elif ('AVION' in col_u and '/HA' in col_u) or col_u == 'COSTO_AVION': 
             renombres[col] = 'AVION_MAESTRO'
-        elif ('DOMINIC' in col_u and '/HA' in col_u) or (col_u == 'DOMINICAL_HA'): 
+        elif ('DOMINIC' in col_u and '/HA' in col_u) or col_u == 'DOMINICAL_HA': 
             renombres[col] = 'DOMINIC_MAESTRO'
         elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): 
             renombres[col] = 'FINCA_MAESTRA'
         elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': 
             renombres[col] = 'FECHA_MAESTRA'
-        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): 
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or col_u == "OS"): 
             renombres[col] = 'OS_MAESTRA'
-        elif not ('COCTEL_MAESTRO' in renombres.values()) and ("COCTEL" == col_u or "CÓCTEL" == col_u): 
+        elif not ('COCTEL_MAESTRO' in renombres.values()) and col_u in ['COCTEL', 'CÓCTEL']: 
             renombres[col] = 'COCTEL_MAESTRO'
             
     df.rename(columns=renombres, inplace=True)
@@ -218,10 +218,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
+        # Cálculos puros optimizados para inyección de Datos
         super_base_bi['COSTO_NUM'] = super_base_bi['COSTO_MAESTRO'].apply(a_numero)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
 
+        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -400,9 +402,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
             if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
-            # 🎯 GRÁFICO GIGANTE DE CÓCTELES CON ETIQUETAS VERTICALES LIMPIAS Y REDONDEADAS
-            st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
-            if not tabla_autopsia.empty:
+            # 🎯 GRÁFICO DE CÓCTELES ESTABILIZADO (Se dibuja si hay datos reales)
+            if not tabla_autopsia.empty and tabla_autopsia[f'Costo/Ha ({año_base})'].sum() > 0 or tabla_autopsia[f'Costo/Ha ({año_comp})'].sum() > 0:
+                st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
                 df_graf_coctel = pd.melt(tabla_autopsia, id_vars=['CÓCTEL APLICADO'], 
                                          value_vars=[f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'],
                                          var_name='Periodo', value_name='Costo Promedio')
@@ -410,10 +412,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 fig_coctel = px.bar(df_graf_coctel, x='CÓCTEL APLICADO', y='Costo Promedio', color='Periodo', 
                                     barmode='group', color_discrete_sequence=['#2F75B5', '#27AE60'], text='Costo Promedio')
                 
-                # Formato a 0 decimales, etiqueta afuera, girada -90 grados para que sea vertical y no se estrelle
                 fig_coctel.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textangle=-90, textfont_size=11)
                 
-                # Aumentamos el rango Y para que las etiquetas verticales no se corten contra el techo del gráfico
                 max_val = df_graf_coctel['Costo Promedio'].max()
                 if pd.notna(max_val) and max_val > 0:
                     fig_coctel.update_yaxes(range=[0, max_val * 1.35])
