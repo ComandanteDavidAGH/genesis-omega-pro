@@ -46,7 +46,6 @@ def cargar_boveda_recetas_y_precios():
     try:
         gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
         
-        # Cargar Bóveda de Recetas Básicas
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -57,7 +56,6 @@ def cargar_boveda_recetas_y_precios():
         df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
         df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
 
-        # Cargar Sabana de Precios Históricos de Insumos
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
         
@@ -77,7 +75,6 @@ def cargar_boveda_recetas_y_precios():
                         anio_str, prod_str = str(row[col_anio]).strip(), str(row[col_prod]).strip().upper()
                         if anio_str and prod_str:
                             col_inicio_semanas = max(col_anio, col_prod) + 1
-                            # Extracción veloz de promedios semanales
                             valores_semana = []
                             for v in row[col_inicio_semanas:]:
                                 try:
@@ -211,12 +208,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # Cálculos puros optimizados para inyección de Datos
         super_base_bi['COSTO_NUM'] = super_base_bi['COSTO_MAESTRO'].apply(a_numero)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
 
-        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -326,7 +321,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 titulo_x = f"Días Operativos ({etiq_periodo})"
                 
             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
-            fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#ef4444'])
+            # 🎨 Azul Corporativo vs Verde Natural (Reemplazando el Rojo)
+            fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
             fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
             max_y = tendencia_agrupa['COSTO_NUM'].max() * 1.2
             if not pd.isna(max_y): fig_tendencia.update_yaxes(range=[0, max_y])
@@ -347,7 +343,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         with tab_unit:
             fig_unit = go.Figure(data=[
                 go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
-                go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
+                go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
             ])
             fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", margin=dict(t=20, b=20))
             fig_unit.update_xaxes(type='category')
@@ -358,7 +354,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             insumos_tot_a, insumos_tot_b = insumos_a * area_a, insumos_b * area_b
             fig_glob = go.Figure(data=[
                 go.Bar(name='Total Facturación Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[f"$ {vuelo_tot_a:,.0f}", f"$ {vuelo_tot_b:,.0f}"], textposition='auto'),
-                go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#548235', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
+                go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
             ])
             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", margin=dict(t=20, b=20))
             fig_glob.update_xaxes(type='category')
@@ -370,6 +366,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         if col_coctel:
             st.markdown("<br>#### 📋 Desglose Operativo: Cócteles y Variación")
+            
+            # =====================================================================
+            # 🛠️ RADAR DE DEPURACIÓN (LA TRAMPA PARA VER QUÉ PASA CON EL GRÁFICO)
+            # =====================================================================
+            with st.expander("🛠️ RADAR DE DEPURACIÓN (LA TRAMPA) - Clic para inspeccionar datos", expanded=False):
+                st.write(f"**Operaciones encontradas en {año_base}:**", len(df_periodo_a))
+                st.write(f"**Operaciones encontradas en {año_comp}:**", len(df_periodo_b))
+                if df_periodo_b.empty:
+                    st.warning(f"¡ALERTA TÁCTICA! El sistema no encontró ningún vuelo para el año {año_comp} con los filtros actuales. Si no hay datos, la barra verde en los gráficos no se dibujará.")
+            
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
@@ -384,6 +390,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
             if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
+            # 🎯 GRÁFICO GIGANTE DE CÓCTELES RESTAURADO Y CON COLORES AMIGABLES
+            st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
+            if not tabla_autopsia.empty:
+                df_graf_coctel = pd.melt(tabla_autopsia, id_vars=['CÓCTEL APLICADO'], 
+                                         value_vars=[f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'],
+                                         var_name='Periodo', value_name='Costo Promedio')
+                
+                # Cero rojo. Usamos Azul y Verde.
+                fig_coctel = px.bar(df_graf_coctel, x='CÓCTEL APLICADO', y='Costo Promedio', color='Periodo', 
+                                    barmode='group', color_discrete_sequence=['#2F75B5', '#27AE60'], text='Costo Promedio')
+                
+                fig_coctel.update_traces(texttemplate='', textposition='outside', textfont_size=11)
+                fig_coctel.update_layout(yaxis_title="Costo Operativo ($ COP / Ha)", xaxis_title="Estructura de la Receta", 
+                                         plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(fig_coctel, use_container_width=True)
+
             df_vista = tabla_autopsia.copy()
             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
@@ -401,7 +423,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
             if coctel_sel != "SELECCIONE UN CÓCTEL...":
                 with st.spinner("Extrayendo matrices químicas desde la caché en RAM..."):
-                    # ⚡ EJECUCIÓN INSTANTÁNEA: Descolgamos todas las tablas de la RAM
                     df_mezclas, df_conf, df_dicc, df_precios, df_t2 = cargar_boveda_recetas_y_precios()
                     
                     if df_mezclas.empty or df_precios.empty:
