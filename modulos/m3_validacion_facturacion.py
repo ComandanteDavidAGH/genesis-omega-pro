@@ -531,6 +531,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
+        
+        # 🧹 EXORCISMO DE MEMORIA STREAMLIT
+        # Si la casilla se quedó "pegada" visualmente, cambiamos su ID interno para forzar su reinicio.
+        llave_sistema = f"sys_limpio_v2_{casilla_key}"
+        llave_cobro = f"cob_limpio_v2_{casilla_key}"
 
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
@@ -539,8 +544,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-            r1c1.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=f"ds_{casilla_key}")
-            d_ciclo_factura = r1c2.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=f"df_{casilla_key}")
+            r1c1.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
+            d_ciclo_factura = r1c2.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
             
             ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
             if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
