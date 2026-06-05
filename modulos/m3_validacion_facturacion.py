@@ -458,33 +458,45 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
                 
         # 🎯 MOTOR DE CICLOS REPARADO (Caza-Fechas y Búsqueda Flexible)
+        # 🎯 MOTOR DE CICLOS BLINDADO (Caza-Fechas y Búsqueda Agresiva)
         dias_ciclo_calc = 0
         if not df_apoyo.empty:
-            col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
-            col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
+            col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()]
+            col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()]
+            
             if col_finca and col_fecha:
-                # 1. Limpieza extrema de nombres para asegurar el Match
-                fincas_historicas = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: re.sub(r'\s+', ' ', x).strip())
-                hist_finca = df_apoyo[fincas_historicas == finca_limpia].copy()
+                col_f_name, col_d_name = col_finca[0], col_fecha[0]
                 
-                # 2. Si no halla el nombre exacto, busca por la palabra clave principal (Ej: "COOMULBANANO")
-                if hist_finca.empty and len(finca_limpia) > 5:
-                    palabra_clave = finca_limpia.split(" ")[0]
-                    hist_finca = df_apoyo[fincas_historicas.str.contains(palabra_clave, regex=False, na=False)].copy()
+                # 1. Búsqueda Agresiva: Usamos la primera palabra clave (ej. "COOMULBANANO")
+                partes_nombre = finca_limpia.replace("-", " ").split(" ")
+                palabra_clave = partes_nombre[0] if len(partes_nombre[0]) > 4 else finca_limpia
+                
+                # 2. Filtramos la Tabla de Apoyo
+                mask = df_apoyo[col_f_name].astype(str).str.upper().str.contains(palabra_clave, na=False)
+                hist_finca = df_apoyo[mask].copy()
 
                 if not hist_finca.empty:
-                    # 3. Motor Caza-Fechas Inmune a formato CSV
-                    hist_finca['FECHA_PURA'] = pd.to_datetime(hist_finca[col_fecha[0]], errors='coerce', dayfirst=True)
+                    # 3. Parseo de fechas a prueba de balas (Para formatos CSV crudos)
+                    def purificar_fecha(d):
+                        try:
+                            return pd.to_datetime(str(d).split(" ")[0], dayfirst=True)
+                        except:
+                            return pd.NaT
+                            
+                    hist_finca['FECHA_PURA'] = hist_finca[col_d_name].apply(purificar_fecha)
                     hist_finca = hist_finca.dropna(subset=['FECHA_PURA'])
                     
                     if not hist_finca.empty:
                         fecha_ref = pd.to_datetime(fecha_operacion)
+                        # Solo busca vuelos estrictamente anteriores al actual
                         vuelos_anteriores = hist_finca[hist_finca['FECHA_PURA'] < fecha_ref]
+                        
                         if not vuelos_anteriores.empty:
                             dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_PURA'].max()).days
-                            # Filtro anti-errores (evita números absurdos o negativos)
-                            if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
-
+                            
+                            # Filtro anti-locuras matemáticas (Si da negativo o > 1 año, lo anula)
+                            if dias_ciclo_calc < 0 or dias_ciclo_calc > 365:
+                                dias_ciclo_calc = 0
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
         
