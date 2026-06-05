@@ -83,16 +83,16 @@ def ejecutar(extraer_numero):
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # ⚡ 2. EXTRACCIÓN ULTRA RÁPIDA (Vía CSV directo de Google Sheets en lugar de gspread)
+                    # ⚡ 2. EXTRACCIÓN ULTRA RÁPIDA (URL Codificada para evitar error de espacios)
                     url_base = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet="
                     
-                    # Peticiones simultáneas y ligeras
-                    st.session_state['df_config'] = pd.read_csv(f"{url_base}TABLA 2", skiprows=1)
+                    # Peticiones simultáneas y ligeras (Espacios reemplazados por %20 y tildes por %C3%B3)
+                    st.session_state['df_config'] = pd.read_csv(f"{url_base}TABLA%202", skiprows=1)
                     st.session_state['df_mezclas'] = pd.read_csv(f"{url_base}DD_Mesclas", skiprows=1)
-                    st.session_state['df_config_base'] = pd.read_csv(f"{url_base}Configuración", skiprows=1)
+                    st.session_state['df_config_base'] = pd.read_csv(f"{url_base}Configuraci%C3%B3n", skiprows=1)
                     
-                    # Carga y limpieza de TABLA DE APOYO2023 (Idéntica lógica a la suya pero veloz)
-                    df_apoyo_raw = pd.read_csv(f"{url_base}TABLA DE APOYO2023")
+                    # Carga y limpieza de TABLA DE APOYO2023 
+                    df_apoyo_raw = pd.read_csv(f"{url_base}TABLA%20DE%20APOYO2023")
                     
                     # Encontrar la fila de títulos reales en el CSV (donde dice 'FINCA')
                     fila_titulos = 0
