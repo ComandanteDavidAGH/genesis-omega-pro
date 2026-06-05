@@ -73,7 +73,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # --- 🎛️ FILTROS TÁCTICOS AVANZADOS ---
     st.markdown("### 🎛️ Filtros de Operación y Tiempo")
     
-    # 🎯 AJUSTE ARQUITECTÓNICO: 3 Columnas para incluir la casilla exclusiva de MES
     t1, t2, t3 = st.columns(3)
     
     años_disp = ["TODOS"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
@@ -110,7 +109,12 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
     # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) ---
-    total_area = df_filtrado['AREA_FUMIG'].max() if not df_filtrado.empty else 0.0
+    
+    # 🎯 SOLUCIÓN EXACTA: Agrupa por finca, extrae el área física de cada una, y las suma todas
+    if not df_filtrado.empty:
+        total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
+    else:
+        total_area = 0.0
     
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
     total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
