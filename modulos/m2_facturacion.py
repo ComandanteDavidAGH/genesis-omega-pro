@@ -69,9 +69,8 @@ def ejecutar(extraer_numero):
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Desplegando Anclaje de Extracción Inteligente a Velocidad Luz..."):
+            with st.spinner("Desplegando Anclaje de Extracción Inteligente (Multihilo)..."):
                 try: 
-                    # 1. Lectura veloz de archivos locales
                     nombre_sabana = f_sabana.name.lower()
                     if nombre_sabana.endswith(('.xlsx', '.xls')): st.session_state['df_sabana'] = pd.read_excel(f_sabana)
                     else:
@@ -83,30 +82,41 @@ def ejecutar(extraer_numero):
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # ⚡ 2. EXTRACCIÓN ULTRA RÁPIDA (URL Codificada para evitar error de espacios)
+                    # ⚡ 1. EXTRACCIÓN PARALELA MULTIHILO (Baja las 4 tablas al mismo tiempo)
                     url_base = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet="
                     
-                    # Peticiones simultáneas y ligeras (Espacios reemplazados por %20 y tildes por %C3%B3)
-                    st.session_state['df_config'] = pd.read_csv(f"{url_base}TABLA%202", skiprows=1)
-                    st.session_state['df_mezclas'] = pd.read_csv(f"{url_base}DD_Mesclas", skiprows=1)
-                    st.session_state['df_config_base'] = pd.read_csv(f"{url_base}Configuraci%C3%B3n", skiprows=1)
+                    urls_a_bajar = {
+                        'df_config': f"{url_base}TABLA%202",
+                        'df_mezclas': f"{url_base}DD_Mesclas",
+                        'df_config_base': f"{url_base}Configuraci%C3%B3n",
+                        'df_apoyo_raw': f"{url_base}TABLA%20DE%20APOYO2023"
+                    }
                     
-                    # Carga y limpieza de TABLA DE APOYO2023 
-                    df_apoyo_raw = pd.read_csv(f"{url_base}TABLA%20DE%20APOYO2023")
+                    import concurrent.futures
+                    def fetch_url(key, url):
+                        return key, pd.read_csv(url, skiprows=(0 if key == 'df_apoyo_raw' else 1))
+                        
+                    # Dispara 4 hilos de red en paralelo
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        resultados = dict(executor.map(lambda item: fetch_url(*item), urls_a_bajar.items()))
+                        
+                    st.session_state['df_config'] = resultados['df_config']
+                    st.session_state['df_mezclas'] = resultados['df_mezclas']
+                    st.session_state['df_config_base'] = resultados['df_config_base']
+                    df_apoyo_raw = resultados['df_apoyo_raw']
                     
-                    # Encontrar la fila de títulos reales en el CSV (donde dice 'FINCA')
+                    # Limpieza veloz de TABLA DE APOYO
                     fila_titulos = 0
                     for i in range(min(20, len(df_apoyo_raw))):
                         if df_apoyo_raw.iloc[i].astype(str).str.upper().str.contains('FINCA').any():
-                            fila_titulos = i
-                            break
+                            fila_titulos = i; break
                             
                     encabezados_crudos = df_apoyo_raw.iloc[fila_titulos].tolist()
                     encabezados_limpios = []
                     vientos = {}
                     for col in encabezados_crudos:
                         col_str = str(col).strip()
-                        if col_str in ["", "nan", "NaN"]: col_str = "Vacio"
+                        if col_str in ["", "nan", "NaN", "None"]: col_str = "Vacio"
                         if col_str in vientos:
                             vientos[col_str] += 1
                             encabezados_limpios.append(f"{col_str}_{vientos[col_str]}")
@@ -118,7 +128,6 @@ def ejecutar(extraer_numero):
                     df_apoyo_final.columns = encabezados_limpios
                     st.session_state['df_apoyo'] = df_apoyo_final
 
-                    # Continúa su código original procesando los informes de pista...
                     lista_pistas = []
                     
                     for f in f_pistas:
@@ -126,9 +135,9 @@ def ejecutar(extraer_numero):
                         bytes_f = io.BytesIO(f.getvalue())
                         dict_p = {}
                         
-                        # 🎯 BLOQUEO DE HOJAS OCULTAS: data_only=True respeta la visibilidad del Excel
+                        # ⚡ 2. FRENO DE MANO QUITADO: read_only=True lee la "cáscara" del Excel sin calcular fórmulas
                         if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
-                            wb_temp = openpyxl.load_workbook(bytes_f, data_only=True)
+                            wb_temp = openpyxl.load_workbook(bytes_f, read_only=True, keep_links=False)
                             hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
                             bytes_f.seek(0)
                             if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
