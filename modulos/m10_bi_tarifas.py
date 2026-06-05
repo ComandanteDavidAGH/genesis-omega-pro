@@ -99,25 +99,26 @@ def limpiar_encabezados(df):
 def estandarizar_base(df):
     renombres = {}
     for col in df.columns:
-        col_u = str(col).upper().replace('\n', ' ').strip()
+        # Limpiamos todo: mayúsculas, guiones bajos a espacios y quitamos saltos de línea
+        col_u = str(col).upper().replace('\n', ' ').replace('_', ' ').strip()
         if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        # 🎯 TRADUCTOR UNIVERSAL: Integra formatos Viejos (2024-2025) y Nuevos de TABLA 1 (2026)
-        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or col_u == 'VALOR_FACTURAR': 
+        # 🎯 TRADUCTOR ULTRA-FLEXIBLE: Encuentra por palabras clave cruzadas
+        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or ('VALOR' in col_u and 'FACTURAR' in col_u): 
             renombres[col] = 'COSTO_MAESTRO'
-        elif ('FUMIG' in col_u and 'AREA' in col_u) or col_u == 'AREA_FUMIG': 
+        elif ('FUMIG' in col_u and 'AREA' in col_u) or ('AREA' in col_u and 'FUMIG' in col_u): 
             renombres[col] = 'AREA_MAESTRA'
-        elif ('AVION' in col_u and '/HA' in col_u) or col_u == 'COSTO_AVION': 
+        elif ('AVION' in col_u and '/HA' in col_u) or ('COSTO' in col_u and 'AVION' in col_u): 
             renombres[col] = 'AVION_MAESTRO'
-        elif ('DOMINIC' in col_u and '/HA' in col_u) or col_u == 'DOMINICAL_HA': 
+        elif ('DOMINIC' in col_u and '/HA' in col_u) or ('DOMINIC' in col_u and 'HA' in col_u): 
             renombres[col] = 'DOMINIC_MAESTRO'
-        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): 
+        elif not ('FINCA_MAESTRA' in renombres.values()) and ('FINCA' in col_u or 'PROPIEDAD' in col_u): 
             renombres[col] = 'FINCA_MAESTRA'
-        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': 
+        elif not ('FECHA_MAESTRA' in renombres.values()) and 'FECHA' in col_u: 
             renombres[col] = 'FECHA_MAESTRA'
         elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or col_u == "OS"): 
             renombres[col] = 'OS_MAESTRA'
-        elif not ('COCTEL_MAESTRO' in renombres.values()) and col_u in ['COCTEL', 'CÓCTEL']: 
+        elif not ('COCTEL_MAESTRO' in renombres.values()) and ('COCTEL' in col_u or 'CÓCTEL' in col_u): 
             renombres[col] = 'COCTEL_MAESTRO'
             
     df.rename(columns=renombres, inplace=True)
