@@ -484,21 +484,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (Con Súper Trampa)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (CON TRAMPA INCLUIDA)
         # =======================================================
         dias_ciclo_calc = 0
-        debug_log = [] # 🛠️ LA TRAMPA
+        debug_log = [] # 🛠️ LA TRAMPA REAL
         
         try:
-            debug_log.append(f"🔍 Iniciando búsqueda para: '{finca_limpia}'")
+            debug_log.append(f"🔍 Búsqueda de ciclos para: '{finca_limpia}'")
             df_viva, df_hist = obtener_historial_completo_ciclos()
-            
-            debug_log.append(f"📦 Filas descargadas -> TABLA 1: {len(df_viva)} | APOYO: {len(df_hist)}")
             
             fechas_encontradas = []
             f_obj = str(finca_limpia).strip().upper()
             palabra_clave = f_obj.replace("-", " ").split()[0] if len(f_obj) > 4 else f_obj
-            debug_log.append(f"🔑 Palabra clave de búsqueda: '{palabra_clave}'")
+            debug_log.append(f"🔑 Usando palabra clave: '{palabra_clave}'")
 
             def parsear_fecha_robusta(val):
                 if pd.isna(val) or str(val).strip() == "": return pd.NaT, "Vacío"
@@ -530,38 +528,39 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if col_f and col_d:
                     mask = df_temp[col_f].astype(str).str.upper().str.contains(palabra_clave, na=False)
                     df_fil = df_temp[mask]
-                    debug_log.append(f"📂 En {nombre_tabla} se encontraron {len(df_fil)} vuelos de '{palabra_clave}'.")
+                    debug_log.append(f"📂 En {nombre_tabla} halló {len(df_fil)} registros.")
                     
                     for idx, row in df_fil.iterrows():
                         d_raw = row[col_d]
+                        f_name_raw = row[col_f]
                         fecha_valida, metodo = parsear_fecha_robusta(d_raw)
                         if pd.notna(fecha_valida):
                             fechas_encontradas.append(fecha_valida)
-                            debug_log.append(f"   -> Finca: {row[col_f]} | Leyó: '{d_raw}' | Tradujo: {fecha_valida.strftime('%Y-%m-%d')} | Método: {metodo}")
+                            debug_log.append(f"   -> Finca: {f_name_raw} | Leyó: '{d_raw}' | Tradujo: {fecha_valida.strftime('%d/%m/%Y')} | ({metodo})")
                 else:
-                    debug_log.append(f"⚠️ Cols FINCA o FECHA no encontradas en {nombre_tabla}.")
+                    debug_log.append(f"⚠️ Cols FINCA/FECHA no encontradas en {nombre_tabla}.")
 
             extraer_fechas(df_viva, "TABLA 1 (Viva)")
             extraer_fechas(df_hist, "TABLA APOYO (Histórica)")
             
             if fechas_encontradas:
                 fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
-                debug_log.append(f"📅 Fecha del vuelo ACTUAL que estamos procesando: {fecha_vuelo_dt.strftime('%d/%m/%Y')}")
+                debug_log.append(f"📅 Vuelo actual: {fecha_vuelo_dt.strftime('%d/%m/%Y')}")
                 
                 fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
                 if fechas_validas:
                     fecha_max = max(fechas_validas)
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
-                    debug_log.append(f"🏆 Misión anterior elegida: {fecha_max.strftime('%d/%m/%Y')} | Días: {dias_ciclo_calc}")
+                    debug_log.append(f"🏆 Fecha MAX elegida: {fecha_max.strftime('%d/%m/%Y')} -> {dias_ciclo_calc} días")
                     if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
                         dias_ciclo_calc = 0
                         debug_log.append("⚠️ Forzado a 0 (fuera de rango)")
                 else:
-                    debug_log.append("⚠️ No se encontraron vuelos ANTERIORES a la fecha actual.")
+                    debug_log.append("⚠️ No hay vuelos ANTERIORES.")
             else:
-                debug_log.append("❌ No se logró extraer ninguna fecha válida.")
+                debug_log.append("❌ Cero fechas válidas extraídas.")
         except Exception as e:
-            debug_log.append(f"💥 ERROR CRÍTICO: {str(e)}")
+            debug_log.append(f"💥 ERROR: {str(e)}")
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
@@ -597,6 +596,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
+
+        # --- IMPRESIÓN DE LA TRAMPA ---
+        with st.expander("🛠️ TRAMPA DE CICLOS (Clic para auditar lectura)"):
+            for linea in debug_log: st.text(linea)
 
         # --- IMPRESIÓN DE LA TRAMPA EN PANTALLA ---
         with st.expander("🛠️ TRAMPA DE CICLOS (Clic para auditar lectura)"):
