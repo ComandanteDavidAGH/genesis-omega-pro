@@ -839,6 +839,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         # =================================================================
         # 🛡️ FILTRO CRÍTICO DE SEGURIDAD Y GUARDADO MULTIHILO ULTRA-VELOZ
         # =================================================================
+        # =================================================================
+        # 🚀 BOTÓN UX: VOLVER ARRIBA (Navegación Táctica)
+        # =================================================================
+        st.markdown("""
+            <a href="#" style="
+                display: inline-block; width: 100%; text-align: center; 
+                background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
+                padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
+                box-shadow: 0px 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; font-size: 16px;
+            ">
+                ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
+            </a>
+        """, unsafe_allow_html=True)
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
                 st.error("🚫 OPERACIÓN RECHAZADA: No ha ingresado ninguna aeronave en el Hangar de Despliegue.")
