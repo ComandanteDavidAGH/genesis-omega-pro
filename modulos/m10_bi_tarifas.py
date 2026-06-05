@@ -117,18 +117,27 @@ def limpiar_encabezados(df):
 def estandarizar_base(df):
     renombres = {}
     for col in df.columns:
-        col_u = str(col).upper().replace('\n', ' ').strip()
-        if 'FINCA' in col_u and 'COSTO' in col_u: continue
-            
-        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
-        elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
-        elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
-        elif 'DOMINIC' in col_u and '/HA' in col_u: renombres[col] = 'DOMINIC_MAESTRO'
-        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): renombres[col] = 'FINCA_MAESTRA'
-        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': renombres[col] = 'FECHA_MAESTRA'
-        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or col_u == "OS"): renombres[col] = 'OS_MAESTRA'
-        elif not ('COCTEL_MAESTRO' in renombres.values()) and col_u in ['COCTEL', 'CÓCTEL']: renombres[col] = 'COCTEL_MAESTRO'
-            
+        # Quitamos guiones y saltos de línea para estandarizar el texto
+        c = str(col).upper().replace('\n', ' ').replace('_', ' ').strip()
+        
+        # Mapeo CONCRETO y directo (Sin búsquedas genéricas que causen error)
+        if c in ['VALOR A FACTURAR AL PRODUCTOR', 'COSTO HA', 'VALOR FACTURAR']: 
+            renombres[col] = 'COSTO_MAESTRO'
+        elif c in ['AREA FUMIGADA', 'AREA FUMIG']: 
+            renombres[col] = 'AREA_MAESTRA'
+        elif c in ['COSTO AVION/HA', 'COSTO AVION']: 
+            renombres[col] = 'AVION_MAESTRO'
+        elif c in ['COSTO DOMINICAL/HA', 'DOMINICAL HA']: 
+            renombres[col] = 'DOMINIC_MAESTRO'
+        elif c in ['FINCA', 'PROPIEDAD']: 
+            renombres[col] = 'FINCA_MAESTRA'
+        elif c == 'FECHA': 
+            renombres[col] = 'FECHA_MAESTRA'
+        elif c in ['OS', 'Nº ORDEN']: 
+            renombres[col] = 'OS_MAESTRA'
+        elif c in ['COCTEL', 'CÓCTEL']: 
+            renombres[col] = 'COCTEL_MAESTRO'
+
     df.rename(columns=renombres, inplace=True)
     return df
     
