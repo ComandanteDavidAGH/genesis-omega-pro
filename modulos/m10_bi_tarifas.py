@@ -16,25 +16,23 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # =================================================================
 
 @st.cache_data(show_spinner=False)
-@st.cache_data(show_spinner=False)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     """ Descarga y unifica las bases actual e histórica una sola vez en caché """
     
-    # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA COMO EN EL MÓDULO 9 ---
+    # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
     url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     datos_brutos_act = _descargar_matriz_rapida(url_act, "TABLA 1")
     
     if len(datos_brutos_act) > 5:
-        # Inyectamos los 30 encabezados duros para evitar celdas vacías o combinadas en Sheets
+        # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
         columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         
-        # Mapeo estricto directo a las columnas maestras del BI (Cero adivinanzas)
+        # 🎯 MAPEO EXACTO DE 2026: Costo Avión / Ha está en COSTO_HA
         df_vivos.rename(columns={
-            'VALOR_FACTURAR': 'COSTO_MAESTRO',
             'AREA_FUMIG': 'AREA_MAESTRA',
-            'COSTO_AVION': 'AVION_MAESTRO',
+            'COSTO_HA': 'AVION_MAESTRO',
             'DOMINICAL_HA': 'DOMINIC_MAESTRO',
             'FINCA': 'FINCA_MAESTRA',
             'FECHA': 'FECHA_MAESTRA',
@@ -45,7 +43,7 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2024-2025) - TRADUCTOR CLÁSICO ---
+    # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
     url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
     datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
     
@@ -117,27 +115,19 @@ def limpiar_encabezados(df):
 def estandarizar_base(df):
     renombres = {}
     for col in df.columns:
-        # Quitamos guiones y saltos de línea para estandarizar el texto
-        c = str(col).upper().replace('\n', ' ').replace('_', ' ').strip()
-        
-        # Mapeo CONCRETO y directo (Sin búsquedas genéricas que causen error)
-        if c in ['VALOR A FACTURAR AL PRODUCTOR', 'COSTO HA', 'VALOR FACTURAR']: 
-            renombres[col] = 'COSTO_MAESTRO'
-        elif c in ['AREA FUMIGADA', 'AREA FUMIG']: 
-            renombres[col] = 'AREA_MAESTRA'
-        elif c in ['COSTO AVION/HA', 'COSTO AVION']: 
-            renombres[col] = 'AVION_MAESTRO'
-        elif c in ['COSTO DOMINICAL/HA', 'DOMINICAL HA']: 
-            renombres[col] = 'DOMINIC_MAESTRO'
-        elif c in ['FINCA', 'PROPIEDAD']: 
-            renombres[col] = 'FINCA_MAESTRA'
-        elif c == 'FECHA': 
-            renombres[col] = 'FECHA_MAESTRA'
-        elif c in ['OS', 'Nº ORDEN']: 
-            renombres[col] = 'OS_MAESTRA'
-        elif c in ['COCTEL', 'CÓCTEL']: 
-            renombres[col] = 'COCTEL_MAESTRO'
-
+        col_u = str(col).upper().replace('\n', ' ').strip()
+        if 'FINCA' in col_u and 'COSTO' in col_u: continue
+            
+        # 🎯 TRADUCTOR ORIGINAL INTACTO PARA 2024/2025
+        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
+        elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
+        elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
+        elif 'DOMINIC' in col_u and '/HA' in col_u: renombres[col] = 'DOMINIC_MAESTRO'
+        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): renombres[col] = 'FINCA_MAESTRA'
+        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': renombres[col] = 'FECHA_MAESTRA'
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): renombres[col] = 'OS_MAESTRA'
+        elif not ('COCTEL_MAESTRO' in renombres.values()) and col_u in ['COCTEL', 'CÓCTEL']: renombres[col] = 'COCTEL_MAESTRO'
+            
     df.rename(columns=renombres, inplace=True)
     return df
     
@@ -236,8 +226,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # Cálculos puros optimizados para inyección de Datos
-        super_base_bi['COSTO_NUM'] = super_base_bi['COSTO_MAESTRO'].apply(a_numero)
+        # 🎯 CÁLCULO ESTRICTO DE COSTOS: Separa la lógica 2026 de 2024/2025 para evitar el $4M
+        def calcular_costo_real(row):
+            if row.get('ORIGEN_BI') == 'ACTUAL':
+                # En 2026, COSTO_TOTAL / AREA_FUMIG nos da el costo real por hectárea
+                tot = a_numero(row.get('COSTO_TOTAL', 0))
+                ha = a_numero(row.get('AREA_MAESTRA', 1))
+                return tot / ha if ha > 0 else 0
+            else:
+                # En 2024/2025, el valor ya venía por hectárea desde Sheets
+                return a_numero(row.get('COSTO_MAESTRO', 0))
+
+        super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
 
@@ -397,14 +397,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
             
-            # =====================================================================
-            # 🛠️ RADAR DE DEPURACIÓN (LA TRAMPA PARA VER QUÉ PASA CON EL GRÁFICO)
-            # =====================================================================
             with st.expander("🛠️ RADAR DE DEPURACIÓN (LA TRAMPA) - Clic para inspeccionar datos", expanded=False):
                 st.write(f"**Operaciones encontradas en {año_base}:**", len(df_periodo_a))
                 st.write(f"**Operaciones encontradas en {año_comp}:**", len(df_periodo_b))
                 if df_periodo_b.empty:
-                    st.warning(f"¡ALERTA TÁCTICA! El sistema no encontró ningún vuelo para el año {año_comp} con los filtros actuales. Si no hay datos, la barra verde en los gráficos no se dibujará.")
+                    st.warning(f"¡ALERTA TÁCTICA! El sistema no encontró ningún vuelo para el año {año_comp} con los filtros actuales.")
             
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
@@ -420,8 +417,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
             if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
-            # 🎯 GRÁFICO DE CÓCTELES ESTABILIZADO (Se dibuja si hay datos reales)
-            if not tabla_autopsia.empty and tabla_autopsia[f'Costo/Ha ({año_base})'].sum() > 0 or tabla_autopsia[f'Costo/Ha ({año_comp})'].sum() > 0:
+            if not tabla_autopsia.empty and (tabla_autopsia[f'Costo/Ha ({año_base})'].sum() > 0 or tabla_autopsia[f'Costo/Ha ({año_comp})'].sum() > 0):
                 st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
                 df_graf_coctel = pd.melt(tabla_autopsia, id_vars=['CÓCTEL APLICADO'], 
                                          value_vars=[f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'],
