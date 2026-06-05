@@ -16,18 +16,36 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # =================================================================
 
 @st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     """ Descarga y unifica las bases actual e histórica una sola vez en caché """
+    
+    # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA COMO EN EL MÓDULO 9 ---
     url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     datos_brutos_act = _descargar_matriz_rapida(url_act, "TABLA 1")
     
     if len(datos_brutos_act) > 5:
-        df_vivos = pd.DataFrame(datos_brutos_act[5:], columns=datos_brutos_act[4])
-        df_vivos = estandarizar_base(limpiar_encabezados(df_vivos))
+        # Inyectamos los 30 encabezados duros para evitar celdas vacías o combinadas en Sheets
+        columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+        filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
+        df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+        
+        # Mapeo estricto directo a las columnas maestras del BI (Cero adivinanzas)
+        df_vivos.rename(columns={
+            'VALOR_FACTURAR': 'COSTO_MAESTRO',
+            'AREA_FUMIG': 'AREA_MAESTRA',
+            'COSTO_AVION': 'AVION_MAESTRO',
+            'DOMINICAL_HA': 'DOMINIC_MAESTRO',
+            'FINCA': 'FINCA_MAESTRA',
+            'FECHA': 'FECHA_MAESTRA',
+            'OS': 'OS_MAESTRA',
+            'COCTEL': 'COCTEL_MAESTRO'
+        }, inplace=True)
         df_vivos['ORIGEN_BI'] = 'ACTUAL'
     else:
         df_vivos = pd.DataFrame()
 
+    # --- 2. BASE HISTÓRICA (2024-2025) - TRADUCTOR CLÁSICO ---
     url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
     datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
     
@@ -102,22 +120,13 @@ def estandarizar_base(df):
         col_u = str(col).upper().replace('\n', ' ').strip()
         if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        # 🎯 TRADUCTOR BLINDADO: Lógica de 24/25 intacta + Inyección exacta de 2026
         if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
-        elif col_u in ['VALOR_FACTURAR', 'COSTO_HA']: renombres[col] = 'COSTO_MAESTRO'
-        
         elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
-        elif col_u == 'AREA_FUMIG': renombres[col] = 'AREA_MAESTRA'
-        
         elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
-        elif col_u == 'COSTO_AVION': renombres[col] = 'AVION_MAESTRO'
-        
         elif 'DOMINIC' in col_u and '/HA' in col_u: renombres[col] = 'DOMINIC_MAESTRO'
-        elif col_u == 'DOMINICAL_HA': renombres[col] = 'DOMINIC_MAESTRO'
-        
         elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): renombres[col] = 'FINCA_MAESTRA'
         elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': renombres[col] = 'FECHA_MAESTRA'
-        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): renombres[col] = 'OS_MAESTRA'
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or col_u == "OS"): renombres[col] = 'OS_MAESTRA'
         elif not ('COCTEL_MAESTRO' in renombres.values()) and col_u in ['COCTEL', 'CÓCTEL']: renombres[col] = 'COCTEL_MAESTRO'
             
     df.rename(columns=renombres, inplace=True)
