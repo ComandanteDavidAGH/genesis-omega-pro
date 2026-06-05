@@ -170,6 +170,18 @@ def ejecutar(extraer_numero):
                                     break 
                                 
                             if col_finca != -1:
+                                # ⚡ 3. EXTRACCIÓN DEL CÓCTEL UNA SOLA VEZ (Freno de mano quitado)
+                                val_coctel_global = "S/N"
+                                for r_up in range(idx_header):
+                                    fila_up = [str(x).strip().upper() for x in df.iloc[r_up].tolist()]
+                                    for c_up, val in enumerate(fila_up):
+                                        if "COCTEL" in val or "MEZCLA" in val:
+                                            if c_up + 1 < len(fila_up) and fila_up[c_up+1] not in ["", "NAN", "NONE"]: 
+                                                val_coctel_global = str(df.iloc[r_up, c_up+1]).strip()
+                                            elif c_up + 2 < len(fila_up) and fila_up[c_up+2] not in ["", "NAN", "NONE"]: 
+                                                val_coctel_global = str(df.iloc[r_up, c_up+2]).strip()
+                                                
+                                # 🚀 PROCESAMIENTO DE FILAS A VELOCIDAD LUZ
                                 for r in range(idx_header + 1, len(df)):
                                     val_finca = str(df.iloc[r, col_finca]).strip()
                                     if val_finca.upper() in ["", "NAN", "NONE", "TOTAL"] or "TOTAL" in val_finca.upper(): continue
@@ -188,16 +200,9 @@ def ejecutar(extraer_numero):
                                             if c_clean.isdigit() and len(c_clean) >= 6:
                                                 val_pedido = c_clean; break
                                                 
-                                    val_coctel = "S/N"
-                                    for r_up in range(idx_header):
-                                        fila_up = [str(x).strip().upper() for x in df.iloc[r_up].tolist()]
-                                        for c_up, val in enumerate(fila_up):
-                                            if "COCTEL" in val or "MEZCLA" in val:
-                                                if c_up + 1 < len(fila_up) and fila_up[c_up+1] not in ["", "NAN", "NONE"]: 
-                                                    val_coctel = str(df.iloc[r_up, c_up+1]).strip()
-                                                elif c_up + 2 < len(fila_up) and fila_up[c_up+2] not in ["", "NAN", "NONE"]: 
-                                                    val_coctel = str(df.iloc[r_up, c_up+2]).strip()
-                                                
+                                    # Ya no buscamos el cóctel, usamos el que memorizamos
+                                    val_coctel = val_coctel_global
+                                    
                                     # 🎯 EXTRACCIÓN DE HA DE PISTA
                                     val_ha_pista = 0.0
                                     if col_ha != -1 and col_ha < len(df.columns):
