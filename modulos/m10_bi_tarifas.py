@@ -350,6 +350,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#548235', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
             ])
             fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", margin=dict(t=20, b=20))
+            fig_unit.update_xaxes(type='category')
             st.plotly_chart(fig_unit, use_container_width=True)
             
         with tab_glob:
@@ -360,6 +361,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#548235', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
             ])
             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", margin=dict(t=20, b=20))
+            fig_glob.update_xaxes(type='category')
             st.plotly_chart(fig_glob, use_container_width=True)
         
         # --- DESGLOSE OPERATIVO DE CÓCTELES ---
@@ -382,21 +384,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
             if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
-            # 🎯 GRAFICADOR DE BARRAS AGRUPADAS REPARADO (Cruce Año Base vs Año Evaluado)
-            st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
-            if not tabla_autopsia.empty:
-                df_graf_coctel = pd.melt(tabla_autopsia, id_vars=['CÓCTEL APLICADO'], 
-                                         value_vars=[f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'],
-                                         var_name='Periodo', value_name='Costo Promedio')
-                
-                fig_coctel = px.bar(df_graf_coctel, x='CÓCTEL APLICADO', y='Costo Promedio', color='Periodo', 
-                                    barmode='group', color_discrete_sequence=['#2F75B5', '#ef4444'], text='Costo Promedio')
-                
-                fig_coctel.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont_size=11)
-                fig_coctel.update_layout(yaxis_title="Costo Operativo ($ COP / Ha)", xaxis_title="Estructura de la Receta", 
-                                         plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-                st.plotly_chart(fig_coctel, use_container_width=True)
-
             df_vista = tabla_autopsia.copy()
             df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
             df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
