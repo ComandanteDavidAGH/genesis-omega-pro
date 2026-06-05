@@ -12,6 +12,32 @@ import concurrent.futures
 # ⚡ MOTORES ACELERADORES INDUSTRIALES (Caché de Lógica y Datos)
 # =================================================================
 
+@st.cache_data(show_spinner=False, ttl=600)
+def obtener_historial_completo_ciclos():
+    """ 🤖 MOTOR IA: Descarga el historial completo (TABLA 1 y APOYO) de forma segura y autenticada """
+    try:
+        if "gcp_credentials" in st.secrets:
+            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+        else:
+            gc = gspread.service_account(filename='credenciales.json')
+        
+        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        
+        t1 = boveda.worksheet("TABLA 1").get_all_values()
+        df_t1 = pd.DataFrame(t1[5:], columns=t1[4]) if len(t1) > 5 else pd.DataFrame()
+        
+        apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
+        fila_t = 0
+        for i, fila in enumerate(apoyo[:20]):
+            if any('FINCA' in str(c).upper() for c in fila): 
+                fila_t = i
+                break
+        df_apoyo = pd.DataFrame(apoyo[fila_t+1:], columns=apoyo[fila_t]) if len(apoyo) > fila_t else pd.DataFrame()
+        
+        return df_t1, df_apoyo
+    except:
+        return pd.DataFrame(), pd.DataFrame()
+
 @st.cache_data(show_spinner=False)
 def preprocesar_flota_gspread():
     """ Extrae y estructura las tarifas de la flota una sola vez en RAM """
@@ -439,8 +465,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         df_sab = st.session_state.get('df_sabana', pd.DataFrame())
         df_mez = st.session_state.get('df_mezclas', pd.DataFrame())
         df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
-        df_apoyo = st.session_state.get('df_apoyo', pd.DataFrame())
-
+        
         finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
@@ -459,58 +484,47 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
                 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS INDESTRUCTIBLE (Bypass de Memoria)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (Auténtico, Cacheado y Multi-Tabla)
         # =======================================================
         dias_ciclo_calc = 0
         try:
-            # Conexión Directa a la fuente original a velocidad luz (0.5s)
-            url_apoyo = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet=TABLA%20DE%20APOYO2023"
-            df_ap_bruto = pd.read_csv(url_apoyo)
-            
-            # Buscar columnas FINCA y FECHA en toda la estructura
-            df_text = df_ap_bruto.astype(str).apply(lambda x: x.str.upper())
-            fila_t = -1
-            
-            # Escanear las primeras 15 filas para encontrar los verdaderos encabezados
-            for i in range(min(15, len(df_text))):
-                if df_text.iloc[i].str.contains('FINCA').any() and df_text.iloc[i].str.contains('FECHA').any():
-                    fila_t = i
-                    break
-                    
-            if fila_t != -1:
-                df_ap_bruto.columns = df_ap_bruto.iloc[fila_t]
-                df_ap_bruto = df_ap_bruto.iloc[fila_t+1:].reset_index(drop=True)
-            
-            col_f = next((c for c in df_ap_bruto.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
-            col_d = next((c for c in df_ap_bruto.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
-            
-            if col_f and col_d:
-                # Búsqueda Agresiva de Finca
-                f_obj = str(finca_limpia).strip().upper()
-                palabra_clave = f_obj.replace("-", " ").split()[0] if len(f_obj) > 4 else f_obj
+            df_viva, df_hist = obtener_historial_completo_ciclos()
+            fechas_encontradas = []
+            f_obj = str(finca_limpia).strip().upper()
+            palabra_clave = f_obj.replace("-", " ").split()[0] if len(f_obj) > 4 else f_obj
+
+            def extraer_fechas(df_temp):
+                if df_temp.empty: return
+                col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+                col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
                 
-                mask = df_ap_bruto[col_f].astype(str).str.upper().str.contains(palabra_clave, na=False)
-                df_filtrado = df_ap_bruto[mask].copy()
-                
-                if not df_filtrado.empty:
-                    def parse_d(val):
+                if col_f and col_d:
+                    mask = df_temp[col_f].astype(str).str.upper().str.contains(palabra_clave, na=False)
+                    df_fil = df_temp[mask]
+                    for d in df_fil[col_d]:
                         try:
-                            v = str(val).strip()
-                            if v.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(v), 'D')
-                            return pd.to_datetime(v.split(" ")[0], dayfirst=True)
-                        except: return pd.NaT
-                        
-                    df_filtrado['F_PURA'] = df_filtrado[col_d].apply(parse_d)
-                    df_filtrado = df_filtrado.dropna(subset=['F_PURA'])
+                            v = str(d).strip().split(" ")[0]
+                            if v.isdigit(): fechas_encontradas.append(pd.to_datetime('1899-12-30') + pd.to_timedelta(int(v), 'D'))
+                            elif v: fechas_encontradas.append(pd.to_datetime(v, dayfirst=True))
+                        except: pass
+
+            # Extraemos fechas de ambas tablas para que no se nos escape el 2026
+            extraer_fechas(df_viva)
+            extraer_fechas(df_hist)
+            
+            if fechas_encontradas:
+                fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
+                # Buscamos solo fechas que sean estrictamente anteriores al vuelo
+                fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
+                if fechas_validas:
+                    fecha_max = max(fechas_validas)
+                    dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
                     
-                    if not df_filtrado.empty:
-                        fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
-                        vuelos_ant = df_filtrado[df_filtrado['F_PURA'] < fecha_vuelo_dt]
-                        if not vuelos_ant.empty:
-                            dias_ciclo_calc = (fecha_vuelo_dt - vuelos_ant['F_PURA'].max()).days
-                            if dias_ciclo_calc <= 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
+                    # Evitamos saltos locos o negativos
+                    if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
+                        dias_ciclo_calc = 0
         except Exception as e:
-            pass # Si falla, mantiene 0 por seguridad
+            pass # Falla segura para no romper la interfaz
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
@@ -686,7 +700,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 cod_item = texto_material.split('.')[0].lstrip('0')
                 
-                # ⚡ EL SEGURO FINAL DEL CERO (0.000): Busca HECT, DOSIS, CANTIDAD en el índice de fila de SAP
                 col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
                 if col_cant_real:
                     cant_total = extraer_numero(fila_sap[col_cant_real[0]])
@@ -952,7 +965,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", ('DRONE' if mision_solo_dron else 'AVION'), ""]
                     
-                    # ⚡ FASE 1: DESCARGA PARALELA DEL ESTADO DE LA BÓVEDA (Identifica filas vacías al mismo tiempo)
+                    # ⚡ FASE 1: DESCARGA PARALELA DEL ESTADO DE LA BÓVEDA
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         fut_col_azul = executor.submit(hoja_maestra.col_values, 1)
                         fut_col_apoyo = executor.submit(hoja_apoyo.col_values, 2)
@@ -966,7 +979,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     f_apoyo = next((i+2 for i in range(len(col_apoyo)-1, -1, -1) if str(col_apoyo[i]).strip() != ""), 1)
                     fila_apoyo[0] = f_apoyo - 3
                     
-                    # ⚡ FASE 2: EXPANSIÓN PARALELA (Si falta espacio en las hojas, lo agrega a la vez)
+                    # ⚡ FASE 2: EXPANSIÓN PARALELA
                     def expandir_hoja(hoja, req):
                         if req > hoja.row_count: hoja.add_rows(10)
                     
@@ -986,7 +999,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                 filas_memoria.append(fila_m)
                     
-                    # ⚡ FASE 3: IMPACTO DE ESCRITURA MULTIHILO (Guarda todo al tiempo)
+                    # ⚡ FASE 3: IMPACTO DE ESCRITURA MULTIHILO
                     def inyectar_maestra():
                         hoja_maestra.update(values=[row_azul], range_name=f"A{f_azul}", value_input_option='USER_ENTERED')
                     def inyectar_apoyo():
