@@ -46,7 +46,6 @@ def cargar_boveda_recetas_y_precios():
     try:
         gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
         
-        # Cargar Bóveda de Recetas Básicas
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -57,7 +56,6 @@ def cargar_boveda_recetas_y_precios():
         df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
         df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
 
-        # Cargar Sabana de Precios Históricos de Insumos
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
         
@@ -104,8 +102,8 @@ def estandarizar_base(df):
         col_u = str(col).upper().replace('\n', ' ').strip()
         if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        # 🎯 MEJORA ARQUITECTÓNICA: Mapeo universal (Soporta nombres de 2025 y de 2026)
-        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or (col_u == 'VALOR_FACTURAR'): 
+        # 🎯 CORRECCIÓN QUIRÚRGICA: Lee COSTO_HA real de 2026 para rellenar la gráfica comparativa
+        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or (col_u == 'COSTO_HA'): 
             renombres[col] = 'COSTO_MAESTRO'
         elif 'FUMIG' in col_u and 'AREA' in col_u: 
             renombres[col] = 'AREA_MAESTRA'
@@ -220,12 +218,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # Cálculos puros optimizados para inyección de Datos
         super_base_bi['COSTO_NUM'] = super_base_bi['COSTO_MAESTRO'].apply(a_numero)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
 
-        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -404,20 +400,27 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
             if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
                 
-            # 🎯 GRÁFICO GIGANTE DE CÓCTELES RESTAURADO Y CON COLORES AMIGABLES
+            # 🎯 GRÁFICO GIGANTE DE CÓCTELES CON ETIQUETAS VERTICALES LIMPIAS Y REDONDEADAS
             st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
             if not tabla_autopsia.empty:
                 df_graf_coctel = pd.melt(tabla_autopsia, id_vars=['CÓCTEL APLICADO'], 
                                          value_vars=[f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'],
                                          var_name='Periodo', value_name='Costo Promedio')
                 
-                # Cero rojo. Usamos Azul y Verde.
                 fig_coctel = px.bar(df_graf_coctel, x='CÓCTEL APLICADO', y='Costo Promedio', color='Periodo', 
                                     barmode='group', color_discrete_sequence=['#2F75B5', '#27AE60'], text='Costo Promedio')
                 
-                fig_coctel.update_traces(texttemplate='', textposition='outside', textfont_size=11)
+                # Formato a 0 decimales, etiqueta afuera, girada -90 grados para que sea vertical y no se estrelle
+                fig_coctel.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textangle=-90, textfont_size=11)
+                
+                # Aumentamos el rango Y para que las etiquetas verticales no se corten contra el techo del gráfico
+                max_val = df_graf_coctel['Costo Promedio'].max()
+                if pd.notna(max_val) and max_val > 0:
+                    fig_coctel.update_yaxes(range=[0, max_val * 1.35])
+                    
                 fig_coctel.update_layout(yaxis_title="Costo Operativo ($ COP / Ha)", xaxis_title="Estructura de la Receta", 
-                                         plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                                         plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                                         margin=dict(t=50))
                 st.plotly_chart(fig_coctel, use_container_width=True)
 
             df_vista = tabla_autopsia.copy()
