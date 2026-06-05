@@ -40,7 +40,6 @@ def obtener_historial_completo_ciclos():
 
 @st.cache_data(show_spinner=False)
 def preprocesar_flota_gspread():
-    """ Extrae y estructura las tarifas de la flota una sola vez en RAM """
     try:
         if "gcp_credentials" in st.secrets:
             credenciales_puras = dict(st.secrets["gcp_credentials"])
@@ -69,7 +68,6 @@ def preprocesar_flota_gspread():
 
 @st.cache_data(show_spinner=False)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
-    """ 🤖 MOTOR IA VECTORIZADO: Encuentra el cóctel óptimo sin ralentizar la interfaz """
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
     max_p = -999
@@ -101,12 +99,10 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 for k_sap, d_sap in sap_dict_pista.items():
                     if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                         match_receta = True
-                        if abs(d_sap - d_esperada) <= 0.5: 
-                            dose_matched = True 
+                        if abs(d_sap - d_esperada) <= 0.5: dose_matched = True 
                         break
                 
-                if match_receta: 
-                    puntaje += 50 if dose_matched else 10
+                if match_receta: puntaje += 50 if dose_matched else 10
                 else: 
                     es_valido = False
                     break
@@ -122,8 +118,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
                 sigla_fertilizante = f" {f_sigla}"
                 break
-        if sigla_fertilizante: 
-            break
+        if sigla_fertilizante: break
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
@@ -136,10 +131,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
-        border: 3px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important;
-        overflow: hidden !important;
+        border: 3px solid #0d1b2a !important; border-radius: 8px !important;
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     </style>
@@ -152,11 +145,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     if modo_simulacro:
         st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico.")
-        
         if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
             st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
             url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
-            
             if url_drive:
                 try:
                     file_id = url_drive.split('/d/')[1].split('/')[0] if '/d/' in url_drive else None
@@ -169,19 +160,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
                                 st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
                                 st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
-                                
                                 hojas = xls.sheet_names
                                 nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
                                 st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
-                                
                                 st.success("✅ Matrices cargadas y listas.")
                                 st.rerun()
-                            else: 
-                                st.error(f"❌ Error de descarga: {resp.status_code}")
-                    else: 
-                        st.error("❌ Link inválido.")
-                except Exception as e: 
-                    st.error(f"🚨 Error: {e}")
+                            else: st.error(f"❌ Error de descarga: {resp.status_code}")
+                    else: st.error("❌ Link inválido.")
+                except Exception as e: st.error(f"🚨 Error: {e}")
             st.stop()
 
         df_cfg = st.session_state['df_cfg']
@@ -192,8 +178,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         pistas_con_tope = []
         try:
             filas_a_revisar = [[str(c).upper().strip() for c in df_vd.columns]]
-            for i in range(min(10, len(df_vd))): 
-                filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
+            for i in range(min(10, len(df_vd))): filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
             
             p_idx, t_idx, pr_idx = -1, -1, -1
             for idx_fila, row_vals in enumerate(filas_a_revisar):
@@ -201,29 +186,21 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if val.startswith('TOPE'):
                         t_idx = i
                         for k in range(max(0, i-3), i):
-                            if row_vals[k].startswith('PISTA'): 
-                                p_idx = k
-                            if 'PRECIO' in row_vals[k]: 
-                                pr_idx = k
-                if p_idx != -1 and t_idx != -1: 
-                    break
+                            if row_vals[k].startswith('PISTA'): p_idx = k
+                            if 'PRECIO' in row_vals[k]: pr_idx = k
+                if p_idx != -1 and t_idx != -1: break
                     
             if p_idx != -1 and t_idx != -1:
                 for j in range(0, len(df_vd)):
                     p_name = str(df_vd.iloc[j, p_idx]).strip()
-                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): 
-                        continue
+                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
                     p_tope = str(df_vd.iloc[j, t_idx]).strip()
-                    if p_tope in ['NAN', 'NONE', '']: 
-                        continue
+                    if p_tope in ['NAN', 'NONE', '']: continue
                     p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
-                    if pd.isna(p_precio): 
-                        p_precio = 0
+                    if pd.isna(p_precio): p_precio = 0
                     texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
-                    if texto_tope not in pistas_con_tope: 
-                        pistas_con_tope.append(texto_tope)
-        except: 
-            pass
+                    if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
+        except: pass
         
         if not pistas_con_tope: 
             pistas_con_tope = ["PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", "PDIV - PORCION TERRESTRE ($8.504)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"]
@@ -237,14 +214,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "TERCERO"
                     t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
                     diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
-                    if f_name not in lista_fincas: 
-                        lista_fincas.append(f_name)
-        except: 
-            pass
+                    if f_name not in lista_fincas: lista_fincas.append(f_name)
+        except: pass
             
-        if not lista_fincas: 
-            lista_fincas = ["NUEVO MUNDO"]
-        
+        if not lista_fincas: lista_fincas = ["NUEVO MUNDO"]
         lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
 
         if 'finca_anterior' not in st.session_state:
@@ -260,9 +233,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         
         if finca_sim != st.session_state.finca_anterior:
             datos = diccionario_fincas.get(finca_sim, {})
-            if datos.get("Productor") in lista_productores: 
-                st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
-            
+            if datos.get("Productor") in lista_productores: st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
             st.session_state.idx_tope = 0
             tope_k = datos.get("Tope_Key", "")
             if tope_k:
@@ -270,7 +241,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if tope_k in p_t: 
                         st.session_state.idx_tope = i
                         break
-                        
             st.session_state.finca_anterior = finca_sim
             st.rerun()
 
@@ -282,40 +252,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
         horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
         dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
-        
         recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
         if st.button("🚀 Construir Matriz MEGAZORD"):
             try:
-                if tipo_prod_sim == "TERCERO": 
-                    mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
-                elif tipo_prod_sim == "AFILIADO": 
-                    mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
-                elif tipo_prod_sim == "COOPERATIVA": 
-                    mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
-                elif tipo_prod_sim == "ORGANICO": 
-                    mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
-                else: 
-                    mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
+                if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
+                elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "COOPERATIVA": mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
+                else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
                 tarifa_vuelo_base = 4606562.0 
                 val_tope = 0.0
                 match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
-                if match: 
-                    val_tope = float(match.group(1).replace('.', ''))
+                if match: val_tope = float(match.group(1).replace('.', ''))
 
                 if vuelo_sim == "DRONE": 
-                    if "PLUC" in pista_sim: 
-                        base_dron = 84428
-                    elif "PDIV" in pista_sim: 
-                        base_dron = 76916
-                    else: 
-                        base_dron = 72600
+                    if "PLUC" in pista_sim: base_dron = 84428
+                    elif "PDIV" in pista_sim: base_dron = 76916
+                    else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
-                    if val_tope > 0: 
-                        costo_bruto = min(costo_bruto, val_tope)
+                    if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
                     unitario_vuelo = costo_bruto * mult_v
 
                 subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
@@ -331,20 +290,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 for idx, row in receta_c.iterrows():
                     p = str(row.iloc[1]).upper().strip()
                     d = pd.to_numeric(row.iloc[2], errors='coerce')
-                    if pd.notna(d) and d > 0 and p not in ['NAN', '']: 
-                        prods_f.append({"PRODUCTO": p, "DOSIS": d})
+                    if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
                 if sigla_f:
-                    if "ZN" in sigla_f: 
-                        prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
-                    elif "BT" in sigla_f: 
-                        prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
+                    if "ZN" in sigla_f: prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
+                    elif "BT" in sigla_f: prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
 
                 for item in prods_f:
-                    if "ACONDICIONADOR" in item["PRODUCTO"]: 
-                        item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u) else 0.02
-                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: 
-                        item["DOSIS"] = 1.0 if sigla_f else 1.5
+                    if "ACONDICIONADOR" in item["PRODUCTO"]: item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u) else 0.02
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: item["DOSIS"] = 1.0 if sigla_f else 1.5
 
                 tabla_visual = []
                 mezcla_total = 0
@@ -389,8 +343,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 st.markdown("---")
                 st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
-            except Exception as e: 
-                st.error(f"Error: {e}")
+            except Exception as e: st.error(f"Error: {e}")
         st.stop()
 
     # -----------------------------------------------------------------
@@ -430,8 +383,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else extraer_numero(match_sap.iloc[0][col_ha])
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
-                except: 
-                    pass
+                except: pass
 
         c0, c1, c2 = st.columns([1, 2, 2])
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
@@ -444,8 +396,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if finca_sap:
             for i, f in enumerate(opciones_finca):
                 if f.upper() in finca_sap or finca_sap in f.upper(): 
-                    idx_finca = i
-                    break
+                    idx_finca = i; break
 
         finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
         vuelos_informe = st.session_state.get('df_pistas', pd.DataFrame())
@@ -484,97 +435,67 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (FILTRO INTELIGENTE MULTI-NIVEL)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (PULIDO Y SIN TRAMPAS)
         # =======================================================
         dias_ciclo_calc = 0
-        debug_log = [] # 🛠️ LA TRAMPA
-        
         try:
             f_obj_clean = re.sub(r'\s+', ' ', str(finca_limpia).strip().upper())
-            debug_log.append(f"🔍 Búsqueda de ciclos para: '{f_obj_clean}'")
             df_viva, df_hist = obtener_historial_completo_ciclos()
-            
             fechas_encontradas = []
 
             def parsear_fecha_robusta(val):
-                if pd.isna(val) or str(val).strip() == "": return pd.NaT, "Vacío"
+                if pd.isna(val) or str(val).strip() == "": return pd.NaT
                 s = str(val).strip().lower()
-                if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D'), "Numérico"
+                if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
                 
                 meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
                 match1 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
                 if match1:
                     mes_str, dia_str, anio_str = match1.groups()
-                    if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}"), "Texto GSheets"
+                    if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
                 match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
                 if match2:
                     dia_str, mes_str, anio_str = match2.groups()
-                    if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}"), "Texto Alt"
-                try: return pd.to_datetime(s.split(" ")[0], dayfirst=True), "Estándar"
-                except: return pd.NaT, "Fallido"
+                    if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                try: return pd.to_datetime(s.split(" ")[0], dayfirst=True)
+                except: return pd.NaT
 
-            def extraer_fechas(df_temp, nombre_tabla):
+            def extraer_fechas(df_temp):
                 if df_temp.empty: return
                 col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
                 col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
                 
                 if col_f and col_d:
-                    # NORMALIZAR COLUMNA FINCA
                     fincas_str = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'\s+', ' ', x).strip())
                     
-                    # 🛡️ NIVEL 1: MATCH EXACTO
                     mask = fincas_str == f_obj_clean
-                    nivel = "Exacto"
-                    
-                    # 🛡️ NIVEL 2: MATCH CONTENIDO
-                    if not mask.any():
-                        mask = fincas_str.apply(lambda x: f_obj_clean in x)
-                        nivel = "Contenido"
-                        
-                    # 🛡️ NIVEL 3: PALABRA CLAVE ESTRICTA
+                    if not mask.any(): mask = fincas_str.apply(lambda x: f_obj_clean in x)
                     if not mask.any():
                         partes = f_obj_clean.replace("-", " ").split()
-                        if len(partes) > 1 and any(x in partes[0] for x in ["COOP", "BANAFRU", "ASO"]):
+                        # SE AGREGÓ COOBAMAG PARA QUE NUNCA MÁS PASE ESTO
+                        if len(partes) > 1 and any(x in partes[0] for x in ["COOP", "BANAFRU", "ASO", "COOBAMAG"]):
                             clave = partes[1] if len(partes[1]) > 2 else partes[0]
                         else:
                             clave = partes[0] if len(partes) > 0 and len(partes[0]) > 4 else f_obj_clean
                         mask = fincas_str.str.contains(clave, regex=False, na=False)
-                        nivel = f"Clave ({clave})"
 
                     df_fil = df_temp[mask]
-                    debug_log.append(f"📂 {nombre_tabla}: Halló {len(df_fil)} vuelos de '{f_obj_clean}' (Nivel: {nivel}).")
-                    
-                    for idx, row in df_fil.iterrows():
-                        d_raw = row[col_d]
-                        fecha_valida, metodo = parsear_fecha_robusta(d_raw)
-                        if pd.notna(fecha_valida):
-                            fechas_encontradas.append(fecha_valida)
-                            # Imprimimos solo las fechas para no saturar el log
-                            debug_log.append(f"   -> Vuelo registrado el: {fecha_valida.strftime('%d/%m/%Y')}")
-                else:
-                    debug_log.append(f"⚠️ Cols FINCA o FECHA no encontradas en {nombre_tabla}.")
+                    for d_raw in df_fil[col_d]:
+                        fecha_valida = parsear_fecha_robusta(d_raw)
+                        if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
 
-            extraer_fechas(df_viva, "TABLA 1 (Viva)")
-            extraer_fechas(df_hist, "TABLA APOYO (Histórica)")
+            extraer_fechas(df_viva)
+            extraer_fechas(df_hist)
             
             if fechas_encontradas:
                 fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
-                debug_log.append(f"📅 Vuelo actual procesado: {fecha_vuelo_dt.strftime('%d/%m/%Y')}")
-                
                 fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
                 if fechas_validas:
                     fecha_max = max(fechas_validas)
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
-                    debug_log.append(f"🏆 Fecha MAX elegida: {fecha_max.strftime('%d/%m/%Y')} -> {dias_ciclo_calc} días")
-                    if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
-                        dias_ciclo_calc = 0
-                        debug_log.append("⚠️ Forzado a 0 (fuera de rango)")
-                else:
-                    debug_log.append("⚠️ No hay vuelos ANTERIORES.")
-            else:
-                debug_log.append("❌ Cero fechas válidas extraídas.")
+                    if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
         except Exception as e:
-            debug_log.append(f"💥 ERROR: {str(e)}")
+            pass
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
@@ -610,18 +531,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
-
-        # --- IMPRESIÓN DE LA TRAMPA EN PANTALLA ---
-        with st.expander("🛠️ TRAMPA DE CICLOS (Auditoría de IA)"):
-            for linea in debug_log: st.text(linea)
-
-        # --- IMPRESIÓN DE LA TRAMPA ---
-        with st.expander("🛠️ TRAMPA DE CICLOS (Clic para auditar lectura)"):
-            for linea in debug_log: st.text(linea)
-
-        # --- IMPRESIÓN DE LA TRAMPA EN PANTALLA ---
-        with st.expander("🛠️ TRAMPA DE CICLOS (Clic para auditar lectura)"):
-            for linea in debug_log: st.text(linea)
 
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
