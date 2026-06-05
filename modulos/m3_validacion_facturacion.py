@@ -459,44 +459,47 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
         # 🎯 MOTOR DE CICLOS REPARADO (Caza-Fechas y Búsqueda Flexible)
         # 🎯 MOTOR DE CICLOS BLINDADO (Caza-Fechas y Búsqueda Agresiva)
+        # 🎯 MOTOR DE CICLOS EXTREMO (Con Radar de Depuración)
         dias_ciclo_calc = 0
+        radar_ciclos = []
+        
         if not df_apoyo.empty:
-            col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()]
-            col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()]
+            col_finca = next((c for c in df_apoyo.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+            col_fecha = next((c for c in df_apoyo.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
             
             if col_finca and col_fecha:
-                col_f_name, col_d_name = col_finca[0], col_fecha[0]
+                finca_obj = str(finca_sel).upper().strip()
+                palabra_clave = finca_obj.replace("-", " ").split()[0] if len(finca_obj) > 3 else finca_obj
                 
-                # 1. Búsqueda Agresiva: Usamos la primera palabra clave (ej. "COOMULBANANO")
-                partes_nombre = finca_limpia.replace("-", " ").split(" ")
-                palabra_clave = partes_nombre[0] if len(partes_nombre[0]) > 4 else finca_limpia
-                
-                # 2. Filtramos la Tabla de Apoyo
-                mask = df_apoyo[col_f_name].astype(str).str.upper().str.contains(palabra_clave, na=False)
-                hist_finca = df_apoyo[mask].copy()
-
-                if not hist_finca.empty:
-                    # 3. Parseo de fechas a prueba de balas (Para formatos CSV crudos)
-                    def purificar_fecha(d):
+                historial_fechas = []
+                for _, row_a in df_apoyo.iterrows():
+                    f_name = str(row_a[col_finca]).upper().strip()
+                    if palabra_clave in f_name or finca_obj in f_name:
+                        f_date_str = str(row_a[col_fecha]).strip().split(" ")[0]
                         try:
-                            return pd.to_datetime(str(d).split(" ")[0], dayfirst=True)
-                        except:
-                            return pd.NaT
-                            
-                    hist_finca['FECHA_PURA'] = hist_finca[col_d_name].apply(purificar_fecha)
-                    hist_finca = hist_finca.dropna(subset=['FECHA_PURA'])
+                            # Intento de parseo forzado e indestructible
+                            parsed_date = pd.to_datetime(f_date_str, dayfirst=True)
+                            historial_fechas.append(parsed_date)
+                        except: pass
+                
+                if historial_fechas:
+                    fecha_actual_vuelo = pd.to_datetime(fecha_operacion)
+                    fechas_validas = [d for d in historial_fechas if d < fecha_actual_vuelo]
                     
-                    if not hist_finca.empty:
-                        fecha_ref = pd.to_datetime(fecha_operacion)
-                        # Solo busca vuelos estrictamente anteriores al actual
-                        vuelos_anteriores = hist_finca[hist_finca['FECHA_PURA'] < fecha_ref]
-                        
-                        if not vuelos_anteriores.empty:
-                            dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_PURA'].max()).days
-                            
-                            # Filtro anti-locuras matemáticas (Si da negativo o > 1 año, lo anula)
-                            if dias_ciclo_calc < 0 or dias_ciclo_calc > 365:
-                                dias_ciclo_calc = 0
+                    if fechas_validas:
+                        fecha_mas_reciente = max(fechas_validas)
+                        dias_ciclo_calc = (fecha_actual_vuelo - fecha_mas_reciente).days
+                        if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
+                        radar_ciclos.append(f"✅ Match exitoso. Última misión: {fecha_mas_reciente.strftime('%d/%m/%Y')} ({dias_ciclo_calc} días atrás).")
+                    else:
+                        radar_ciclos.append("⚠️ Hay historial, pero ningún vuelo es ANTERIOR a la fecha del vuelo actual.")
+                else:
+                    radar_ciclos.append(f"❌ La finca '{finca_obj}' (Buscada como: '{palabra_clave}') no tiene historial de fechas válido.")
+            else:
+                radar_ciclos.append(f"❌ Columnas FINCA o FECHA no encontradas. Columnas leídas: {list(df_apoyo.columns)}")
+        else:
+            radar_ciclos.append("❌ TABLA DE APOYO VACÍA. Vaya al Módulo 2 y oprima el botón de Procesamiento Maestro.")
+
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
         
@@ -537,6 +540,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
+        with st.expander("🛠️ RADAR DE CICLOS (Clic si sigue en Cero)"):
+            for msg in radar_ciclos: st.write(msg)
         
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
