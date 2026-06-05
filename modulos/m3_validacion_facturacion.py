@@ -484,45 +484,56 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
                 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (Traductor Textual Español)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (Con Súper Trampa)
         # =======================================================
         dias_ciclo_calc = 0
+        debug_log = [] # 🛠️ LA TRAMPA
+        
         try:
+            debug_log.append(f"🔍 Iniciando búsqueda para: '{finca_limpia}'")
             df_viva, df_hist = obtener_historial_completo_ciclos()
+            
+            debug_log.append(f"📦 Filas descargadas -> TABLA 1: {len(df_viva)} | APOYO: {len(df_hist)}")
+            
             fechas_encontradas = []
             f_obj = str(finca_limpia).strip().upper()
             palabra_clave = f_obj.replace("-", " ").split()[0] if len(f_obj) > 4 else f_obj
+            debug_log.append(f"🔑 Palabra clave de búsqueda: '{palabra_clave}'")
 
             def parsear_fecha_robusta(val):
-                if pd.isna(val): return pd.NaT
+                if pd.isna(val) or str(val).strip() == "": return pd.NaT, "Vacío"
                 s = str(val).strip().lower()
+                
                 if s.isdigit(): 
-                    return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+                    return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D'), "Formato Numérico (Sheets)"
                 
                 # Diccionario de meses en español
                 meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
                 
-                # Formato Texto Google Sheets: "viernes, mayo 08, 2026"
+                # Buscar patrón: "viernes, mayo 08, 2026"
                 match1 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
                 if match1:
                     mes_str, dia_str, anio_str = match1.groups()
                     if mes_str in meses:
-                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}"), "Texto GSheets"
                 
-                # Formato Texto Alternativo: "08 de mayo de 2026"
+                # Buscar patrón: "08 de mayo de 2026"
                 match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
                 if match2:
                     dia_str, mes_str, anio_str = match2.groups()
                     if mes_str in meses:
-                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}"), "Texto Alternativo"
                 
-                # Formato Estándar: DD/MM/YYYY
+                # Formato Estándar
                 try:
-                    return pd.to_datetime(s.split(" ")[0], dayfirst=True)
+                    return pd.to_datetime(s.split(" ")[0], dayfirst=True), "Estándar (DD/MM/YYYY)"
                 except:
-                    return pd.NaT
+                    try:
+                        return pd.to_datetime(s, errors='coerce'), "Fallback"
+                    except:
+                        return pd.NaT, "Fallido"
 
-            def extraer_fechas(df_temp):
+            def extraer_fechas(df_temp, nombre_tabla):
                 if df_temp.empty: return
                 col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
                 col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
@@ -530,26 +541,44 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if col_f and col_d:
                     mask = df_temp[col_f].astype(str).str.upper().str.contains(palabra_clave, na=False)
                     df_fil = df_temp[mask]
-                    for d in df_fil[col_d]:
-                        fecha_valida = parsear_fecha_robusta(d)
+                    debug_log.append(f"📂 En {nombre_tabla} se encontraron {len(df_fil)} vuelos de '{palabra_clave}'.")
+                    
+                    for idx, row in df_fil.iterrows():
+                        d_raw = row[col_d]
+                        f_name_raw = row[col_f]
+                        fecha_valida, metodo = parsear_fecha_robusta(d_raw)
+                        
+                        # Guardamos en la trampa qué leyó exactamente
+                        debug_log.append(f"   -> Finca: {f_name_raw} | Fecha cruda: '{d_raw}' | Traducción: {fecha_valida} | Método: {metodo}")
+                        
                         if pd.notna(fecha_valida):
                             fechas_encontradas.append(fecha_valida)
+                else:
+                    debug_log.append(f"⚠️ Columnas FINCA o FECHA no encontradas en {nombre_tabla}.")
 
-            # Extraemos y traducimos fechas de ambas tablas
-            extraer_fechas(df_viva)
-            extraer_fechas(df_hist)
+            extraer_fechas(df_viva, "TABLA 1 (Viva)")
+            extraer_fechas(df_hist, "TABLA APOYO (Histórica)")
             
             if fechas_encontradas:
                 fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
+                debug_log.append(f"📅 Fecha del vuelo ACTUAL que estamos procesando: {fecha_vuelo_dt.strftime('%d/%m/%Y')}")
+                
                 fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
                 if fechas_validas:
                     fecha_max = max(fechas_validas)
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
+                    debug_log.append(f"🏆 Fecha MAS RECIENTE seleccionada para el ciclo: {fecha_max.strftime('%d/%m/%Y')}")
+                    debug_log.append(f"⏳ Días calculados: {dias_ciclo_calc}")
                     
                     if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
+                        debug_log.append("⚠️ Días de ciclo fuera de rango (0-365). Se forzó a 0 por seguridad.")
                         dias_ciclo_calc = 0
+                else:
+                    debug_log.append("⚠️ No se encontraron vuelos ANTERIORES a la fecha actual.")
+            else:
+                debug_log.append("❌ No se logró extraer ninguna fecha válida.")
         except Exception as e:
-            pass # Falla segura
+            debug_log.append(f"💥 ERROR CRÍTICO en la Trampa: {str(e)}")
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
@@ -591,42 +620,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
-        
-        with st.container(border=True):
-            st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
-            c_sup1, c_sup2 = st.columns([3, 1])
-            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-            mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
-            
-            r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-            r1c1.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=f"ds_{casilla_key}")
-            d_ciclo_factura = r1c2.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=f"df_{casilla_key}")
-            
-            ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
-            if ha_sugerida == 0.0: 
-                ha_sugerida = float(ha_dosis_detectada)
-                
-            ha_dosis_final = r1c3.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
-            multi_aviones = r1c4.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-            mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
 
-            recargo_final = 0.0
-            pista_sel = "PLUC"
-            if not mision_solo_dron:
-                st.markdown("##### 🛣️ Parámetros Terrestres (Aviones)")
-                r2c1, r2c2, r2c3 = st.columns(3)
-                pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
-                pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
-                
-                opciones_rec = ["0 (Sin Recargo)", "8504 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
-                recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=(1 if pista_sel == "PDIV" else 0), key=f"rl_{casilla_key}")
-                if recargo_lista == "Otro Valor Manual...":
-                    recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
-                else:
-                    recargo_final = float(recargo_lista.split(" ")[0])
-
-        dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
-        val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
+        # --- IMPRESIÓN DE LA TRAMPA EN PANTALLA ---
+        with st.expander("🛠️ TRAMPA DE CICLOS (Clic para ver qué está leyendo el sistema)"):
+            for linea in debug_log:
+                st.text(linea)
         
         # =================================================================
         # HANGAR DE DESPLIEGUE (Vectores vacíos anti-accidentes)
