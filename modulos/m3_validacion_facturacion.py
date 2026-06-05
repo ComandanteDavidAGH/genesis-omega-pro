@@ -495,7 +495,17 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             fechas_encontradas = []
             f_obj = str(finca_limpia).strip().upper()
-            palabra_clave = f_obj.replace("-", " ").split()[0] if len(f_obj) > 4 else f_obj
+            
+            # 🎯 INTELIGENCIA DE BÚSQUEDA (El antídoto para las cooperativas)
+            partes_nombre = f_obj.replace("-", " ").split()
+            
+            if len(partes_nombre) > 1 and ("COOP" in partes_nombre[0] or "BANAFRU" in partes_nombre[0] or "ASO" in partes_nombre[0]):
+                # Si es cooperativa, la palabra clave real es la SEGUNDA palabra (Ej: "OLLETA")
+                palabra_clave = partes_nombre[1] if len(partes_nombre[1]) > 2 else partes_nombre[0]
+            else:
+                # Si es finca normal, la palabra clave es la PRIMERA palabra
+                palabra_clave = partes_nombre[0] if len(partes_nombre) > 0 and len(partes_nombre[0]) > 4 else f_obj
+
             debug_log.append(f"🔑 Usando palabra clave: '{palabra_clave}'")
 
             def parsear_fecha_robusta(val):
