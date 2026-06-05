@@ -457,21 +457,33 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
                 
+        # 🎯 MOTOR DE CICLOS REPARADO (Caza-Fechas y Búsqueda Flexible)
         dias_ciclo_calc = 0
         if not df_apoyo.empty:
             col_finca = [c for c in df_apoyo.columns if 'FINCA' in str(c).upper()]
             col_fecha = [c for c in df_apoyo.columns if 'FECHA' in str(c).upper()]
             if col_finca and col_fecha:
-                mask_finca = df_apoyo[col_finca[0]].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia
-                hist_finca = df_apoyo[mask_finca].copy()
+                # 1. Limpieza extrema de nombres para asegurar el Match
+                fincas_historicas = df_apoyo[col_finca[0]].astype(str).str.upper().apply(lambda x: re.sub(r'\s+', ' ', x).strip())
+                hist_finca = df_apoyo[fincas_historicas == finca_limpia].copy()
+                
+                # 2. Si no halla el nombre exacto, busca por la palabra clave principal (Ej: "COOMULBANANO")
+                if hist_finca.empty and len(finca_limpia) > 5:
+                    palabra_clave = finca_limpia.split(" ")[0]
+                    hist_finca = df_apoyo[fincas_historicas.str.contains(palabra_clave, regex=False, na=False)].copy()
+
                 if not hist_finca.empty:
-                    hist_finca['FECHA_DT'] = hist_finca[col_fecha[0]].apply(procesar_fecha_pesada)
-                    hist_finca = hist_finca.dropna(subset=['FECHA_DT'])
+                    # 3. Motor Caza-Fechas Inmune a formato CSV
+                    hist_finca['FECHA_PURA'] = pd.to_datetime(hist_finca[col_fecha[0]], errors='coerce', dayfirst=True)
+                    hist_finca = hist_finca.dropna(subset=['FECHA_PURA'])
+                    
                     if not hist_finca.empty:
                         fecha_ref = pd.to_datetime(fecha_operacion)
-                        vuelos_anteriores = hist_finca[hist_finca['FECHA_DT'] < fecha_ref]
+                        vuelos_anteriores = hist_finca[hist_finca['FECHA_PURA'] < fecha_ref]
                         if not vuelos_anteriores.empty:
-                            dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_DT'].max()).days
+                            dias_ciclo_calc = (fecha_ref - vuelos_anteriores['FECHA_PURA'].max()).days
+                            # Filtro anti-errores (evita números absurdos o negativos)
+                            if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
