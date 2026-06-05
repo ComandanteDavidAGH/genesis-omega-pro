@@ -46,6 +46,7 @@ def cargar_boveda_recetas_y_precios():
     try:
         gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
         
+        # Cargar Bóveda de Recetas Básicas
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -56,6 +57,7 @@ def cargar_boveda_recetas_y_precios():
         df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
         df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
 
+        # Cargar Sabana de Precios Históricos de Insumos
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
         
@@ -102,13 +104,23 @@ def estandarizar_base(df):
         col_u = str(col).upper().replace('\n', ' ').strip()
         if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
-        elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
-        elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
-        elif 'DOMINIC' in col_u and '/HA' in col_u: renombres[col] = 'DOMINIC_MAESTRO'
-        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): renombres[col] = 'FINCA_MAESTRA'
-        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': renombres[col] = 'FECHA_MAESTRA'
-        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): renombres[col] = 'OS_MAESTRA'
+        # 🎯 MEJORA ARQUITECTÓNICA: Mapeo universal (Soporta nombres de 2025 y de 2026)
+        if ('FACTURAR' in col_u and 'PRODUCTOR' in col_u) or (col_u == 'VALOR_FACTURAR'): 
+            renombres[col] = 'COSTO_MAESTRO'
+        elif 'FUMIG' in col_u and 'AREA' in col_u: 
+            renombres[col] = 'AREA_MAESTRA'
+        elif ('AVION' in col_u and '/HA' in col_u) or (col_u == 'COSTO_AVION'): 
+            renombres[col] = 'AVION_MAESTRO'
+        elif ('DOMINIC' in col_u and '/HA' in col_u) or (col_u == 'DOMINICAL_HA'): 
+            renombres[col] = 'DOMINIC_MAESTRO'
+        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): 
+            renombres[col] = 'FINCA_MAESTRA'
+        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': 
+            renombres[col] = 'FECHA_MAESTRA'
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): 
+            renombres[col] = 'OS_MAESTRA'
+        elif not ('COCTEL_MAESTRO' in renombres.values()) and ("COCTEL" == col_u or "CÓCTEL" == col_u): 
+            renombres[col] = 'COCTEL_MAESTRO'
             
     df.rename(columns=renombres, inplace=True)
     return df
@@ -208,10 +220,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
+        # Cálculos puros optimizados para inyección de Datos
         super_base_bi['COSTO_NUM'] = super_base_bi['COSTO_MAESTRO'].apply(a_numero)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
 
+        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -321,7 +335,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 titulo_x = f"Días Operativos ({etiq_periodo})"
                 
             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
-            # 🎨 Azul Corporativo vs Verde Natural (Reemplazando el Rojo)
             fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
             fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
             max_y = tendencia_agrupa['COSTO_NUM'].max() * 1.2
@@ -365,7 +378,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
         
         if col_coctel:
-            st.markdown("<br>#### 📋 Desglose Operativo: Cócteles y Variación")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
             
             # =====================================================================
             # 🛠️ RADAR DE DEPURACIÓN (LA TRAMPA PARA VER QUÉ PASA CON EL GRÁFICO)
