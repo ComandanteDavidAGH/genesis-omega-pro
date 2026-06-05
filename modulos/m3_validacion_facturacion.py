@@ -484,49 +484,32 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (CON TRAMPA INCLUIDA)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (FILTRO INTELIGENTE MULTI-NIVEL)
         # =======================================================
         dias_ciclo_calc = 0
-        debug_log = [] # 🛠️ LA TRAMPA REAL
+        debug_log = [] # 🛠️ LA TRAMPA
         
         try:
-            debug_log.append(f"🔍 Búsqueda de ciclos para: '{finca_limpia}'")
+            f_obj_clean = re.sub(r'\s+', ' ', str(finca_limpia).strip().upper())
+            debug_log.append(f"🔍 Búsqueda de ciclos para: '{f_obj_clean}'")
             df_viva, df_hist = obtener_historial_completo_ciclos()
             
             fechas_encontradas = []
-            f_obj = str(finca_limpia).strip().upper()
-            
-            # 🎯 INTELIGENCIA DE BÚSQUEDA (El antídoto para las cooperativas)
-            partes_nombre = f_obj.replace("-", " ").split()
-            
-            if len(partes_nombre) > 1 and ("COOP" in partes_nombre[0] or "BANAFRU" in partes_nombre[0] or "ASO" in partes_nombre[0]):
-                # Si es cooperativa, la palabra clave real es la SEGUNDA palabra (Ej: "OLLETA")
-                palabra_clave = partes_nombre[1] if len(partes_nombre[1]) > 2 else partes_nombre[0]
-            else:
-                # Si es finca normal, la palabra clave es la PRIMERA palabra
-                palabra_clave = partes_nombre[0] if len(partes_nombre) > 0 and len(partes_nombre[0]) > 4 else f_obj
-
-            debug_log.append(f"🔑 Usando palabra clave: '{palabra_clave}'")
 
             def parsear_fecha_robusta(val):
                 if pd.isna(val) or str(val).strip() == "": return pd.NaT, "Vacío"
                 s = str(val).strip().lower()
-                
-                if s.isdigit(): 
-                    return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D'), "Numérico"
+                if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D'), "Numérico"
                 
                 meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
-                
                 match1 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
                 if match1:
                     mes_str, dia_str, anio_str = match1.groups()
                     if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}"), "Texto GSheets"
-                
                 match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
                 if match2:
                     dia_str, mes_str, anio_str = match2.groups()
                     if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}"), "Texto Alt"
-                
                 try: return pd.to_datetime(s.split(" ")[0], dayfirst=True), "Estándar"
                 except: return pd.NaT, "Fallido"
 
@@ -536,26 +519,47 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
                 
                 if col_f and col_d:
-                    mask = df_temp[col_f].astype(str).str.upper().str.contains(palabra_clave, na=False)
+                    # NORMALIZAR COLUMNA FINCA
+                    fincas_str = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'\s+', ' ', x).strip())
+                    
+                    # 🛡️ NIVEL 1: MATCH EXACTO
+                    mask = fincas_str == f_obj_clean
+                    nivel = "Exacto"
+                    
+                    # 🛡️ NIVEL 2: MATCH CONTENIDO
+                    if not mask.any():
+                        mask = fincas_str.apply(lambda x: f_obj_clean in x)
+                        nivel = "Contenido"
+                        
+                    # 🛡️ NIVEL 3: PALABRA CLAVE ESTRICTA
+                    if not mask.any():
+                        partes = f_obj_clean.replace("-", " ").split()
+                        if len(partes) > 1 and any(x in partes[0] for x in ["COOP", "BANAFRU", "ASO"]):
+                            clave = partes[1] if len(partes[1]) > 2 else partes[0]
+                        else:
+                            clave = partes[0] if len(partes) > 0 and len(partes[0]) > 4 else f_obj_clean
+                        mask = fincas_str.str.contains(clave, regex=False, na=False)
+                        nivel = f"Clave ({clave})"
+
                     df_fil = df_temp[mask]
-                    debug_log.append(f"📂 En {nombre_tabla} halló {len(df_fil)} registros.")
+                    debug_log.append(f"📂 {nombre_tabla}: Halló {len(df_fil)} vuelos de '{f_obj_clean}' (Nivel: {nivel}).")
                     
                     for idx, row in df_fil.iterrows():
                         d_raw = row[col_d]
-                        f_name_raw = row[col_f]
                         fecha_valida, metodo = parsear_fecha_robusta(d_raw)
                         if pd.notna(fecha_valida):
                             fechas_encontradas.append(fecha_valida)
-                            debug_log.append(f"   -> Finca: {f_name_raw} | Leyó: '{d_raw}' | Tradujo: {fecha_valida.strftime('%d/%m/%Y')} | ({metodo})")
+                            # Imprimimos solo las fechas para no saturar el log
+                            debug_log.append(f"   -> Vuelo registrado el: {fecha_valida.strftime('%d/%m/%Y')}")
                 else:
-                    debug_log.append(f"⚠️ Cols FINCA/FECHA no encontradas en {nombre_tabla}.")
+                    debug_log.append(f"⚠️ Cols FINCA o FECHA no encontradas en {nombre_tabla}.")
 
             extraer_fechas(df_viva, "TABLA 1 (Viva)")
             extraer_fechas(df_hist, "TABLA APOYO (Histórica)")
             
             if fechas_encontradas:
                 fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
-                debug_log.append(f"📅 Vuelo actual: {fecha_vuelo_dt.strftime('%d/%m/%Y')}")
+                debug_log.append(f"📅 Vuelo actual procesado: {fecha_vuelo_dt.strftime('%d/%m/%Y')}")
                 
                 fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
                 if fechas_validas:
@@ -606,6 +610,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
+
+        # --- IMPRESIÓN DE LA TRAMPA EN PANTALLA ---
+        with st.expander("🛠️ TRAMPA DE CICLOS (Auditoría de IA)"):
+            for linea in debug_log: st.text(linea)
 
         # --- IMPRESIÓN DE LA TRAMPA ---
         with st.expander("🛠️ TRAMPA DE CICLOS (Clic para auditar lectura)"):
