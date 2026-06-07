@@ -83,7 +83,6 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
             boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
             datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
         except Exception as error_viejo:
-            # 🚨 RADAR ACTIVADO: Si ambas fallan, imprime el error exacto en pantalla
             st.error(f"🚨 **RADAR DE SEGURIDAD BI:** El archivo histórico (2023-2024) rechazó ambas llaves de conexión.\n\n**Error Llave Nueva:** {error_nuevo}\n\n**Error Llave Vieja:** {error_viejo}")
     
     if len(datos_brutos_hist) > 0:
@@ -265,7 +264,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
 
     try:
-        # ⚡ CARGA ACELERADA EN RAM CON MOTOR DUAL
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
@@ -417,10 +415,26 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         else:
             st.warning("⚠️ No hay suficientes operaciones registradas para trazar la curva.")
             
+        # -------------------------------------------------------------------------
+        # 🎯 CORRECCIÓN: Matemática Ponderada (Evita la distorsión del promedio simple)
+        # -------------------------------------------------------------------------
         st.markdown("<hr>", unsafe_allow_html=True)
-        vuelo_a = df_area_a['AVION_NUM'].mean() if not df_area_a.empty else 0
-        vuelo_b = df_area_b['AVION_NUM'].mean() if not df_area_b.empty else 0
-        insumos_a, insumos_b = max(0, costo_a - vuelo_a), max(0, costo_b - vuelo_b)
+        
+        vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
+        vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
+        
+        costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
+        costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
+        
+        vuelo_a = vuelo_tot_a / area_a if area_a > 0 else 0
+        vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
+        
+        costo_real_a = costo_tot_a / area_a if area_a > 0 else 0
+        costo_real_b = costo_tot_b / area_b if area_b > 0 else 0
+        
+        insumos_a = max(0, costo_real_a - vuelo_a)
+        insumos_b = max(0, costo_real_b - vuelo_b)
+        
         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
         
         st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
@@ -429,18 +443,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         with tab_unit:
             fig_unit = go.Figure(data=[
                 go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[f"$ {vuelo_a:,.0f}", f"$ {vuelo_b:,.0f}"], textposition='auto'),
-                go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
+                go.Bar(name='Costo Insumos y Otros / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[f"$ {insumos_a:,.0f}", f"$ {insumos_b:,.0f}"], textposition='auto')
             ])
             fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", margin=dict(t=20, b=20))
             fig_unit.update_xaxes(type='category')
             st.plotly_chart(fig_unit, use_container_width=True)
             
         with tab_glob:
-            vuelo_tot_a, vuelo_tot_b = vuelo_a * area_a, vuelo_b * area_b
-            insumos_tot_a, insumos_tot_b = insumos_a * area_a, insumos_b * area_b
             fig_glob = go.Figure(data=[
                 go.Bar(name='Total Facturación Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[f"$ {vuelo_tot_a:,.0f}", f"$ {vuelo_tot_b:,.0f}"], textposition='auto'),
-                go.Bar(name='Total Consumo Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[f"$ {insumos_tot_a:,.0f}", f"$ {insumos_tot_b:,.0f}"], textposition='auto')
+                go.Bar(name='Total Consumo Insumos y Otros', x=categorias, y=[(costo_tot_a - vuelo_tot_a), (costo_tot_b - vuelo_tot_b)], marker_color='#27AE60', text=[f"$ {(costo_tot_a - vuelo_tot_a):,.0f}", f"$ {(costo_tot_b - vuelo_tot_b):,.0f}"], textposition='auto')
             ])
             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", margin=dict(t=20, b=20))
             fig_glob.update_xaxes(type='category')
@@ -649,7 +661,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
