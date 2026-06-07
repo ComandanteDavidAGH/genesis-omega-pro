@@ -6,6 +6,7 @@ import io
 import re
 import math
 from datetime import datetime
+import streamlit.components.v1 as components
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
@@ -26,7 +27,7 @@ def obtener_cliente_gspread_unificado():
 
 @st.cache_data(show_spinner=False, ttl=600)
 def obtener_historial_completo_ciclos():
-    """ 🤖 MOTOR IA: Descarga el historial completo de forma segura y autenticada """
+    """ 🤖 MOTOR IA: Descarga el historial completo de forma segura y detecta columnas automáticas """
     gc = obtener_cliente_gspread_unificado()
     if not gc:
         return pd.DataFrame(), pd.DataFrame()
@@ -34,15 +35,20 @@ def obtener_historial_completo_ciclos():
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         
         t1 = boveda.worksheet("TABLA 1").get_all_values()
-        df_t1 = pd.DataFrame(t1[5:], columns=t1[4]) if len(t1) > 5 else pd.DataFrame()
+        idx_t1 = 4
+        for i in range(min(6, len(t1))):
+            if "FINCA" in [str(x).upper() for x in t1[i]]:
+                idx_t1 = i
+                break
+        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
         
         apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
-        fila_t = 0
-        for i, fila in enumerate(apoyo[:20]):
-            if any('FINCA' in str(c).upper() for c in fila): 
-                fila_t = i
+        idx_ap = 0
+        for i in range(min(20, len(apoyo))):
+            if any('FINCA' in str(c).upper() for c in apoyo[i]): 
+                idx_ap = i
                 break
-        df_apoyo = pd.DataFrame(apoyo[fila_t+1:], columns=apoyo[fila_t]) if len(apoyo) > fila_t else pd.DataFrame()
+        df_apoyo = pd.DataFrame(apoyo[idx_ap+1:], columns=apoyo[idx_ap]) if len(apoyo) > idx_ap else pd.DataFrame()
         
         return df_t1, df_apoyo
     except:
@@ -241,10 +247,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             datos = diccionario_fincas.get(finca_sim, {})
             if datos.get("Productor") in lista_productores: st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
             st.session_state.idx_tope = 0
-            top_k = datos.get("Tope_Key", "")
-            if top_k:
+            tope_k = datos.get("Tope_Key", "")
+            if tope_k:
                 for i, p_t in enumerate(pistas_con_tope):
-                    if top_k in p_t: 
+                    if tope_k in p_t: 
                         st.session_state.idx_tope = i
                         break
             st.session_state.finca_anterior = finca_sim
@@ -441,11 +447,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (PULIDO SEQUENCIAL)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (BÚSQUEDA ALFANUMÉRICA AGRESIVA)
         # =======================================================
         dias_ciclo_calc = 0
         try:
-            f_obj_clean = re.sub(r'\s+', ' ', str(finca_limpia).strip().upper())
+            f_obj_alpha = re.sub(r'[^A-Z0-9]', '', finca_limpia)
             df_viva, df_hist = obtener_historial_completo_ciclos()
             fechas_encontradas = []
 
@@ -455,16 +461,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
                 
                 meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
-                match1 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
+                match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
                 if match1:
-                    mes_str, dia_str, anio_str = match1.groups()
+                    dia_str, mes_str, anio_str = match1.groups()
                     if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
                 match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
                 if match2:
-                    dia_str, mes_str, anio_str = match2.groups()
+                    mes_str, dia_str, anio_str = match2.groups()
                     if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                try: return pd.to_datetime(s.split(" ")[0], dayfirst=True)
-                except: return pd.NaT
+                try: 
+                    return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+                except: 
+                    return pd.NaT
 
             def extraer_fechas(df_temp):
                 if df_temp.empty: return
@@ -472,16 +480,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
                 
                 if col_f and col_d:
-                    fincas_str = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'\s+', ' ', x).strip())
-                    mask = fincas_str == f_obj_clean
-                    if not mask.any(): mask = fincas_str.apply(lambda x: f_obj_clean in x)
+                    fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+                    mask = fincas_alpha == f_obj_alpha
+                    if not mask.any(): mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
                     if not mask.any():
-                        partes = f_obj_clean.replace("-", " ").split()
-                        if len(partes) > 1 and any(x in partes[0] for x in ["COOP", "BANAFRU", "ASO", "COOBAMAG"]):
-                            clave = partes[1] if len(partes[1]) > 2 else partes[0]
-                        else:
-                            clave = partes[0] if len(partes) > 0 and len(partes[0]) > 4 else f_obj_clean
-                        mask = fincas_str.str.contains(clave, regex=False, na=False)
+                        partes = f_obj_alpha.replace("COOP", "").replace("BANAFRU", "").replace("ASO", "").replace("COOBAMAG", "").strip()
+                        clave = partes[:8] if len(partes) > 8 else partes
+                        mask = fincas_alpha.str.contains(clave, regex=False, na=False)
 
                     df_fil = df_temp[mask]
                     for d_raw in df_fil[col_d]:
@@ -752,7 +757,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             df_matriz = pd.DataFrame(matriz_datos)
             
-            # 🌟 PERSISTENCIA CONTROLADA: Clave dinámica por casilla para que el simulador no se descuadre al cambiar fincas
+            # 🌟 PERSISTENCIA CONTROLADA: Clave dinámica por casilla
             llave_editor_casilla = f"editor_valid_{casilla_key}"
             if llave_editor_casilla in st.session_state:
                 ediciones = st.session_state[llave_editor_casilla].get('edited_rows', {})
@@ -835,14 +840,30 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_tot3.subheader(f"🔥 TOTAL: $ {fmt_sap(gran_total)}")
         
         st.markdown("---")
-        st.markdown("### ### 🛰️ Coordenadas de Lanzamiento Final")
+        st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
         c_p1, c_p2 = st.columns(2)
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
-        # 🌟 FIJAR BOTÓN UX: Botón nativo de Streamlit. Hace scroll inmediato hacia arriba al reejecutar, sin romper estados.
-        if st.button("⬆️ VOLVER AL INICIO DEL MÓDULO", use_container_width=True, key="btn_volver_arriba_nav"):
-            st.rerun()
+        # 🌟 BOTÓN VOLVER ARRIBA UNIVERSAL: Fuerza el scroll en cualquier versión de Streamlit Cloud
+        components.html("""
+            <script>
+            function subirPantalla() {
+                var parentDoc = window.parent.document;
+                // Busca el contenedor principal de Streamlit
+                var appContainer = parentDoc.querySelector('.stApp') || parentDoc.querySelector('.main');
+                if (appContainer) {
+                    appContainer.scrollTo({top: 0, behavior: 'smooth'});
+                }
+                // Respaldo por si el contenedor cambia de nombre
+                window.parent.scrollTo({top: 0, behavior: 'smooth'});
+            }
+            </script>
+            <button onclick="subirPantalla()" 
+            style="width: 100%; padding: 12px; background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.3);">
+                ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
+            </button>
+        """, height=55)
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
@@ -899,7 +920,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", ('DRONE' if mision_solo_dron else 'AVION'), ""]
                     
-                    # 🌟 REMOCIÓN DEL MULTIHILO DE RIESGO: Ejecución secuencial 100% segura para los hilos de requests
+                    # EJECUCIÓN SECUENCIAL 100% SEGURA
                     col_azul = hoja_maestra.col_values(1)
                     col_apoyo = hoja_apoyo.col_values(2)
                     datos_memoria = hoja_memoria.get_all_values()
