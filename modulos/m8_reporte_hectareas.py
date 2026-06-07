@@ -22,38 +22,44 @@ def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pe
     if not datos_brutos or len(datos_brutos) < 2:
         return pd.DataFrame()
         
-    # 🧠 ALGORITMO DE AUDITORÍA: Detectar la fila de títulos dinámicamente en las primeras filas
-    idx_headers = 4  # Margen por defecto tradicional (Fila 5 de Excel)
+    # 🧠 ALGORITMO DE AUDITORÍA: Detectar la fila de títulos dinámicamente
+    idx_headers = 4  
     for i in range(min(6, len(datos_brutos))):
         row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
-        if "OS" in row_clean or "FINCA" in row_clean or "PISTA" in row_clean:
+        if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "PISTA" in row_clean:
             idx_headers = i
             break
             
-    headers_origen = [str(x).strip().upper() for x in datos_brutos[idx_headers]]
-    
-    # Mapeador de coordenadas Francotirador para resistir movimientos de columnas en Drive
-    def buscar_columna_idx(lista_variantes, idx_defecto):
-        for variante in lista_variantes:
-            for idx, h in enumerate(headers_origen):
-                if variante in h:
-                    return idx
-        return idx_defecto
+    # Saneamiento defensivo de caracteres e idiomas en las columnas del Drive
+    headers_limpios = []
+    for h in datos_brutos[idx_headers]:
+        h_str = str(h).strip().upper().replace("\n", " ")
+        h_str = h_str.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
+        h_str = h_str.replace("Ì", "I").replace("Ò", "O") # Remueve acentos graves del teclado regional
+        headers_limpios.append(h_str)
 
-    idx_os = buscar_columna_idx(["OS", "ORDEN"], 0)
-    idx_bloque = buscar_columna_idx(["BLOQUE"], 1)
-    idx_finca = buscar_columna_idx(["FINCA"], 2)
-    idx_sector = buscar_columna_idx(["SECTOR"], 3)
-    idx_ha = buscar_columna_idx(["NETA", "HA", "HECTAREA"], 5)
-    idx_coctel = buscar_columna_idx(["COCTEL", "MEZCLA"], 6)
-    idx_fecha = buscar_columna_idx(["FECHA"], 7)
-    idx_semana = buscar_columna_idx(["SEMANA"], 9)
-    idx_horometro = buscar_columna_idx(["HORO", "TOTAL"], 10)
-    idx_h_prop = buscar_columna_idx(["PROP"], 13)
-    idx_piloto = buscar_columna_idx(["PILOTO"], 15)
-    idx_hk = buscar_columna_idx(["HK", "MATRICULA"], 16)
-    idx_modelo = buscar_columna_idx(["MODELO"], 17)
-    idx_pista = buscar_columna_idx(["PISTA", "ALMACEN"], 23)
+    # 🎯 ALINEACIÓN FRANCOTIRADOR CON TUS COLUMNAS REALES
+    idx_os = headers_limpios.index("Nº ORDEN") if "Nº ORDEN" in headers_limpios else 0
+    idx_bloque = headers_limpios.index("BLOQUE") if "BLOQUE" in headers_limpios else 1
+    idx_finca = headers_limpios.index("FINCA") if "FINCA" in headers_limpios else 2
+    idx_sector = headers_limpios.index("SECTOR") if "SECTOR" in headers_limpios else 3
+    
+    # Reparación Maestra: Apuntamos directo al área fumigada líquida
+    idx_ha = next((i for i, h in enumerate(headers_limpios) if "FUMIG" in h), 5)
+    idx_coctel = headers_limpios.index("COCTEL") if "COCTEL" in headers_limpios else 6
+    idx_fecha = headers_limpios.index("FECHA") if "FECHA" in headers_limpios else 7
+    
+    # Evita falsos positivos con "DIA SEM" capturando la columna exacta "SEM"
+    idx_semana = next((i for i, h in enumerate(headers_limpios) if h == "SEM"), 9)
+    idx_horometro = next((i for i, h in enumerate(headers_limpios) if "ODOM" in h), 10)
+    
+    # Reparación Maestra: Captura de las horas reales de vuelo del avión
+    idx_h_prop = next((i for i, h in enumerate(headers_limpios) if "RENDIMIENTO (HORAS)" in h), 13)
+    
+    idx_piloto = headers_limpios.index("PILOTO") if "PILOTO" in headers_limpios else 15
+    idx_hk = headers_limpios.index("HK") if "HK" in headers_limpios else 16
+    idx_modelo = headers_limpios.index("MODELO") if "MODELO" in headers_limpios else 17
+    idx_pista = headers_limpios.index("PISTA") if "PISTA" in headers_limpios else 23
 
     filas_datos = datos_brutos[idx_headers + 1:]
     if not filas_datos:
@@ -63,19 +69,17 @@ def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pe
     meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
     
     for r in filas_datos:
-        # Asegurar longitud segura de la fila para evitar saltos por truncamiento de gspread
         max_indice_requerido = max(idx_os, idx_bloque, idx_finca, idx_sector, idx_ha, idx_coctel, idx_fecha, idx_semana, idx_horometro, idx_h_prop, idx_piloto, idx_hk, idx_modelo, idx_pista)
         if len(r) <= max_indice_requerido:
             r = r + [""] * (max_indice_requerido - len(r) + 1)
             
         os_val = str(r[idx_os]).strip()
-        if not os_val or os_val.lower() in ["none", "nan", "os", "orden"]:
+        if not os_val or os_val.lower() in ["none", "nan", "os", "orden", ""]:
             continue
             
         ha_netas = _extraer_numero(r[idx_ha])
         pista_raw = str(r[idx_pista]).strip().upper()
         
-        # 🛡️ BLINDAJE ANTI-EXCLUSIÓN: Si la pista llega vacía, se le asigna base general en lugar de borrar la OS
         if not pista_raw or pista_raw in ["NONE", "NAN", ""]:
             pista_val = "PRINCIPAL"
         else:
@@ -89,7 +93,7 @@ def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pe
             anio_val = str(dt.year)
         else:
             mes_val = "00-Desc"
-            anio_val = str(datetime.now().year) # Rescate cronológico automático para evitar celdas fantasma
+            anio_val = str(datetime.now().year)
 
         lista_procesada.append({
             "OS": os_val, "BLOQUE": str(r[idx_bloque]).strip(), "FINCA": str(r[idx_finca]).strip().upper(),
@@ -111,7 +115,6 @@ def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pe
 
 
 def compilar_excel_radar_on_demand(df_visual, matriz, vista, mostrar_horas, anio_sel, pista_sel, col_ha_letra, col_ha_idx):
-    """ 🚀 LAZY COMPILATION: openpyxl solo consume CPU en el momento de la descarga """
     buffer_rep = io.BytesIO()
     nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista else 'Reporte_Semanal'
     
@@ -374,7 +377,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
 
         st.markdown("---")
         
-        # ⚡ MANIOBRA LAZY DE ALTA VELOCIDAD: openpyxl solo compila si se solicita la descarga
         st.download_button(
             label="💾 DESCARGAR REPORTE GERENCIAL TOP (EXCEL)",
             data=compilar_excel_radar_on_demand(df_visual, matriz, vista_seleccionada, mostrar_horas, año_sel, pista_sel, col_ha_letra, col_ha_idx),
