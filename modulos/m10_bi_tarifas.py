@@ -29,12 +29,11 @@ def obtener_cliente_gspread_unificado():
         return None
 
 @st.cache_data(show_spinner=False)
-def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
+def cargar_fuentes_maestras_bi():
     """ Descarga y unifica las bases actual e histórica una sola vez en caché """
-    
-    # --- AJUSTE 1: Usamos la conexión directa que no depende de app.py ---
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame()
+    if not gc:
+        return pd.DataFrame(), pd.DataFrame()
     
     # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
     try:
@@ -82,10 +81,10 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
     """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
     try:
+        gc = obtener_cliente_gspread_unificado()
+        if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -112,7 +111,7 @@ def cargar_boveda_recetas_y_precios():
             if idx_header != -1:
                 for row in datos_hoja[idx_header+1:]:
                     if len(row) > max(col_anio, col_prod):
-                        anio_str, prod_str = str(row[col_anio]).strip(), str(row[col_prod]).strip().upper()
+                        anio_str, prod_str = str(row[col_anio]).strip().upper()
                         if anio_str and prod_str:
                             col_inicio_semanas = max(col_anio, col_prod) + 1
                             valores_semana = []
@@ -166,16 +165,11 @@ def a_numero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        
-        # 🎯 AJUSTE DE PRECISIÓN: Solo multiplica si parece un valor monetario o área grande (mayor a 5). 
-        # Esto evita inflar las dosis de químicos que son pequeñas (ej: 0.5 L/ha).
-        if 'COSTO' in str(val).upper():
-        if num < 2000:
-            num = num * 1000
-
-            
+        # CORRECCIÓN DE PRECISIÓN: Si el valor es mayor a 5 (evitando dosis pequeñas) y menor a 2000 (para arreglar miles)
+        if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
+
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
@@ -232,8 +226,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
 
     try:
-        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS
-        df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
+        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS (CONECTOR DIRECTO)
+        df_vivos, df_historico = cargar_fuentes_maestras_bi()
 
         if df_vivos.empty and df_historico.empty:
             st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
@@ -259,12 +253,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # 🎯 CÁLCULO ESTRICTO DE COSTOS: Separa la lógica 2026 de 2024/2025 para evitar el $4M
         def calcular_costo_real(row):
             if row.get('ORIGEN_BI') == 'ACTUAL':
-                # En 2026, COSTO_TOTAL / AREA_FUMIG nos da el costo real por hectárea
                 tot = a_numero(row.get('COSTO_TOTAL', 0))
                 ha = a_numero(row.get('AREA_MAESTRA', 1))
                 return tot / ha if ha > 0 else 0
             else:
-                # En 2024/2025, el valor ya venía por hectárea desde Sheets
                 return a_numero(row.get('COSTO_MAESTRO', 0))
 
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
@@ -436,13 +428,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
-            # --- AJUSTE 2: Convertir a numérico antes de promediar para evitar 'mean on str' ---
+            # --- CORRECCIÓN DE TIPOS PARA EVITAR ERROR EN 'mean' ---
             df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
             df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
             if col_gln:
                 df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0)
                 df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0)
-            # -----------------------------------------------------------------------------------
+            # --------------------------------------------------------
             
             agg_dict = {'COSTO_NUM': 'mean'}
             if col_gln: agg_dict[col_gln] = 'mean'
@@ -624,7 +616,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
