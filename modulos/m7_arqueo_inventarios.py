@@ -1,33 +1,45 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 CONEXIÓN AL BÚNKER DE DATOS OMEGA PRO
+# 🔌 CONFIGURACIÓN DE TU CENTRAL DE GOOGLE SHEETS
 # =================================================================
+# 💡 NOTA: Ajusta estos dos nombres exactamente como se llaman en tu Google Drive
+NOMBRE_DEL_DRIVE = "Génesis Omega Pro" 
+NOMBRE_DE_LA_HOJA = "inventario_fisico"
+
 @st.cache_resource
-def iniciar_conexion():
-    url = st.secrets["SUPABASE_URL"].replace('"', '').replace("'", "").strip()
-    key = st.secrets["SUPABASE_KEY"].replace('"', '').replace("'", "").strip()
-    return create_client(url, key)
+def iniciar_conexion_google():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        # Extrae las credenciales del JSON de Google guardado en tus Secrets
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"⚠️ Error en las credenciales de Google Sheets: {e}")
+        return None
 
-# 🔧 RECIBIMOS LAS DOS HERRAMIENTAS DE TU APP.PY PARA EVITAR EL TYPEERROR
 def ejecutar(quitar_tildes=None, purificar_lote=None):
     st.markdown("<h1 style='color: #0d1b2a;'>⚖️ Módulo Gerencial: Arqueo de Inventarios</h1>", unsafe_allow_html=True)
     st.caption("Consolidación y cruce automático de inventarios: Planta física de aeródromos vs. SAP Libre Utilización.")
 
-    try:
-        supabase: Client = iniciar_conexion()
-    except Exception:
-        st.error("⚠️ Error de enlace con el centro de datos maestro.")
+    # Conectar con Google Drive
+    cliente_google = iniciar_conexion_google()
+    if not cliente_google:
+        st.error("❌ No se pudo establecer conexión con el entorno de Google.")
         return
 
-    # Cargar base de inventario físico digitalizado en la app
+    # Descargar la base de datos física desde Google Sheets
     try:
-        res_fisico = supabase.table("inventario_fisico").select("*").execute()
-        datos_fisico = res_fisico.data if res_fisico.data else []
+        libro = cliente_google.open(NOMBRE_DEL_DRIVE)
+        worksheet = libro.worksheet(NOMBRE_DE_LA_HOJA)
+        datos_gspread = worksheet.get_all_records()
     except Exception as e:
-        st.error(f"Error al extraer la base física: {e}")
+        st.error(f"💥 Error al abrir la hoja de cálculo '{NOMBRE_DEL_DRIVE}' -> '{NOMBRE_DE_LA_HOJA}': {e}")
+        st.info("Verifique que el archivo esté compartido con el correo de su cuenta de servicio de Google.")
         return
 
     # Pestañas operativas del Centro de Mando
@@ -38,78 +50,89 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
     # -----------------------------------------------------------------
     with tab2:
         st.markdown("### 📥 Inyección de Archivo Maestro de SAP")
-        st.write("Cargue el reporte oficial de SAP (`.xlsx`) extraído del sistema central para actualizar la columna de Libre Utilización.")
+        st.write("Cargue el reporte oficial de SAP (`.xlsx`) para actualizar la columna de Libre Utilización en la nube.")
         
         archivo_sap = st.file_uploader("Arrastre aquí el reporte EXPORT de SAP:", type=["xlsx"])
         
         if archivo_sap:
             try:
-                # Configuración regional explícita para miles (.) y decimales (,)
+                # Configuración regional para miles (.) y decimales (,)
                 df_sap = pd.read_excel(archivo_sap, thousands='.', decimal=',')
                 st.success("✅ Documento de SAP analizado en memoria.")
                 
-                # Normalización de columnas críticas
                 df_sap.columns = df_sap.columns.str.strip()
-                
-                # Validar la existencia de la columna de libre utilización
                 col_sap_target = "Libre utilización"
+                
                 if col_sap_target not in df_sap.columns:
                     posibles_nombres = [c for c in df_sap.columns if "libre" in c.lower()]
                     if posibles_nombres:
                         col_sap_target = posibles_nombres[0]
                     else:
-                        st.error("💥 Error Crítico: No se detectó la columna 'Libre utilización' en el archivo cargado.")
+                        st.error("💥 Error Crítico: No se detectó la columna 'Libre utilización' en el archivo.")
                         return
 
-                if st.button("🚀 INYECTAR SALDOS DE LIBRE UTILIZACIÓN EN LA PLATAFORMA"):
+                if st.button("🚀 INYECTAR SALDOS DE LIBRE UTILIZACIÓN EN GOOGLE SHEETS"):
+                    # Convertir los registros de Google Sheets en un DataFrame para procesarlos velozmente
+                    df_fisico_db = pd.DataFrame(datos_gspread)
+                    
+                    # Normalizar columnas de la base de datos de Google Sheets
+                    df_fisico_db.columns = df_fisico_db.columns.str.strip()
+                    
+                    # Asegurar existencia de la columna saldo_sap
+                    if "saldo_sap" not in df_fisico_db.columns:
+                        df_fisico_db["saldo_sap"] = 0.0
+
                     actualizados = 0
                     
-                    # Recorrer el archivo de SAP y actualizar la base de datos
-                    for index, fila in df_sap.iterrows():
-                        # Saneamiento base de Almacén
-                        almacen_raw = str(fila.get("Almacén", "")).strip().upper()
-                        almacen_sap = quitar_tildes(almacen_raw) if quitar_tildes else almacen_raw
-                        
-                        # Saneamiento premium de Lote usando la función purificadora de tu app.py
-                        lote_raw = str(fila.get("Lote", "")).strip().upper()
-                        lote_sap = purificar_lote(lote_raw) if purificar_lote else lote_raw
-                        
-                        # Manejo seguro del formato de números de libre utilización
-                        saldo_libre_utilizacion = pd.to_numeric(fila.get(col_sap_target), errors='coerce')
-                        if pd.isna(saldo_libre_utilizacion):
-                            saldo_libre_utilizacion = 0.0
+                    with st.spinner("Cruzando matrices y actualizando celdas..."):
+                        for index, fila in df_sap.iterrows():
+                            # Saneamiento de Almacén (Pista)
+                            almacen_raw = str(fila.get("Almacén", "")).strip().upper()
+                            almacen_sap = quitar_tildes(almacen_raw) if quitar_tildes else almacen_raw
+                            
+                            # Saneamiento de Lote
+                            lote_raw = str(fila.get("Lote", "")).strip().upper()
+                            lote_sap = purificar_lote(lote_raw) if purificar_lote else lote_raw
+                            
+                            # Casteo de volumen
+                            saldo_libre_utilizacion = pd.to_numeric(fila.get(col_sap_target), errors='coerce')
+                            if pd.isna(saldo_libre_utilizacion):
+                                saldo_libre_utilizacion = 0.0
 
-                        if almacen_sap and lote_sap and lote_sap != "NAN":
-                            try:
-                                supabase.table("inventario_fisico")\
-                                    .update({"saldo_sap": saldo_libre_utilizacion})\
-                                    .eq("pista", almacen_sap)\
-                                    .eq("lote", lote_sap)\
-                                    .execute()
+                            # Buscar y actualizar en el DataFrame local
+                            # Nota: Modifica 'pista' y 'lote' para que coincidan con los nombres exactos de tus columnas en Google Sheets
+                            mascara = (df_fisico_db["pista"].astype(str).str.strip().str.upper() == almacen_sap) & \
+                                      (df_fisico_db["lote"].astype(str).str.strip().str.upper() == lote_sap)
+                            
+                            if mascara.any():
+                                df_fisico_db.loc[mascara, "saldo_sap"] = saldo_libre_utilizacion
                                 actualizados += 1
-                            except Exception:
-                                pass
-                                
-                    st.success(f"🎉 ¡Sincronización Terminada! Se procesaron y mapearon {actualizados} lotes de SAP con éxito.")
+
+                        # Inyección masiva de retorno a Google Sheets (Borrado y reescritura para máxima velocidad)
+                        worksheet.clear()
+                        # Reemplazar NaN por vacíos antes de subir a Google
+                        df_subida = df_fisico_db.fillna("")
+                        worksheet.update([df_subida.columns.values.tolist()] + df_subida.values.tolist())
+                        
+                    st.success(f"🎉 ¡Sincronización Terminada! Se mapearon {actualizados} registros en tu Google Sheet con éxito.")
                     st.rerun()
 
             except Exception as e:
-                st.error(f"Falla al decodificar las matrices de SAP: {e}")
+                st.error(f"Falla al procesar las celdas: {e}")
 
     # -----------------------------------------------------------------
-    # PROCESAMIENTO Y ARMADO DE LA MATRIZ GENERAL DE ARQUEO
+    # PROCESAMIENTO GENERAL DE MATRICES
     # -----------------------------------------------------------------
-    if datos_fisico:
-        df_master = pd.DataFrame(datos_fisico)
+    if datos_gspread:
+        df_master = pd.DataFrame(datos_gspread)
+        df_master.columns = df_master.columns.str.strip()
         
-        # Saneamiento y casteo preventivo de variables
+        # Saneamiento de saldos numéricos
         df_master["saldo_sap"] = pd.to_numeric(df_master.get("saldo_sap", 0.0), errors="coerce").fillna(0.0)
         df_master["saldo_fisico"] = pd.to_numeric(df_master.get("saldo_fisico", 0.0), errors="coerce").fillna(0.0)
         
-        # Cálculo en tiempo real de la brecha logística
         df_master["Diferencia"] = df_master["saldo_fisico"] - df_master["saldo_sap"]
         
-        # Marcación de estados semafóricos
         def determinar_estado(dif):
             return "✅ OK" if abs(dif) < 0.001 else "❌ DISCREPANCIA"
             
@@ -124,11 +147,10 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
     # -----------------------------------------------------------------
     with tab1:
         total_items = len(df_master)
-        items_ok = len(df_master[df_master["Estado"] == "✅ OK"])
+        items_ok = len(df_master[df_master["Estado"] == "✅ OK"]) if not df_master.empty else 0
         total_alarmas = len(df_discrepancias)
         balance_fisico = df_master["saldo_fisico"].sum() if not df_master.empty else 0.0
 
-        # Tarjetas corporativas de balance
         st.markdown(f"""
         <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #d4af37;">
             <table style="width: 100%; border: none; text-align: center; color: white;">
@@ -144,7 +166,13 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
 
         st.markdown("### 🔍 Listado de Desfases Logísticos Activos")
         if not df_discrepancias.empty:
-            df_view = df_discrepancias[['pista', 'producto', 'lote', 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
+            # Asegura que estos nombres de columnas coincidan con los de tu Google Sheet
+            columnas_existentes = df_discrepancias.columns
+            pista_col = "pista" if "pista" in columnas_existentes else columnas_existentes[0]
+            prod_col = "producto" if "producto" in columnas_existentes else columnas_existentes[1]
+            lote_col = "lote" if "lote" in columnas_existentes else columnas_existentes[2]
+
+            df_view = df_discrepancias[[pista_col, prod_col, lote_col, 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
             df_view.columns = ['PISTA', 'PRODUCTO', 'LOTE', 'SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA', 'ESTADO']
             
             for col in ['SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA']:
@@ -160,7 +188,12 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
     with tab3:
         st.markdown("### 📋 Historial y Bitácora Completa de Existencias")
         if not df_master.empty:
-            df_total_view = df_master[['pista', 'producto', 'lote', 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
+            columnas_existentes = df_master.columns
+            pista_col = "pista" if "pista" in columnas_existentes else columnas_existentes[0]
+            prod_col = "producto" if "producto" in columnas_existentes else columnas_existentes[1]
+            lote_col = "lote" if "lote" in columnas_existentes else columnas_existentes[2]
+
+            df_total_view = df_master[[pista_col, prod_col, lote_col, 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
             df_total_view.columns = ['PISTA', 'PRODUCTO', 'LOTE', 'SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA', 'ESTADO']
             st.dataframe(df_total_view.sort_values(by=["PISTA", "PRODUCTO"]), use_container_width=True, hide_index=True)
         else:
