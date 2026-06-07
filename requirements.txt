@@ -8,3 +8,4 @@ google-generativeai
 matplotlib
 pillow
 kaleido==0.2.1
+supabase
