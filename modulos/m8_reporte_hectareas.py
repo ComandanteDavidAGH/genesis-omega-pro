@@ -19,36 +19,95 @@ def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pe
     url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     datos_brutos = _descargar_matriz_rapida(url_maestra, "TABLA 1")
     
-    if len(datos_brutos) <= 5:
+    if not datos_brutos or len(datos_brutos) < 2:
         return pd.DataFrame()
         
-    columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
+    # 🧠 ALGORITMO DE AUDITORÍA: Detectar la fila de títulos dinámicamente en las primeras filas
+    idx_headers = 4  # Margen por defecto tradicional (Fila 5 de Excel)
+    for i in range(min(6, len(datos_brutos))):
+        row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
+        if "OS" in row_clean or "FINCA" in row_clean or "PISTA" in row_clean:
+            idx_headers = i
+            break
+            
+    headers_origen = [str(x).strip().upper() for x in datos_brutos[idx_headers]]
     
-    filas_limpias = [r + [""]*(24 - len(r)) for r in datos_brutos[5:]]
-    df = pd.DataFrame([r[:24] for r in filas_limpias], columns=columnas)
-    
-    df['HA_NETAS'] = df['HA_NETAS'].apply(_extraer_numero)
-    df['H_PROPORCIONAL'] = df['H_PROPORCIONAL'].apply(_extraer_numero)
-    df['SEMANA'] = df['SEMANA'].astype(str).str.strip()
-    df['PISTA'] = df['PISTA'].astype(str).str.strip().str.upper()
-    
-    df = df[(df['PISTA'] != "") & (df['HA_NETAS'] > 0)]
+    # Mapeador de coordenadas Francotirador para resistir movimientos de columnas en Drive
+    def buscar_columna_idx(lista_variantes, idx_defecto):
+        for variante in lista_variantes:
+            for idx, h in enumerate(headers_origen):
+                if variante in h:
+                    return idx
+        return idx_defecto
+
+    idx_os = buscar_columna_idx(["OS", "ORDEN"], 0)
+    idx_bloque = buscar_columna_idx(["BLOQUE"], 1)
+    idx_finca = buscar_columna_idx(["FINCA"], 2)
+    idx_sector = buscar_columna_idx(["SECTOR"], 3)
+    idx_ha = buscar_columna_idx(["NETA", "HA", "HECTAREA"], 5)
+    idx_coctel = buscar_columna_idx(["COCTEL", "MEZCLA"], 6)
+    idx_fecha = buscar_columna_idx(["FECHA"], 7)
+    idx_semana = buscar_columna_idx(["SEMANA"], 9)
+    idx_horometro = buscar_columna_idx(["HORO", "TOTAL"], 10)
+    idx_h_prop = buscar_columna_idx(["PROP"], 13)
+    idx_piloto = buscar_columna_idx(["PILOTO"], 15)
+    idx_hk = buscar_columna_idx(["HK", "MATRICULA"], 16)
+    idx_modelo = buscar_columna_idx(["MODELO"], 17)
+    idx_pista = buscar_columna_idx(["PISTA", "ALMACEN"], 23)
+
+    filas_datos = datos_brutos[idx_headers + 1:]
+    if not filas_datos:
+        return pd.DataFrame()
+
+    lista_procesada = []
     meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
     
-    # Mapeo temporal acelerado
-    lista_meses, lista_anios = [], []
-    for f_str in df['FECHA']:
-        dt = _procesar_fecha_pesada(f_str)
-        if dt:
-            lista_meses.append(meses_nom.get(dt.month, "00-Desc"))
-            lista_anios.append(str(dt.year))
-        else:
-            lista_meses.append("00-Desc")
-            lista_anios.append("00-Desc")
+    for r in filas_datos:
+        # Asegurar longitud segura de la fila para evitar saltos por truncamiento de gspread
+        max_indice_requerido = max(idx_os, idx_bloque, idx_finca, idx_sector, idx_ha, idx_coctel, idx_fecha, idx_semana, idx_horometro, idx_h_prop, idx_piloto, idx_hk, idx_modelo, idx_pista)
+        if len(r) <= max_indice_requerido:
+            r = r + [""] * (max_indice_requerido - len(r) + 1)
             
-    df['MES'] = lista_meses
-    df['AÑO'] = lista_anios
-    return df[df['AÑO'] != "00-Desc"].reset_index(drop=True)
+        os_val = str(r[idx_os]).strip()
+        if not os_val or os_val.lower() in ["none", "nan", "os", "orden"]:
+            continue
+            
+        ha_netas = _extraer_numero(r[idx_ha])
+        pista_raw = str(r[idx_pista]).strip().upper()
+        
+        # 🛡️ BLINDAJE ANTI-EXCLUSIÓN: Si la pista llega vacía, se le asigna base general en lugar de borrar la OS
+        if not pista_raw or pista_raw in ["NONE", "NAN", ""]:
+            pista_val = "PRINCIPAL"
+        else:
+            pista_val = pista_raw
+            
+        f_str = str(r[idx_fecha]).strip()
+        dt = _procesar_fecha_pesada(f_str)
+        
+        if dt:
+            mes_val = meses_nom.get(dt.month, "00-Desc")
+            anio_val = str(dt.year)
+        else:
+            mes_val = "00-Desc"
+            anio_val = str(datetime.now().year) # Rescate cronológico automático para evitar celdas fantasma
+
+        lista_procesada.append({
+            "OS": os_val, "BLOQUE": str(r[idx_bloque]).strip(), "FINCA": str(r[idx_finca]).strip().upper(),
+            "SECTOR": str(r[idx_sector]).strip(), "AREA_BRUTA": "", "HA_NETAS": ha_netas,
+            "COCTEL": str(r[idx_coctel]).strip(), "FECHA": f_str, "DIA": "",
+            "SEMANA": str(r[idx_semana]).strip() if str(r[idx_semana]).strip() else "0",
+            "H_TOTAL": _extraer_numero(r[idx_horometro]), "GLN_HA": "", "VOL_TOTAL": "",
+            "H_PROPORCIONAL": _extraer_numero(r[idx_h_prop]), "REND_MIN": "",
+            "PILOTO": str(r[idx_piloto]).strip(), "HK": str(r[idx_hk]).strip(), "MODELO": str(r[idx_modelo]).strip(),
+            "COSTO_TOTAL_AVION": 0.0, "TARIFA_HA": 0.0, "RECARGO_HA": 0.0, "SUBTOTAL": 0.0, "COSTO_HORA": 0.0,
+            "PISTA": pista_val, "MES": mes_val, "AÑO": anio_val
+        })
+        
+    df_resultado = pd.DataFrame(lista_procesada)
+    if df_resultado.empty:
+        return pd.DataFrame()
+        
+    return df_resultado[df_resultado['HA_NETAS'] > 0].reset_index(drop=True)
 
 
 def compilar_excel_radar_on_demand(df_visual, matriz, vista, mostrar_horas, anio_sel, pista_sel, col_ha_letra, col_ha_idx):
@@ -63,7 +122,7 @@ def compilar_excel_radar_on_demand(df_visual, matriz, vista, mostrar_horas, anio
             matriz.to_excel(writer, sheet_name=nombre_hoja)
             
         worksheet = writer.sheets[nombre_hoja]
-        worksheet.sheet_view.showGridLines = True  # Corrección: Forzar rejilla visible
+        worksheet.sheet_view.showGridLines = True
         worksheet.row_dimensions[1].height = 30
         
         borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), 
@@ -208,13 +267,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
     if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
         mostrar_horas = st.checkbox("⏱️ Mostrar también el Rendimiento (Horas de Vuelo)")
 
-    # Filtrado lógico veloz en memoria RAM local
+    # Filtrado cronológico veloz en la RAM local
     df_filt = df_rep[df_rep['AÑO'] == año_sel]
     if pista_sel != "TODAS":
         df_filt = df_filt[df_filt['PISTA'] == pista_sel]
     
     if df_filt.empty:
-        st.warning("⚠️ No hay operaciones registradas para los parámetros elegidos.")
+        st.warning("⚠️ No hay misiones operativas registradas para los parámetros elegidos.")
     else:
         # 🚀 LANZAMIENTO DEL HUD GERENCIAL DE ALTO IMPACTO
         total_ha_filtro = df_filt['HA_NETAS'].sum()
@@ -323,3 +382,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
+
+if __name__ == "__main__":
+    pass
