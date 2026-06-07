@@ -844,22 +844,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_p1, c_p2 = st.columns(2)
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
-        # 🌟 BOTÓN VOLVER ARRIBA NATIVO (SIN IFRAMES): Ejecuta JS directamente en el DOM de Streamlit sin recargar la memoria
-        st.markdown("""
-            <a href="#" onclick="
-                event.preventDefault();
-                var main = document.querySelector('section.main') || document.querySelector('.stApp');
-                if (main) { main.scrollTo({top: 0, behavior: 'smooth'}); }
-                window.scrollTo({top: 0, behavior: 'smooth'});
-            " style="
-                display: block; width: 100%; text-align: center; 
-                background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
-                padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
-                box-shadow: 0px 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; font-size: 16px; cursor: pointer;
-            ">
+        # 🌟 BOTÓN VOLVER ARRIBA: Selector Oficial de Streamlit Cloud
+        st.components.v1.html("""
+            <button onclick="
+                var p = window.parent.document;
+                var c = p.querySelector('[data-testid=\\'stAppViewContainer\\']') || p.querySelector('.main');
+                if(c) { c.scrollTo({top: 0, behavior: 'smooth'}); }
+            " style="width: 100%; padding: 12px; background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px;">
                 ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
-            </a>
-        """, unsafe_allow_html=True)
+            </button>
+        """, height=55)
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
