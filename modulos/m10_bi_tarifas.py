@@ -17,7 +17,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
-    """ Centraliza la autenticación con Google Cloud usando el cofre único """
+    """ Llave Nueva (gcp_service_account) """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
@@ -28,15 +28,26 @@ def obtener_cliente_gspread_unificado():
     except:
         return None
 
-@st.cache_data(show_spinner=False)
-def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
-    """ Descarga y unifica las bases actual e histórica usando EL MOTOR NUEVO para ambas """
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame()
-    
-    # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
+def obtener_cliente_gspread_viejo():
+    """ Llave Vieja de Respaldo (gcp_credentials) """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        if "gcp_credentials" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_credentials"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
+
+@st.cache_data(show_spinner=False)
+def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
+    """ Descarga y unifica las bases actual e histórica usando MOTOR HÍBRIDO """
+    gc_nuevo = obtener_cliente_gspread_unificado()
+    
+    # --- 1. BASE VIVA (2026) - EXTRACCIÓN CON LLAVE NUEVA ---
+    try:
+        boveda_act = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
     except:
         datos_brutos_act = []
@@ -59,12 +70,21 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) - CONECTADA CON EL MOTOR NUEVO (LA SOLUCIÓN) ---
+    # --- 2. BASE HISTÓRICA (2023-2024-2025) - MOTOR HÍBRIDO + RADAR ---
+    datos_brutos_hist = []
     try:
-        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        # Intento 1: Con la llave nueva
+        boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
         datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
-    except:
-        datos_brutos_hist = []
+    except Exception as error_nuevo:
+        try:
+            # Intento 2: Con la llave vieja (Respaldo)
+            gc_viejo = obtener_cliente_gspread_viejo()
+            boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+            datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        except Exception as error_viejo:
+            # 🚨 RADAR ACTIVADO: Si ambas fallan, imprime el error exacto en pantalla
+            st.error(f"🚨 **RADAR DE SEGURIDAD BI:** El archivo histórico (2023-2024) rechazó ambas llaves de conexión.\n\n**Error Llave Nueva:** {error_nuevo}\n\n**Error Llave Vieja:** {error_viejo}")
     
     if len(datos_brutos_hist) > 0:
         df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
@@ -245,6 +265,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
 
     try:
+        # ⚡ CARGA ACELERADA EN RAM CON MOTOR DUAL
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
@@ -628,7 +649,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
