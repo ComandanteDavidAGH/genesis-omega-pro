@@ -14,20 +14,41 @@ def cargar_y_preprocesar_boveda_mando(_descargar_matriz_rapida, _procesar_fecha_
     url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     datos_brutos = _descargar_matriz_rapida(url_maestra, "TABLA 1")
     
-    if len(datos_brutos) <= 5:
+    if not datos_brutos or len(datos_brutos) <= 2:
         return pd.DataFrame()
         
-    columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+    # 🧠 DETECCIÓN DINÁMICA DE ENCABEZADOS (Evita saltos por filas en blanco)
+    idx_headers = 4
+    for i in range(min(8, len(datos_brutos))):
+        row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
+        if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "VALOR A FACTURAR" in "".join(row_clean):
+            idx_headers = i
+            break
+
+    # Radiografía exacta de 30 columnas de tu SAP
+    columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
     
-    filas_limpias = [r + [""]*(len(columnas) - len(r)) for r in datos_brutos[5:]]
-    df = pd.DataFrame([r[:len(columnas)] for r in filas_limpias], columns=columnas)
+    filas_datos = datos_brutos[idx_headers + 1:]
+    lista_limpia = []
     
+    for r in filas_datos:
+        # 🛡️ BLINDAJE: Si Google Sheets recorta la fila porque las últimas celdas estaban vacías, la rellenamos
+        if len(r) < 30:
+            r = r + [""] * (30 - len(r))
+        lista_limpia.append(r[:30])
+        
+    df = pd.DataFrame(lista_limpia, columns=columnas_obj)
+    
+    # ⚙️ CONVERSIÓN SEGURA DE NÚMEROS
     cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
     for col in cols_numericas:
-        df[col] = df[col].apply(_extraer_numero)
+        df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
+    
+    if df.empty:
+        return pd.DataFrame()
     
     df['AÑO'] = df['FECHA_DT'].dt.year.astype(int)
     df['TRIMESTRE'] = df['FECHA_DT'].dt.quarter.astype(int)
@@ -221,3 +242,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             fig4.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont_size=13)
             fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig4, use_container_width=True)
+
+if __name__ == "__main__":
+    pass
