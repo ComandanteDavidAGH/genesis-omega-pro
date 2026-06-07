@@ -29,7 +29,7 @@ def obtener_cliente_gspread_unificado():
         return None
 
 @st.cache_data(show_spinner=False)
-def cargar_fuentes_maestras_bi():
+def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     """ Descarga y unifica las bases actual e histórica una sola vez en caché """
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame()
@@ -61,10 +61,11 @@ def cargar_fuentes_maestras_bi():
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
+    # --- 2. BASE HISTÓRICA (2023-2024-2025) - CONEXIÓN ORIGINAL RESTAURADA ---
     try:
-        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+        # 🎯 Usamos tu función original aquí para saltarnos el bloqueo de permisos
+        datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
     except:
         datos_brutos_hist = []
     
@@ -80,10 +81,10 @@ def cargar_fuentes_maestras_bi():
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
     """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
     try:
+        gc = obtener_cliente_gspread_unificado()
+        if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -153,7 +154,7 @@ def estandarizar_base(df):
     df.rename(columns=renombres, inplace=True)
     return df
 
-# 🎯 HERRAMIENTA 1: Exclusiva para Hectáreas y Dosis (Respeta los decimales, NO multiplica por 1000)
+# 🎯 HERRAMIENTA 1: Exclusiva para Hectáreas y Dosis
 def limpiar_area(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -179,7 +180,7 @@ def limpiar_dinero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        # Multiplica solo si el costo viene con punto de miles asumido como decimal por Python
+        # Multiplica solo si el costo viene con punto de miles asumido como decimal
         if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
@@ -219,7 +220,6 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 
 # --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
-    # 🌟 ANCLA NATIVA: Punto de aterrizaje invisible que ya te funcionó bien
     st.header("", anchor="inicio_modulo")
 
     st.markdown("""
@@ -244,7 +244,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     try:
         # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS
-        df_vivos, df_historico = cargar_fuentes_maestras_bi()
+        df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
             st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
@@ -267,7 +267,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # 🎯 CÁLCULO ESTRICTO DE COSTOS: Eliminada la división de 2026. Apunta directo a la columna "VALOR_FACTURAR" (W)
         def calcular_costo_real(row):
             if row.get('ORIGEN_BI') == 'ACTUAL':
                 return limpiar_dinero(row.get('VALOR_FACTURAR', 0))
@@ -275,7 +274,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 return limpiar_dinero(row.get('COSTO_MAESTRO', 0))
 
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
-        # 🚜 Aquí usamos limpiar_area para que las hectáreas NO se inflen por 1000
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
@@ -444,15 +442,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
-            # Aseguramos que los números sean procesables
-            df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
-            df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
-            
             agg_dict = {'COSTO_NUM': 'mean'}
-            if col_gln: 
-                df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0)
-                df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0)
-                agg_dict[col_gln] = 'mean'
+            if col_gln: agg_dict[col_gln] = 'mean'
             
             g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
