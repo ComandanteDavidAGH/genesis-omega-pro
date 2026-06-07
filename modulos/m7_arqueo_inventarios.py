@@ -11,7 +11,8 @@ def iniciar_conexion():
     key = st.secrets["SUPABASE_KEY"].replace('"', '').replace("'", "").strip()
     return create_client(url, key)
 
-def ejecutar():
+# 🔧 RECIBIMOS LAS DOS HERRAMIENTAS DE TU APP.PY PARA EVITAR EL TYPEERROR
+def ejecutar(quitar_tildes=None, purificar_lote=None):
     st.markdown("<h1 style='color: #0d1b2a;'>⚖️ Módulo Gerencial: Arqueo de Inventarios</h1>", unsafe_allow_html=True)
     st.caption("Consolidación y cruce automático de inventarios: Planta física de aeródromos vs. SAP Libre Utilización.")
 
@@ -43,18 +44,16 @@ def ejecutar():
         
         if archivo_sap:
             try:
-                # 🛡️ FIX 2: Configuración regional explícita para el surtido de miles (.) y decimales (,)
+                # Configuración regional explícita para miles (.) y decimales (,)
                 df_sap = pd.read_excel(archivo_sap, thousands='.', decimal=',')
-                
                 st.success("✅ Documento de SAP analizado en memoria.")
                 
-                # Normalización de columnas críticas para evitar fallas por tildes o espacios
+                # Normalización de columnas críticas
                 df_sap.columns = df_sap.columns.str.strip()
                 
-                # Validar la existencia de la columna de la discordia
+                # Validar la existencia de la columna de libre utilización
                 col_sap_target = "Libre utilización"
                 if col_sap_target not in df_sap.columns:
-                    # Intento de rescate por si cambia de nombre
                     posibles_nombres = [c for c in df_sap.columns if "libre" in c.lower()]
                     if posibles_nombres:
                         col_sap_target = posibles_nombres[0]
@@ -63,14 +62,17 @@ def ejecutar():
                         return
 
                 if st.button("🚀 INYECTAR SALDOS DE LIBRE UTILIZACIÓN EN LA PLATAFORMA"):
-                    progreso = st.progress(0)
                     actualizados = 0
                     
                     # Recorrer el archivo de SAP y actualizar la base de datos
                     for index, fila in df_sap.iterrows():
-                        # 🛡️ FIX 3: Limpieza estricta de llaves de cruce para evitar saltos de formato
-                        almacen_sap = str(fila.get("Almacén", "")).strip().upper()
-                        lote_sap = str(fila.get("Lote", "")).strip().upper()
+                        # Saneamiento base de Almacén
+                        almacen_raw = str(fila.get("Almacén", "")).strip().upper()
+                        almacen_sap = quitar_tildes(almacen_raw) if quitar_tildes else almacen_raw
+                        
+                        # Saneamiento premium de Lote usando la función purificadora de tu app.py
+                        lote_raw = str(fila.get("Lote", "")).strip().upper()
+                        lote_sap = purificar_lote(lote_raw) if purificar_lote else lote_raw
                         
                         # Manejo seguro del formato de números de libre utilización
                         saldo_libre_utilizacion = pd.to_numeric(fila.get(col_sap_target), errors='coerce')
@@ -78,7 +80,6 @@ def ejecutar():
                             saldo_libre_utilizacion = 0.0
 
                         if almacen_sap and lote_sap and lote_sap != "NAN":
-                            # Actualizar todas las filas físicas que coincidan con esa pista y lote
                             try:
                                 supabase.table("inventario_fisico")\
                                     .update({"saldo_sap": saldo_libre_utilizacion})\
@@ -101,7 +102,7 @@ def ejecutar():
     if datos_fisico:
         df_master = pd.DataFrame(datos_fisico)
         
-        # Saneamiento y casteo preventivo de variables financieras y de volumen
+        # Saneamiento y casteo preventivo de variables
         df_master["saldo_sap"] = pd.to_numeric(df_master.get("saldo_sap", 0.0), errors="coerce").fillna(0.0)
         df_master["saldo_fisico"] = pd.to_numeric(df_master.get("saldo_fisico", 0.0), errors="coerce").fillna(0.0)
         
@@ -113,8 +114,6 @@ def ejecutar():
             return "✅ OK" if abs(dif) < 0.001 else "❌ DISCREPANCIA"
             
         df_master["Estado"] = df_master["Diferencia"].apply(determinar_estado)
-        
-        # Filtros de visualización estratégica
         df_discrepancias = df_master[df_master["Estado"] == "❌ DISCREPANCIA"].copy()
     else:
         df_master = pd.DataFrame()
@@ -124,13 +123,12 @@ def ejecutar():
     # PESTAÑA 1: TABLERO DE CONTROL DE DISCREPANCIAS
     # -----------------------------------------------------------------
     with tab1:
-        # KPI Cards Superiores Avanzados
         total_items = len(df_master)
         items_ok = len(df_master[df_master["Estado"] == "✅ OK"])
         total_alarmas = len(df_discrepancias)
         balance_fisico = df_master["saldo_fisico"].sum() if not df_master.empty else 0.0
 
-        # Estilización premium de tarjetas de balance
+        # Tarjetas corporativas de balance
         st.markdown(f"""
         <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #d4af37;">
             <table style="width: 100%; border: none; text-align: center; color: white;">
@@ -146,11 +144,9 @@ def ejecutar():
 
         st.markdown("### 🔍 Listado de Desfases Logísticos Activos")
         if not df_discrepancias.empty:
-            # Estructurar la visualización exacta que requieres en pantalla
             df_view = df_discrepancias[['pista', 'producto', 'lote', 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
             df_view.columns = ['PISTA', 'PRODUCTO', 'LOTE', 'SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA', 'ESTADO']
             
-            # Formatear números para visualización limpia de 3 decimales
             for col in ['SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA']:
                 df_view[col] = df_view[col].map(lambda x: f"{x:.3f}")
                 
