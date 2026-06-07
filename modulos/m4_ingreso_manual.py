@@ -13,8 +13,9 @@ from datetime import datetime, timedelta
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     try:
-        if "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+        # 🌟 CORRECCIÓN MAESTRA: Cambiamos "gcp_credentials" por "gcp_service_account"
+        if "gcp_service_account" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
     except:
         return None
@@ -215,7 +216,7 @@ def ejecutar(extraer_numero, purificar_lote):
         ws_t1_2 = sh2.worksheet("TABLA 1")
         ws_apoyo_2 = sh2.worksheet("TABLA DE APOYO2023")
         
-        # ⚡ SOLUCIÓN AL TURBO DE SANGRE: Cacheamos los datos de red de las tablas para que digitar no congele la app
+        # ⚡ Cacheamos los datos de red de las tablas para mejorar rendimiento
         if 'legalizacion_cache' not in st.session_state:
             with st.spinner("Escaneando bases generales para legalizar misiones virtuales..."):
                 cache_leg = {}
@@ -223,7 +224,6 @@ def ejecutar(extraer_numero, purificar_lote):
                 cache_leg['datos_apoyo'] = ws_apoyo_2.get_all_values()
                 st.session_state['legalizacion_cache'] = cache_leg
                 
-        # Botón manual de refresco por si se requiere traer nuevos datos frescos del Sheets
         if st.button("🔄 RECARGAR VUELOS VIRTUALES", use_container_width=True):
             st.session_state.pop('legalizacion_cache', None)
             st.rerun()
@@ -249,7 +249,6 @@ def ejecutar(extraer_numero, purificar_lote):
             df_pend = pd.DataFrame(pendientes)
             opciones_virt = df_pend.apply(lambda x: f"Fila {x['fila_real']} | {x['finca']} | {x['ha']} Ha | {x['os_virt']}", axis=1).tolist()
             
-            # Lanzamiento de mini HUD Informativo
             st.markdown(f"""
             <div class="hud-legalizador">
                 <div class="hud-precios-item">
@@ -278,7 +277,6 @@ def ejecutar(extraer_numero, purificar_lote):
             rows_finales = []
             total_ha_asignadas = 0.0
 
-            # ⚡ RENDERIZADO INSTANTÁNEO DESDE LA RAM: Cero parpadeo al digitar en los bucles contenedores
             for i, row in enumerate(st.session_state.legalizador_rows):
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([2, 3, 2, 2])
@@ -296,7 +294,7 @@ def ejecutar(extraer_numero, purificar_lote):
                     costo_r = c4.number_input(f"$/Ha #{i+1}", value=float(costo_sugerido), key=f"c_r_{i}")
                     
                     rows_finales.append({"OS": os_r, "Finca": finca_r, "Ha": ha_r, "Costo": costo_r})
-                    if finca_r == vuelo_sel['finca']: total_ha_cobro_escuadron = ha_r # Salvamos Ha para métrica
+                    if finca_r == vuelo_sel['finca']: total_ha_cobro_escuadron = ha_r 
                     total_ha_asignadas += ha_r
 
             st.markdown("---")
@@ -338,9 +336,11 @@ def ejecutar(extraer_numero, purificar_lote):
                             st.balloons()
                             st.success(f"🎯 LEGALIZACIÓN PERFECTA. El registro virtual ha sido eliminado y reemplazado por misiones reales.")
                             
-                            # Limpieza atómica de estados y memorias de caché por seguridad
                             st.session_state.pop('legalizador_rows', None)
                             st.session_state.pop('legalizacion_cache', None)
                             st.rerun()
                     except Exception as e:
                         st.error(f"🚨 Falla en el sistema de inserción de filas: {e}")
+
+if __name__ == "__main__":
+    ejecutar(None, None)
