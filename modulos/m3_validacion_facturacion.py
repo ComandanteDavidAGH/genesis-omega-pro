@@ -7,20 +7,31 @@ import re
 import math
 from datetime import datetime
 import concurrent.futures
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# ⚡ MOTORES ACELERADORES INDUSTRIALES (Caché de Lógica y Datos)
+# ⚡ MOTORES ACELERADORES INDUSTRIALES (Conector Único Central)
 # =================================================================
+
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación con Google Cloud usando el cofre único """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
 
 @st.cache_data(show_spinner=False, ttl=600)
 def obtener_historial_completo_ciclos():
-    """ 🤖 MOTOR IA: Descarga el historial completo (TABLA 1 y APOYO) de forma segura y autenticada """
+    """ 🤖 MOTOR IA: Descarga el historial completo de forma segura y autenticada """
+    gc = obtener_cliente_gspread_unificado()
+    if not gc:
+        return pd.DataFrame(), pd.DataFrame()
     try:
-        if "gcp_credentials" in st.secrets:
-            gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
-        else:
-            gc = gspread.service_account(filename='credenciales.json')
-        
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         
         t1 = boveda.worksheet("TABLA 1").get_all_values()
@@ -40,13 +51,13 @@ def obtener_historial_completo_ciclos():
 
 @st.cache_data(show_spinner=False)
 def preprocesar_flota_gspread():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc:
+        # Fallback seguro en RAM si falla la red
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
+        dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
+        return dict_aviones, dict_drones
     try:
-        if "gcp_credentials" in st.secrets:
-            credenciales_puras = dict(st.secrets["gcp_credentials"])
-            gc = gspread.service_account_from_dict(credenciales_puras)
-        else:
-            gc = gspread.service_account(filename='credenciales.json')
-            
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         datos_vd = boveda.worksheet("Validación Dosis").get_all_values()
         df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1])
@@ -128,6 +139,9 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 # =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
+    # Anclaje HTML seguro para que el botón de volver arriba no reinicie el sistema
+    st.markdown("<div id='top_modulo'></div>", unsafe_allow_html=True)
+
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
@@ -347,7 +361,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # -----------------------------------------------------------------
-    # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN (BLINDADO EN MARCO DE TRABAJO)
+    # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN
     # -----------------------------------------------------------------
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
@@ -435,7 +449,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (PULIDO Y SIN TRAMPAS)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (PULIDO)
         # =======================================================
         dias_ciclo_calc = 0
         try:
@@ -453,7 +467,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if match1:
                     mes_str, dia_str, anio_str = match1.groups()
                     if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+                match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
                 if match2:
                     dia_str, mes_str, anio_str = match2.groups()
                     if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
@@ -472,7 +486,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if not mask.any(): mask = fincas_str.apply(lambda x: f_obj_clean in x)
                     if not mask.any():
                         partes = f_obj_clean.replace("-", " ").split()
-                        # SE AGREGÓ COOBAMAG PARA QUE NUNCA MÁS PASE ESTO
                         if len(partes) > 1 and any(x in partes[0] for x in ["COOP", "BANAFRU", "ASO", "COOBAMAG"]):
                             clave = partes[1] if len(partes[1]) > 2 else partes[0]
                         else:
@@ -494,7 +507,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     fecha_max = max(fechas_validas)
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
                     if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
-        except Exception as e:
+        except:
             pass
 
         datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
@@ -531,9 +544,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
-        
-        # 🧹 EXORCISMO DE MEMORIA STREAMLIT
-        # Si la casilla se quedó "pegada" visualmente, cambiamos su ID interno para forzar su reinicio.
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
 
@@ -836,14 +846,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
-        # =================================================================
-        # 🛡️ FILTRO CRÍTICO DE SEGURIDAD Y GUARDADO MULTIHILO ULTRA-VELOZ
-        # =================================================================
-        # =================================================================
-        # 🚀 BOTÓN UX: VOLVER ARRIBA (Navegación Táctica)
-        # =================================================================
+        # 🚀 BOTÓN UX RE-DISEÑADO CON ENLACE DE ANCLAJE LOCAL SEGURO (Evita que la App se vuelva loca)
         st.markdown("""
-            <a href="#" style="
+            <a href="#top_modulo" target="_self" style="
                 display: inline-block; width: 100%; text-align: center; 
                 background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
                 padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
@@ -852,6 +857,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
             </a>
         """, unsafe_allow_html=True)
+
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
                 st.error("🚫 OPERACIÓN RECHAZADA: No ha ingresado ninguna aeronave en el Hangar de Despliegue.")
@@ -859,7 +865,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
             with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz (Multihilo)..."):
                 try:
-                    gc_save = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
+                    # 🌟 UNIFICACIÓN DE GUARDADO: Cambiamos "gcp_credentials" por el cofre unificado central
+                    gc_save = obtener_cliente_gspread_unificado()
+                    if not gc_save:
+                        st.error("🚨 Error crítico: No se pudo conectar al llavero de Google para guardar.")
+                        st.stop()
+
                     boveda = gc_save.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                     hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
                     hoja_maestra = boveda.worksheet("TABLA 1")
@@ -951,3 +962,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 except Exception as e_save: 
                     st.error(f"🚨 Falla en el Guardado: {e_save}")
         st.stop()
+
+if __name__ == "__main__":
+    pass
