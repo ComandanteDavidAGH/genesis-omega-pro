@@ -169,8 +169,10 @@ def a_numero(val):
         
         # 🎯 AJUSTE DE PRECISIÓN: Solo multiplica si parece un valor monetario o área grande (mayor a 5). 
         # Esto evita inflar las dosis de químicos que son pequeñas (ej: 0.5 L/ha).
-        if 5 < num < 2000: 
+        if 'COSTO' in str(val).upper():
+        if num < 2000:
             num = num * 1000
+
             
         return num
     except: return 0.0
