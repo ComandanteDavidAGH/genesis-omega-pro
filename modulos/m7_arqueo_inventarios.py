@@ -6,8 +6,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 # 🔌 CONFIGURACIÓN DE TU CENTRAL DE GOOGLE SHEETS
 # =================================================================
-# ⚠️ REVISA ESTOS DOS NOMBRES EXACTAMENTE COMO SE LLAMAN EN TU DRIVE
-NOMBRE_DEL_DRIVE = "Génesis Omega Pro" 
+# 🌟 CORRECCIÓN MAESTRA: Apuntamos al nombre exacto de tu archivo en Drive
+NOMBRE_DEL_DRIVE = "GÉNESIS_OMEGA_V2_ESTABLE" 
 NOMBRE_DE_LA_HOJA = "inventario_fisico"
 
 @st.cache_resource
@@ -39,7 +39,7 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
         libro = cliente_google.open(NOMBRE_DEL_DRIVE)
     except Exception as e:
         st.error(f"❌ PASO 1 FALLIDO: No se encontró el archivo '{NOMBRE_DEL_DRIVE}' en Google Drive.")
-        st.info("💡 **Solución:** Asegúrese de que el archivo en Drive se llame exactamente así (ojo con las tildes o espacios) y que esté compartido con el correo de su cuenta de servicio (`client_email` del JSON).")
+        st.info("💡 **Solución:** Asegúrese de que el archivo en Drive compartas acceso de **Editor** al correo de su cuenta de servicio (`client_email` de tus Secrets).")
         return
 
     # PASO 2: Intentar abrir la pestaña específica
@@ -47,7 +47,7 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
         worksheet = libro.worksheet(NOMBRE_DE_LA_HOJA)
     except Exception as e:
         st.error(f"❌ PASO 2 FALLIDO: El archivo abrió bien, pero no existe la pestaña '{NOMBRE_DE_LA_HOJA}'.")
-        st.info("💡 **Solución:** Revise el nombre de la pestaña abajo en su Google Sheet. Debe ser todo en minúsculas y con guión bajo.")
+        st.info("💡 **Solución:** Revise el nombre de la pestaña abajo en su Google Sheet. Debe llamarse exactamente así.")
         return
 
     # PASO 3: Intentar extraer las filas de la tabla
@@ -56,7 +56,7 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
     except Exception as e:
         st.error(f"❌ PASO 3 FALLIDO: Se conectó al archivo y a la pestaña, pero falló la lectura de celdas.")
         st.warning(f"Detalle técnico del error: {e}")
-        st.info("💡 **Solución:** Esto ocurre si la hoja de cálculo está completamente vacía (sin columnas de encabezados) o si el archivo subido a Drive es un `.xlsx` puro y no ha sido convertido al formato nativo de Google Sheets.")
+        st.info("💡 **Solución:** Esto ocurre si la hoja de cálculo está completamente vacía (sin columnas de encabezados).")
         return
 
     # Pestañas operativas del Centro de Mando
