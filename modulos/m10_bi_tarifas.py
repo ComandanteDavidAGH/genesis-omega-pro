@@ -32,8 +32,7 @@ def obtener_cliente_gspread_unificado():
 def cargar_fuentes_maestras_bi():
     """ Descarga y unifica las bases actual e histórica una sola vez en caché """
     gc = obtener_cliente_gspread_unificado()
-    if not gc:
-        return pd.DataFrame(), pd.DataFrame()
+    if not gc: return pd.DataFrame(), pd.DataFrame()
     
     # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
     try:
@@ -48,7 +47,7 @@ def cargar_fuentes_maestras_bi():
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         
-        # 🎯 MAPEO EXACTO DE 2026: Costo Avión / Ha está en COSTO_HA
+        # 🎯 MAPEO EXACTO DE 2026
         df_vivos.rename(columns={
             'AREA_FUMIG': 'AREA_MAESTRA',
             'COSTO_HA': 'AVION_MAESTRO',
@@ -81,10 +80,10 @@ def cargar_fuentes_maestras_bi():
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
     """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
     try:
-        gc = obtener_cliente_gspread_unificado()
-        if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-        
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -153,8 +152,23 @@ def estandarizar_base(df):
             
     df.rename(columns=renombres, inplace=True)
     return df
-    
-def a_numero(val):
+
+# 🎯 HERRAMIENTA 1: Exclusiva para Hectáreas y Dosis (Respeta los decimales, NO multiplica por 1000)
+def limpiar_area(val):
+    try:
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v: return 0.0
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.\-]', '', v)
+        if v.count('.') > 1:
+            partes = v.rsplit('.', 1)
+            v = partes[0].replace('.', '') + '.' + partes[1]
+        return float(v) if v else 0.0
+    except: return 0.0
+
+# 🎯 HERRAMIENTA 2: Exclusiva para Dinero (Arregla los miles hundidos a 200 pesos)
+def limpiar_dinero(val):
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
@@ -165,7 +179,7 @@ def a_numero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        # CORRECCIÓN DE PRECISIÓN: Si el valor es mayor a 5 (evitando dosis pequeñas) y menor a 2000 (para arreglar miles)
+        # Multiplica solo si el costo viene con punto de miles asumido como decimal por Python
         if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
@@ -205,6 +219,9 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 
 # --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
+    # 🌟 ANCLA NATIVA: Punto de aterrizaje invisible que ya te funcionó bien
+    st.header("", anchor="inicio_modulo")
+
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -226,7 +243,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
 
     try:
-        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS (CONECTOR DIRECTO)
+        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS
         df_vivos, df_historico = cargar_fuentes_maestras_bi()
 
         if df_vivos.empty and df_historico.empty:
@@ -250,18 +267,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # 🎯 CÁLCULO ESTRICTO DE COSTOS: Separa la lógica 2026 de 2024/2025 para evitar el $4M
+        # 🎯 CÁLCULO ESTRICTO DE COSTOS: Eliminada la división de 2026. Apunta directo a la columna "VALOR_FACTURAR" (W)
         def calcular_costo_real(row):
             if row.get('ORIGEN_BI') == 'ACTUAL':
-                tot = a_numero(row.get('COSTO_TOTAL', 0))
-                ha = a_numero(row.get('AREA_MAESTRA', 1))
-                return tot / ha if ha > 0 else 0
+                return limpiar_dinero(row.get('VALOR_FACTURAR', 0))
             else:
-                return a_numero(row.get('COSTO_MAESTRO', 0))
+                return limpiar_dinero(row.get('COSTO_MAESTRO', 0))
 
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
-        super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(a_numero)
-        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(a_numero) + super_base_bi['DOMINIC_MAESTRO'].apply(a_numero)
+        # 🚜 Aquí usamos limpiar_area para que las hectáreas NO se inflen por 1000
+        super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
+        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
         # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
@@ -428,16 +444,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
             
-            # --- CORRECCIÓN DE TIPOS PARA EVITAR ERROR EN 'mean' ---
+            # Aseguramos que los números sean procesables
             df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
             df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
-            if col_gln:
-                df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0)
-                df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0)
-            # --------------------------------------------------------
             
             agg_dict = {'COSTO_NUM': 'mean'}
-            if col_gln: agg_dict[col_gln] = 'mean'
+            if col_gln: 
+                df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0)
+                df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0)
+                agg_dict[col_gln] = 'mean'
             
             g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
@@ -512,7 +527,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                 if not receta_base.empty:
                     for idx, row in receta_base.iterrows():
-                        prod, dosis = str(row.iloc[1]).strip().upper(), a_numero(row.iloc[2])
+                        prod, dosis = str(row.iloc[1]).strip().upper(), limpiar_area(row.iloc[2])
                         if dosis > 0 and prod not in ['NAN', '']: dict_prods_unicos[prod] = dosis
                 else:
                     if not df_dicc.empty:
@@ -523,7 +538,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             if sigla in resto_letras:
                                 match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
                                 if not match_sig.empty:
-                                    dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
+                                    dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(match_sig.iloc[0]['DOSIS'])
                                     resto_letras = resto_letras.replace(sigla, '', 1)
                         if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
                         dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
@@ -531,7 +546,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                 for ad in aditivos:
                     match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad] if not df_dicc.empty else pd.DataFrame()
-                    if not match_sig.empty: dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
+                    if not match_sig.empty: dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(match_sig.iloc[0]['DOSIS'])
                     else:
                         if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
                         elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
@@ -559,7 +574,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0: return match_df['PRECIO_PROM'].mean()
                         if (str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year)) and not df_conf.empty:
                             match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
-                            if not match_conf.empty: return a_numero(match_conf.iloc[0, 9])
+                            if not match_conf.empty: return limpiar_dinero(match_conf.iloc[0, 9])
                         return 0.0
 
                     costo_total_a, costo_total_b = 0.0, 0.0
@@ -658,8 +673,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         fecha_val = row['FECHA_DT'].strftime('%d/%m/%Y')
                         semana_val = (row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]
 
-                        tar_avion_raw = a_numero(row['AVION_MAESTRO'])
-                        tar_dom_raw = a_numero(row['DOMINIC_MAESTRO'])
+                        tar_avion_raw = limpiar_dinero(row['AVION_MAESTRO'])
+                        tar_dom_raw = limpiar_dinero(row['DOMINIC_MAESTRO'])
                         tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
 
                         if tarifa_unitaria_actual > 0 and ha_val > 0:
@@ -738,6 +753,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
+
+        # 🌟 BOTÓN DE NAVEGACIÓN NATIVO
+        st.markdown("""
+            <a href="#inicio_modulo" target="_self" style="
+                display: block; width: 100%; text-align: center; 
+                background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
+                padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
+                box-shadow: 0px 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; font-size: 16px;
+            ">
+                ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
+            </a>
+        """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     pass
