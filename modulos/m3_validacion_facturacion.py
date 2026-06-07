@@ -6,7 +6,6 @@ import io
 import re
 import math
 from datetime import datetime
-import streamlit.components.v1 as components
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
@@ -142,11 +141,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     # 🌟 ANCLA NATIVA: Punto de aterrizaje invisible
     st.header("", anchor="inicio_modulo")
-    
-    st.markdown("""
-    <style>
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
-    
+
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
@@ -851,6 +846,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_p1, c_p2 = st.columns(2)
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
+        
         # 🌟 BOTÓN DE NAVEGACIÓN NATIVO: Apunta al ancla de arriba sin usar JavaScript
         st.markdown("""
             <a href="#inicio_modulo" target="_self" style="
@@ -870,7 +866,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
             with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz..."):
                 try:
-                    # 🌟 REPARACIÓN CENTRAL DE PERMISOS: Usamos el conector unificado thread-safe
                     gc_save = obtener_cliente_gspread_unificado()
                     if not gc_save:
                         st.error("🚨 Error crítico: No se pudo conectar al llavero de Google para guardar.")
@@ -954,3 +949,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if 'memoria_excel' in st.session_state: del st.session_state['memoria_excel']
                 except Exception as e_save: 
                     st.error(f"🚨 Falla en el Guardado: {e_save}")
+
+if __name__ == "__main__":
+    pass
