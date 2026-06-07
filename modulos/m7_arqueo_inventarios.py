@@ -211,20 +211,44 @@ def ejecutar(quitar_tildes, purificar_lote):
                             sap_file.seek(0)
                             df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
 
-                    df_sap.columns = [quitar_tildes(c) for c in df_sap.columns]
+                    # 🌟 FIX COINCIDENCIA ALGORÍTMICA DE COLUMNAS DE SAP
+                    columnas_originales = list(df_sap.columns)
+                    columnas_saneadas = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                     
-                    # Alineación Francotirador según la radiografía de su reporte estándar de SAP
-                    c_item = next((c for c in df_sap.columns if str(c).strip() == 'Material'), df_sap.columns[0])
-                    c_desc = next((c for c in df_sap.columns if str(c).strip() == 'Descripción del material'), df_sap.columns[1])
-                    c_pista = next((c for c in df_sap.columns if str(c).strip() == 'Almacén'), df_sap.columns[2])
-                    c_lote = next((c for c in df_sap.columns if str(c).strip() == 'Lote'), df_sap.columns[3])
-                    c_saldo = next((c for c in df_sap.columns if str(c).strip() == 'Libre utilización'), df_sap.columns[4])
+                    idx_item = next((i for i, c in enumerate(columnas_saneadas) if 'material' == c or 'item' in c), 0)
+                    idx_desc = next((i for i, c in enumerate(columnas_saneadas) if 'descripcion' in c or 'producto' in c), 1)
+                    idx_pista = next((i for i, c in enumerate(columnas_saneadas) if 'almacen' in c or 'pista' in c), 2)
+                    idx_lote = next((i for i, c in enumerate(columnas_saneadas) if 'lote' == c or 'lote_key' in c), 3)
+                    idx_saldo = next((i for i, c in enumerate(columnas_saneadas) if 'libre' in c or 'saldo' in c), 4)
+                    
+                    c_item = columnas_originales[idx_item]
+                    c_desc = columnas_originales[idx_desc]
+                    c_pista = columnas_originales[idx_pista]
+                    c_lote = columnas_originales[idx_lote]
+                    c_saldo = columnas_originales[idx_saldo]
 
                     df_sap_clean = df_sap[[c_item, c_desc, c_pista, c_lote, c_saldo]].copy()
                     df_sap_clean.columns = ['ITEM', 'PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                     df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
                     df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().str.upper()
-                    df_sap_clean['SALDO_SAP'] = pd.to_numeric(df_sap_clean['SALDO_SAP'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                    
+                    # 🌟 FIX LIMPIEZA REGIONAL DE NÚMEROS LATAM / SAP
+                    def limpiar_numeros_sap(x):
+                        if pd.isna(x): return 0.0
+                        s = str(x).strip().replace(' ', '')
+                        if not s or s.lower() == 'nan': return 0.0
+                        
+                        if '.' in s and ',' in s:
+                            s = s.replace('.', '').replace(',', '.')
+                        elif ',' in s:
+                            s = s.replace(',', '.')
+                        elif '.' in s:
+                            if s.endswith('.0'): s = s[:-2]
+                            elif len(s.split('.')[-1]) == 3: s = s.replace('.', '')
+                        try: return float(s)
+                        except: return 0.0
+
+                    df_sap_clean['SALDO_SAP'] = df_sap_clean['SALDO_SAP'].apply(limpiar_numeros_sap)
                     
                     st.session_state.df_sap_raw = df_sap_clean 
                     st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
@@ -277,7 +301,6 @@ def ejecutar(quitar_tildes, purificar_lote):
         desfases_criticos = len(f_df_cruce[f_df_cruce['ESTADO'] == "❌ DISCREPANCIA"])
         volumen_desfase_neto = f_df_cruce['DIFERENCIA'].sum()
         
-        # Corrección de renderizado condicional en las variables CSS del HUD
         fail_class = "hud-arqueo-fail" if desfases_criticos > 0 else "hud-arqueo-ok"
         fail_icon = "⚠️" if desfases_criticos > 0 else "✅"
         balance_color = "#ff3333" if volumen_desfase_neto < 0 else "#00ff66"
@@ -383,5 +406,4 @@ def ejecutar(quitar_tildes, purificar_lote):
                 components.html(html_reporte_masivo, height=600, scrolling=True)
 
 if __name__ == "__main__":
-    # Mock por si se corre aislado, pero en producción recibe los parámetros de app.py
     ejecutar(None, None)
