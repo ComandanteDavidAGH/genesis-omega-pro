@@ -10,61 +10,65 @@ from openpyxl.chart.label import DataLabelList
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# ⚡ MOTORES DE CACHÉ Y COMPUTACIÓN ACELERADA (ALTA VELOCIDAD)
+# ⚡ MOTORES DE COMPUTACIÓN ACELERADA (TRAMPA EN RAM ACTIVADA)
 # =================================================================
 
-@st.cache_data(show_spinner=False)
+# 🕵️‍♂️ REMOVEMOS EL CACHÉ TEMPORALMENTE PARA QUE LA TRAMPA TRABAJE EN VIVO
 def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pesada, _extraer_numero):
     """ Descarga, estructura y decodifica la base histórica una sola vez en RAM """
     url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
     datos_brutos = _descargar_matriz_rapida(url_maestra, "TABLA 1")
     
+    # ALERTA DE TRAMPA 1: Guardamos los datos crudos en la sesión para revisarlos en la interfaz
+    st.session_state["trampa_datos_brutos"] = datos_brutos
+    
     if not datos_brutos or len(datos_brutos) < 2:
         return pd.DataFrame()
         
-    # 🧠 ALGORITMO DE AUDITORÍA: Detectar la fila de títulos dinámicamente
+    # 🧠 DETECCIÓN DINÁMICA DE ENCABEZADOS
     idx_headers = 4  
     for i in range(min(6, len(datos_brutos))):
         row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
-        if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "PISTA" in row_clean:
+        if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "PISTA" in row_clean or "FUMIG" in "".join(row_clean):
             idx_headers = i
             break
             
-    # Saneamiento defensivo de caracteres e idiomas en las columnas del Drive
+    st.session_state["trampa_idx_headers"] = idx_headers
+    
+    # Saneamiento de caracteres
     headers_limpios = []
     for h in datos_brutos[idx_headers]:
         h_str = str(h).strip().upper().replace("\n", " ")
         h_str = h_str.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
-        h_str = h_str.replace("Ì", "I").replace("Ò", "O") # Remueve acentos graves del teclado regional
+        h_str = h_str.replace("Ì", "I").replace("Ò", "O")
         headers_limpios.append(h_str)
 
-    # 🎯 ALINEACIÓN FRANCOTIRADOR CON TUS COLUMNAS REALES
+    st.session_state["trampa_headers_detectados"] = headers_limpios
+
+    # Mapeo posicional exacto basado en tu lista de Drive
     idx_os = headers_limpios.index("Nº ORDEN") if "Nº ORDEN" in headers_limpios else 0
     idx_bloque = headers_limpios.index("BLOQUE") if "BLOQUE" in headers_limpios else 1
     idx_finca = headers_limpios.index("FINCA") if "FINCA" in headers_limpios else 2
     idx_sector = headers_limpios.index("SECTOR") if "SECTOR" in headers_limpios else 3
     
-    # Reparación Maestra: Apuntamos directo al área fumigada líquida
-    idx_ha = next((i for i, h in enumerate(headers_limpios) if "FUMIG" in h), 5)
+    # Rastreo de Hectáreas Fumigadas (Tu columna 6)
+    idx_ha = next((i for i, h in enumerate(headers_limpios) if "FUMIG" in h or "AREA" in h), 5)
     idx_coctel = headers_limpios.index("COCTEL") if "COCTEL" in headers_limpios else 6
     idx_fecha = headers_limpios.index("FECHA") if "FECHA" in headers_limpios else 7
-    
-    # Evita falsos positivos con "DIA SEM" capturando la columna exacta "SEM"
     idx_semana = next((i for i, h in enumerate(headers_limpios) if h == "SEM"), 9)
-    idx_horometro = next((i for i, h in enumerate(headers_limpios) if "ODOM" in h), 10)
-    
-    # Reparación Maestra: Captura de las horas reales de vuelo del avión
-    idx_h_prop = next((i for i, h in enumerate(headers_limpios) if "RENDIMIENTO (HORAS)" in h), 13)
-    
+    idx_horometro = next((i for i, h in enumerate(headers_limpios) if "ODOM" in h or "RENDIMIENTO" in h), 10)
+    idx_h_prop = next((i for i, h in enumerate(headers_limpios) if "RENDIMIENTO (HORAS)" in h or "HORAS" in h), 13)
     idx_piloto = headers_limpios.index("PILOTO") if "PILOTO" in headers_limpios else 15
     idx_hk = headers_limpios.index("HK") if "HK" in headers_limpios else 16
     idx_modelo = headers_limpios.index("MODELO") if "MODELO" in headers_limpios else 17
     idx_pista = headers_limpios.index("PISTA") if "PISTA" in headers_limpios else 23
 
-    filas_datos = datos_brutos[idx_headers + 1:]
-    if not filas_datos:
-        return pd.DataFrame()
+    st.session_state["trampa_mapa_indices"] = {
+        "Nº ORDEN (Col)": idx_os, "FINCA (Col)": idx_finca, 
+        "ÁREA FUMIG. (Col)": idx_ha, "RENDIMIENTO HORAS (Col)": idx_h_prop, "PISTA (Col)": idx_pista
+    }
 
+    filas_datos = datos_brutos[idx_headers + 1:]
     lista_procesada = []
     meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
     
@@ -108,6 +112,8 @@ def cargar_y_preprocesar_base_radar(_descargar_matriz_rapida, _procesar_fecha_pe
         })
         
     df_resultado = pd.DataFrame(lista_procesada)
+    st.session_state["trampa_df_antes_filtrar"] = df_resultado
+    
     if df_resultado.empty:
         return pd.DataFrame()
         
@@ -244,9 +250,33 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
 
     st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
-    # ⚡ EXTRACCIÓN MAESTRA CACHEADA EN RAM
+    # ⚡ EXTRACCIÓN MAESTRA EN RAM
     df_rep = cargar_y_preprocesar_base_radar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
     
+    # =================================================================
+    # 🕵️‍♂️ CONSOLA DE LA TRAMPA (MUESTRA LO QUE ENCUENTRA EN VIVO)
+    # =================================================================
+    with st.expander("🕵️‍♂️ CONSOLA DE LA TRAMPA: Auditoría de Datos en Tiempo Real", expanded=True):
+        st.warning("⚙️ Esta sección le muestra exactamente lo que Python ve en la memoria interna.")
+        
+        if "trampa_datos_brutos" in st.session_state:
+            filas_total = len(st.session_state["trampa_datos_brutos"])
+            st.write(f"➡️ **1. Filas brutas descargadas desde Google Sheets:** `{filas_total}`")
+            
+            if filas_total > 0:
+                st.write(f"➡️ **2. Fila detectada como Encabezado:** Índice `{st.session_state.get('trampa_idx_headers')}`")
+                st.write("➡️ **3. Columnas analizadas en memoria:**", st.session_state.get("trampa_headers_detectados"))
+                st.write("➡️ **4. Mapa de coordenadas asignadas:**", st.session_state.get("trampa_mapa_indices"))
+                
+                if "trampa_df_antes_filtrar" in st.session_state:
+                    df_previo = st.session_state["trampa_df_antes_filtrar"]
+                    st.write(f"➡️ **5. Filas convertidas antes de filtrar por hectáreas:** `{len(df_previo)}`")
+                    if not df_previo.empty:
+                        st.write("➡️ **6. Muestra de las primeras 3 filas decodificadas:**")
+                        st.dataframe(df_previo.head(3), use_container_width=True)
+        else:
+            st.error("❌ El motor ni siquiera logró descargar datos desde la URL compartida.")
+
     if df_rep.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones activas registradas en la TABLA 1.")
         return
@@ -270,7 +300,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
     if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
         mostrar_horas = st.checkbox("⏱️ Mostrar también el Rendimiento (Horas de Vuelo)")
 
-    # Filtrado cronológico veloz en la RAM local
     df_filt = df_rep[df_rep['AÑO'] == año_sel]
     if pista_sel != "TODAS":
         df_filt = df_filt[df_filt['PISTA'] == pista_sel]
@@ -278,7 +307,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
     if df_filt.empty:
         st.warning("⚠️ No hay misiones operativas registradas para los parámetros elegidos.")
     else:
-        # 🚀 LANZAMIENTO DEL HUD GERENCIAL DE ALTO IMPACTO
         total_ha_filtro = df_filt['HA_NETAS'].sum()
         total_hr_filtro = df_filt['H_PROPORCIONAL'].sum()
         ratio_eficiencia = total_ha_filtro / total_hr_filtro if total_hr_filtro > 0 else 0.0
