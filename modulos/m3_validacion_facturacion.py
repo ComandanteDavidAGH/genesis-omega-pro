@@ -6,7 +6,6 @@ import io
 import re
 import math
 from datetime import datetime
-import concurrent.futures
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
@@ -53,7 +52,6 @@ def obtener_historial_completo_ciclos():
 def preprocesar_flota_gspread():
     gc = obtener_cliente_gspread_unificado()
     if not gc:
-        # Fallback seguro en RAM si falla la red
         dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
@@ -95,14 +93,11 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_lider = True
                     break
         
-        if match_lider: 
-            puntaje += 1000
-        else: 
-            es_valido = False
+        if match_lider: puntaje += 1000
+        else: es_valido = False
 
         if es_valido:
-            if iter_id == coctel_piloto_base: 
-                puntaje += 10000
+            if iter_id == coctel_piloto_base: puntaje += 10000
 
             for p_receta, d_esperada in receta.items():
                 match_receta = False
@@ -139,9 +134,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 # =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
-    # Anclaje HTML seguro para que el botón de volver arriba no reinicie el sistema
-    st.markdown("<div id='top_modulo'></div>", unsafe_allow_html=True)
-
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
@@ -249,10 +241,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             datos = diccionario_fincas.get(finca_sim, {})
             if datos.get("Productor") in lista_productores: st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
             st.session_state.idx_tope = 0
-            tope_k = datos.get("Tope_Key", "")
-            if tope_k:
+            top_k = datos.get("Tope_Key", "")
+            if top_k:
                 for i, p_t in enumerate(pistas_con_tope):
-                    if tope_k in p_t: 
+                    if top_k in p_t: 
                         st.session_state.idx_tope = i
                         break
             st.session_state.finca_anterior = finca_sim
@@ -361,7 +353,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # -----------------------------------------------------------------
-    # ⚙️ MÓDULO ORIGINAL DE FACTURACIÓN
+    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL
     # -----------------------------------------------------------------
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
@@ -449,7 +441,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (PULIDO)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO (PULIDO SEQUENCIAL)
         # =======================================================
         dias_ciclo_calc = 0
         try:
@@ -481,7 +473,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 if col_f and col_d:
                     fincas_str = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'\s+', ' ', x).strip())
-                    
                     mask = fincas_str == f_obj_clean
                     if not mask.any(): mask = fincas_str.apply(lambda x: f_obj_clean in x)
                     if not mask.any():
@@ -760,8 +751,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 })
 
             df_matriz = pd.DataFrame(matriz_datos)
-            if 'editor_valid' in st.session_state:
-                ediciones = st.session_state['editor_valid'].get('edited_rows', {})
+            
+            # 🌟 PERSISTENCIA CONTROLADA: Clave dinámica por casilla para que el simulador no se descuadre al cambiar fincas
+            llave_editor_casilla = f"editor_valid_{casilla_key}"
+            if llave_editor_casilla in st.session_state:
+                ediciones = st.session_state[llave_editor_casilla].get('edited_rows', {})
                 for row_idx, edit_dict in ediciones.items():
                     if "B: Dosis/Ha (SAP)" in edit_dict: df_matriz.at[row_idx, "B: Dosis/Ha (SAP)"] = edit_dict["B: Dosis/Ha (SAP)"]
                     if "C: X (Extra %)" in edit_dict: df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
@@ -779,7 +773,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 return [c] * len(row)
 
             edited_df = st.data_editor(
-                df_matriz.style.apply(colorear_matriz, axis=1), key='editor_valid',
+                df_matriz.style.apply(colorear_matriz, axis=1), key=llave_editor_casilla,
                 column_config={
                     "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
                     "C: X (Extra %)" : st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
@@ -841,31 +835,23 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c_tot3.subheader(f"🔥 TOTAL: $ {fmt_sap(gran_total)}")
         
         st.markdown("---")
-        st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
+        st.markdown("### ### 🛰️ Coordenadas de Lanzamiento Final")
         c_p1, c_p2 = st.columns(2)
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
-        # 🚀 BOTÓN UX RE-DISEÑADO CON ENLACE DE ANCLAJE LOCAL SEGURO (Evita que la App se vuelva loca)
-        st.markdown("""
-            <a href="#top_modulo" target="_self" style="
-                display: inline-block; width: 100%; text-align: center; 
-                background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
-                padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
-                box-shadow: 0px 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; font-size: 16px;
-            ">
-                ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
-            </a>
-        """, unsafe_allow_html=True)
+        # 🌟 FIJAR BOTÓN UX: Botón nativo de Streamlit. Hace scroll inmediato hacia arriba al reejecutar, sin romper estados.
+        if st.button("⬆️ VOLVER AL INICIO DEL MÓDULO", use_container_width=True, key="btn_volver_arriba_nav"):
+            st.rerun()
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             if total_ha_cobro_escuadron == 0:
                 st.error("🚫 OPERACIÓN RECHAZADA: No ha ingresado ninguna aeronave en el Hangar de Despliegue.")
                 st.stop()
                 
-            with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz (Multihilo)..."):
+            with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz..."):
                 try:
-                    # 🌟 UNIFICACIÓN DE GUARDADO: Cambiamos "gcp_credentials" por el cofre unificado central
+                    # 🌟 REPARACIÓN CENTRAL DE PERMISOS: Usamos el conector unificado thread-safe
                     gc_save = obtener_cliente_gspread_unificado()
                     if not gc_save:
                         st.error("🚨 Error crítico: No se pudo conectar al llavero de Google para guardar.")
@@ -913,25 +899,17 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", ('DRONE' if mision_solo_dron else 'AVION'), ""]
                     
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        fut_col_azul = executor.submit(hoja_maestra.col_values, 1)
-                        fut_col_apoyo = executor.submit(hoja_apoyo.col_values, 2)
-                        fut_memoria = executor.submit(hoja_memoria.get_all_values)
-                        
-                        col_azul = fut_col_azul.result()
-                        col_apoyo = fut_col_apoyo.result()
-                        datos_memoria = fut_memoria.result()
+                    # 🌟 REMOCIÓN DEL MULTIHILO DE RIESGO: Ejecución secuencial 100% segura para los hilos de requests
+                    col_azul = hoja_maestra.col_values(1)
+                    col_apoyo = hoja_apoyo.col_values(2)
+                    datos_memoria = hoja_memoria.get_all_values()
 
                     f_azul = next((i+2 for i in range(len(col_azul)-1, -1, -1) if str(col_azul[i]).strip() != ""), 1)
                     f_apoyo = next((i+2 for i in range(len(col_apoyo)-1, -1, -1) if str(col_apoyo[i]).strip() != ""), 1)
                     fila_apoyo[0] = f_apoyo - 3
                     
-                    def expandir_hoja(hoja, req):
-                        if req > hoja.row_count: hoja.add_rows(10)
-                    
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        executor.submit(expandir_hoja, hoja_maestra, f_azul)
-                        executor.submit(expandir_hoja, hoja_apoyo, f_apoyo)
+                    if f_azul > hoja_maestra.row_count: hoja_maestra.add_rows(10)
+                    if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
                     
                     set_existentes = {f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}" for r in datos_memoria[1:] if len(r) >= 10}
                     bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron else "BODEGA PRINCIPAL AVIÓN"
@@ -944,24 +922,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                 filas_memoria.append(fila_m)
                     
-                    def inyectar_maestra(): hoja_maestra.update(values=[row_azul], range_name=f"A{f_azul}", value_input_option='USER_ENTERED')
-                    def inyectar_apoyo(): hoja_apoyo.update(values=[fila_apoyo], range_name=f"A{f_apoyo}", value_input_option='USER_ENTERED')
-                    def inyectar_memoria():
-                        if filas_memoria: hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
-
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        executor.submit(inyectar_maestra)
-                        executor.submit(inyectar_apoyo)
-                        executor.submit(inyectar_memoria)
+                    # Subidas directas ordenadas
+                    hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
+                    hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
+                    if filas_memoria: 
+                        hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
 
                     st.balloons()
                     st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul}.")
-                    st.toast(f"💾 Memoria Samurai Sincronizada a velocidad luz.", icon="⚔️")
+                    st.toast(f"💾 Memoria Sincronizada con éxito.", icon="⚔️")
                     
                     if 'memoria_excel' in st.session_state: del st.session_state['memoria_excel']
                 except Exception as e_save: 
                     st.error(f"🚨 Falla en el Guardado: {e_save}")
-        st.stop()
-
-if __name__ == "__main__":
-    pass
