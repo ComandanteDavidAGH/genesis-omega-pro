@@ -9,49 +9,74 @@ import re
 import math
 import io
 import openpyxl
+from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =================================================================
 # ⚡ MOTORES DE CACHÉ Y VELOCIDAD DE DATOS (Aislamiento en RAM)
 # =================================================================
 
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación con Google Cloud usando el cofre único """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
+
 @st.cache_data(show_spinner=False)
-def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
-    """ Descarga y unifica las bases actual e histórica una sola vez en caché """
-    
-    # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
-    url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-    datos_brutos_act = _descargar_matriz_rapida(url_act, "TABLA 1")
-    
-    if len(datos_brutos_act) > 5:
-        # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
-        columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
-        filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
-        df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+def cargar_fuentes_maestras_bi():
+    """ Descarga y unifica las bases actual e histórica de forma directa y segura en caché """
+    gc = obtener_cliente_gspread_unificado()
+    if not gc:
+        return pd.DataFrame(), pd.DataFrame()
         
-        # 🎯 MAPEO EXACTO DE 2026: Costo Avión / Ha está en COSTO_HA
-        df_vivos.rename(columns={
-            'AREA_FUMIG': 'AREA_MAESTRA',
-            'COSTO_HA': 'AVION_MAESTRO',
-            'DOMINICAL_HA': 'DOMINIC_MAESTRO',
-            'FINCA': 'FINCA_MAESTRA',
-            'FECHA': 'FECHA_MAESTRA',
-            'OS': 'OS_MAESTRA',
-            'COCTEL': 'COCTEL_MAESTRO'
-        }, inplace=True)
-        df_vivos['ORIGEN_BI'] = 'ACTUAL'
-    else:
+    try:
+        # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
+        url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+        boveda_act = gc.open_by_url(url_act)
+        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
+        
+        if len(datos_brutos_act) > 5:
+            # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
+            columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
+            df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+            
+            # 🎯 MAPEO EXACTO DE 2026: Costo Avión / Ha está en COSTO_HA
+            df_vivos.rename(columns={
+                'AREA_FUMIG': 'AREA_MAESTRA',
+                'COSTO_HA': 'AVION_MAESTRO',
+                'DOMINICAL_HA': 'DOMINIC_MAESTRO',
+                'FINCA': 'FINCA_MAESTRA',
+                'FECHA': 'FECHA_MAESTRA',
+                'OS': 'OS_MAESTRA',
+                'COCTEL': 'COCTEL_MAESTRO'
+            }, inplace=True)
+            df_vivos['ORIGEN_BI'] = 'ACTUAL'
+        else:
+            df_vivos = pd.DataFrame()
+            
+    except Exception:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
-    url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
-    datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
-    
-    if len(datos_brutos_hist) > 0:
-        df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
-        df_historico = estandarizar_base(limpiar_encabezados(df_historico))
-        df_historico['ORIGEN_BI'] = 'HISTORICO'
-    else:
+    try:
+        # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
+        url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+        boveda_hist = gc.open_by_url(url_hist)
+        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        
+        if len(datos_brutos_hist) > 0:
+            df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
+            df_historico = estandarizar_base(limpiar_encabezados(df_historico))
+            df_historico['ORIGEN_BI'] = 'HISTORICO'
+        else:
+            df_historico = pd.DataFrame()
+    except Exception:
         df_historico = pd.DataFrame()
 
     return df_vivos, df_historico
@@ -59,9 +84,11 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
     """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
-    try:
-        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
+    gc = obtener_cliente_gspread_unificado()
+    if not gc:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
+    try:
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
@@ -202,8 +229,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
 
     try:
-        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS
-        df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
+        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS (CONECTOR INDEPENDIENTE)
+        df_vivos, df_historico = cargar_fuentes_maestras_bi()
 
         if df_vivos.empty and df_historico.empty:
             st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
@@ -444,7 +471,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.dataframe(df_vista, use_container_width=True, hide_index=True)
             
             # =====================================================================
-            # 🔬 NIVEL 2: CACHÉ ABSOLUTA DE BÓVEDA DE RECETAS (Eliminado lag HTTP)
+            # 🔬 NIVEL 2: CACHÉ ABSOLUTA DE BÓVEDA DE RECETAS
             # =====================================================================
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
@@ -460,133 +487,133 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         st.error("🚨 Enlace roto con la bóveda de ingredientes históricos.")
                         st.stop()
 
-                    coctel_crudo = coctel_sel.upper().replace(" ", "")
-                    partes_coctel = coctel_crudo.split('+')
-                    base_coctel, aditivos = partes_coctel[0], partes_coctel[1:] if len(partes_coctel) > 1 else []
+                coctel_crudo = coctel_sel.upper().replace(" ", "")
+                partes_coctel = coctel_crudo.split('+')
+                base_coctel, aditivos = partes_coctel[0], partes_coctel[1:] if len(partes_coctel) > 1 else []
 
-                    match_num = re.search(r'\d+', base_coctel)
-                    dosis_aceite = int(match_num.group()) if match_num else 0
-                    solo_letras = re.sub(r'\d+', '', base_coctel)
+                match_num = re.search(r'\d+', base_coctel)
+                dosis_aceite = int(match_num.group()) if match_num else 0
+                solo_letras = re.sub(r'\d+', '', base_coctel)
 
-                    dict_prods_unicos, es_organico = {}, False
-                    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()] if not df_t2.empty else pd.DataFrame()
-                    if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
+                dict_prods_unicos, es_organico = {}, False
+                match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()] if not df_t2.empty else pd.DataFrame()
+                if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
 
-                    receta_base = pd.DataFrame()
-                    if not df_mezclas.empty:
-                        if es_organico and not base_coctel.endswith('O'):
-                            coctel_prueba = f"{base_coctel}O"
-                            if not df_mezclas[df_mezclas['COCTEL_CLEAN'] == coctel_prueba].empty: base_coctel = coctel_prueba
-                        receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == base_coctel]
-                        if receta_base.empty: receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
+                receta_base = pd.DataFrame()
+                if not df_mezclas.empty:
+                    if es_organico and not base_coctel.endswith('O'):
+                        coctel_prueba = f"{base_coctel}O"
+                        if not df_mezclas[df_mezclas['COCTEL_CLEAN'] == coctel_prueba].empty: base_coctel = coctel_prueba
+                    receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == base_coctel]
+                    if receta_base.empty: receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
 
-                    if not receta_base.empty:
-                        for idx, row in receta_base.iterrows():
-                            prod, dosis = str(row.iloc[1]).strip().upper(), a_numero(row.iloc[2])
-                            if dosis > 0 and prod not in ['NAN', '']: dict_prods_unicos[prod] = dosis
+                if not receta_base.empty:
+                    for idx, row in receta_base.iterrows():
+                        prod, dosis = str(row.iloc[1]).strip().upper(), a_numero(row.iloc[2])
+                        if dosis > 0 and prod not in ['NAN', '']: dict_prods_unicos[prod] = dosis
+                else:
+                    if not df_dicc.empty:
+                        siglas_validas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
+                        siglas_validas.sort(key=len, reverse=True)
+                        resto_letras = solo_letras
+                        for sigla in siglas_validas:
+                            if sigla in resto_letras:
+                                match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
+                                if not match_sig.empty:
+                                    dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
+                                    resto_letras = resto_letras.replace(sigla, '', 1)
+                        if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
+                        dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
+                        dict_prods_unicos['ADHERENTE SV'] = 0.13
+
+                for ad in aditivos:
+                    match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad] if not df_dicc.empty else pd.DataFrame()
+                    if not match_sig.empty: dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
                     else:
-                        if not df_dicc.empty:
-                            siglas_validas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
-                            siglas_validas.sort(key=len, reverse=True)
-                            resto_letras = solo_letras
-                            for sigla in siglas_validas:
-                                if sigla in resto_letras:
-                                    match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
-                                    if not match_sig.empty:
-                                        dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
-                                        resto_letras = resto_letras.replace(sigla, '', 1)
-                            if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
-                            dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
-                            dict_prods_unicos['ADHERENTE SV'] = 0.13
+                        if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
+                        elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
 
-                    for ad in aditivos:
-                        match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad] if not df_dicc.empty else pd.DataFrame()
-                        if not match_sig.empty: dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = a_numero(match_sig.iloc[0]['DOSIS'])
-                        else:
-                            if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
-                            elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
+                if dosis_aceite > 0:
+                    dict_prods_unicos[next((k for k in dict_prods_unicos.keys() if "ACEITE" in k), "ACEITE DICAM")] = float(dosis_aceite)
+                else:
+                    for k in [k for k in dict_prods_unicos.keys() if "ACEITE" in k]: dict_prods_unicos.pop(k, None)
 
-                    if dosis_aceite > 0:
-                        dict_prods_unicos[next((k for k in dict_prods_unicos.keys() if "ACEITE" in k), "ACEITE DICAM")] = float(dosis_aceite)
-                    else:
-                        for k in [k for k in dict_prods_unicos.keys() if "ACEITE" in k]: dict_prods_unicos.pop(k, None)
+                if es_organico:
+                    for k in [k for k in dict_prods_unicos.keys() if "ADHERENTE" in k]: dict_prods_unicos.pop(k, None)
+                    if next((k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k), "SPRAYFIX") not in dict_prods_unicos: dict_prods_unicos["SPRAYFIX"] = 0.2
+                else:
+                    for k in [k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k]: dict_prods_unicos.pop(k, None)
+                    if next((k for k in dict_prods_unicos.keys() if "ADHERENTE" in k), "ADHERENTE SV") not in dict_prods_unicos: dict_prods_unicos["ADHERENTE SV"] = 0.13
 
-                    if es_organico:
-                        for k in [k for k in dict_prods_unicos.keys() if "ADHERENTE" in k]: dict_prods_unicos.pop(k, None)
-                        if next((k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k), "SPRAYFIX") not in dict_prods_unicos: dict_prods_unicos["SPRAYFIX"] = 0.2
-                    else:
-                        for k in [k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k]: dict_prods_unicos.pop(k, None)
-                        if next((k for k in dict_prods_unicos.keys() if "ADHERENTE" in k), "ADHERENTE SV") not in dict_prods_unicos: dict_prods_unicos["ADHERENTE SV"] = 0.13
+                prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
+                
+                if prods_receta:
+                    matriz_mol = []
+                    def obtener_precio_promedio(producto, anio_obj):
+                        if not df_precios.empty:
+                            match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)]
+                            if match_df.empty: match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))]
+                            if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0: return match_df['PRECIO_PROM'].mean()
+                        if (str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year)) and not df_conf.empty:
+                            match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
+                            if not match_conf.empty: return a_numero(match_conf.iloc[0, 9])
+                        return 0.0
 
-                    prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
+                    costo_total_a, costo_total_b = 0.0, 0.0
+                    for item in prods_receta:
+                        prod, dosis = item["PRODUCTO"], item["DOSIS"]
+                        precio_a, precio_b = obtener_precio_promedio(prod, año_base), obtener_precio_promedio(prod, año_comp)
+                        costo_ha_a, costo_ha_b = dosis * precio_a, dosis * precio_b
+                        costo_total_a += costo_ha_a
+                        costo_total_b += costo_ha_b
+                        matriz_mol.append({"INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}", f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}", f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}", f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a})
+
+                    df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
+                    df_vista_mol_print = df_vista_mol.copy()
+                    df_vista_mol_print[f"Costo/Ha ({año_base})"] = df_vista_mol_print[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
+                    df_vista_mol_print[f"Costo/Ha ({año_comp})"] = df_vista_mol_print[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
+                    df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].map("$ {:,.0f}".format)
+                    st.dataframe(df_vista_mol_print, use_container_width=True, hide_index=True)
                     
-                    if prods_receta:
-                        matriz_mol = []
-                        def obtener_precio_promedio(producto, anio_obj):
-                            if not df_precios.empty:
-                                match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)]
-                                if match_df.empty: match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'].str.contains(producto))]
-                                if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0: return match_df['PRECIO_PROM'].mean()
-                            if (str(anio_obj) == str(año_comp) or str(anio_obj) == str(datetime.now().year)) and not df_conf.empty:
-                                match_conf = df_conf[df_conf.iloc[:, 8].astype(str).str.upper().str.strip() == producto]
-                                if not match_conf.empty: return a_numero(match_conf.iloc[0, 9])
-                            return 0.0
-
-                        costo_total_a, costo_total_b = 0.0, 0.0
-                        for item in prods_receta:
-                            prod, dosis = item["PRODUCTO"], item["DOSIS"]
-                            precio_a, precio_b = obtener_precio_promedio(prod, año_base), obtener_precio_promedio(prod, año_comp)
-                            costo_ha_a, costo_ha_b = dosis * precio_a, dosis * precio_b
-                            costo_total_a += costo_ha_a
-                            costo_total_b += costo_ha_b
-                            matriz_mol.append({"INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}", f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}", f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}", f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a})
-
-                        df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
-                        df_vista_mol_print = df_vista_mol.copy()
-                        df_vista_mol_print[f"Costo/Ha ({año_base})"] = df_vista_mol_print[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
-                        df_vista_mol_print[f"Costo/Ha ({año_comp})"] = df_vista_mol_print[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
-                        df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].map("$ {:,.0f}".format)
-                        st.dataframe(df_vista_mol_print, use_container_width=True, hide_index=True)
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
+                    c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}")
+                    c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
+                    
+                    if 'AVION_MAESTRO' in df_periodo_b.columns:
+                        df_coctel_b = df_area_b[df_area_b[col_coctel] == coctel_sel]
+                        costo_total_facturado_b = df_coctel_b['COSTO_NUM'].mean() if not df_coctel_b.empty else 0
+                        vuelo_facturado_b = df_coctel_b['AVION_NUM'].mean() if not df_coctel_b.empty else 0
+                        insumos_facturados_b = max(0, costo_total_facturado_b - vuelo_facturado_b)
                         
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
-                        c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}")
-                        c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
-                        
-                        if 'AVION_MAESTRO' in df_periodo_b.columns:
-                            df_coctel_b = df_area_b[df_area_b[col_coctel] == coctel_sel]
-                            costo_total_facturado_b = df_coctel_b['COSTO_NUM'].mean() if not df_coctel_b.empty else 0
-                            vuelo_facturado_b = df_coctel_b['AVION_NUM'].mean() if not df_coctel_b.empty else 0
-                            insumos_facturados_b = max(0, costo_total_facturado_b - vuelo_facturado_b)
-                            
-                            if costo_total_b > 0 and insumos_facturados_b > 0:
-                                diff_b = insumos_facturados_b - costo_total_b
-                                st.markdown("---")
-                                st.markdown("### 🤖 Deliberador IA: Auditoría de Facturación SAP vs Receta Teórica")
-                                if abs(diff_b) <= 2000: st.success(f"✅ **AUDITORÍA PERFECTA:** El costo de químicos facturados en SAP ($ {insumos_facturados_b:,.0f}) coincide con la receta ($ {costo_total_b:,.0f}).")
-                                else:
-                                    st.warning(f"⚠️ **DISCREPANCIA DETECTADA:** Los insumos facturados ($ {insumos_facturados_b:,.0f}) no cuadran con el teórico ($ {costo_total_b:,.0f}). Diferencia: **$ {diff_b:,.0f} / Ha**")
-                                    st.markdown("#### 🔍 Conclusiones del Deliberador:")
-                                    if diff_b > 0: st.write("- 📈 **Sobrecosto:** Se cobró más de lo que indica la sigla. Es probable que se haya aplicado **SPRAYFIX**, **ADHERENTE** extra o mayor dosis de **ACEITE**.")
-                                    else: st.write("- 📉 **Ahorro/Faltante:** Se cobró menos. Si la finca es orgánica, se facturó correctamente (sin adherente), o hubo un error a favor en SAP.")
-                                    
-                                    candidatos_encontrados = False
-                                    for idx, p_row in df_precios[df_precios['AÑO'] == str(año_comp)].iterrows():
-                                        precio_p = p_row['PRECIO_PROM']
-                                        for d in [0.02, 0.06, 0.13, 0.2, 0.5, 1.0, 2.0]:
-                                            costo_teorico = precio_p * d
-                                            if costo_teorico > 0 and abs(costo_teorico - abs(diff_b)) <= (abs(diff_b) * 0.15 + 500):
-                                                st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})")
-                                                candidatos_encontrados = True; break
-                                        if candidatos_encontrados: break
-                    else: st.info("No se encontraron ingredientes válidos para esta receta.")
+                        if costo_total_b > 0 and insumos_facturados_b > 0:
+                            diff_b = insumos_facturados_b - costo_total_b
+                            st.markdown("---")
+                            st.markdown("### 🤖 Deliberador IA: Auditoría de Facturación SAP vs Receta Teórica")
+                            if abs(diff_b) <= 2000: st.success(f"✅ **AUDITORÍA PERFECTA:** El costo de químicos facturados en SAP ($ {insumos_facturados_b:,.0f}) coincide con la receta ($ {costo_total_b:,.0f}).")
+                            else:
+                                st.warning(f"⚠️ **DISCREPANCIA DETECTADA:** Los insumos facturados ($ {insumos_facturados_b:,.0f}) no cuadran con el teórico ($ {costo_total_b:,.0f}). Diferencia: **$ {diff_b:,.0f} / Ha**")
+                                st.markdown("#### 🔍 Conclusiones del Deliberador:")
+                                if diff_b > 0: st.write("- 📈 **Sobrecosto:** Se cobró más de lo que indica la sigla. Es probable que se haya aplicado **SPRAYFIX**, **ADHERENTE** extra o mayor dosis de **ACEITE**.")
+                                else: st.write("- 📉 **Ahorro/Faltante:** Se cobró menos. Si la finca es orgánica, se facturó correctamente (sin adherente), o hubo un error a favor en SAP.")
+                                
+                                candidatos_encontrados = False
+                                for idx, p_row in df_precios[df_precios['AÑO'] == str(año_comp)].iterrows():
+                                    precio_p = p_row['PRECIO_PROM']
+                                    for d in [0.02, 0.06, 0.13, 0.2, 0.5, 1.0, 2.0]:
+                                        costo_teorico = precio_p * d
+                                        if costo_teorico > 0 and abs(costo_teorico - abs(diff_b)) <= (abs(diff_b) * 0.15 + 500):
+                                            st.info(f"💡 ¿Se aplicó/omitió **{p_row['PRODUCTO']}** a dosis de **{d} L/Ha**? (Costo aprox: $ {costo_teorico:,.0f})")
+                                            candidatos_encontrados = True; break
+                                    if candidatos_encontrados: break
+                else: st.info("No se encontraron ingredientes válidos para esta receta.")
 
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
@@ -646,7 +673,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             })
 
                     if not matriz_simulacion:
-                        st.warning("⚠️ Tarifas unitarias inválidas en columnas T y U.")
+                        st.warning("⚠️ Tarifas unitarias inválidas en la extracción.")
                     else:
                         df_resultados = pd.DataFrame(matriz_simulacion)
                         df_semanal = df_resultados.groupby("SEMANA").agg({"HECTÁREAS": "sum", "TOTAL ACTUAL ($)": "sum", "NUEVO TOTAL ($)": "sum", "DIFERENCIA ($)": "sum"}).reset_index().sort_values(by="SEMANA").reset_index(drop=True)
@@ -708,3 +735,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
+
+if __name__ == "__main__":
+    pass
