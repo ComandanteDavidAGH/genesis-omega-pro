@@ -42,12 +42,10 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
         datos_brutos_act = []
     
     if len(datos_brutos_act) > 5:
-        # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
         columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         
-        # 🎯 MAPEO EXACTO DE 2026
         df_vivos.rename(columns={
             'AREA_FUMIG': 'AREA_MAESTRA',
             'COSTO_HA': 'AVION_MAESTRO',
@@ -61,13 +59,17 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) - CONEXIÓN ORIGINAL RESTAURADA ---
+    # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
     try:
-        url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
-        # 🎯 Usamos tu función original aquí para saltarnos el bloqueo de permisos
-        datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
-    except:
+        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        
+        # 🚨 RADAR A: Verificando la conexión a la bóveda histórica
+        st.success(f"🟢 RADAR A (Conexión): El archivo histórico se conectó. Filas extraídas: {len(datos_brutos_hist)}")
+    except Exception as e:
         datos_brutos_hist = []
+        # 🚨 RADAR A: Imprimiendo el error si la conexión falla
+        st.error(f"🔴 RADAR A (Error de Conexión): No pude entrar a la bóveda histórica. El permiso fue denegado o el enlace falló. Detalle: {e}")
     
     if len(datos_brutos_hist) > 0:
         df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
@@ -80,7 +82,6 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
 
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
-    """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
     try:
         gc = obtener_cliente_gspread_unificado()
         if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -141,7 +142,6 @@ def estandarizar_base(df):
         col_u = str(col).upper().replace('\n', ' ').strip()
         if 'FINCA' in col_u and 'COSTO' in col_u: continue
             
-        # 🎯 TRADUCTOR ORIGINAL INTACTO PARA 2024/2025
         if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
         elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
         elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
@@ -154,7 +154,6 @@ def estandarizar_base(df):
     df.rename(columns=renombres, inplace=True)
     return df
 
-# 🎯 HERRAMIENTA 1: Exclusiva para Hectáreas y Dosis
 def limpiar_area(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -168,7 +167,6 @@ def limpiar_area(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 🎯 HERRAMIENTA 2: Exclusiva para Dinero (Arregla los miles hundidos a 200 pesos)
 def limpiar_dinero(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -180,7 +178,6 @@ def limpiar_dinero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        # Multiplica solo si el costo viene con punto de miles asumido como decimal
         if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
@@ -227,7 +224,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* HUD de Mando Corporativo */
     .hud-bi {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
@@ -239,15 +235,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
-    st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
-
+    
     try:
-        # ⚡ CARGA ACELERADA EN RAM DE FUENTES MAESTRAS
+        # ⚡ CARGA ACELERADA EN RAM
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
-            st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
+            st.warning("⚠️ Los sistemas de almacenamiento están vacíos. (Ambas conexiones fallaron).")
             return
 
         super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
@@ -260,8 +254,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
+        
+        # 🚨 RADAR B: Verificando la limpieza de fechas (La Guillotina)
+        filas_totales = len(super_base_bi)
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
+        filas_vivas = len(super_base_bi)
+        
+        if filas_totales != filas_vivas:
+            st.warning(f"🟡 RADAR B (Guillotina de Fechas): Se encontraron {filas_totales} filas unificadas, pero {filas_totales - filas_vivas} fueron borradas porque la fecha estaba vacía o era ilegible.")
         
         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
@@ -277,7 +278,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
-        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -441,6 +441,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+            
+            df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
+            df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
+            if col_gln:
+                df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0)
+                df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0)
             
             agg_dict = {'COSTO_NUM': 'mean'}
             if col_gln: agg_dict[col_gln] = 'mean'
@@ -622,7 +628,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
@@ -745,7 +751,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
 
-        # 🌟 BOTÓN DE NAVEGACIÓN NATIVO
         st.markdown("""
             <a href="#inicio_modulo" target="_self" style="
                 display: block; width: 100%; text-align: center; 
