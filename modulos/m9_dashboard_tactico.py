@@ -3,16 +3,40 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# ⚡ MOTORES DE CACHÉ Y COMPUTACIÓN ACELERADA (ALTA VELOCIDAD)
+# ⚡ MOTORES DE CONEXIÓN PROPIO (INTERCONEXIÓN DIRECTA EN RAM)
 # =================================================================
+
+@st.cache_resource(show_spinner=False)
+def inicializar_cliente_gspread_propio():
+    """ Levanta una antena de conexión independiente de app.py """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
 
 @st.cache_data(show_spinner=False)
-def cargar_y_preprocesar_boveda_mando(_descargar_matriz_rapida, _procesar_fecha_pesada, _extraer_numero):
-    """ Descarga, estructura y decodifica el historial financiero una sola vez en RAM """
-    url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-    datos_brutos = _descargar_matriz_rapida(url_maestra, "TABLA 1")
+def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
+    """ Conecta de forma nativa a la central saltándose los tubos viejos de app.py """
+    gc = inicializar_cliente_gspread_propio()
+    if not gc:
+        return pd.DataFrame()
+        
+    try:
+        url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+        sh = gc.open_by_url(url_maestra)
+        ws = sh.worksheet("TABLA 1")
+        datos_brutos = ws.get_all_values()
+    except Exception:
+        return pd.DataFrame()
     
     if not datos_brutos or len(datos_brutos) <= 2:
         return pd.DataFrame()
@@ -32,7 +56,7 @@ def cargar_y_preprocesar_boveda_mando(_descargar_matriz_rapida, _procesar_fecha_
     lista_limpia = []
     
     for r in filas_datos:
-        # 🛡️ BLINDAJE: Si Google Sheets recorta la fila porque las últimas celdas estaban vacías, la rellenamos
+        # 🛡️ BLINDAJE: Rellena las filas cortas para que cuadren exacto con las 30 columnas
         if len(r) < 30:
             r = r + [""] * (30 - len(r))
         lista_limpia.append(r[:30])
@@ -84,8 +108,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    # EXTRACCIÓN MAESTRA EN RAM CACHEADA
-    df_dash = cargar_y_preprocesar_boveda_mando(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
+    # EXTRACCIÓN MAESTRA EN RAM CACHEADA (SE IGNORA LA FUNCIÓN DE APP.PY)
+    df_dash = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1.")
@@ -131,7 +155,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) ---
     
-    # 🎯 SOLUCIÓN EXACTA: Agrupa por finca, extrae el área física de cada una, y las suma todas
     if not df_filtrado.empty:
         total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
     else:
