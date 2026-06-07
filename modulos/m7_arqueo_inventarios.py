@@ -6,9 +6,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 # 🔌 CONFIGURACIÓN DE TU CENTRAL DE GOOGLE SHEETS
 # =================================================================
-# 🌟 CORRECCIÓN MAESTRA: Apuntamos al nombre exacto de tu archivo en Drive
 NOMBRE_DEL_DRIVE = "GÉNESIS_OMEGA_V2_ESTABLE" 
-NOMBRE_DE_LA_HOJA = "inventario_fisico"
+NOMBRE_DE_LA_HOJA_PREFERIDA = "inventario_fisico"
 
 @st.cache_resource
 def iniciar_conexion_google():
@@ -31,33 +30,37 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
         return
 
     # =================================================================
-    # 🔍 AUDITORÍA PASO A PASO DE TU ARCHIVO DE GOOGLE DRIVE
+    # 🕵️‍♂️ EXTRACCIÓN DE DATOS SEGURA ANTES DE RENDERIZAR INTERFAZ
     # =================================================================
-    
-    # PASO 1: Intentar abrir el archivo maestro
     try:
         libro = cliente_google.open(NOMBRE_DEL_DRIVE)
-    except Exception as e:
-        st.error(f"❌ PASO 1 FALLIDO: No se encontró el archivo '{NOMBRE_DEL_DRIVE}' en Google Drive.")
-        st.info("💡 **Solución:** Asegúrese de que el archivo en Drive compartas acceso de **Editor** al correo de su cuenta de servicio (`client_email` de tus Secrets).")
+    except Exception:
+        st.error(f"❌ Error: No se encontró el archivo '{NOMBRE_DEL_DRIVE}' en Google Drive.")
+        st.info("💡 Revise que el archivo en Drive esté compartido con el correo de su cuenta de servicio.")
         return
 
-    # PASO 2: Intentar abrir la pestaña específica
+    # 🧠 ALGORITMO DE AUTODETECCIÓN DE PESTAÑA (Evita fallas de coincidencia de nombres)
     try:
-        worksheet = libro.worksheet(NOMBRE_DE_LA_HOJA)
-    except Exception as e:
-        st.error(f"❌ PASO 2 FALLIDO: El archivo abrió bien, pero no existe la pestaña '{NOMBRE_DE_LA_HOJA}'.")
-        st.info("💡 **Solución:** Revise el nombre de la pestaña abajo en su Google Sheet. Debe llamarse exactamente así.")
-        return
+        worksheet = libro.worksheet(NOMBRE_DE_LA_HOJA_PREFERIDA)
+        nombre_hoja_real = NOMBRE_DE_LA_HOJA_PREFERIDA
+    except Exception:
+        try:
+            # Fallback: Si no existe el nombre configurado, toma la primera pestaña del libro
+            worksheet = libro.get_worksheet(0)
+            nombre_hoja_real = worksheet.title
+        except Exception as e:
+            st.error("❌ Error: No se pudo acceder a ninguna pestaña válida del libro.")
+            return
 
-    # PASO 3: Intentar extraer las filas de la tabla
     try:
         datos_gspread = worksheet.get_all_records()
     except Exception as e:
-        st.error(f"❌ PASO 3 FALLIDO: Se conectó al archivo y a la pestaña, pero falló la lectura de celdas.")
-        st.warning(f"Detalle técnico del error: {e}")
-        st.info("💡 **Solución:** Esto ocurre si la hoja de cálculo está completamente vacía (sin columnas de encabezados).")
+        st.error("❌ Error al extraer los registros de la tabla.")
+        st.info("💡 Asegúrese de que la primera fila de la pestaña contenga los encabezados (pista, producto, lote, etc.).")
         return
+
+    # Mensaje informativo de la pestaña activa
+    st.success(f"🔗 Conectado exitosamente al archivo maestro en la pestaña: **'{nombre_hoja_real}'**")
 
     # Pestañas operativas del Centro de Mando
     tab1, tab2, tab3 = st.tabs(["⚠️ Discrepancias Detectadas", "🔧 Conciliador de Carga", "📋 Inventario Completo"])
@@ -108,8 +111,12 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
                             if pd.isna(saldo_libre_utilizacion):
                                 saldo_libre_utilizacion = 0.0
 
-                            mascara = (df_fisico_db["pista"].astype(str).str.strip().str.upper() == almacen_sap) & \
-                                      (df_fisico_db["lote"].astype(str).str.strip().str.upper() == lote_sap)
+                            # Normalización de búsquedas
+                            pista_col = [c for c in df_fisico_db.columns if "pista" in c.lower() or "almacen" in c.lower()][0]
+                            lote_col = [c for c in df_fisico_db.columns if "lote" in c.lower()][0]
+
+                            mascara = (df_fisico_db[pista_col].astype(str).str.strip().str.upper() == almacen_sap) & \
+                                      (df_fisico_db[lote_col].astype(str).str.strip().str.upper() == lote_sap)
                             
                             if mascara.any():
                                 df_fisico_db.loc[mascara, "saldo_sap"] = saldo_libre_utilizacion
@@ -119,7 +126,7 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
                         df_subida = df_fisico_db.fillna("")
                         worksheet.update([df_subida.columns.values.tolist()] + df_subida.values.tolist())
                         
-                    st.success(f"🎉 ¡Sincronización Terminada! Se mapearon {actualizados} registros en tu Google Sheet.")
+                    st.success(f"🎉 ¡Sincronización Terminada! Se actualizaron {actualizados} registros en tu Google Sheet.")
                     st.rerun()
 
             except Exception as e:
@@ -132,8 +139,15 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
         df_master = pd.DataFrame(datos_gspread)
         df_master.columns = df_master.columns.str.strip()
         
-        df_master["saldo_sap"] = pd.to_numeric(df_master.get("saldo_sap", 0.0), errors="coerce").fillna(0.0)
-        df_master["saldo_fisico"] = pd.to_numeric(df_master.get("saldo_fisico", 0.0), errors="coerce").fillna(0.0)
+        # Buscar dinámicamente los nombres reales de las columnas en tu hoja
+        col_pista = [c for c in df_master.columns if "pista" in c.lower() or "almacen" in c.lower()][0]
+        col_producto = [c for c in df_master.columns if "producto" in c.lower() or "material" in c.lower()][0]
+        col_lote = [c for c in df_master.columns if "lote" in c.lower()][0]
+        col_sap = [c for c in df_master.columns if "sap" in c.lower() or "libre" in c.lower()][0]
+        col_fisico = [c for c in df_master.columns if "fisico" in c.lower() or "real" in c.lower()][0]
+        
+        df_master["saldo_sap"] = pd.to_numeric(df_master[col_sap], errors="coerce").fillna(0.0)
+        df_master["saldo_fisico"] = pd.to_numeric(df_master[col_fisico], errors="coerce").fillna(0.0)
         df_master["Diferencia"] = df_master["saldo_fisico"] - df_master["saldo_sap"]
         
         def determinar_estado(dif):
@@ -169,12 +183,7 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
 
         st.markdown("### 🔍 Listado de Desfases Logísticos Activos")
         if not df_discrepancias.empty:
-            columnas_existentes = df_discrepancias.columns
-            pista_col = "pista" if "pista" in columnas_existentes else columnas_existentes[0]
-            prod_col = "producto" if "producto" in columnas_existentes else columnas_existentes[1]
-            lote_col = "lote" if "lote" in columnas_existentes else columnas_existentes[2]
-
-            df_view = df_discrepancias[[pista_col, prod_col, lote_col, 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
+            df_view = df_discrepancias[[col_pista, col_producto, col_lote, col_sap, col_fisico, 'Diferencia', 'Estado']].copy()
             df_view.columns = ['PISTA', 'PRODUCTO', 'LOTE', 'SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA', 'ESTADO']
             
             for col in ['SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA']:
@@ -190,12 +199,7 @@ def ejecutar(quitar_tildes=None, purificar_lote=None):
     with tab3:
         st.markdown("### 📋 Historial y Bitácora Completa de Existencias")
         if not df_master.empty:
-            columnas_existentes = df_master.columns
-            pista_col = "pista" if "pista" in columnas_existentes else columnas_existentes[0]
-            prod_col = "producto" if "producto" in columnas_existentes else columnas_existentes[1]
-            lote_col = "lote" if "lote" in columnas_existentes else columnas_existentes[2]
-
-            df_total_view = df_master[[pista_col, prod_col, lote_col, 'saldo_sap', 'saldo_fisico', 'Diferencia', 'Estado']].copy()
+            df_total_view = df_master[[col_pista, col_producto, col_lote, col_sap, col_fisico, 'Diferencia', 'Estado']].copy()
             df_total_view.columns = ['PISTA', 'PRODUCTO', 'LOTE', 'SALDO SAP', 'SALDO FÍSICO', 'DIFERENCIA', 'ESTADO']
             st.dataframe(df_total_view.sort_values(by=["PISTA", "PRODUCTO"]), use_container_width=True, hide_index=True)
         else:
