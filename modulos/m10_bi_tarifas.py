@@ -30,7 +30,7 @@ def obtener_cliente_gspread_unificado():
 
 @st.cache_data(show_spinner=False)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
-    """ Descarga y unifica las bases actual e histórica una sola vez en caché """
+    """ Descarga y unifica las bases actual e histórica usando EL MOTOR NUEVO para ambas """
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame()
     
@@ -42,12 +42,10 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
         datos_brutos_act = []
     
     if len(datos_brutos_act) > 5:
-        # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
         columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         
-        # 🎯 MAPEO EXACTO DE 2026
         df_vivos.rename(columns={
             'AREA_FUMIG': 'AREA_MAESTRA',
             'COSTO_HA': 'AVION_MAESTRO',
@@ -61,10 +59,10 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) - CONEXIÓN ORIGINAL RESTAURADA ---
+    # --- 2. BASE HISTÓRICA (2023-2024-2025) - CONECTADA CON EL MOTOR NUEVO (LA SOLUCIÓN) ---
     try:
-        url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
-        datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
+        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
     except:
         datos_brutos_hist = []
     
@@ -79,7 +77,6 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
 
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
-    """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
     try:
         gc = obtener_cliente_gspread_unificado()
         if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -180,7 +177,6 @@ def limpiar_dinero(val):
         return num
     except: return 0.0
 
-# 🎯 CORRECCIÓN ESTADÍSTICA: Cálculo Ponderado Global (Evita promedios incongruentes)
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
@@ -247,15 +243,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
-    st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
-    st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
 
     try:
-        # ⚡ CARGA ACELERADA EN RAM
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
-            st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
+            st.warning("⚠️ Los sistemas de almacenamiento están vacíos. (Ambas conexiones fallaron).")
             return
 
         super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
@@ -285,7 +278,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
-        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -636,7 +628,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
