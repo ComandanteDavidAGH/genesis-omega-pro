@@ -42,10 +42,12 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
         datos_brutos_act = []
     
     if len(datos_brutos_act) > 5:
+        # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
         columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         
+        # 🎯 MAPEO EXACTO DE 2026
         df_vivos.rename(columns={
             'AREA_FUMIG': 'AREA_MAESTRA',
             'COSTO_HA': 'AVION_MAESTRO',
@@ -59,17 +61,12 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
+    # --- 2. BASE HISTÓRICA (2023-2024-2025) - CONEXIÓN ORIGINAL RESTAURADA ---
     try:
-        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
-        
-        # 🚨 RADAR A: Verificando la conexión a la bóveda histórica
-        st.success(f"🟢 RADAR A (Conexión): El archivo histórico se conectó. Filas extraídas: {len(datos_brutos_hist)}")
-    except Exception as e:
+        url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+        datos_brutos_hist = _descargar_matriz_rapida(url_hist, "Datos")
+    except:
         datos_brutos_hist = []
-        # 🚨 RADAR A: Imprimiendo el error si la conexión falla
-        st.error(f"🔴 RADAR A (Error de Conexión): No pude entrar a la bóveda histórica. El permiso fue denegado o el enlace falló. Detalle: {e}")
     
     if len(datos_brutos_hist) > 0:
         df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
@@ -82,6 +79,7 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida):
 
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
+    """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
     try:
         gc = obtener_cliente_gspread_unificado()
         if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -182,6 +180,7 @@ def limpiar_dinero(val):
         return num
     except: return 0.0
 
+# 🎯 CORRECCIÓN ESTADÍSTICA: Cálculo Ponderado Global (Evita promedios incongruentes)
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
@@ -198,22 +197,35 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
         return ciclos, avg_int
 
     fincas_presentes = df_area['FINCA_MAESTRA'].unique()
-    lista_ciclos, lista_intervalos = [], []
+    total_ciclos_todas = 0
+    total_suma_dias = 0
+    total_intervalos_contados = 0
+    fincas_validas = 0
     
     for f in fincas_presentes:
         df_sub = df_area[df_area['FINCA_MAESTRA'] == f]
         fechas_f = sorted(df_sub['FECHA_DT'].dt.date.unique())
         if not fechas_f: continue
+        
         c_f = 1
         inicios_c_f = [fechas_f[0]]
         for i in range(1, len(fechas_f)):
             if (fechas_f[i] - fechas_f[i-1]).days > 5:
                 c_f += 1
                 inicios_c_f.append(fechas_f[i])
-        lista_ciclos.append(c_f)
-        if c_f > 1: lista_intervalos.append(sum([(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)]) / (c_f - 1))
+                
+        total_ciclos_todas += c_f
+        fincas_validas += 1
+        
+        if c_f > 1:
+            suma_dias_finca = sum([(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)])
+            total_suma_dias += suma_dias_finca
+            total_intervalos_contados += (c_f - 1)
             
-    return int(round(sum(lista_ciclos) / len(lista_ciclos))) if lista_ciclos else 0, sum(lista_intervalos) / len(lista_intervalos) if lista_intervalos else 0.0
+    promedio_ciclos = int(round(total_ciclos_todas / fincas_validas)) if fincas_validas > 0 else 0
+    promedio_intervalo = total_suma_dias / total_intervalos_contados if total_intervalos_contados > 0 else 0.0
+            
+    return promedio_ciclos, promedio_intervalo
 
 # --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
@@ -235,13 +247,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
-    
+    st.markdown("### 🛰️ Panel de Auditoría y Comportamiento Histórico por Finca")
+    st.info("🤖 **MOTOR IA BI:** Conversor neutro calibrado corriendo sobre memoria caché de ultra-velocidad.")
+
     try:
         # ⚡ CARGA ACELERADA EN RAM
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
 
         if df_vivos.empty and df_historico.empty:
-            st.warning("⚠️ Los sistemas de almacenamiento están vacíos. (Ambas conexiones fallaron).")
+            st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
             return
 
         super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
@@ -254,15 +268,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
-        
-        # 🚨 RADAR B: Verificando la limpieza de fechas (La Guillotina)
-        filas_totales = len(super_base_bi)
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
-        filas_vivas = len(super_base_bi)
-        
-        if filas_totales != filas_vivas:
-            st.warning(f"🟡 RADAR B (Guillotina de Fechas): Se encontraron {filas_totales} filas unificadas, pero {filas_totales - filas_vivas} fueron borradas porque la fecha estaba vacía o era ilegible.")
         
         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
@@ -278,6 +285,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
+        # 🚀 LANZAMIENTO DEL HUD DE CONTROL MACROECONÓMICO
         total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -628,7 +636,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
