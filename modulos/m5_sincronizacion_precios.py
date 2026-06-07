@@ -13,8 +13,9 @@ import io
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     try:
-        if "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+        # 🌟 CORRECCIÓN MAESTRA: Cambiamos "gcp_credentials" por "gcp_service_account"
+        if "gcp_service_account" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
     except:
         return None
@@ -24,7 +25,6 @@ def inicializar_cliente_gspread():
 # =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
-    # Inyección de la línea estética VIP Corporativa
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -60,7 +60,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
         st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
         return
 
-    # --- 🧮 NUEVA SECCIÓN: TARIFARIO MAESTRO ---
+    # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
         st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
@@ -268,3 +268,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
 
         except Exception as e:
             st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA TRANSACCIONAL V12: {e}")
+
+if __name__ == "__main__":
+    pass
