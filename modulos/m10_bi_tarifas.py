@@ -16,8 +16,9 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ⚡ MOTORES DE CACHÉ Y VELOCIDAD DE DATOS (Aislamiento en RAM)
 # =================================================================
 
-def obtener_cliente_gspread_unificado():
-    """ Centraliza la autenticación con Google Cloud usando el cofre único """
+@st.cache_resource(show_spinner=False)
+def inicializar_cliente_gspread_propio():
+    """ Levanta una antena de conexión independiente de app.py """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
@@ -30,16 +31,16 @@ def obtener_cliente_gspread_unificado():
 
 @st.cache_data(show_spinner=False)
 def cargar_fuentes_maestras_bi():
-    """ Descarga y unifica las bases actual e histórica de forma directa y segura en caché """
-    gc = obtener_cliente_gspread_unificado()
+    """ Descarga y unifica las bases actual e histórica una sola vez en caché """
+    gc = inicializar_cliente_gspread_propio()
     if not gc:
         return pd.DataFrame(), pd.DataFrame()
         
     try:
         # --- 1. BASE VIVA (2026) - EXTRACCIÓN BLINDADA DIRECTA ---
         url_act = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-        boveda_act = gc.open_by_url(url_act)
-        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
+        sh_act = gc.open_by_url(url_act)
+        datos_brutos_act = sh_act.worksheet("TABLA 1").get_all_values()
         
         if len(datos_brutos_act) > 5:
             # Inyectamos 30 columnas estrictas para no depender de nombres sueltos
@@ -60,15 +61,14 @@ def cargar_fuentes_maestras_bi():
             df_vivos['ORIGEN_BI'] = 'ACTUAL'
         else:
             df_vivos = pd.DataFrame()
-            
-    except Exception:
+    except:
         df_vivos = pd.DataFrame()
 
     try:
         # --- 2. BASE HISTÓRICA (2023-2024-2025) - TRADUCTOR ORIGINAL ---
         url_hist = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
-        boveda_hist = gc.open_by_url(url_hist)
-        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        sh_hist = gc.open_by_url(url_hist)
+        datos_brutos_hist = sh_hist.worksheet("Datos").get_all_values()
         
         if len(datos_brutos_hist) > 0:
             df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
@@ -76,7 +76,7 @@ def cargar_fuentes_maestras_bi():
             df_historico['ORIGEN_BI'] = 'HISTORICO'
         else:
             df_historico = pd.DataFrame()
-    except Exception:
+    except:
         df_historico = pd.DataFrame()
 
     return df_vivos, df_historico
@@ -84,7 +84,7 @@ def cargar_fuentes_maestras_bi():
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
     """ 🤖 MOTOR LOGÍSTICO COMPILADO: Cachea recetas y la sabana de precios históricos en RAM """
-    gc = obtener_cliente_gspread_unificado()
+    gc = inicializar_cliente_gspread_propio()
     if not gc:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
@@ -253,15 +253,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # 🎯 CÁLCULO ESTRICTO DE COSTOS: Separa la lógica 2026 de 2024/2025 para evitar el $4M
+        # 🎯 CÁLCULO ESTRICTO DE COSTOS ORIGINAL INTACTO
         def calcular_costo_real(row):
             if row.get('ORIGEN_BI') == 'ACTUAL':
-                # En 2026, COSTO_TOTAL / AREA_FUMIG nos da el costo real por hectárea
                 tot = a_numero(row.get('COSTO_TOTAL', 0))
                 ha = a_numero(row.get('AREA_MAESTRA', 1))
                 return tot / ha if ha > 0 else 0
             else:
-                # En 2024/2025, el valor ya venía por hectárea desde Sheets
                 return a_numero(row.get('COSTO_MAESTRO', 0))
 
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
@@ -432,6 +430,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
             df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+            
+            # 🔥 CORRECCIÓN: Convertir a numérico antes de promediar para evitar 'mean on str'
+            df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
+            df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
+            if col_gln:
+                df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0)
+                df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0)
             
             agg_dict = {'COSTO_NUM': 'mean'}
             if col_gln: agg_dict[col_gln] = 'mean'
