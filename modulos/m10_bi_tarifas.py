@@ -166,11 +166,14 @@ def a_numero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        # COMPAÑERO: Silencié esta línea porque era la que inflaba las hectáreas a 233 millones
-        # if 0 < num < 2000: num = num * 1000
+        
+        # 🎯 AJUSTE DE PRECISIÓN: Solo multiplica si parece un valor monetario o área grande (mayor a 5). 
+        # Esto evita inflar las dosis de químicos que son pequeñas (ej: 0.5 L/ha).
+        if 5 < num < 2000: 
+            num = num * 1000
+            
         return num
     except: return 0.0
-
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
