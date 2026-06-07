@@ -3,6 +3,8 @@ import pandas as pd
 import gspread
 import re
 from datetime import datetime
+# Importamos el llavero de permisos explícitos que funcionó en el Módulo 7
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
@@ -11,10 +13,13 @@ from datetime import datetime
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # 🌟 CORRECCIÓN MAESTRA: Cambiamos "gcp_credentials" por "gcp_service_account"
+        # Usamos el mismo puente exacto del módulo de arqueos
         if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
     except:
         return None
@@ -171,7 +176,7 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                         # Volcado rápido por lote hacia la base destino
                         ws_dest.update(range_name=f'B{prox_fila}', values=filas_nuevas, value_input_option='USER_ENTERED')
                         st.success(f"🎯 ¡IMPACTO PERFECTO! Se inyectaron exitosamente {len(filas_nuevas)} registros nuevos empezando en la fila {prox_fila}.")
-                        st.balloons()
+                        st.ballonos()
                     else:
                         st.warning("⚠️ El escáner detectó recargos en el archivo origen, pero ninguno es posterior al radar de fecha de la base destino.")
 
