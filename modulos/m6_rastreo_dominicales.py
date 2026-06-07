@@ -12,8 +12,9 @@ from datetime import datetime
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     try:
-        if "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+        # 🌟 CORRECCIÓN MAESTRA: Cambiamos "gcp_credentials" por "gcp_service_account"
+        if "gcp_service_account" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
     except:
         return None
@@ -176,3 +177,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
 
             except Exception as e:
                 st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA DE RASTREO: {type(e).__name__} - {str(e)}")
+
+if __name__ == "__main__":
+    pass
