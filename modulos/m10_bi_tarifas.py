@@ -73,12 +73,10 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     # --- 2. BASE HISTÓRICA (2023-2024-2025) - MOTOR HÍBRIDO + RADAR ---
     datos_brutos_hist = []
     try:
-        # Intento 1: Con la llave nueva
         boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
         datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
     except Exception as error_nuevo:
         try:
-            # Intento 2: Con la llave vieja (Respaldo)
             gc_viejo = obtener_cliente_gspread_viejo()
             boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
             datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
@@ -296,8 +294,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
+        
+        # 🎯 AJUSTE DE PRECISIÓN 1: Si el costo de avión se anotó globalmente (> 150k), lo volvemos unitario para que no infle la estadística
+        super_base_bi['AVION_NUM'] = super_base_bi.apply(lambda r: r['AVION_NUM'] / r['AREA_NUM'] if (r['AVION_NUM'] > 150000 and r['AREA_NUM'] > 0) else r['AVION_NUM'], axis=1)
 
-        total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM'])['AREA_NUM'].sum()
+        # 🎯 AJUSTE DE PRECISIÓN 2: Añadido el COCTEL_MAESTRO para no borrar áreas legítimas del mismo día y misma orden
+        total_ha_historicas = super_base_bi.drop_duplicates(subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'AREA_NUM'])['AREA_NUM'].sum()
+        
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
@@ -346,7 +349,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
             df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM']
+        # 🎯 AJUSTE DE PRECISIÓN 2: Agregamos COCTEL_MAESTRO al filtro
+        subset_unicos = ['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'AREA_NUM']
         df_area_a = df_periodo_a.drop_duplicates(subset=subset_unicos)
         df_area_b = df_periodo_b.drop_duplicates(subset=subset_unicos)
 
@@ -415,26 +419,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         else:
             st.warning("⚠️ No hay suficientes operaciones registradas para trazar la curva.")
             
-        # -------------------------------------------------------------------------
-        # 🎯 CORRECCIÓN: Matemática Ponderada (Evita la distorsión del promedio simple)
-        # -------------------------------------------------------------------------
         st.markdown("<hr>", unsafe_allow_html=True)
-        
-        vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
-        vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
-        
-        costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
-        costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
-        
-        vuelo_a = vuelo_tot_a / area_a if area_a > 0 else 0
-        vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
-        
-        costo_real_a = costo_tot_a / area_a if area_a > 0 else 0
-        costo_real_b = costo_tot_b / area_b if area_b > 0 else 0
-        
-        insumos_a = max(0, costo_real_a - vuelo_a)
-        insumos_b = max(0, costo_real_b - vuelo_b)
-        
+        vuelo_a = df_area_a['AVION_NUM'].mean() if not df_area_a.empty else 0
+        vuelo_b = df_area_b['AVION_NUM'].mean() if not df_area_b.empty else 0
+        insumos_a, insumos_b = max(0, costo_a - vuelo_a), max(0, costo_b - vuelo_b)
         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
         
         st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
@@ -450,6 +438,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.plotly_chart(fig_unit, use_container_width=True)
             
         with tab_glob:
+            vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
+            vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
+            costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
+            costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
+            
             fig_glob = go.Figure(data=[
                 go.Bar(name='Total Facturación Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[f"$ {vuelo_tot_a:,.0f}", f"$ {vuelo_tot_b:,.0f}"], textposition='auto'),
                 go.Bar(name='Total Consumo Insumos y Otros', x=categorias, y=[(costo_tot_a - vuelo_tot_a), (costo_tot_b - vuelo_tot_b)], marker_color='#27AE60', text=[f"$ {(costo_tot_a - vuelo_tot_a):,.0f}", f"$ {(costo_tot_b - vuelo_tot_b):,.0f}"], textposition='auto')
@@ -661,7 +654,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias.")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
@@ -691,7 +684,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 else:
                     def red_excel(num): return math.floor(num + 0.5) if num >= 0 else math.ceil(num - 0.5)
                     col_finca, col_os = 'FINCA_MAESTRA', 'OS_MAESTRA'
-                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_os, 'AREA_NUM'])
+                    
+                    # 🎯 AJUSTE DE PRECISIÓN: Agregamos COCTEL al filtro en el simulador
+                    df_sim_unicos = df_sim.drop_duplicates(subset=['FECHA_DT', col_finca, col_os, 'COCTEL_MAESTRO', 'AREA_NUM'])
 
                     matriz_simulacion = []
                     for _, row in df_sim_unicos.iterrows():
