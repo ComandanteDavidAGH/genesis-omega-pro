@@ -18,7 +18,8 @@ import modulos.m7_arqueo_inventarios as m7
 import modulos.m8_reporte_hectareas as m8
 import modulos.m9_dashboard_tactico as m9
 import modulos.m10_bi_tarifas as m10
-import modulos.m11_manual_tecnico as m11 # 👈 COORDENADA 1: IMPORTACIÓN INSTALADA
+import modulos.m11_manual_tecnico as m11 
+import modulos.m12_simulador_agro as m12 # 👈 NUEVA COORDENADA 1: IMPORTACIÓN DEL SIMULADOR
 
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
@@ -129,7 +130,7 @@ with st.sidebar:
     if st.session_state['usuario_rol'] == "ADMIN":
         if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True): st.cache_data.clear(); st.rerun()
         
-        # 🎯 COORDENADA 2: NUEVA CASILLA AGREGADA AL VECTOR DE RADIO LATERAL
+        # 🎯 NUEVA COORDENADA 2: NUEVA CASILLA AGREGADA AL VECTOR DE RADIO LATERAL
         menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
             "🛠️ 1. Mantenimiento Plantilla SAP", 
@@ -142,7 +143,8 @@ with st.sidebar:
             "📊 8. Reporte Hectáreas (Pistas)", 
             "📈 9. Dashboard Táctico", 
             "📊 10. Inteligencia de Costos (BI)",
-            "📜 11. Manual de Gobierno Técnico" # 👈 Casilla instalada con éxito
+            "📜 11. Manual de Gobierno Técnico",
+            "🚁 12. Simulador Financiero Libre" # 👈 Casilla instalada
         ])
     else: 
         menu = "📈 9. Dashboard Táctico"
@@ -160,4 +162,5 @@ elif menu == "⚖️ 7. Arqueo de Inventarios": m7.ejecutar(quitar_tildes, purif
 elif menu == "📊 8. Reporte Hectáreas (Pistas)": m8.ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS_MATPLOTLIB)
 elif menu == "📈 9. Dashboard Táctico": m9.ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada)
 elif menu == "📊 10. Inteligencia de Costos (BI)": m10.ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
-elif menu == "📜 11. Manual de Gobierno Técnico": m11.ejecutar() # 👈 COORDENADA 3: DISPARADOR CONECTADO
+elif menu == "📜 11. Manual de Gobierno Técnico": m11.ejecutar() 
+elif menu == "🚁 12. Simulador Financiero Libre": m12.ejecutar() # 👈 NUEVA COORDENADA 3: DISPARADOR CONECTADO
