@@ -13,7 +13,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
-    """ Centraliza la autenticación con Google Cloud usando el cofre único """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
@@ -26,7 +25,6 @@ def obtener_cliente_gspread_unificado():
 
 @st.cache_data(show_spinner=False, ttl=600)
 def obtener_historial_completo_ciclos():
-    """ 🤖 MOTOR IA: Descarga el historial completo de forma segura y detecta columnas automáticas """
     gc = obtener_cliente_gspread_unificado()
     if not gc:
         return pd.DataFrame(), pd.DataFrame()
@@ -149,6 +147,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    
+    /* 🌟 SOLUCIÓN VISUAL: Tarjetas compactas para números grandes */
+    .metrica-simulador { background-color:#f8f9fa; border-radius:6px; padding:8px; border-left:4px solid #1a365d; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .metrica-sim-titulo { font-size:12px; color:#6c757d; font-weight:bold; margin-bottom:2px; }
+    .metrica-sim-valor { font-size:16px; font-weight:900; color:#0d1b2a; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -306,12 +309,28 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     d = pd.to_numeric(row.iloc[2], errors='coerce')
                     if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
+                # 🌟 SOLUCIÓN INTELIGENTE FERTILIZANTE: Búsqueda dinámica en DD_Mesclas
                 if sigla_f:
-                    if "ZN" in sigla_f: prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
-                    elif "BT" in sigla_f: prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
+                    fert_encontrado = False
+                    try:
+                        for idx, row in df_recetas.iterrows():
+                            if len(row) > 13:
+                                f_name = str(row.iloc[12]).strip().upper()
+                                f_sigla = str(row.iloc[13]).strip().upper()
+                                if f_sigla == sigla_f and f_name not in ["NAN", "FERTILIZANTES", ""]:
+                                    prods_f.append({"PRODUCTO": f_name, "DOSIS": 0.5})
+                                    fert_encontrado = True
+                                    break
+                    except: pass
+                    
+                    # Fallbacks por si la hoja no lo tiene escrito
+                    if not fert_encontrado:
+                        if "ZN" in sigla_f: prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
+                        elif "BT" in sigla_f: prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
+                        elif "NM" in sigla_f: prods_f.append({"PRODUCTO": "NEMATICIDA SV", "DOSIS": 0.5}) # Fallback para NM
 
                 for item in prods_f:
-                    if "ACONDICIONADOR" in item["PRODUCTO"]: item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u) else 0.02
+                    if "ACONDICIONADOR" in item["PRODUCTO"]: item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u or "NM" in coctel_u) else 0.02
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: item["DOSIS"] = 1.0 if sigla_f else 1.5
 
                 tabla_visual = []
@@ -348,15 +367,20 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
                 
                 st.markdown("<br>", unsafe_allow_html=True)
+                
+                # 🌟 SOLUCIÓN VISUAL: Tarjetas compactas en vez de métricas gigantes
+                def tarjeta(titulo, valor):
+                    return f"<div class='metrica-simulador'><div class='metrica-sim-titulo'>{titulo}</div><div class='metrica-sim-valor'>{valor}</div></div>"
+
                 r1, r2, r3, r4, r5 = st.columns(5)
-                r1.metric("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", "."))
-                r2.metric("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", "."))
-                r3.metric("🧪 Mezcla", f"$ {mezcla_total:,.0f}".replace(",", "."))
-                r4.metric("⚠️ Recargo", f"$ {valor_recargo_t:,.0f}".replace(",", "."))
-                r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px;'>💰 COSTO x HA</p><h4 style='margin:0; color:white;'>$ {costo_ha:,.0f}</h4></div>", unsafe_allow_html=True)
+                r1.markdown(tarjeta("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", ".")), unsafe_allow_html=True)
+                r2.markdown(tarjeta("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", ".")), unsafe_allow_html=True)
+                r3.markdown(tarjeta("🧪 Mezcla", f"$ {mezcla_total:,.0f}".replace(",", ".")), unsafe_allow_html=True)
+                r4.markdown(tarjeta("⚠️ Recargo", f"$ {valor_recargo_t:,.0f}".replace(",", ".")), unsafe_allow_html=True)
+                r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px; font-weight:bold;'>💰 COSTO x HA</p><h4 style='margin:0; color:white; font-size:18px;'>$ {costo_ha:,.0f}</h4></div>".replace(",", "."), unsafe_allow_html=True)
                 
                 st.markdown("---")
-                st.markdown(f"<h2 style='text-align: center; color: #d4af37;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h2>".replace(",", "."), unsafe_allow_html=True)
+                st.markdown(f"<h3 style='text-align: center; color: #0d1b2a; font-weight: 900;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h3>".replace(",", "."), unsafe_allow_html=True)
             except Exception as e: st.error(f"Error: {e}")
         st.stop()
 
@@ -814,7 +838,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP)")
         m1, m2, m3, m4, m5 = st.columns(5)
         
-        def mini_metric(i, t, v): return f"<div style='background-color:#0d1b2a; padding:10px; border-radius:8px; border-left:4px solid #d4af37;'><p style='margin:0; font-size:11px; color:#d4af37;'>{i} {t}</p><p style='margin:0; font-size:17px; font-weight:bold; color:white;'>{v}</p></div>"
+        def mini_metric(i, t, v): return f"<div style='background-color:#0d1b2a; padding:10px; border-radius:8px; border-left:4px solid #d4af37;'><p style='margin:0; font-size:11px; color:#d4af37;'>{i} {t}</p><p style='margin:0; font-size:16px; font-weight:bold; color:white;'>{v}</p></div>"
         
         with m1: st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
         with m2: 
@@ -847,7 +871,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
-        # 🌟 BOTÓN DE NAVEGACIÓN NATIVO: Apunta al ancla de arriba sin usar JavaScript
+        # 🌟 BOTÓN DE NAVEGACIÓN NATIVO
         st.markdown("""
             <a href="#inicio_modulo" target="_self" style="
                 display: block; width: 100%; text-align: center; 
