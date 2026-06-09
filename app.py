@@ -163,4 +163,4 @@ elif menu == "📊 8. Reporte Hectáreas (Pistas)": m8.ejecutar(descargar_matriz
 elif menu == "📈 9. Dashboard Táctico": m9.ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada)
 elif menu == "📊 10. Inteligencia de Costos (BI)": m10.ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
 elif menu == "📜 11. Manual de Gobierno Técnico": m11.ejecutar() 
-elif menu == "🚁 12. Simulador Financiero Libre": m12.ejecutar() # 👈 NUEVA COORDENADA 3: DISPARADOR CONECTADO
+elif menu == "🚁 12. Simulador Financiero Libre": m12.ejecutar(procesar_fecha_pesada, extraer_numero)
