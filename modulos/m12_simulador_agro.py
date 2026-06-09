@@ -125,7 +125,34 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     lista_aviones_pura = sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
 
     # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL (Filtros en 6 Columnas)
+    # 🧠 MEMORIA DEL SISTEMA PARA TARIFAS (Invisible en pantalla)
+    # =================================================================
+    tarifas_maestras_aviones = {
+        "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, 
+        "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665109.0, 
+        "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0
+    }
+    tarifas_maestras_drones = {
+        "DRONE DATAROT": 84428.0, "DRONE NORTE": 75518.0, 
+        "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
+    }
+
+    if 'tarifas_simulador' not in st.session_state:
+        st.session_state.tarifas_simulador = {}
+        for avion in lista_aviones_pura:
+            val_defecto = 4606562.0 # Avión genérico
+            for nombre_av, precio in tarifas_maestras_aviones.items():
+                if nombre_av in avion or avion in nombre_av: val_defecto = precio
+            
+            if "DRON" in avion:
+                val_defecto = 72600.0 # Dron genérico
+                for nombre_dr, precio_dr in tarifas_maestras_drones.items():
+                    if nombre_dr in avion or nombre_dr.replace("DRONE ", "") in avion: val_defecto = precio_dr
+            
+            st.session_state.tarifas_simulador[avion] = float(val_defecto)
+
+    # =================================================================
+    # 🎛️ PANEL DE CONTROL GERENCIAL 
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -139,44 +166,25 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown("#### ✈️ Tarifas Dinámicas de Flota Real (Hora Avión / Ha Dron)")
+        st.markdown("#### ⚙️ Gestor de Tarifas de Flota")
+        c_tar1, c_tar2 = st.columns(2)
         
-        # 🌟 DICCIONARIOS DE FLOTA MAESTRA
-        tarifas_maestras_aviones = {
-            "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, 
-            "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665109.0, 
-            "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0
-        }
-        tarifas_maestras_drones = {
-            "DRONE DATAROT": 84428.0, "DRONE NORTE": 75518.0, 
-            "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
-        }
-
-        cols_av = st.columns(4)
-        tarifas_aviones = {}
+        # CASILLA 1: Elegir Avión
+        avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
         
-        for i, avion in enumerate(lista_aviones_pura):
-            val_defecto = 4606562.0 # Avión genérico
-            
-            # Buscar el precio correcto del avión
-            for nombre_av, precio in tarifas_maestras_aviones.items():
-                if nombre_av in avion or avion in nombre_av:
-                    val_defecto = precio
-                    break
-            
-            # Si es Dron, buscar el precio del dron correcto
-            if "DRON" in avion:
-                val_defecto = 72600.0 # Dron genérico
-                for nombre_dr, precio_dr in tarifas_maestras_drones.items():
-                    # Compara nombres ignorando la palabra DRONE para ser más exacto
-                    if nombre_dr in avion or nombre_dr.replace("DRONE ", "") in avion:
-                        val_defecto = precio_dr
-                        break
+        # CASILLA 2: Editar precio (se guarda automáticamente en la memoria del sistema)
+        nueva_tarifa = c_tar2.number_input(
+            f"💰 Tarifa para {avion_editar}", 
+            value=float(st.session_state.tarifas_simulador.get(avion_editar, 0.0)), 
+            step=10000.0,
+            key="input_tarifa_dinamica"
+        )
+        
+        # Actualizamos la memoria silenciosa con el nuevo valor
+        st.session_state.tarifas_simulador[avion_editar] = nueva_tarifa
+        tarifas_aviones = st.session_state.tarifas_simulador
 
-            with cols_av[i % 4]:
-                tarifas_aviones[avion] = st.number_input(f"💰 {avion}", value=float(val_defecto), step=10000.0, key=f"av_{i}")
-
-    # --- FILTRAR ---
+    # --- FILTRAR LOS DATOS ---
     df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
     if finca_sel != "🌍 TODAS LAS FINCAS": df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
@@ -193,11 +201,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
     def calcular_costo_ha(row):
-        # Si es Dron o no tiene horas, cobra tarifa plana por hectárea
         if "DRON" in row["Equipo"] or "DRONE" in row["Equipo"] or row["Horometro"] == 0:
             return row["Tarifa_Aplicada"] * multiplicador
         else:
-            # Avión: Tarifa * Horas / Hectáreas
             return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
@@ -214,7 +220,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "Lucro Cesante": "sum"
     }).reset_index()
 
-    # 🌟 CÁLCULO DE DIFERENCIA POR HECTÁREA
+    # CÁLCULO DE DIFERENCIA POR HECTÁREA
     df_agrupado["Tarifa Real Prom/Ha"] = df_agrupado["Total Real Facturado"] / df_agrupado["Hectareas"]
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
