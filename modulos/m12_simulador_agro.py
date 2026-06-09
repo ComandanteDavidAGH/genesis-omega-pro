@@ -148,7 +148,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante - Motor conectado con Línea de Tiempo de Márgenes.")
+    st.caption("Análisis de Lucro Cesante - Costos Planos o con Multiplicador Dinámico.")
 
     with st.spinner("📥 Sincronizando y purificando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
@@ -222,18 +222,18 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
 
-    if 'v_maestra_blindada_4' not in st.session_state:
+    if 'v_maestra_blindada_5' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_4'] = True
+        st.session_state['v_maestra_blindada_5'] = True
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
-        f1, f2, f3, f4, f5 = st.columns([1, 1, 1.5, 1, 1.5])
+        f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.2, 1, 1.2, 0.8])
         
         fecha_ini = f1.date_input("📅 F. Inicial", value=min_date)
         fecha_fin = f2.date_input("📆 F. Final", value=max_date)
@@ -249,14 +249,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         opciones_avion_dinamica = ["✈️ TODOS LOS EQUIPOS"] + lista_aviones_dinamica
 
         equipo_sel = f5.selectbox("✈️ Equipo Fijo", opciones_avion_dinamica)
-
-        # 🌟 LÍNEA DE TIEMPO DE MÁRGENES HISTÓRICOS (Caja de cambios)
-        with st.expander("⚙️ Configuración de Márgenes Históricos por Fecha", expanded=False):
-            st.info("El sistema inyectará automáticamente el margen correcto según el mes del vuelo para igualar la matemática histórica.")
-            cm1, cm2, cm3 = st.columns(3)
-            margen_ene_feb = cm1.number_input("Margen Ene-Feb (%)", value=10.0, step=0.1)
-            margen_marzo = cm2.number_input("Margen Marzo (%)", value=11.0, step=0.1)
-            margen_resto = cm3.number_input("Margen Abr-Dic (%)", value=8.0, step=0.1)
+        
+        # 🌟 EL MULTIPLICADOR AHORA ES 1.000 POR DEFECTO (COSTOS PLANOS)
+        multiplicador = f6.number_input("✖️ Mult.", value=1.000, format="%.3f", help="1.000 para Costos Planos. 1.112 para Socios. 1.451 para Terceros.")
 
         st.markdown("---")
         st.markdown(f"#### ✈️ Gestor de Tarifas ({pista_sel.replace('🛣️ ', '')})")
@@ -273,7 +268,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                key_dinamica = f"in_blind4_{avion_editar.replace(' ', '_').replace('-', '_')}"
+                key_dinamica = f"in_blind5_{avion_editar.replace(' ', '_').replace('-', '_')}"
                 
                 tarifa_usuario = c_precio.text_input(
                     "Tarifa Base (Sin Margen)", 
@@ -312,26 +307,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO IA (Conexión a Línea de Tiempo de Margen)
+    # 🧠 MOTOR FINANCIERO (Usa el Multiplicador exacto de la UI)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
-    def calcular_costo_ha_dinamico(row):
+    def calcular_costo_ha(row):
         eq = str(row["Equipo"]).upper()
         tarifa = float(row["Tarifa_Aplicada"])
         val_tiempo = float(row["FactorTiempo"])
         ha = float(row["Hectareas"])
-        
-        # 🌟 LÓGICA DE TIEMPO DE MARGEN
-        mes_vuelo = row["Fecha_DT"].month if pd.notna(row["Fecha_DT"]) else 4
-        if mes_vuelo in [1, 2]: # Enero y Febrero
-            multiplicador = 1 + (margen_ene_feb / 100.0)
-        elif mes_vuelo == 3: # Marzo
-            multiplicador = 1 + (margen_marzo / 100.0)
-        else: # Abril en adelante
-            multiplicador = 1 + (margen_resto / 100.0)
 
-        # Cálculo matemático
+        # Cálculo matemático directo basado en el input del usuario (por defecto 1.000)
         if "DRON" in eq or "DRONE" in eq:
             return tarifa * multiplicador
             
@@ -349,7 +335,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             else:
                 return ((tarifa * val_tiempo) / ha) * multiplicador
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha_dinamico, axis=1)
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
     
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
@@ -387,11 +373,11 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_real)}</div>
         </div>
         <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #d4af37; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Cobro Matemático (Sin Topes)</div>
+            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Costo Matemático (Según Mult.)</div>
             <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_ideal)}</div>
         </div>
         <div style="flex: 1.2; min-width: 200px; background-color: #0d1b2a; border: 2px solid #ff4d4d; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
-            <div style="font-size: 12px; color: #ff4d4d; font-weight: 800; text-transform: uppercase;">⚠️ Lucro Cesante (Fuga)</div>
+            <div style="font-size: 12px; color: #ff4d4d; font-weight: 800; text-transform: uppercase;">⚠️ Brecha / Fuga Operativa</div>
             <div style="font-size: 22px; color: white; font-weight: 900; margin-top: 4px;">$ {f_h(t_perdido)} <span style="font-size:14px; color:#ff4d4d;">({porcentaje_fuga:.1f}%)</span></div>
         </div>
     </div>
