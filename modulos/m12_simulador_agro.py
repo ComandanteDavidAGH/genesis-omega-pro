@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import gspread
 from datetime import datetime
+import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import numpy as np # <-- Nueva librería para cálculos avanzados
 
 # =================================================================
-# 🔌 CONEXIÓN A BÓVEDA DE DATOS
+# ⚡ MOTOR DE CONEXIÓN PROPIO (Heredado del Módulo 8)
 # =================================================================
-def obtener_cliente_gspread_unificado():
+@st.cache_resource(show_spinner=False)
+def inicializar_cliente_gspread_propio():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
@@ -20,50 +20,86 @@ def obtener_cliente_gspread_unificado():
     except:
         return None
 
-@st.cache_data(show_spinner=False, ttl=600)
-def extraer_tabla_1_historica():
-    gc = obtener_cliente_gspread_unificado()
+def cargar_datos_simulador(_procesar_fecha_pesada, _extraer_numero):
+    gc = inicializar_cliente_gspread_propio()
     if not gc: return pd.DataFrame()
+        
     try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        t1 = boveda.worksheet("TABLA 1").get_all_values()
-        idx_t1 = 4
-        for i in range(min(6, len(t1))):
-            if "FINCA" in [str(x).upper() for x in t1[i]]:
-                idx_t1 = i
-                break
-        
-        if len(t1) > idx_t1:
-            df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1])
-            df_t1 = df_t1.loc[:, ~df_t1.columns.duplicated()]
-            return df_t1
+        url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+        sh = gc.open_by_url(url_maestra)
+        ws = sh.worksheet("TABLA 1")
+        datos_brutos = ws.get_all_values()
+    except Exception:
         return pd.DataFrame()
-    except:
-        return pd.DataFrame()
-
-def limpiar_numero(val):
-    if isinstance(val, pd.Series):
-        val = val.iloc[0]
+    
+    if not datos_brutos or len(datos_brutos) < 2: return pd.DataFrame()
         
-    if pd.isna(val) or str(val).strip() == "": return 0.0
-    try:
-        texto = str(val).upper().replace("$", "").replace("COP", "").strip()
-        
-        # 🛡️ RESPETAR LA COMA DECIMAL (Ej: 3,5 -> 3.5)
-        if "," in texto and "." in texto:
-            texto = texto.replace(".", "").replace(",", ".") # Ej: 1.500,50
-        elif "," in texto:
-            texto = texto.replace(",", ".") # Ej: 3,5
+    # 🧠 DETECCIÓN DINÁMICA DE ENCABEZADOS (Estilo Módulo 8)
+    idx_headers = 4  
+    for i in range(min(6, len(datos_brutos))):
+        row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
+        if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "PISTA" in row_clean:
+            idx_headers = i
+            break
             
-        texto = texto.replace(" ", "")
-        return float(texto)
-    except:
-        return 0.0
+    headers_limpios = []
+    for h in datos_brutos[idx_headers]:
+        h_str = str(h).strip().upper().replace("\n", " ")
+        h_str = h_str.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
+        h_str = h_str.replace("Ì", "I").replace("Ò", "O")
+        headers_limpios.append(h_str)
+
+    # MAPEO DE COORDENADAS
+    idx_finca = headers_limpios.index("FINCA") if "FINCA" in headers_limpios else 2
+    idx_ha = next((i for i, h in enumerate(headers_limpios) if "FUMIG" in h or "HA" in h), 5)
+    idx_fecha = headers_limpios.index("FECHA") if "FECHA" in headers_limpios else 7
+    idx_horometro = next((i for i, h in enumerate(headers_limpios) if "ODOM" in h), 10)
+    idx_modelo = headers_limpios.index("MODELO") if "MODELO" in headers_limpios else 17
+    idx_pista = headers_limpios.index("PISTA") if "PISTA" in headers_limpios else 23
+    idx_cobro = next((i for i, h in enumerate(headers_limpios) if "COSTO AVION ($/HA)" in h or "FACTURAR" in h), 19)
+
+    filas_datos = datos_brutos[idx_headers + 1:]
+    lista_procesada = []
+    
+    for r in filas_datos:
+        max_indice = max(idx_finca, idx_ha, idx_fecha, idx_horometro, idx_modelo, idx_pista, idx_cobro)
+        if len(r) <= max_indice:
+            r = r + [""] * (max_indice - len(r) + 1)
+            
+        finca_val = str(r[idx_finca]).strip().upper()
+        if not finca_val or finca_val in ["NONE", "NAN", "FINCA", ""]: continue
+            
+        ha_netas = _extraer_numero(r[idx_ha])
+        if ha_netas <= 0: continue # Solo pasamos vuelos reales
+        
+        horometro = _extraer_numero(r[idx_horometro])
+        cobro_real_ha = _extraer_numero(r[idx_cobro])
+        
+        pista_raw = str(r[idx_pista]).strip().upper()
+        pista_val = "PRINCIPAL" if not pista_raw or pista_raw in ["NONE", "NAN", ""] else pista_raw
+        
+        modelo_val = str(r[idx_modelo]).strip().upper()
+        if not modelo_val or modelo_val in ["NONE", "NAN", ""]: continue
+            
+        f_str = str(r[idx_fecha]).strip()
+        dt = _procesar_fecha_pesada(f_str)
+
+        lista_procesada.append({
+            "Fecha_DT": dt if dt else datetime.today(),
+            "Finca": finca_val,
+            "Pista": pista_val,
+            "Equipo": modelo_val,
+            "Hectareas": ha_netas,
+            "Horometro": horometro,
+            "CobroReal": cobro_real_ha
+        })
+        
+    return pd.DataFrame(lista_procesada)
 
 # =================================================================
-# 🚁 MOTOR DEL SIMULADOR SIN TOPES
+# 👑 INTERFAZ DEL SIMULADOR
 # =================================================================
-def ejecutar():
+def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("""
     <style>
     .titulo-simulador { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -73,66 +109,24 @@ def ejecutar():
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
     st.caption("Análisis Inteligente de Lucro Cesante y Rendimiento Matemático de Flota.")
 
-    with st.spinner("📥 Sincronizando historial de operaciones (TABLA 1)..."):
-        df_base = extraer_tabla_1_historica()
-
-    if df_base.empty:
-        st.error("🚨 Base de datos vacía o sin acceso a TABLA 1.")
-        return
-
-    # --- 🛡️ BUSCADOR INTELIGENTE Y BLINDADO DE COLUMNAS ---
-    cols = df_base.columns.tolist()
-    def buscar_col(keywords, excluir=[]):
-        for c in cols:
-            if c in excluir: continue
-            c_up = str(c).upper()
-            for kw in keywords:
-                if kw in c_up: return c
-        return None
-    
-    def fallback(excluir):
-        for c in cols:
-            if c not in excluir: return c
-        return cols[0]
-
-    col_fecha = buscar_col(['FECHA']) or fallback([])
-    col_finca = buscar_col(['FINCA', 'CLIENTE'], excluir=[col_fecha]) or fallback([col_fecha])
-    col_pista = buscar_col(['PISTA', 'ORIGEN', 'BASE'], excluir=[col_fecha, col_finca]) or fallback([col_fecha, col_finca])
-    col_avion = buscar_col(['AVION', 'EQUIPO', 'AERONAVE', 'MAQUINA'], excluir=[col_fecha, col_finca, col_pista]) or fallback([col_fecha, col_finca, col_pista])
-    # 🎯 PALABRAS CLAVE AJUSTADAS AL REPORTE
-    col_ha = buscar_col(['ÁREA', 'AREA', 'HECT', 'CANT', 'HA'], excluir=[col_fecha, col_finca, col_pista, col_avion]) or fallback([col_fecha, col_finca, col_pista, col_avion])
-    col_horo = buscar_col(['ODÒM', 'ODÓM', 'ODOM', 'HOROMETRO', 'TIEMPO', 'HORA'], excluir=[col_fecha, col_finca, col_pista, col_avion, col_ha]) or fallback([col_fecha, col_finca, col_pista, col_avion, col_ha])
-    col_vuelo = buscar_col(['VUELO', 'TARIFA', 'VALOR', 'COBRO', 'TOTAL'], excluir=[col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo]) or fallback([col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo])
-
-    # --- PREPROCESAMIENTO ABSOLUTO ---
-    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo]].copy()
-    df_sim.columns = ["Fecha", "Finca", "Pista", "Equipo", "Hectareas", "Horometro", "CobroReal"]
-    df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
-    
-    df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_numero)
-    df_sim["Horometro"] = df_sim["Horometro"].apply(limpiar_numero)
-    df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_numero)
-    df_sim['Fecha_DT'] = pd.to_datetime(df_sim["Fecha"], dayfirst=True, errors='coerce')
-    
-    # 🛡️ GUILLOTINA JUSTA: Solo eliminamos si las Hectáreas son 0. (Permitimos Horómetro 0 para los Drones)
-    df_sim = df_sim[df_sim["Hectareas"] > 0]
+    with st.spinner("📥 Sincronizando datos con el Motor Táctico del Módulo 8..."):
+        df_sim = cargar_datos_simulador(procesar_fecha_pesada, extraer_numero)
 
     if df_sim.empty:
-        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) en la TABLA 1.")
+        st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
         return
 
-    # --- OBTENER RANGOS PARA FILTROS ---
-    min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
-    max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
+    # --- ELEMENTOS DE LOS FILTROS ---
+    min_date = df_sim['Fecha_DT'].min().date()
+    max_date = df_sim['Fecha_DT'].max().date()
     
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
-    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().astype(str).unique().tolist())
-    opciones_avion = ["✈️ TODOS LOS EQUIPOS"] + sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
-    
-    lista_aviones_pura = sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
+    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().unique().tolist())
+    opciones_avion = ["✈️ TODOS LOS EQUIPOS"] + sorted(df_sim["Equipo"].dropna().unique().tolist())
+    lista_aviones_pura = sorted(df_sim["Equipo"].dropna().unique().tolist())
 
     # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL
+    # 🎛️ PANEL DE CONTROL GERENCIAL 
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -146,15 +140,15 @@ def ejecutar():
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown("#### ✈️ Tarifas Dinámicas por Aeronave (Hora Avión / Ha Dron)")
+        st.markdown("#### ✈️ Tarifas Dinámicas de Flota Real (Hora Avión / Ha Dron)")
         cols_av = st.columns(4)
         tarifas_aviones = {}
         for i, avion in enumerate(lista_aviones_pura):
             with cols_av[i % 4]:
-                val_defecto = 84428.0 if "DRON" in avion.upper() else 4606562.0
+                val_defecto = 84428.0 if "DRON" in avion or "DRONE" in avion else 4606562.0
                 tarifas_aviones[avion] = st.number_input(f"💰 {avion}", value=val_defecto, step=10000.0, key=f"av_{i}")
 
-    # --- APLICAR FILTROS ---
+    # --- FILTRAR ---
     df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
     if finca_sel != "🌍 TODAS LAS FINCAS": df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
@@ -162,21 +156,19 @@ def ejecutar():
     if equipo_sel != "✈️ TODOS LOS EQUIPOS": df_filtrado = df_filtrado[df_filtrado["Equipo"] == equipo_sel]
 
     if df_filtrado.empty:
-        st.warning("📭 No hay vuelos registrados con esos filtros.")
+        st.warning("📭 No hay vuelos registrados con esos criterios en las fechas seleccionadas.")
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO (Lógica Dual: Avión vs Dron)
+    # 🧠 MOTOR FINANCIERO CON LÓGICA DUAL REAL
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
-    # 🌟 NUEVA LÓGICA: Si el horómetro es mayor a 0, se asume que es Avión (costo = tarifa * horometro / ha). 
-    # Si el horómetro es 0, se asume Drone (costo = tarifa por hectárea).
     def calcular_costo_ha(row):
-        if row["Horometro"] > 0:
-            return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
-        else:
+        if "DRON" in row["Equipo"] or "DRONE" in row["Equipo"] or row["Horometro"] == 0:
             return row["Tarifa_Aplicada"] * multiplicador
+        else:
+            return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
     
@@ -193,7 +185,7 @@ def ejecutar():
     }).reset_index()
 
     # =================================================================
-    # 📊 RENDERIZADO DEL DASHBOARD
+    # 📊 RENDERIZADO DEL DASHBOARD TÁCTICO
     # =================================================================
     st.markdown("---")
     st.markdown("### 💎 Impacto Financiero de la Operación")
@@ -204,9 +196,9 @@ def ejecutar():
     porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Cobro Real (Con Topes)", f"$ {t_real:,.0f}")
-    m2.metric("Cobro Matemático Puro", f"$ {t_ideal:,.0f}")
-    m3.metric("⚠️ Dinero Dejado en la Mesa", f"$ {t_perdido:,.0f}", delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
+    m1.metric("Cobro Real Registrado (Con Topes)", f"$ {t_real:,.0f}")
+    m2.metric("Cobro Matemático Puro (Sin Topes)", f"$ {t_ideal:,.0f}")
+    m3.metric("⚠️ Lucro Cesante (Brecha)", f"$ {t_perdido:,.0f}", delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
 
     c_grafico, c_tabla = st.columns([1.5, 1])
 
@@ -220,11 +212,11 @@ def ejecutar():
         st.plotly_chart(fig, use_container_width=True)
 
     with c_tabla:
-        st.markdown("#### 📋 Reporte de Fugas")
+        st.markdown("#### 📋 Reporte de Fugas por Equipo y Pista")
         df_mostrar = df_agrupado[["Pista", "Finca", "Equipo", "Hectareas", "Lucro Cesante"]].copy()
         df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}")
         df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}")
         st.dataframe(df_mostrar.sort_values(by=["Lucro Cesante"], ascending=False), use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
-    ejecutar()
+    pass
