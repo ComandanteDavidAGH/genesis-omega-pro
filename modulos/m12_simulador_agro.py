@@ -166,23 +166,44 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown("#### ⚙️ Gestor de Tarifas de Flota")
+        st.markdown("#### ✈️ Gestor de Tarifas de Flota")
         c_tar1, c_tar2 = st.columns(2)
         
         # CASILLA 1: Elegir Avión
         avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
         
-        # CASILLA 2: Editar precio con formato estético Pro (Miles con punto y decimales limpios)
-        nueva_tarifa = c_tar2.number_input(
-            f"💰 Tarifa para {avion_editar}", 
-            value=float(st.session_state.tarifas_simulador.get(avion_editar, 0.0)), 
-            step=10000.0,
-            format="%.2f", # <-- Fuerza a mantener una estructura limpia de dos decimales
-            key="input_tarifa_dinamica"
+        # Obtener el valor actual de la memoria interna
+        tarifa_actual = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
+        
+        # 💎 Transformar el número crudo en formato de alta costura colombiana
+        tarifa_formateada = f"$ {tarifa_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # CASILLA 2: Ahora es un cuadro de texto elegante que muestra el signo de pesos y puntos
+        tarifa_usuario = c_tar2.text_input(
+            f"✍️ Editar Tarifa para {avion_editar} (Presione Enter al cambiar)", 
+            value=tarifa_formateada,
+            key="input_tarifa_estetica"
         )
         
-        # Actualizamos la memoria silenciosa con el nuevo valor
-        st.session_state.tarifas_simulador[avion_editar] = nueva_tarifa
+        # 🧠 CONTRAINTELIGENCIA: Limpiar lo que escriba el usuario para guardarlo como número puro
+        try:
+            limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
+            # Si el usuario escribió con formato colombiano (puntos en miles y coma en decimal)
+            if "," in limpio and "." in limpio:
+                limpio = limpio.replace(".", "").replace(",", ".")
+            elif "." in limpio and len(limpio.split(".")[-1]) == 3:
+                # Si solo usó puntos para miles (Ej: 4.665.109)
+                limpio = limpio.replace(".", "")
+            elif "," in limpio:
+                limpio = limpio.replace(",", ".")
+                
+            valor_final_numerico = float(limpio)
+            # Guardamos el número puro en la memoria silenciosa del sistema
+            st.session_state.tarifas_simulador[avion_editar] = valor_final_numerico
+        except:
+            # Si el usuario borra todo o escribe letras, mantiene el valor anterior seguro
+            pass
+
         tarifas_aviones = st.session_state.tarifas_simulador
 
     # --- FILTRAR LOS DATOS ---
