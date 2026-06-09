@@ -31,12 +31,21 @@ def extraer_tabla_1_historica():
             if "FINCA" in [str(x).upper() for x in t1[i]]:
                 idx_t1 = i
                 break
-        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
-        return df_t1
+        
+        if len(t1) > idx_t1:
+            df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1])
+            # 🛡️ BLINDAJE: Eliminar columnas duplicadas que rompen el código
+            df_t1 = df_t1.loc[:, ~df_t1.columns.duplicated()]
+            return df_t1
+        return pd.DataFrame()
     except:
         return pd.DataFrame()
 
 def limpiar_numero(val):
+    # 🛡️ BLINDAJE: Si por algún motivo llega un paquete doble, tomamos el primero
+    if isinstance(val, pd.Series):
+        val = val.iloc[0]
+        
     if pd.isna(val) or str(val).strip() == "": return 0.0
     try:
         texto = str(val).replace("$", "").replace(" ", "").replace(",", "").replace("COP", "").strip()
@@ -68,7 +77,6 @@ def ejecutar():
     cols = df_base.columns.tolist()
     col_fecha = next((c for c in cols if 'FECHA' in c.upper()), cols[0])
     col_finca = next((c for c in cols if 'FINCA' in c.upper() or 'CLIENTE' in c.upper()), cols[1])
-    # Detección de la columna Pista
     col_pista = next((c for c in cols if 'PISTA' in c.upper() or 'ORIGEN' in c.upper() or 'BASE' in c.upper()), cols[2])
     col_ha = next((c for c in cols if 'HECT' in c.upper() or 'HA' in c.upper() or 'CANT' in c.upper()), cols[3])
     col_horo = next((c for c in cols if 'HOROMETRO' in c.upper() or 'TIEMPO' in c.upper()), cols[4])
@@ -92,7 +100,6 @@ def ejecutar():
     lista_fincas = sorted(df_sim[col_finca].dropna().unique().tolist())
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + lista_fincas
 
-    # Extraer la lista de pistas únicas detectadas
     lista_pistas = sorted(df_sim[col_pista].dropna().astype(str).unique().tolist())
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + lista_pistas
 
@@ -101,14 +108,13 @@ def ejecutar():
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario y Parámetros")
-        # Ahora usamos 6 columnas para hacer espacio a las Pistas y Fechas
         f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.5, 1.2, 1.2, 1])
         
         fecha_ini = f1.date_input("📅 Fecha Inicial", value=min_date)
         fecha_fin = f2.date_input("📆 Fecha Final", value=max_date)
-        finca_sel = f3.selectbox("📍 Selección de Finca", opciones_finca)
+        finca_sel = f3.selectbox("📍 Finca", opciones_finca)
         pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
-        tarifa_base_hora = f5.number_input("💰 Tarifa Avión (H)", value=4606562.0, step=10000.0)
+        tarifa_base_hora = f5.number_input("💰 Tarifa Avión", value=4606562.0, step=10000.0)
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
     # --- APLICAR FILTROS DE INTERFAZ ---
@@ -161,7 +167,6 @@ def ejecutar():
 
     with c_grafico:
         st.markdown("#### 📉 Comparativa Facturación por Finca")
-        # Graficamos sumando por finca (ignorando temporalmente la pista en la gráfica para claridad visual)
         df_g_resumen = df_agrupado.groupby(col_finca)[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
         df_g = df_g_resumen.melt(id_vars=col_finca, value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
         fig = px.bar(df_g, x=col_finca, y="Monto ($)", color="Escenario", barmode="group",
