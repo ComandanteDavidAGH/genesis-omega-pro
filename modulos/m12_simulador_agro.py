@@ -101,7 +101,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante con Filtros Inteligentes en Cascada.")
+    st.caption("Análisis de Lucro Cesante con Filtros Inteligentes en Cascada y Gestor en Bloque.")
 
     with st.spinner("📥 Sincronizando y cruzando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
@@ -153,18 +153,18 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().astype(str).unique().tolist())
     
-    # Lista maestra global de todos los equipos de toda la empresa (Para inicializar la memoria)
     lista_aviones_maestra = sorted(df_sim["Equipo"].unique().tolist())
 
-    if 'v_maestra_dual' not in st.session_state:
+    # 🔥 MEMORIA REINICIADA (Elimina el $0,00 de tu caché)
+    if 'v_maestra_dual_v3' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         dict_temp = dict(zip(df_sim["Equipo"], df_sim["Tarifa_Defecto"]))
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(dict_temp.get(av, 4606562.0))
-        st.session_state['v_maestra_dual'] = True
+        st.session_state['v_maestra_dual_v3'] = True
 
     # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL CON FILTROS EN CASCADA
+    # 🎛️ PANEL DE CONTROL GERENCIAL 
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -175,7 +175,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         finca_sel = f3.selectbox("📍 Finca", opciones_finca)
         pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
         
-        # 🌟 FILTRO EN CASCADA: Extraemos solo la flota de la pista seleccionada
+        # 🌟 FILTRO EN CASCADA
         if pista_sel != "🛣️ TODAS LAS PISTAS":
             lista_aviones_dinamica = sorted(df_sim[df_sim["Pista"] == pista_sel]["Equipo"].unique().tolist())
         else:
@@ -187,40 +187,47 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown("#### ✈️ Gestor de Tarifas DUAL (Solo equipos de la pista seleccionada)")
-        c_tar1, c_tar2 = st.columns(2)
+        st.markdown(f"#### ✈️ Gestor de Tarifas DUAL ({pista_sel.replace('🛣️ ', '')})")
         
-        # El gestor también hereda el filtro en cascada para no mezclar aviones
-        if not lista_aviones_dinamica:
-            lista_aviones_dinamica = ["Sin Equipos"]
-            
-        avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave", lista_aviones_dinamica)
+        equipos_a_mostrar = [av for av in lista_aviones_dinamica if av != "✈️ TODOS LOS EQUIPOS"]
         
-        tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
-        tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        key_dinamica = f"input_dual_{avion_editar.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')}"
-
-        tarifa_usuario = c_tar2.text_input(
-            f"✍️ Editar Tarifa para {avion_editar} (Presione Enter)", 
-            value=tarifa_inicial_formateada,
-            key=key_dinamica
-        )
-        
-        if tarifa_usuario != tarifa_inicial_formateada:
-            try:
-                limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
-                if "," in limpio and "." in limpio:
-                    limpio = limpio.replace(".", "").replace(",", ".")
-                elif "." in limpio and len(limpio.split(".")[-1]) == 3:
-                    limpio = limpio.replace(".", "")
-                elif "," in limpio:
-                    limpio = limpio.replace(",", ".")
-                    
-                valor_final_numerico = float(limpio)
-                st.session_state.tarifas_simulador[avion_editar] = valor_final_numerico
-                st.rerun()
-            except:
-                pass
+        if not equipos_a_mostrar:
+            st.info("📭 No hay aeronaves registradas para esta selección.")
+        else:
+            # 🚀 LA LISTA VISUAL: UNO DEBAJO DE OTRO CON SU PRECIO AL LADO
+            for avion_editar in equipos_a_mostrar:
+                c_nombre, c_precio = st.columns([1.5, 2])
+                
+                # Renderiza el nombre como una etiqueta bonita
+                c_nombre.markdown(f"<div style='margin-top: 8px; font-weight: bold; color: #1a365d; font-size: 14px;'>🚁 {avion_editar}</div>", unsafe_allow_html=True)
+                
+                # Renderiza la casilla del precio justo al lado
+                tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
+                tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                key_dinamica = f"input_dual_v3_{avion_editar.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')}"
+                
+                tarifa_usuario = c_precio.text_input(
+                    "Tarifa", 
+                    value=tarifa_inicial_formateada,
+                    key=key_dinamica,
+                    label_visibility="collapsed" # Oculta la palabra "Tarifa" para que se vea limpio
+                )
+                
+                if tarifa_usuario != tarifa_inicial_formateada:
+                    try:
+                        limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
+                        if "," in limpio and "." in limpio:
+                            limpio = limpio.replace(".", "").replace(",", ".")
+                        elif "." in limpio and len(limpio.split(".")[-1]) == 3:
+                            limpio = limpio.replace(".", "")
+                        elif "," in limpio:
+                            limpio = limpio.replace(",", ".")
+                            
+                        valor_final_numerico = float(limpio)
+                        st.session_state.tarifas_simulador[avion_editar] = valor_final_numerico
+                        st.rerun()
+                    except:
+                        pass
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
@@ -236,7 +243,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO CORREGIDO
+    # 🧠 MOTOR FINANCIERO
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
