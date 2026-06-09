@@ -172,11 +172,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         # CASILLA 1: Elegir Avión
         avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
         
-        # CASILLA 2: Editar precio (se guarda automáticamente en la memoria del sistema)
+        # CASILLA 2: Editar precio con formato estético Pro (Miles con punto y decimales limpios)
         nueva_tarifa = c_tar2.number_input(
             f"💰 Tarifa para {avion_editar}", 
             value=float(st.session_state.tarifas_simulador.get(avion_editar, 0.0)), 
             step=10000.0,
+            format="%.2f", # <-- Fuerza a mantener una estructura limpia de dos decimales
             key="input_tarifa_dinamica"
         )
         
@@ -253,10 +254,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_mostrar = df_agrupado[["Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
     
     df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}")
-    df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}")
-    df_mostrar["Tarifa Ideal Prom/Ha"] = df_mostrar["Tarifa Ideal Prom/Ha"].apply(lambda x: f"$ {x:,.0f}")
-    df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}")
-    df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}")
+    df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
+    df_mostrar["Tarifa Ideal Prom/Ha"] = df_mostrar["Tarifa Ideal Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
+    df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
+    df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     
     st.dataframe(df_mostrar.sort_values(by=["Finca"]), use_container_width=True, hide_index=True)
 
