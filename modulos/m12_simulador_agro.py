@@ -414,11 +414,11 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     st.markdown("#### 📋 Análisis Detallado por Mes y Margen Aplicado")
     
-    # Organizamos las columnas para mostrar la transparencia
-    df_mostrar = df_agrupado[["Mes Operación", "% Margen", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
+    # 🌟 CORRECCIÓN: PRIMERO creamos la columna % Margen
+    df_agrupado["% Margen"] = df_agrupado["Margen_Aplicado"].apply(lambda x: f"{x}%")
     
-    # Renombramos para que sea legible
-    df_mostrar["% Margen"] = df_agrupado["Margen_Aplicado"].apply(lambda x: f"{x}%")
+    # LUEGO extraemos la tabla completa para mostrarla
+    df_mostrar = df_agrupado[["Mes Operación", "% Margen", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
     
     df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", "."))
     df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
