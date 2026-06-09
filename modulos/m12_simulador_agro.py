@@ -66,7 +66,7 @@ def limpiar_moneda(val):
     except:
         return 0.0
 
-# 🌟 LECTOR ROBUSTO DE FECHAS (Caza fantasmas como "Enero")
+# 🌟 LECTOR ROBUSTO DE FECHAS
 def parsear_fecha_robusta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
@@ -112,13 +112,38 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
     return "IGNORAR", "IGNORAR"
 
 # =================================================================
-# 💾 EXPORTADOR EXCEL PROFESIONAL
+# 💾 EXPORTADOR EXCEL MULTI-HOJA PROFESIONAL (Directa General + Especializada)
 # =================================================================
-def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga):
+def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga):
     buffer = io.BytesIO()
+    
+    # 🌟 Construcción automática de la data mensual ejecutiva
+    nombres_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+    df_mes = df_filtrado_base.copy()
+    df_mes["Mes_Num"] = df_mes["Fecha_DT"].dt.month.fillna(1).astype(int)
+    
+    df_mensual_base = df_mes.groupby("Mes_Num").agg({
+        "Hectareas": "sum",
+        "Total Real Facturado": "sum",
+        "Total Simulado Ideal": "sum",
+        "Lucro Cesante": "sum"
+    }).reset_index()
+    
+    df_mensual_base["Mes de Operación"] = df_mensual_base["Mes_Num"].map(nombres_meses)
+    df_mensual_base["Tarifa Real Prom/Ha"] = df_mensual_base["Total Real Facturado"] / df_mensual_base["Hectareas"]
+    df_mensual_base["Tarifa Ideal Prom/Ha"] = df_mensual_base["Total Simulado Ideal"] / df_mensual_base["Hectareas"]
+    df_mensual_base["Brecha Financiera/Ha"] = df_mensual_base["Tarifa Ideal Prom/Ha"] - df_mensual_base["Tarifa Real Prom/Ha"]
+    
+    df_mensual_final = df_mensual_base[["Mes de Operación", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha Financiera/Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]].copy()
+    df_mensual_final = df_mensual_final.rename(columns={"Hectareas": "Total Hectáreas"})
+
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_ex = df_agrupado.copy()
-        df_ex = df_ex.rename(columns={
+        # 🚀 HOJA 1: RESUMEN GENERAL DIRECTIVO (Consolidado Mensual)
+        df_mensual_final.to_excel(writer, sheet_name="Resumen_Ejecutivo_Mensual", index=False, startrow=5)
+        ws1 = writer.sheets["Resumen_Ejecutivo_Mensual"]
+        
+        # 🚀 HOJA 2: DETALLE ESPECÍFICO (Visor Diario)
+        df_diario_renamed = df_diario_agrupado.copy().rename(columns={
             "Hectareas": "Total Ha",
             "Tarifa Real Prom/Ha": "Tarifa Real ($/Ha)",
             "Tarifa Ideal Prom/Ha": "Tarifa Ideal ($/Ha)",
@@ -127,32 +152,50 @@ def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaj
             "Total Simulado Ideal": "Costo Operativo Ideal",
             "Lucro Cesante": "Brecha Financiera Total"
         })
-        
-        df_ex.to_excel(writer, sheet_name="Resumen_Financiero", index=False, startrow=5)
-        ws = writer.sheets["Resumen_Financiero"]
+        df_diario_renamed.to_excel(writer, sheet_name="Detalle_Diario_Auditoria", index=False, startrow=5)
+        ws2 = writer.sheets["Detalle_Diario_Auditoria"]
 
+        # Estilos corporativos unificados
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_header = Font(color="FFFFFF", bold=True)
         borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-        ws.cell(row=1, column=1, value="REPORTE DE IMPACTO FINANCIERO (DETALLADO POR FECHA)").font = Font(size=14, bold=True, color="0D1B2A")
-        ws.cell(row=3, column=1, value=f"💰 Cobro Real: $ {t_real:,.0f}").font = Font(bold=True)
-        ws.cell(row=3, column=4, value=f"📈 Costo Ideal Pleno: $ {t_ideal:,.0f}").font = Font(bold=True)
-        ws.cell(row=3, column=7, value=f"⚠️ Brecha de Fuga: $ {t_perdido:,.0f} ({porcentaje_fuga:.1f}%)").font = Font(bold=True, color="C00000")
+        # ---- FORMATO HOJA 1 (MENSUAL) ----
+        ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
+        ws1.cell(row=3, column=1, value=f"💰 Cobro Real Acumulado: $ {t_real:,.0f}").font = Font(bold=True)
+        ws1.cell(row=3, column=4, value=f"📈 Costo Ideal Acumulado: $ {t_ideal:,.0f}").font = Font(bold=True)
+        ws1.cell(row=3, column=7, value=f"⚠️ Fuga por Topes: $ {t_perdido:,.0f} ({porcentaje_fuga:.1f}%)").font = Font(bold=True, color="C00000")
 
-        for col_num, col_name in enumerate(df_ex.columns, 1):
-            cell = ws.cell(row=6, column=col_num)
+        for col_num in range(1, len(df_mensual_final.columns) + 1):
+            cell = ws1.cell(row=6, column=col_num)
             cell.fill = fill_header
             cell.font = font_header
             cell.alignment = Alignment(horizontal='center', vertical='center')
-            ws.column_dimensions[get_column_letter(col_num)].width = 18
+            ws1.column_dimensions[get_column_letter(col_num)].width = 22
 
-        for r in range(7, len(df_ex) + 7):
-            ws.cell(row=r, column=5).number_format = '#,##0.0' # Ha (ahora es la columna 5)
-            for c in range(6, 12): # Columnas de Dinero (6 a la 11)
-                ws.cell(row=r, column=c).number_format = '"$"#,##0'
-            for c in range(1, 12): # Bordes para las 11 columnas
-                ws.cell(row=r, column=c).border = borde
+        for r in range(7, len(df_mensual_final) + 7):
+            ws1.cell(row=r, column=2).number_format = '#,##0.0' # Ha
+            for c in range(3, 9): # Formato de Moneda
+                ws1.cell(row=r, column=c).number_format = '"$"#,##0'
+            for c in range(1, 9):
+                ws1.cell(row=r, column=c).border = borde
+
+        # ---- FORMATO HOJA 2 (DIARIO DETALLADO) ----
+        ws2.cell(row=1, column=1, value="📋 INFORME ESPECÍFICO: AUDITORÍA CRONOLÓGICA DIARIA").font = Font(size=14, bold=True, color="0D1B2A")
+        
+        for col_num in range(1, len(df_diario_renamed.columns) + 1):
+            cell = ws2.cell(row=6, column=col_num)
+            cell.fill = fill_header
+            cell.font = font_header
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            ws2.column_dimensions[get_column_letter(col_num)].width = 18
+
+        for r in range(7, len(df_diario_renamed) + 7):
+            ws2.cell(row=r, column=5).number_format = '#,##0.0' # Ha
+            for c in range(6, 12): # Formato de Moneda para los costos y totales
+                ws2.cell(row=r, column=c).number_format = '"$"#,##0'
+            for c in range(1, 12):
+                ws2.cell(row=r, column=c).border = borde
 
     return buffer.getvalue()
 
@@ -328,9 +371,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # 🧠 MOTOR FINANCIERO IA (100% PLANO)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
-    
-    # 🌟 CREAMOS LA COLUMNA DE FECHA FORMATEADA PARA AGRUPAR DÍA A DÍA
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime('%Y-%m-%d')
+    df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     
     def calcular_costo_ha_plano(row):
         eq = str(row["Equipo"]).upper()
@@ -339,14 +381,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         ha = float(row["Hectareas"])
         
         if "DRON" in eq or "DRONE" in eq:
-            return tarifa 
+            return ... 
             
         if val_tiempo == 0 or ha == 0:
             return tarifa / 60.0 
 
-        if val_tiempo > 15: # Rendimiento (Ha/Hr)
+        if val_tiempo > 15: # Rendimiento
             return tarifa / val_tiempo 
-        else: # Horómetro (Horas)
+        else: # Horómetro
             velocidad_implicada = ha / val_tiempo
             if velocidad_implicada > 150:
                 return tarifa / 60.0 
@@ -354,12 +396,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 return (tarifa * val_tiempo) / ha 
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha_plano, axis=1)
-    
-    df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
-    # 🌟 AGRUPACIÓN POR FECHA (Para ver el historial completo vuelo por vuelo)
+    # 🌟 AGRUPACIÓN POR FECHA PARA LA TABLA EN PANTALLA
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
@@ -371,7 +411,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
-    # Reordenamos las columnas antes de exportar o mostrar
     df_agrupado = df_agrupado[["Fecha Operación", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
 
     # =================================================================
@@ -413,25 +452,23 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("#### 📋 Análisis Detallado: Costo Puro por Vuelo (Diario)")
-    
+    st.markdown("#### 📋 Visor Detallado Diario")
     df_mostrar = df_agrupado[["Fecha Operación", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
-    
     df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", "."))
     df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Tarifa Ideal Prom/Ha"] = df_mostrar["Tarifa Ideal Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     
-    # Ordenamos por Finca y por Fecha para que puedas auditar cronológicamente
     st.dataframe(df_mostrar.sort_values(by=["Finca", "Fecha Operación"]), use_container_width=True, hide_index=True)
 
+    # 🌟 BOTÓN DE DESCARGA EJECUTIVA MULTI-HOJA
     st.markdown("---")
-    st.markdown("### 📑 Reportes Gerenciales")
+    st.markdown("### 📑 Reportes Gerenciales (Doble Hoja)")
     st.download_button(
-        label="💾 DESCARGAR REPORTE GERENCIAL (EXCEL PROFESIONAL)",
-        data=generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga),
-        file_name=f"Simulador_Financiero_{datetime.today().strftime('%Y%m%d')}.xlsx",
+        label="💾 DESCARGAR REPORTE MULTI-HOJA (EXCEL PROFESIONAL CON RESUMEN MENSUAL)",
+        data=generar_excel_multi_hoja(df_filtrado, df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga),
+        file_name=f"Simulador_Financiero_Ejecutivo_{datetime.today().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
