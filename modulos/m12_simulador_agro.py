@@ -2,8 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import gspread
+import io
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 # =================================================================
 # 🔌 CONEXIÓN A BÓVEDA DE DATOS
@@ -63,32 +66,81 @@ def limpiar_moneda(val):
         return 0.0
 
 # =================================================================
-# 🧠 TRADUCTOR ESTRICTO: Limpieza de errores de digitación
+# 🧠 TRADUCTOR BLINDADO: Corrige errores de digitación del Excel
 # =================================================================
-def traducir_flota_estricta(eq_raw, pista_raw):
+def purificar_datos_vuelo(eq_raw, pista_raw):
     eq = str(eq_raw).upper()
     p = str(pista_raw).upper()
     
-    # 1. Drones (Mapeo por nombre o por pista si está genérico)
+    # 1. Limpieza estricta de Drones
     if "DRON" in eq or "DRONE" in eq:
-        if "DATAROT" in eq or "PLUC" in p: return "DRONE DATAROT"
-        if "NORTE" in eq or "PDIV" in p: return "DRONE NORTE"
-        if "AVIL" in eq or "TEHO" in p: return "DRONE AVIL"
-        if "GENESYS" in eq or "LUCI" in p: return "DRONE GENESYS"
-        return "DRONE GENESYS" # Seguro por defecto para drones
+        if "DATAROT" in eq or "PLUC" in p: return "DRONE DATAROT", "PLUC", 84427.0
+        if "NORTE" in eq or "PDIV" in p: return "DRONE NORTE", "PDIV", 75518.0
+        if "AVIL" in eq or "TEHO" in p: return "DRONE AVIL", "TEHO", 71280.0
+        if "GENESYS" in eq or "LUCI" in p: return "DRONE GENESYS", "LUCI", 71280.0
+        return "DRONE GENESYS", "LUCI", 71280.0 # Valor por defecto seguro
         
-    # 2. Aviones Clásicos (Corrige OMANDER, BRAVO, TOR, etc.)
-    if "TRUSH" in eq or "THRUS" in eq or "OMANDER" in eq: return "THRUS SR2"
-    if "PAWNEE" in eq or "BRAVO" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375"
-    if "AIR TRACTOR" in eq or "TRACTOR" in eq or "TOR" in eq: return "AIR TRACTOR"
+    # 2. Obligación de Aviones a AEROPENORT
+    if "TRUSH" in eq or "THRUS" in eq or "OMANDER" in eq: return "THRUS SR2", "AEROPENORT", 4606562.0
+    if "PAWNEE" in eq or "BRAVO" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375", "AEROPENORT", 3985831.0
     
-    # 3. Cessnas (Dependen de la pista para su variante)
+    # 3. Obligación de Aviones a FUMIGARAY
+    if "AIR TRACTOR" in eq or "TRACTOR" in eq or "TOR" in eq: return "AIR TRACTOR", "FUMIGARAY", 4665107.0
+    
+    # 4. Cessnas (Se asignan según la pista, o se reasignan a la más lógica)
     if "CESSNA" in eq or "PIPER PA 25" in eq:
-        if "ASA" in p: return "CESSNA ASA"
-        if "FUMIGARAY" in p: return "CESSNA FUMIGARAY"
-        return "CESSNA O PIPER PA 25" # Para Aeropenort
+        if "ASA" in p or "ASA" in eq: return "CESSNA ASA", "ASA", 3666600.0
+        if "FUMIGARAY" in p or "FUMIGARAY" in eq: return "CESSNA FUMIGARAY", "FUMIGARAY", 3065952.0
+        return "CESSNA O PIPER PA 25", "AEROPENORT", 3036525.0
 
-    return "MODELO NO RECONOCIDO"
+    return "IGNORAR", "IGNORAR", 0.0
+
+# =================================================================
+# 💾 EXPORTADOR EXCEL PROFESIONAL (Generador de Reportes Gerenciales)
+# =================================================================
+def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga):
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_ex = df_agrupado.copy()
+        df_ex = df_ex.rename(columns={
+            "Hectareas": "Total Ha",
+            "Horometro": "Total Hrs",
+            "Tarifa Real Prom/Ha": "Tarifa Real ($/Ha)",
+            "Tarifa Ideal Prom/Ha": "Tarifa Ideal ($/Ha)",
+            "Brecha por Ha": "Brecha ($/Ha)",
+            "Total Real Facturado": "Cobro Real Total",
+            "Total Simulado Ideal": "Cobro Ideal Total",
+            "Lucro Cesante": "Lucro Cesante Total"
+        })
+        
+        df_ex.to_excel(writer, sheet_name="Resumen_Financiero", index=False, startrow=5)
+        ws = writer.sheets["Resumen_Financiero"]
+
+        fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+        font_header = Font(color="FFFFFF", bold=True)
+        borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+        ws.cell(row=1, column=1, value="REPORTE DE IMPACTO FINANCIERO Y LUCRO CESANTE").font = Font(size=14, bold=True, color="0D1B2A")
+        ws.cell(row=3, column=1, value=f"💰 Cobro Real: $ {t_real:,.0f}").font = Font(bold=True)
+        ws.cell(row=3, column=4, value=f"📈 Cobro Ideal: $ {t_ideal:,.0f}").font = Font(bold=True)
+        ws.cell(row=3, column=7, value=f"⚠️ Lucro Cesante: $ {t_perdido:,.0f} ({porcentaje_fuga:.1f}%)").font = Font(bold=True, color="C00000")
+
+        for col_num, col_name in enumerate(df_ex.columns, 1):
+            cell = ws.cell(row=6, column=col_num)
+            cell.fill = fill_header
+            cell.font = font_header
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            ws.column_dimensions[get_column_letter(col_num)].width = 18
+
+        for r in range(7, len(df_ex) + 7):
+            ws.cell(row=r, column=4).number_format = '#,##0.0' # Ha
+            ws.cell(row=r, column=5).number_format = '#,##0.0' # Horas
+            for c in range(6, 11): # Columnas de dinero
+                ws.cell(row=r, column=c).number_format = '"$"#,##0'
+            for c in range(1, 11):
+                ws.cell(row=r, column=c).border = borde
+
+    return buffer.getvalue()
 
 # =================================================================
 # 🚁 MOTOR DEL SIMULADOR SIN TOPES
@@ -101,22 +153,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante - UI Blindada contra errores de Excel.")
+    st.caption("Análisis de Lucro Cesante - Interfaz Blindada con Exportación Ejecutiva.")
 
-    with st.spinner("📥 Sincronizando y depurando datos de TABLA 1..."):
+    with st.spinner("📥 Sincronizando y purificando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
 
     if df_base.empty:
         st.error("🚨 Base de datos vacía o sin acceso a TABLA 1.")
         return
 
-    col_fecha = "FECHA"
-    col_finca = "FINCA"
-    col_pista = "PISTA"
-    col_avion = "MODELO"
-    col_ha = "ÁREA FUMIG.\n(ha)"
-    col_horo = "RENDIMIENTO (horas)" 
-    col_vuelo = "COSTO AVIÒN\n($/ha)"
+    col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo = "FECHA", "FINCA", "PISTA", "MODELO", "ÁREA FUMIG.\n(ha)", "RENDIMIENTO (horas)", "COSTO AVIÒN\n($/ha)"
 
     for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo]:
         if c_req not in df_base.columns:
@@ -127,21 +173,22 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 if c_req == col_horo: col_horo = posible_match[0]
 
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo]].copy()
-    df_sim.columns = ["Fecha", "Finca", "Pista", "Equipo", "Hectareas", "Horometro", "CobroReal"]
+    df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "Horometro", "CobroReal"]
     
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
-    df_sim = df_sim[df_sim["Equipo"].astype(str).str.strip() != ""]
+    df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
 
-    # Traducimos toda la basura de Excel a los 10 modelos oficiales
-    df_sim["Equipo"] = df_sim.apply(lambda r: traducir_flota_estricta(r["Equipo"], r["Pista"]), axis=1)
+    # 🛡️ Aplicamos el Purificador de Datos (Sobrescribe pistas incorrectas con la pista verdadera del avión)
+    df_sim[["Equipo", "Pista", "Tarifa_Defecto"]] = df_sim.apply(
+        lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])), axis=1
+    )
 
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["Horometro"] = df_sim["Horometro"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
     df_sim['Fecha_DT'] = pd.to_datetime(df_sim["Fecha"], dayfirst=True, errors='coerce')
     
-    # Filtro de vuelos reales y evitamos los "NO RECONOCIDOS"
-    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "MODELO NO RECONOCIDO")]
+    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR")]
 
     if df_sim.empty:
         st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
@@ -151,10 +198,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
     
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
-    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().astype(str).unique().tolist())
     
     # =================================================================
-    # 🎯 REGLAMENTO ESTRICTO DE PISTAS (El escudo del Gestor UI)
+    # 🎯 REGLAMENTO ESTRICTO DE PISTAS PARA LA INTERFAZ
     # =================================================================
     FLOTA_OFICIAL_POR_PISTA = {
         "AEROPENORT": ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25"],
@@ -171,15 +217,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
         "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
     }
-    
+
+    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
 
-    # Inicializar memoria purificada
-    if 'v_maestra_estricta_v5' not in st.session_state:
+    if 'v_maestra_blindada_1' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
-        st.session_state['v_maestra_estricta_v5'] = True
+        st.session_state['v_maestra_blindada_1'] = True
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
@@ -193,7 +239,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         finca_sel = f3.selectbox("📍 Finca", opciones_finca)
         pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
         
-        # 🌟 CASCADA BLINDADA: Solo extrae la lista de nuestro diccionario oficial
+        # CASCADA SUPER ESTRICTA
         if pista_sel != "🛣️ TODAS LAS PISTAS":
             pista_limpia = pista_sel.replace("🛣️ ", "").strip().upper()
             lista_aviones_dinamica = FLOTA_OFICIAL_POR_PISTA.get(pista_limpia, [])
@@ -211,7 +257,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         equipos_a_mostrar = [av for av in lista_aviones_dinamica if av != "✈️ TODOS LOS EQUIPOS"]
         
         if not equipos_a_mostrar:
-            st.info("📭 Seleccione una pista válida para configurar tarifas, o deje 'TODAS' para ver la flota completa.")
+            st.info("📭 Seleccione una pista válida para ver y editar su flota oficial.")
         else:
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
@@ -220,7 +266,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                key_dinamica = f"in_v5_{avion_editar.replace(' ', '_').replace('-', '_')}"
+                key_dinamica = f"in_blind_{avion_editar.replace(' ', '_').replace('-', '_')}"
                 
                 tarifa_usuario = c_precio.text_input(
                     "Tarifa", 
@@ -251,7 +297,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
     if finca_sel != "🌍 TODAS LAS FINCAS": df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
-    if pista_sel != "🛣️ TODAS LAS PISTAS": df_filtrado = df_filtrado[df_filtrado["Pista"] == pista_sel]
+    if pista_sel != "🛣️ TODAS LAS PISTAS": df_filtrado = df_filtrado[df_filtrado["Pista"] == pista_sel.replace("🛣️ ", "")]
     if equipo_sel != "✈️ TODOS LOS EQUIPOS": df_filtrado = df_filtrado[df_filtrado["Equipo"] == equipo_sel]
 
     if df_filtrado.empty:
@@ -322,6 +368,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     
     st.dataframe(df_mostrar.sort_values(by=["Finca"]), use_container_width=True, hide_index=True)
+
+    # 💾 BOTÓN DE EXPORTACIÓN A EXCEL
+    st.markdown("---")
+    st.markdown("### 📑 Reportes Gerenciales")
+    st.download_button(
+        label="💾 DESCARGAR REPORTE GERENCIAL (EXCEL PROFESIONAL)",
+        data=generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga),
+        file_name=f"Simulador_Financiero_{datetime.today().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 
 if __name__ == "__main__":
     pass
