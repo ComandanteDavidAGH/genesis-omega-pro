@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import gspread
 import io
+import re
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -65,6 +66,26 @@ def limpiar_moneda(val):
     except:
         return 0.0
 
+# 🌟 LECTOR ROBUSTO DE FECHAS (Caza fantasmas como "Enero")
+def parsear_fecha_robusta(val):
+    if pd.isna(val) or str(val).strip() == "": return pd.NaT
+    s = str(val).strip().lower()
+    if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+    
+    meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
+    match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+    if match1:
+        dia_str, mes_str, anio_str = match1.groups()
+        if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+    match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
+    if match2:
+        mes_str, dia_str, anio_str = match2.groups()
+        if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+    try: 
+        return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+    except: 
+        return pd.NaT
+
 # =================================================================
 # 🧠 TRADUCTOR BLINDADO
 # =================================================================
@@ -103,8 +124,8 @@ def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaj
             "Tarifa Ideal Prom/Ha": "Tarifa Ideal ($/Ha)",
             "Brecha por Ha": "Brecha ($/Ha)",
             "Total Real Facturado": "Cobro Real Total",
-            "Total Simulado Ideal": "Cobro Ideal Total",
-            "Lucro Cesante": "Lucro Cesante Total"
+            "Total Simulado Ideal": "Costo Operativo Ideal",
+            "Lucro Cesante": "Brecha Financiera Total"
         })
         
         if "FactorTiempo" in df_ex.columns: df_ex = df_ex.drop(columns=["FactorTiempo"])
@@ -116,10 +137,10 @@ def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaj
         font_header = Font(color="FFFFFF", bold=True)
         borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-        ws.cell(row=1, column=1, value="REPORTE DE IMPACTO FINANCIERO Y LUCRO CESANTE").font = Font(size=14, bold=True, color="0D1B2A")
+        ws.cell(row=1, column=1, value="REPORTE DE IMPACTO FINANCIERO Y COSTOS OPERATIVOS").font = Font(size=14, bold=True, color="0D1B2A")
         ws.cell(row=3, column=1, value=f"💰 Cobro Real: $ {t_real:,.0f}").font = Font(bold=True)
-        ws.cell(row=3, column=4, value=f"📈 Cobro Ideal: $ {t_ideal:,.0f}").font = Font(bold=True)
-        ws.cell(row=3, column=7, value=f"⚠️ Lucro Cesante: $ {t_perdido:,.0f} ({porcentaje_fuga:.1f}%)").font = Font(bold=True, color="C00000")
+        ws.cell(row=3, column=4, value=f"📈 Costo Ideal Pleno: $ {t_ideal:,.0f}").font = Font(bold=True)
+        ws.cell(row=3, column=7, value=f"⚠️ Brecha de Fuga: $ {t_perdido:,.0f} ({porcentaje_fuga:.1f}%)").font = Font(bold=True, color="C00000")
 
         for col_num, col_name in enumerate(df_ex.columns, 1):
             cell = ws.cell(row=6, column=col_num)
@@ -129,10 +150,10 @@ def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaj
             ws.column_dimensions[get_column_letter(col_num)].width = 18
 
         for r in range(7, len(df_ex) + 7):
-            ws.cell(row=r, column=6).number_format = '#,##0.0' # Ha
-            for c in range(7, 13):
+            ws.cell(row=r, column=4).number_format = '#,##0.0' # Ha
+            for c in range(5, 11): # Dinero
                 ws.cell(row=r, column=c).number_format = '"$"#,##0'
-            for c in range(1, 13):
+            for c in range(1, 11):
                 ws.cell(row=r, column=c).border = borde
 
     return buffer.getvalue()
@@ -148,9 +169,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante - Transparencia de Meses y Márgenes.")
+    st.caption("Análisis de Costos Planos 100% Puros (Márgenes Desactivados).")
 
-    with st.spinner("📥 Sincronizando y purificando datos de TABLA 1..."):
+    with st.spinner("📥 Sincronizando y depurando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
 
     if df_base.empty:
@@ -190,9 +211,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
-    df_sim['Fecha_DT'] = pd.to_datetime(df_sim["Fecha"], dayfirst=True, errors='coerce')
     
-    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR")]
+    # 🌟 APLICAMOS LA IA CAZAFANTASMAS DE FECHAS
+    df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
+    
+    # Excluimos errores crudos y datos nulos
+    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
 
     if df_sim.empty:
         st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
@@ -222,14 +246,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
 
-    if 'v_maestra_blindada_6' not in st.session_state:
+    if 'v_maestra_blindada_7' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_6'] = True
+        st.session_state['v_maestra_blindada_7'] = True
 
     # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL 
+    # 🎛️ PANEL DE CONTROL GERENCIAL (Interfaz Limpia, sin Multiplicadores)
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -249,15 +273,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         opciones_avion_dinamica = ["✈️ TODOS LOS EQUIPOS"] + lista_aviones_dinamica
         equipo_sel = f5.selectbox("✈️ Equipo Fijo", opciones_avion_dinamica)
 
-        # 🌟 CONTROLES DE MARGEN VISIBLES Y CLAROS
-        st.markdown("---")
-        st.markdown("##### ⏳ Línea de Tiempo de Márgenes Históricos")
-        st.caption("El sistema identificará el mes de cada vuelo en el Excel y le inyectará su porcentaje específico automáticamente.")
-        cm1, cm2, cm3 = st.columns(3)
-        margen_ene_feb = cm1.number_input("Margen Enero-Febrero (%)", value=10.0, step=0.1)
-        margen_marzo = cm2.number_input("Margen Marzo (%)", value=11.0, step=0.1)
-        margen_resto = cm3.number_input("Margen Abril en Adelante (%)", value=8.0, step=0.1)
-
         st.markdown("---")
         st.markdown(f"#### ✈️ Gestor de Tarifas ({pista_sel.replace('🛣️ ', '')})")
         
@@ -273,10 +288,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                key_dinamica = f"in_blind6_{avion_editar.replace(' ', '_').replace('-', '_')}"
+                key_dinamica = f"in_blind7_{avion_editar.replace(' ', '_').replace('-', '_')}"
                 
                 tarifa_usuario = c_precio.text_input(
-                    "Tarifa Base (Plana)", 
+                    "Tarifa Base Plana", 
                     value=tarifa_inicial_formateada,
                     key=key_dinamica,
                     label_visibility="collapsed" 
@@ -312,63 +327,45 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO IA (Identificando el mes de operación)
+    # 🧠 MOTOR FINANCIERO IA (100% PLANO)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
-    # Extraemos el mes para la agrupación
-    df_filtrado["Mes_Int"] = df_filtrado["Fecha_DT"].dt.month.fillna(4).astype(int)
-    
-    def asignar_margen(mes):
-        if mes in [1, 2]: return margen_ene_feb
-        elif mes == 3: return margen_marzo
-        else: return margen_resto
-        
-    df_filtrado["Margen_Aplicado"] = df_filtrado["Mes_Int"].apply(asignar_margen)
-    
-    def calcular_costo_ha_dinamico(row):
+    def calcular_costo_ha_plano(row):
         eq = str(row["Equipo"]).upper()
         tarifa = float(row["Tarifa_Aplicada"])
         val_tiempo = float(row["FactorTiempo"])
         ha = float(row["Hectareas"])
-        margen = float(row["Margen_Aplicado"])
         
-        multiplicador = 1 + (margen / 100.0)
-
         if "DRON" in eq or "DRONE" in eq:
-            return tarifa * multiplicador
+            return tarifa 
             
         if val_tiempo == 0 or ha == 0:
-            return (tarifa / 60.0) * multiplicador 
+            return tarifa / 60.0 
 
-        if val_tiempo > 15: # Rendimiento
-            return (tarifa / val_tiempo) * multiplicador
-        else: # Horómetro
+        if val_tiempo > 15: # Rendimiento (Ha/Hr)
+            return tarifa / val_tiempo 
+        else: # Horómetro (Horas)
             velocidad_implicada = ha / val_tiempo
             if velocidad_implicada > 150:
-                return (tarifa / 60.0) * multiplicador
+                return tarifa / 60.0 
             else:
-                return ((tarifa * val_tiempo) / ha) * multiplicador
+                return (tarifa * val_tiempo) / ha 
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha_dinamico, axis=1)
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha_plano, axis=1)
     
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
-    # 🌟 AGRUPAMOS POR MES Y POR MARGEN PARA TRANSPARENCIA TOTAL
-    df_agrupado = df_filtrado.groupby(["Pista", "Finca", "Equipo", "Mes_Int", "Margen_Aplicado"]).agg({
+    # 🌟 AGRUPACIÓN SIMPLE Y LIMPIA
+    df_agrupado = df_filtrado.groupby(["Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
-        "FactorTiempo": "sum", 
         "Total Real Facturado": "sum",
         "Total Simulado Ideal": "sum",
         "Lucro Cesante": "sum"
     }).reset_index()
     
-    # Traductor de Meses para que la tabla sea legible
-    nombres_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Sept.", 10:"Oct.", 11:"Nov.", 12:"Dic."}
-    df_agrupado["Mes Operación"] = df_agrupado["Mes_Int"].map(nombres_meses)
-
     df_agrupado["Tarifa Real Prom/Ha"] = df_agrupado["Total Real Facturado"] / df_agrupado["Hectareas"]
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
@@ -389,22 +386,22 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     html_cards = f"""
     <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
         <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #1b263b; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Cobro Real (Con Topes)</div>
+            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Cobro Real Histórico</div>
             <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_real)}</div>
         </div>
         <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #d4af37; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Costo Matemático (Según Histórico)</div>
+            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Costo Plano Puro (Sin Márgenes)</div>
             <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_ideal)}</div>
         </div>
         <div style="flex: 1.2; min-width: 200px; background-color: #0d1b2a; border: 2px solid #ff4d4d; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
-            <div style="font-size: 12px; color: #ff4d4d; font-weight: 800; text-transform: uppercase;">⚠️ Brecha / Fuga Operativa</div>
-            <div style="font-size: 22px; color: white; font-weight: 900; margin-top: 4px;">$ {f_h(t_perdido)} <span style="font-size:14px; color:#ff4d4d;">({porcentaje_fuga:.1f}%)</span></div>
+            <div style="font-size: 12px; color: #ff4d4d; font-weight: 800; text-transform: uppercase;">⚠️ Brecha Financiera Operativa</div>
+            <div style="font-size: 22px; color: white; font-weight: 900; margin-top: 4px;">$ {f_h(t_perdido)}</div>
         </div>
     </div>
     """
     st.markdown(html_cards, unsafe_allow_html=True)
 
-    st.markdown("#### 📉 Comparativa Facturación Total por Finca")
+    st.markdown("#### 📉 Comparativa Costo Plano vs Facturación Real por Finca")
     df_g_resumen = df_agrupado.groupby("Finca")[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
     df_g = df_g_resumen.melt(id_vars="Finca", value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
     fig = px.bar(df_g, x="Finca", y="Monto ($)", color="Escenario", barmode="group",
@@ -412,13 +409,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("#### 📋 Análisis Detallado por Mes y Margen Aplicado")
+    st.markdown("#### 📋 Análisis Detallado: Costo Puro por Hectárea")
     
-    # 🌟 CORRECCIÓN: PRIMERO creamos la columna % Margen
-    df_agrupado["% Margen"] = df_agrupado["Margen_Aplicado"].apply(lambda x: f"{x}%")
-    
-    # LUEGO extraemos la tabla completa para mostrarla
-    df_mostrar = df_agrupado[["Mes Operación", "% Margen", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
+    df_mostrar = df_agrupado[["Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
     
     df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", "."))
     df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
@@ -426,7 +419,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     
-    st.dataframe(df_mostrar.sort_values(by=["Finca", "Mes Operación"]), use_container_width=True, hide_index=True)
+    st.dataframe(df_mostrar.sort_values(by=["Finca"]), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### 📑 Reportes Gerenciales")
