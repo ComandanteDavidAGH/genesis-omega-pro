@@ -86,7 +86,8 @@ def ejecutar():
     df_sim = df_sim[(df_sim["Hectáreas"] > 0) & (df_sim["Horómetro"] > 0)]
 
     # --- OBTENER RANGOS PARA FILTROS ---
-    min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
+    # Asignamos fechas por defecto basadas en los datos, pero si falla, usamos un rango amplio
+    min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
     max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
     lista_fincas = sorted(df_sim[col_finca].dropna().unique().tolist())
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + lista_fincas
@@ -96,19 +97,19 @@ def ejecutar():
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario y Parámetros")
-        f1, f2, f3, f4 = st.columns(4)
+        f1, f2, f3, f4, f5 = st.columns(5)
         
-        rango_fechas = f1.date_input("📅 Rango de Análisis", [min_date, max_date], min_value=min_date, max_value=max_date)
-        finca_sel = f2.selectbox("📍 Selección de Finca", opciones_finca)
-        tarifa_base_hora = f3.number_input("💰 Tarifa Avión (Hora Base)", value=4606562.0, step=10000.0)
-        multiplicador = f4.number_input("✖️ Mult. General", value=1.112, format="%.3f")
+        # 🗓️ Calendarios separados y sin candados de bloqueo
+        fecha_ini = f1.date_input("📅 Fecha Inicial", value=min_date)
+        fecha_fin = f2.date_input("📆 Fecha Final", value=max_date)
+        
+        finca_sel = f3.selectbox("📍 Selección de Finca", opciones_finca)
+        tarifa_base_hora = f4.number_input("💰 Tarifa Avión (Hora)", value=4606562.0, step=10000.0)
+        multiplicador = f5.number_input("✖️ Multiplicador", value=1.112, format="%.3f")
 
     # --- APLICAR FILTROS DE INTERFAZ ---
-    if len(rango_fechas) == 2:
-        start_d, end_d = rango_fechas
-        df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= start_d) & (df_sim['Fecha_DT'].dt.date <= end_d)].copy()
-    else:
-        df_filtrado = df_sim.copy()
+    # Usamos las fechas seleccionadas directamente para filtrar
+    df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
     if finca_sel != "🌍 TODAS LAS FINCAS":
         df_filtrado = df_filtrado[df_filtrado[col_finca] == finca_sel]
