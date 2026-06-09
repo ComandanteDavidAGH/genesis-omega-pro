@@ -69,6 +69,7 @@ def asignar_flota_dual(eq_raw, pista_raw):
     eq = str(eq_raw).upper()
     p = str(pista_raw).upper()
     
+    # --- Aviones ---
     if "AEROPENORT" in p:
         if "TRUSH" in eq or "THRUS" in eq: return "THRUS SR2 (AEROPENORT)", 4606562.0
         if "PAWNEE" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375 (AEROPENORT)", 3985831.0
@@ -81,12 +82,13 @@ def asignar_flota_dual(eq_raw, pista_raw):
     if "ASA" in p:
         if "CESSNA" in eq: return "CESSNA ASA (ASA)", 3666600.0
 
+    # --- Drones (Eliminación del Fantasma "Genérico") ---
     if "DRON" in eq or "DRONE" in eq:
         if "DATAROT" in eq: return "DRONE DATAROT", 84427.0
         if "NORTE" in eq: return "DRONE NORTE", 75518.0
         if "AVIL" in eq: return "DRONE AVIL", 71280.0
-        if "GENESYS" in eq: return "DRONE GENESYS", 71280.0
-        return f"DRON GENERICO ({p})", 71280.0
+        # Si está mal escrito, asume GENESYS para no ensuciar la lista
+        return "DRONE GENESYS", 71280.0
 
     return f"{eq} ({p})", 4606562.0
 
@@ -101,7 +103,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante con Filtros Inteligentes en Cascada y Gestor en Bloque.")
+    st.caption("Análisis de Lucro Cesante con Filtros en Cascada y Gestor en Bloque.")
 
     with st.spinner("📥 Sincronizando y cruzando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
@@ -155,16 +157,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     lista_aviones_maestra = sorted(df_sim["Equipo"].unique().tolist())
 
-    # 🔥 MEMORIA REINICIADA (Elimina el $0,00 de tu caché)
-    if 'v_maestra_dual_v3' not in st.session_state:
+    if 'v_maestra_dual_v4' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         dict_temp = dict(zip(df_sim["Equipo"], df_sim["Tarifa_Defecto"]))
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(dict_temp.get(av, 4606562.0))
-        st.session_state['v_maestra_dual_v3'] = True
+        st.session_state['v_maestra_dual_v4'] = True
 
     # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL 
+    # 🎛️ PANEL DE CONTROL GERENCIAL CON FILTROS EN CASCADA
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -194,25 +195,26 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         if not equipos_a_mostrar:
             st.info("📭 No hay aeronaves registradas para esta selección.")
         else:
-            # 🚀 LA LISTA VISUAL: UNO DEBAJO DE OTRO CON SU PRECIO AL LADO
+            # 🚀 LA LISTA VISUAL PURA (Cero Menús Desplegables)
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
-                # Renderiza el nombre como una etiqueta bonita
-                c_nombre.markdown(f"<div style='margin-top: 8px; font-weight: bold; color: #1a365d; font-size: 14px;'>🚁 {avion_editar}</div>", unsafe_allow_html=True)
+                # Renderiza el nombre
+                c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>🚁 {avion_editar}</div>", unsafe_allow_html=True)
                 
-                # Renderiza la casilla del precio justo al lado
+                # Renderiza la casilla del precio directamente al lado
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                key_dinamica = f"input_dual_v3_{avion_editar.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')}"
+                key_dinamica = f"in_dual_v4_{avion_editar.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')}"
                 
                 tarifa_usuario = c_precio.text_input(
                     "Tarifa", 
                     value=tarifa_inicial_formateada,
                     key=key_dinamica,
-                    label_visibility="collapsed" # Oculta la palabra "Tarifa" para que se vea limpio
+                    label_visibility="collapsed" # Oculta el título para mantener la alineación perfecta
                 )
                 
+                # Si presionas Enter
                 if tarifa_usuario != tarifa_inicial_formateada:
                     try:
                         limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
