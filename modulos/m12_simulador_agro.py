@@ -160,22 +160,27 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO CON LÓGICA DUAL REAL
+    # 🧠 MOTOR FINANCIERO CON LÓGICA DUAL REAL E IMPACTO POR HECTÁREA
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
     def calcular_costo_ha(row):
+        # Si el modelo es un Dron o el horómetro es 0, cobra tarifa plana por hectárea
         if "DRON" in row["Equipo"] or "DRONE" in row["Equipo"] or row["Horometro"] == 0:
             return row["Tarifa_Aplicada"] * multiplicador
         else:
+            # Avión: Tarifa * Horas / Hectáreas
             return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
 
+    # Este es el costo IDEAL por hectárea
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
     
+    # Cálculos Totales
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
+    # Agrupación por Finca y Equipo
     df_agrupado = df_filtrado.groupby(["Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Horometro": "sum",
@@ -183,6 +188,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "Total Simulado Ideal": "sum",
         "Lucro Cesante": "sum"
     }).reset_index()
+
+    # 🌟 NUEVO: CÁLCULO DE DIFERENCIA POR HECTÁREA POST-AGRUPACIÓN
+    # Dividimos los totales consolidados entre las hectáreas para sacar los promedios reales
+    df_agrupado["Tarifa Real Prom/Ha"] = df_agrupado["Total Real Facturado"] / df_agrupado["Hectareas"]
+    df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
+    df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
     # =================================================================
     # 📊 RENDERIZADO DEL DASHBOARD TÁCTICO
@@ -198,25 +209,28 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     m1, m2, m3 = st.columns(3)
     m1.metric("Cobro Real Registrado (Con Topes)", f"$ {t_real:,.0f}")
     m2.metric("Cobro Matemático Puro (Sin Topes)", f"$ {t_ideal:,.0f}")
-    m3.metric("⚠️ Lucro Cesante (Brecha)", f"$ {t_perdido:,.0f}", delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
+    m3.metric("⚠️ Lucro Cesante (Brecha Total)", f"$ {t_perdido:,.0f}", delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
 
-    c_grafico, c_tabla = st.columns([1.5, 1])
+    st.markdown("#### 📉 Comparativa Facturación Total por Finca")
+    df_g_resumen = df_agrupado.groupby("Finca")[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
+    df_g = df_g_resumen.melt(id_vars="Finca", value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
+    fig = px.bar(df_g, x="Finca", y="Monto ($)", color="Escenario", barmode="group",
+                 color_discrete_map={"Total Real Facturado": "#1b263b", "Total Simulado Ideal": "#d4af37"})
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
+    st.plotly_chart(fig, use_container_width=True)
 
-    with c_grafico:
-        st.markdown("#### 📉 Comparativa Facturación por Finca")
-        df_g_resumen = df_agrupado.groupby("Finca")[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
-        df_g = df_g_resumen.melt(id_vars="Finca", value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
-        fig = px.bar(df_g, x="Finca", y="Monto ($)", color="Escenario", barmode="group",
-                     color_discrete_map={"Total Real Facturado": "#1b263b", "Total Simulado Ideal": "#d4af37"})
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
-        st.plotly_chart(fig, use_container_width=True)
-
-    with c_tabla:
-        st.markdown("#### 📋 Reporte de Fugas por Equipo y Pista")
-        df_mostrar = df_agrupado[["Pista", "Finca", "Equipo", "Hectareas", "Lucro Cesante"]].copy()
-        df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}")
-        df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}")
-        st.dataframe(df_mostrar.sort_values(by=["Lucro Cesante"], ascending=False), use_container_width=True, hide_index=True)
+    st.markdown("#### 📋 Análisis Detallado: Brecha por Hectárea y Total")
+    # Preparamos la tabla para mostrar la economía unitaria
+    df_mostrar = df_agrupado[["Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
+    
+    # Formateo visual de la tabla
+    df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}")
+    df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}")
+    df_mostrar["Tarifa Ideal Prom/Ha"] = df_mostrar["Tarifa Ideal Prom/Ha"].apply(lambda x: f"$ {x:,.0f}")
+    df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}")
+    df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}")
+    
+    st.dataframe(df_mostrar.sort_values(by=["Finca"]), use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
     pass
