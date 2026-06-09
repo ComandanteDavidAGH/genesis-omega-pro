@@ -113,7 +113,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[df_sim["Hectareas"] > 0]
 
     if df_sim.empty:
-        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) en la TABLA 1.")
+        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) in la TABLA 1.")
         return
 
     min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
@@ -125,31 +125,35 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     lista_aviones_pura = sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
 
     # =================================================================
-    # 🧠 MEMORIA DEL SISTEMA PARA TARIFAS (Invisible en pantalla)
+    # 🧠 MAESTRO DE TARIFAS REALES (Extraídas de tu pestaña Validación Dosis)
     # =================================================================
-    tarifas_maestras_aviones = {
-        "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, 
-        "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665109.0, 
-        "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0
-    }
-    tarifas_maestras_drones = {
-        "DRONE DATAROT": 84428.0, "DRONE NORTE": 75518.0, 
-        "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
-    }
-
     if 'tarifas_simulador' not in st.session_state:
         st.session_state.tarifas_simulador = {}
+        
+        # Diccionario con valores exactos de tu captura de pantalla
+        tarifas_oficiales_hoja = {
+            "THRUS SR2": 4606562.0,
+            "PIPER PA 36-375": 3985831.0,
+            "CESSNA O PIPER PA 25": 3036525.0,
+            "AIR TRACTOR": 4665107.0,
+            "CESSNA ASA": 3666600.0,
+            "CESSNA FUMIGARAY": 3065952.0,
+            "DRONE DATAROT": 84427.0,
+            "DRONE GENESYS": 71280.0,
+            "DRONE AVIL": 71280.0,
+            "DRONE NORTE": 75518.0
+        }
+        
         for avion in lista_aviones_pura:
-            val_defecto = 4606562.0 # Avión genérico
-            for nombre_av, precio in tarifas_maestras_aviones.items():
-                if nombre_av in avion or avion in nombre_av: val_defecto = precio
+            avion_upper = avion.upper()
+            val_asignado = 4606562.0  # Por defecto si no se encuentra match
             
-            if "DRON" in avion:
-                val_defecto = 72600.0 # Dron genérico
-                for nombre_dr, precio_dr in tarifas_maestras_drones.items():
-                    if nombre_dr in avion or nombre_dr.replace("DRONE ", "") in avion: val_defecto = precio_dr
+            for nombre_ref, precio in tarifas_oficiales_hoja.items():
+                if nombre_ref in avion_upper or avion_upper in nombre_ref:
+                    val_asignado = precio
+                    break
             
-            st.session_state.tarifas_simulador[avion] = float(val_defecto)
+            st.session_state.tarifas_simulador[avion] = float(val_asignado)
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
@@ -169,30 +173,29 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.markdown("#### ✈️ Gestor de Tarifas de Flota")
         c_tar1, c_tar2 = st.columns(2)
         
-        # CASILLA 1: Elegir Avión (Si cambia, dispara el cambio en la casilla de texto)
+        # CASILLA 1: Elegir Avión
         avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
         
-        # Obtener el valor numérico actual desde nuestra base de datos en memoria
+        # Obtener el valor numérico actual desde la memoria reactiva
         tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
         
-        # Formatear el número crudo a estética ejecutiva colombiana ($ 4.665.109,00)
+        # Formatear el número crudo a estética ejecutiva colombiana ($ 4.665.107,00)
         tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        # MANTENIMIENTO DE LLAVE DINÁMICA: Forzamos el refresco visual solo cuando cambia el avión seleccionado
-        key_dinamica = f"input_tarifa_{avion_editar.replace(' ', '_')}"
+        # Generamos una llave dinámica única basada en el avión para obligar el cambio inmediato en la UI
+        key_dinamica = f"input_tar_din_{avion_editar.replace(' ', '_').replace('-', '_')}"
 
-        # CASILLA 2: Cuadro de texto reactivo conectado con el modelo
+        # CASILLA 2: Cuadro de texto reactivo alineado al modelo de avión
         tarifa_usuario = c_tar2.text_input(
             f"✍️ Editar Tarifa para {avion_editar} (Presione Enter para aplicar)", 
             value=tarifa_inicial_formateada,
             key=key_dinamica
         )
         
-        # 🧠 PROCESAMIENTO INTELIGENTE: Si el usuario edita y presiona Enter, actualizamos la memoria central
+        # 🧠 PROCESAMIENTO INTELIGENTE: Si cambias el número y das Enter, se sobrescribe en caliente
         if tarifa_usuario != tarifa_inicial_formateada:
             try:
                 limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
-                # Traducir formato colombiano (puntos en miles, coma en decimales) a formato Python
                 if "," in limpio and "." in limpio:
                     limpio = limpio.replace(".", "").replace(",", ".")
                 elif "." in limpio and len(limpio.split(".")[-1]) == 3:
@@ -201,17 +204,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                     limpio = limpio.replace(",", ".")
                     
                 valor_final_numerico = float(limpio)
-                
-                # Sobrescribimos el nuevo valor en la memoria central para el avión activo
                 st.session_state.tarifas_simulador[avion_editar] = valor_final_numerico
-                
-                # Forzar recarga inmediata de la página para actualizar las métricas de abajo con la nueva tarifa
                 st.rerun()
             except:
                 pass
 
-        # Sincronizamos las tarifas globales que usará el motor matemático de abajo
         tarifas_aviones = st.session_state.tarifas_simulador
+
     # --- FILTRAR LOS DATOS ---
     df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
@@ -224,14 +223,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO CON LÓGICA DUAL REAL E IMPACTO POR HECTÁREA
+    # 🧠 MOTOR FINANCIERO CORREGIDO (Diferencia si es Dron o Avión)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
     def calcular_costo_ha(row):
-        if "DRON" in row["Equipo"] or "DRONE" in row["Equipo"] or row["Horometro"] == 0:
+        eq = str(row["Equipo"]).upper()
+        # Si es dron, la tarifa de la hoja de cálculo ya es por HECTÁREA de forma directa
+        if "DRON" in eq or "DRONE" in eq or row["Horometro"] == 0:
             return row["Tarifa_Aplicada"] * multiplicador
         else:
+            # Si es avión, la tarifa es por HORA, por ende se calcula usando el horómetro
             return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
@@ -248,13 +250,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "Lucro Cesante": "sum"
     }).reset_index()
 
-    # CÁLCULO DE DIFERENCIA POR HECTÁREA
     df_agrupado["Tarifa Real Prom/Ha"] = df_agrupado["Total Real Facturado"] / df_agrupado["Hectareas"]
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
     # =================================================================
-    # 📊 RENDERIZADO DEL DASHBOARD TÁCTICO
+    # 📊 DASHBOARD DE MÉTRICAS EJECUTIVAS
     # =================================================================
     st.markdown("---")
     st.markdown("### 💎 Impacto Financiero de la Operación")
@@ -265,9 +266,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Cobro Real Registrado (Con Topes)", f"$ {t_real:,.0f}")
-    m2.metric("Cobro Matemático Puro (Sin Topes)", f"$ {t_ideal:,.0f}")
-    m3.metric("⚠️ Lucro Cesante (Brecha Total)", f"$ {t_perdido:,.0f}", delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
+    m1.metric("Cobro Real Registrado (Con Topes)", f"$ {t_real:,.0f}".replace(",", "."))
+    m2.metric("Cobro Matemático Puro (Sin Topes)", f"$ {t_ideal:,.0f}".replace(",", "."))
+    m3.metric("⚠️ Lucro Cesante (Brecha Total)", f"$ {t_perdido:,.0f}".replace(",", "."), delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
 
     st.markdown("#### 📉 Comparativa Facturación Total por Finca")
     df_g_resumen = df_agrupado.groupby("Finca")[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
@@ -280,7 +281,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("#### 📋 Análisis Detallado: Brecha por Hectárea y Total")
     df_mostrar = df_agrupado[["Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Lucro Cesante"]].copy()
     
-    df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}")
+    df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", "."))
     df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Tarifa Ideal Prom/Ha"] = df_mostrar["Tarifa Ideal Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
