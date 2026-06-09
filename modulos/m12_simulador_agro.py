@@ -68,71 +68,72 @@ def ejecutar():
     cols = df_base.columns.tolist()
     col_fecha = next((c for c in cols if 'FECHA' in c.upper()), cols[0])
     col_finca = next((c for c in cols if 'FINCA' in c.upper() or 'CLIENTE' in c.upper()), cols[1])
-    col_ha = next((c for c in cols if 'HECT' in c.upper() or 'HA' in c.upper() or 'CANT' in c.upper()), cols[2])
-    col_horo = next((c for c in cols if 'HOROMETRO' in c.upper() or 'TIEMPO' in c.upper()), cols[3])
+    # Detección de la columna Pista
+    col_pista = next((c for c in cols if 'PISTA' in c.upper() or 'ORIGEN' in c.upper() or 'BASE' in c.upper()), cols[2])
+    col_ha = next((c for c in cols if 'HECT' in c.upper() or 'HA' in c.upper() or 'CANT' in c.upper()), cols[3])
+    col_horo = next((c for c in cols if 'HOROMETRO' in c.upper() or 'TIEMPO' in c.upper()), cols[4])
     col_vuelo = next((c for c in cols if 'VUELO' in c.upper() or 'TARIFA' in c.upper() or 'VALOR' in c.upper()), cols[-1])
 
     # --- PREPROCESAMIENTO INVISIBLE ---
-    df_sim = df_base[[col_fecha, col_finca, col_ha, col_horo, col_vuelo]].copy()
-    df_sim = df_sim[df_sim[col_finca].astype(str).str.strip() != ""] # Filtra vacíos
+    df_sim = df_base[[col_fecha, col_finca, col_pista, col_ha, col_horo, col_vuelo]].copy()
+    df_sim = df_sim[df_sim[col_finca].astype(str).str.strip() != ""] 
     
-    # Formateo estricto de números y fechas
     df_sim["Hectáreas"] = df_sim[col_ha].apply(limpiar_numero)
     df_sim["Horómetro"] = df_sim[col_horo].apply(limpiar_numero)
     df_sim["Cobro Real"] = df_sim[col_vuelo].apply(limpiar_numero)
     df_sim['Fecha_DT'] = pd.to_datetime(df_sim[col_fecha], dayfirst=True, errors='coerce')
     
-    # Eliminar datos nulos matemáticamente inservibles
     df_sim = df_sim[(df_sim["Hectáreas"] > 0) & (df_sim["Horómetro"] > 0)]
 
     # --- OBTENER RANGOS PARA FILTROS ---
-    # Asignamos fechas por defecto basadas en los datos, pero si falla, usamos un rango amplio
     min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
     max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
+    
     lista_fincas = sorted(df_sim[col_finca].dropna().unique().tolist())
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + lista_fincas
+
+    # Extraer la lista de pistas únicas detectadas
+    lista_pistas = sorted(df_sim[col_pista].dropna().astype(str).unique().tolist())
+    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + lista_pistas
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL (Filtros)
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario y Parámetros")
-        f1, f2, f3, f4, f5 = st.columns(5)
+        # Ahora usamos 6 columnas para hacer espacio a las Pistas y Fechas
+        f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.5, 1.2, 1.2, 1])
         
-        # 🗓️ Calendarios separados y sin candados de bloqueo
         fecha_ini = f1.date_input("📅 Fecha Inicial", value=min_date)
         fecha_fin = f2.date_input("📆 Fecha Final", value=max_date)
-        
         finca_sel = f3.selectbox("📍 Selección de Finca", opciones_finca)
-        tarifa_base_hora = f4.number_input("💰 Tarifa Avión (Hora)", value=4606562.0, step=10000.0)
-        multiplicador = f5.number_input("✖️ Multiplicador", value=1.112, format="%.3f")
+        pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
+        tarifa_base_hora = f5.number_input("💰 Tarifa Avión (H)", value=4606562.0, step=10000.0)
+        multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
     # --- APLICAR FILTROS DE INTERFAZ ---
-    # Usamos las fechas seleccionadas directamente para filtrar
     df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
     if finca_sel != "🌍 TODAS LAS FINCAS":
         df_filtrado = df_filtrado[df_filtrado[col_finca] == finca_sel]
+        
+    if pista_sel != "🛣️ TODAS LAS PISTAS":
+        df_filtrado = df_filtrado[df_filtrado[col_pista] == pista_sel]
 
     if df_filtrado.empty:
-        st.warning("📭 No hay vuelos registrados en este rango de fechas o finca seleccionada.")
+        st.warning("📭 No hay vuelos registrados con esos filtros.")
         return
 
     # =================================================================
     # 🧠 MOTOR FINANCIERO (Cálculo sin Topes)
     # =================================================================
-    # Fórmula: ( (Tarifa Base * Horometro) / Ha ) * Ha * Mult = Tarifa Base * Horometro * Mult
     df_filtrado["Costo Simulado"] = ((tarifa_base_hora * df_filtrado["Horómetro"]) / df_filtrado["Hectáreas"]) * multiplicador
-    
-    # Totales facturados por fila
     df_filtrado["Total Real Facturado"] = df_filtrado["Cobro Real"] * df_filtrado["Hectáreas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado"] * df_filtrado["Hectáreas"]
-    
-    # Brecha Financiera (Lo que se pierde por el tope)
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
-    # Agrupación Táctica
-    df_agrupado = df_filtrado.groupby(col_finca).agg({
+    # Agrupar por Pista y Finca
+    df_agrupado = df_filtrado.groupby([col_pista, col_finca]).agg({
         "Hectáreas": "sum",
         "Horómetro": "sum",
         "Total Real Facturado": "sum",
@@ -160,7 +161,9 @@ def ejecutar():
 
     with c_grafico:
         st.markdown("#### 📉 Comparativa Facturación por Finca")
-        df_g = df_agrupado.melt(id_vars=col_finca, value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
+        # Graficamos sumando por finca (ignorando temporalmente la pista en la gráfica para claridad visual)
+        df_g_resumen = df_agrupado.groupby(col_finca)[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
+        df_g = df_g_resumen.melt(id_vars=col_finca, value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
         fig = px.bar(df_g, x=col_finca, y="Monto ($)", color="Escenario", barmode="group",
                      color_discrete_map={"Total Real Facturado": "#1b263b", "Total Simulado Ideal": "#d4af37"})
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
@@ -168,11 +171,11 @@ def ejecutar():
 
     with c_tabla:
         st.markdown("#### 📋 Reporte de Fugas")
-        df_mostrar = df_agrupado[[col_finca, "Hectáreas", "Lucro Cesante"]].copy()
-        df_mostrar.columns = ["Finca", "Ha Voladas", "Dinero Perdido"]
+        df_mostrar = df_agrupado[[col_pista, col_finca, "Hectáreas", "Lucro Cesante"]].copy()
+        df_mostrar.columns = ["Pista", "Finca", "Ha Voladas", "Dinero Perdido"]
         df_mostrar["Dinero Perdido"] = df_mostrar["Dinero Perdido"].apply(lambda x: f"$ {x:,.0f}")
         df_mostrar["Ha Voladas"] = df_mostrar["Ha Voladas"].apply(lambda x: f"{x:,.1f}")
-        st.dataframe(df_mostrar.sort_values(by="Dinero Perdido", ascending=False), use_container_width=True, hide_index=True)
+        st.dataframe(df_mostrar.sort_values(by=["Dinero Perdido"], ascending=False), use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
     ejecutar()
