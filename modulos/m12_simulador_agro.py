@@ -30,7 +30,6 @@ def extraer_datos_boveda():
     try:
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         
-        # TABLA 1 (Historial)
         t1 = boveda.worksheet("TABLA 1").get_all_values()
         idx_t1 = 4
         for i in range(min(6, len(t1))):
@@ -39,7 +38,6 @@ def extraer_datos_boveda():
                 break
         df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
         
-        # TABLA 2 (Productores)
         hojas = [ws.title for ws in boveda.worksheets()]
         nombre_t2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
         t2 = boveda.worksheet(nombre_t2).get_all_values()
@@ -117,9 +115,6 @@ def obtener_mult(prod):
     if "ORGANICO" in p: return 1.011
     return 1.112 
 
-# =================================================================
-# 💾 EXPORTADOR EXCEL MULTI-HOJA
-# =================================================================
 def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga, titulo_ideal):
     buffer = io.BytesIO()
     
@@ -199,9 +194,6 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 
     return buffer.getvalue()
 
-# =================================================================
-# 🚁 MOTOR DEL SIMULADOR SIN TOPES
-# =================================================================
 def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("""
     <style>
@@ -237,21 +229,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo = "FECHA", "FINCA", "PISTA", "MODELO", "ÁREA FUMIG.\n(ha)", "COSTO AVIÒN\n($/ha)"
 
-    # Escáner de prioridad para el Horómetro
     col_tiempo = None
     cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
-    
     for c, c_up in cols_upper.items():
         if "HORO" in c_up: col_tiempo = c; break
-    
     if not col_tiempo:
         for c, c_up in cols_upper.items():
             if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up: col_tiempo = c; break
-            
     if not col_tiempo:
         for c, c_up in cols_upper.items():
             if "RENDIMIENTO" in c_up or "HORA" in c_up: col_tiempo = c; break
-            
     if not col_tiempo:
         df_base["Factor_Tiempo"] = 60.0
         col_tiempo = "Factor_Tiempo"
@@ -295,26 +282,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "TEHO": ["DRONE AVIL"],
         "LUCI": ["DRONE GENESYS"]
     }
-    
-    # 🌟 AQUI RESTAURAMOS EL DICCIONARIO FALTANTE
-    PRECIOS_OFICIALES = {
-        "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0,
-        "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
-        "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
-    }
 
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
-    lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
+    lista_aviones_maestra = list({"THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0, "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0}.keys())
 
-    if 'v_maestra_blindada_10' not in st.session_state:
+    if 'v_maestra_blindada_11' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
-            st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_10'] = True
+            st.session_state.tarifas_simulador[av] = float({"THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0, "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0}.get(av, 4606562.0))
+        st.session_state['v_maestra_blindada_11'] = True
 
-    # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL 
-    # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
         f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.2, 1, 1.3, 1.5])
@@ -370,9 +347,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.warning("📭 No hay vuelos registrados con esos criterios en las fechas seleccionadas.")
         return
 
-    # =================================================================
-    # 🧠 MOTOR FINANCIERO 
-    # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime('%Y-%m-%d')
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
@@ -403,6 +377,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
+    # 🌟 AGRUPAMOS Y FORZAMOS EL ORDENAMIENTO (Mismo en UI y en Excel)
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
@@ -415,10 +390,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
     df_agrupado = df_agrupado[["Fecha Operación", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
+    
+    # Ordenamiento global para que la pantalla y el Excel sean gemelos idénticos
+    df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"])
 
-    # =================================================================
-    # 📊 DASHBOARD DE MÉTRICAS EJECUTIVAS
-    # =================================================================
     st.markdown("---")
     st.markdown("### 💎 Impacto Financiero de la Operación")
     
@@ -463,12 +438,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
     
-    st.dataframe(df_mostrar.sort_values(by=["Finca", "Fecha Operación"]), use_container_width=True, hide_index=True)
+    st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### 📑 Reportes Gerenciales (Doble Hoja)")
     st.download_button(
-        label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (CON DOS HOJAS MENS/DIARIO)",
+        label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (MENS/DIARIO)",
         data=generar_excel_multi_hoja(df_filtrado, df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga, ("Con Margen" if modo_calculo == "Venta Ideal (+Margen Inteligente)" else "Plano Puro")),
         file_name=f"Simulador_Financiero_Ejecutivo_{datetime.today().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
