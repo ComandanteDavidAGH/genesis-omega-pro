@@ -96,7 +96,7 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
     return "IGNORAR", "IGNORAR", 0.0
 
 # =================================================================
-# 💾 EXPORTADOR EXCEL PROFESIONAL (Generador de Reportes Gerenciales)
+# 💾 EXPORTADOR EXCEL PROFESIONAL
 # =================================================================
 def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga):
     buffer = io.BytesIO()
@@ -153,7 +153,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante - Interfaz Blindada con Exportación Ejecutiva.")
+    st.caption("Análisis de Lucro Cesante puro - Matemática plana y UI Blindada.")
 
     with st.spinner("📥 Sincronizando y purificando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
@@ -178,7 +178,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
 
-    # 🛡️ Aplicamos el Purificador de Datos (Sobrescribe pistas incorrectas con la pista verdadera del avión)
+    # 🛡️ Aplicamos el Purificador de Datos
     df_sim[["Equipo", "Pista", "Tarifa_Defecto"]] = df_sim.apply(
         lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])), axis=1
     )
@@ -232,7 +232,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
-        f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.2, 1, 1.2, 0.8])
+        # 🌟 ELIMINAMOS LA CAJA DE MULTIPLICADOR Y REAJUSTAMOS COLUMNAS
+        f1, f2, f3, f4, f5 = st.columns([1, 1, 1.5, 1, 1.5])
         
         fecha_ini = f1.date_input("📅 F. Inicial", value=min_date)
         fecha_fin = f2.date_input("📆 F. Final", value=max_date)
@@ -249,7 +250,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         opciones_avion_dinamica = ["✈️ TODOS LOS EQUIPOS"] + lista_aviones_dinamica
 
         equipo_sel = f5.selectbox("✈️ Equipo Fijo", opciones_avion_dinamica)
-        multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
         st.markdown(f"#### ✈️ Gestor de Tarifas ({pista_sel.replace('🛣️ ', '')})")
@@ -305,16 +305,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO
+    # 🧠 MOTOR FINANCIERO (MATE PURA SIN MARGEN)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
     def calcular_costo_ha(row):
         eq = str(row["Equipo"]).upper()
+        # 🌟 ELIMINAMOS EL '* multiplicador' DE TODA LA LÓGICA
         if "DRON" in eq or "DRONE" in eq or row["Horometro"] == 0:
-            return row["Tarifa_Aplicada"] * multiplicador
+            return row["Tarifa_Aplicada"]
         else:
-            return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
+            return (row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
     
