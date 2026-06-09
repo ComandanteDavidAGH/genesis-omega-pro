@@ -4,6 +4,7 @@ import plotly.express as px
 import gspread
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
+import numpy as np # <-- Nueva librería para cálculos avanzados
 
 # =================================================================
 # 🔌 CONEXIÓN A BÓVEDA DE DATOS
@@ -41,9 +42,20 @@ def extraer_tabla_1_historica():
         return pd.DataFrame()
 
 def limpiar_numero(val):
+    if isinstance(val, pd.Series):
+        val = val.iloc[0]
+        
     if pd.isna(val) or str(val).strip() == "": return 0.0
     try:
-        texto = str(val).replace("$", "").replace(" ", "").replace(",", "").replace("COP", "").strip()
+        texto = str(val).upper().replace("$", "").replace("COP", "").strip()
+        
+        # 🛡️ RESPETAR LA COMA DECIMAL (Ej: 3,5 -> 3.5)
+        if "," in texto and "." in texto:
+            texto = texto.replace(".", "").replace(",", ".") # Ej: 1.500,50
+        elif "," in texto:
+            texto = texto.replace(",", ".") # Ej: 3,5
+            
+        texto = texto.replace(" ", "")
         return float(texto)
     except:
         return 0.0
@@ -59,7 +71,7 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante por Finca, Pista y Tipo de Aeronave.")
+    st.caption("Análisis Inteligente de Lucro Cesante y Rendimiento Matemático de Flota.")
 
     with st.spinner("📥 Sincronizando historial de operaciones (TABLA 1)..."):
         df_base = extraer_tabla_1_historica()
@@ -75,9 +87,7 @@ def ejecutar():
             if c in excluir: continue
             c_up = str(c).upper()
             for kw in keywords:
-                if kw == 'HA':
-                    if c_up == 'HA' or c_up == 'HA.': return c
-                elif kw in c_up: return c
+                if kw in c_up: return c
         return None
     
     def fallback(excluir):
@@ -89,13 +99,13 @@ def ejecutar():
     col_finca = buscar_col(['FINCA', 'CLIENTE'], excluir=[col_fecha]) or fallback([col_fecha])
     col_pista = buscar_col(['PISTA', 'ORIGEN', 'BASE'], excluir=[col_fecha, col_finca]) or fallback([col_fecha, col_finca])
     col_avion = buscar_col(['AVION', 'EQUIPO', 'AERONAVE', 'MAQUINA'], excluir=[col_fecha, col_finca, col_pista]) or fallback([col_fecha, col_finca, col_pista])
-    col_ha = buscar_col(['HECT', 'CANT', 'HA'], excluir=[col_fecha, col_finca, col_pista, col_avion]) or fallback([col_fecha, col_finca, col_pista, col_avion])
-    col_horo = buscar_col(['HOROMETRO', 'TIEMPO', 'HORA'], excluir=[col_fecha, col_finca, col_pista, col_avion, col_ha]) or fallback([col_fecha, col_finca, col_pista, col_avion, col_ha])
+    # 🎯 PALABRAS CLAVE AJUSTADAS AL REPORTE
+    col_ha = buscar_col(['ÁREA', 'AREA', 'HECT', 'CANT', 'HA'], excluir=[col_fecha, col_finca, col_pista, col_avion]) or fallback([col_fecha, col_finca, col_pista, col_avion])
+    col_horo = buscar_col(['ODÒM', 'ODÓM', 'ODOM', 'HOROMETRO', 'TIEMPO', 'HORA'], excluir=[col_fecha, col_finca, col_pista, col_avion, col_ha]) or fallback([col_fecha, col_finca, col_pista, col_avion, col_ha])
     col_vuelo = buscar_col(['VUELO', 'TARIFA', 'VALOR', 'COBRO', 'TOTAL'], excluir=[col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo]) or fallback([col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo])
 
     # --- PREPROCESAMIENTO ABSOLUTO ---
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo]].copy()
-    # Renombramos para evitar cualquier colapso interno de Pandas
     df_sim.columns = ["Fecha", "Finca", "Pista", "Equipo", "Hectareas", "Horometro", "CobroReal"]
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
     
@@ -104,10 +114,11 @@ def ejecutar():
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_numero)
     df_sim['Fecha_DT'] = pd.to_datetime(df_sim["Fecha"], dayfirst=True, errors='coerce')
     
-    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Horometro"] > 0)]
+    # 🛡️ GUILLOTINA JUSTA: Solo eliminamos si las Hectáreas son 0. (Permitimos Horómetro 0 para los Drones)
+    df_sim = df_sim[df_sim["Hectareas"] > 0]
 
     if df_sim.empty:
-        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas y horómetro > 0) en la TABLA 1.")
+        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) en la TABLA 1.")
         return
 
     # --- OBTENER RANGOS PARA FILTROS ---
@@ -135,10 +146,9 @@ def ejecutar():
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown("#### ✈️ Tarifas Dinámicas por Aeronave (Hora Base)")
+        st.markdown("#### ✈️ Tarifas Dinámicas por Aeronave (Hora Avión / Ha Dron)")
         cols_av = st.columns(4)
         tarifas_aviones = {}
-        # 🚀 INYECCIÓN DE CASILLAS POR CADA AVIÓN DETECTADO
         for i, avion in enumerate(lista_aviones_pura):
             with cols_av[i % 4]:
                 val_defecto = 84428.0 if "DRON" in avion.upper() else 4606562.0
@@ -156,12 +166,20 @@ def ejecutar():
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO (Cálculo Dinámico Múltiple)
+    # 🧠 MOTOR FINANCIERO (Lógica Dual: Avión vs Dron)
     # =================================================================
-    # Asignamos a cada fila la tarifa del avión que voló
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
-    df_filtrado["Costo Simulado HA"] = ((df_filtrado["Tarifa_Aplicada"] * df_filtrado["Horometro"]) / df_filtrado["Hectareas"]) * multiplicador
+    # 🌟 NUEVA LÓGICA: Si el horómetro es mayor a 0, se asume que es Avión (costo = tarifa * horometro / ha). 
+    # Si el horómetro es 0, se asume Drone (costo = tarifa por hectárea).
+    def calcular_costo_ha(row):
+        if row["Horometro"] > 0:
+            return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
+        else:
+            return row["Tarifa_Aplicada"] * multiplicador
+
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
+    
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
