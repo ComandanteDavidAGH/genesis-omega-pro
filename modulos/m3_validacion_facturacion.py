@@ -78,6 +78,17 @@ def preprocesar_flota_gspread():
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
 
+def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
+    """ Escanea todo el Excel para encontrar la dosis real del producto """
+    try:
+        for col_idx in range(len(df_hoja.columns) - 1):
+            mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
+            if mask.any():
+                val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
+                if pd.notna(val) and val > 0: return float(val)
+    except: pass
+    return 0.5 # Fallback de seguridad
+
 @st.cache_data(show_spinner=False)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
     coctel_base = "SIN COINCIDENCIA"
@@ -137,7 +148,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 # =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
-    # 🌟 ANCLA NATIVA: Punto de aterrizaje invisible
     st.header("", anchor="inicio_modulo")
 
     st.markdown("""
@@ -147,13 +157,36 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
-    
-    /* 🌟 SOLUCIÓN VISUAL: Tarjetas compactas para números grandes */
-    .metrica-simulador { background-color:#f8f9fa; border-radius:6px; padding:8px; border-left:4px solid #1a365d; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .metrica-sim-titulo { font-size:12px; color:#6c757d; font-weight:bold; margin-bottom:2px; }
-    .metrica-sim-valor { font-size:16px; font-weight:900; color:#0d1b2a; }
     </style>
     """, unsafe_allow_html=True)
+
+    # Función HTML para evitar cortes en los números
+    def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
+        def f_h(val): return f"{val:,.0f}".replace(",", ".")
+        return f"""
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">👨‍🔬 Serv. Tec</div>
+                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px;">$ {f_h(st_val)}</div>
+            </div>
+            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">✈️ Vuelo</div>
+                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px;">$ {f_h(vuelo_val)}</div>
+            </div>
+            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">🧪 Mezcla</div>
+                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px;">$ {f_h(mezcla_val)}</div>
+            </div>
+            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">⚠️ Recargo</div>
+                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px;">$ {f_h(recargo_val)}</div>
+            </div>
+            <div style="flex: 1.2; min-width: 140px; background-color: #0d1b2a; border: 2px solid #00ff00; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
+                <div style="font-size: 11px; color: #00ff00; font-weight: 800; text-transform: uppercase;">💰 COSTO x HA</div>
+                <div style="font-size: 18px; color: white; font-weight: 900; margin-top: 2px;">$ {f_h(costo_ha_val)}</div>
+            </div>
+        </div>
+        """
 
     st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
     
@@ -300,7 +333,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 coctel_u = coctel_sim.upper().strip()
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
-                sigla_f = partes[1] if len(partes) > 1 else ""
 
                 receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
                 prods_f = []
@@ -309,29 +341,41 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     d = pd.to_numeric(row.iloc[2], errors='coerce')
                     if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
-                # 🌟 SOLUCIÓN INTELIGENTE FERTILIZANTE: Búsqueda dinámica en DD_Mesclas
+                # =====================================================================
+                # 🚀 INYECCIÓN TURBO FORZADA PARA FERTILIZANTES CON BUSCADOR DE DOSIS
+                # =====================================================================
+                coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
+                
+                fert_encontrado_obj = None
+                # Intenta buscar la sigla en la configuración
+                sigla_f = partes[1] if len(partes) > 1 else ""
                 if sigla_f:
-                    fert_encontrado = False
                     try:
                         for idx, row in df_recetas.iterrows():
                             if len(row) > 13:
-                                f_name = str(row.iloc[12]).strip().upper()
-                                f_sigla = str(row.iloc[13]).strip().upper()
-                                if f_sigla == sigla_f and f_name not in ["NAN", "FERTILIZANTES", ""]:
-                                    prods_f.append({"PRODUCTO": f_name, "DOSIS": 0.5})
-                                    fert_encontrado = True
+                                f_n = str(row.iloc[12]).strip().upper()
+                                f_s = str(row.iloc[13]).strip().upper()
+                                if f_s == sigla_f and f_n not in ["NAN", "FERTILIZANTES", ""]:
+                                    fert_encontrado_obj = f_n
                                     break
                     except: pass
-                    
-                    # Fallbacks por si la hoja no lo tiene escrito
-                    if not fert_encontrado:
-                        if "ZN" in sigla_f: prods_f.append({"PRODUCTO": "ZINTRAC X LITRO SV", "DOSIS": 0.5})
-                        elif "BT" in sigla_f: prods_f.append({"PRODUCTO": "BANATREL SC", "DOSIS": 0.5})
-                        elif "NM" in sigla_f: prods_f.append({"PRODUCTO": "NEMATICIDA SV", "DOSIS": 0.5}) # Fallback para NM
+                
+                # Si no lo encuentra en la hoja, usa los fallbacks por seguridad
+                if not fert_encontrado_obj:
+                    if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): fert_encontrado_obj = "ZINTRAC X LITRO SV"
+                    elif " BT" in coctel_texto_puro or coctel_texto_puro.endswith("BT"): fert_encontrado_obj = "BANATREL SC"
+                    elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): fert_encontrado_obj = "NATURAMIN WSP"
+                
+                # Si identificamos el fertilizante, VAMOS AL EXCEL a buscar su dosis real
+                if fert_encontrado_obj:
+                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
+                    prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
 
                 for item in prods_f:
-                    if "ACONDICIONADOR" in item["PRODUCTO"]: item["DOSIS"] = 0.06 if ("ZN" in coctel_u or "BT" in coctel_u or "NM" in coctel_u) else 0.02
-                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: item["DOSIS"] = 1.0 if sigla_f else 1.5
+                    if "ACONDICIONADOR" in item["PRODUCTO"]: 
+                        item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "NM"]) else 0.02
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: 
+                        item["DOSIS"] = 1.0 if any(x in coctel_u for x in ["ZN", "BT", "NM"]) else 1.5
 
                 tabla_visual = []
                 mezcla_total = 0
@@ -345,7 +389,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 for item in prods_f:
                     p, d = item["PRODUCTO"], item["DOSIS"]
+                    
                     mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                    if not mask.any() and "NEMATICIDA" in p:
+                        mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
+                        if mask.any(): p = df_cfg[mask].iloc[0, c_p_i] 
+                    
                     if mask.any():
                         p_b = pd.to_numeric(df_cfg[mask].iloc[0, c_c_i], errors='coerce')
                         if pd.notna(p_b):
@@ -366,18 +415,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.caption(f"🗓️ **Días Ciclo:** {dias_ciclo_sim} | 🚜 **Área:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
                 st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
                 
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                # 🌟 SOLUCIÓN VISUAL: Tarjetas compactas en vez de métricas gigantes
-                def tarjeta(titulo, valor):
-                    return f"<div class='metrica-simulador'><div class='metrica-sim-titulo'>{titulo}</div><div class='metrica-sim-valor'>{valor}</div></div>"
-
-                r1, r2, r3, r4, r5 = st.columns(5)
-                r1.markdown(tarjeta("👨‍🔬 Serv. Tec", f"$ {subtotal_st:,.0f}".replace(",", ".")), unsafe_allow_html=True)
-                r2.markdown(tarjeta("✈️ Vuelo", f"$ {subtotal_vuelo:,.0f}".replace(",", ".")), unsafe_allow_html=True)
-                r3.markdown(tarjeta("🧪 Mezcla", f"$ {mezcla_total:,.0f}".replace(",", ".")), unsafe_allow_html=True)
-                r4.markdown(tarjeta("⚠️ Recargo", f"$ {valor_recargo_t:,.0f}".replace(",", ".")), unsafe_allow_html=True)
-                r5.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #00ff00; text-align:center;'><p style='margin:0; color:#00ff00; font-size:12px; font-weight:bold;'>💰 COSTO x HA</p><h4 style='margin:0; color:white; font-size:18px;'>$ {costo_ha:,.0f}</h4></div>".replace(",", "."), unsafe_allow_html=True)
+                # APLICAMOS EL CÓDIGO HTML A PRUEBA DE CORTES
+                st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
                 
                 st.markdown("---")
                 st.markdown(f"<h3 style='text-align: center; color: #0d1b2a; font-weight: 900;'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h3>".replace(",", "."), unsafe_allow_html=True)
@@ -385,7 +424,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # -----------------------------------------------------------------
-    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL
+    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL (INTRACABLE E INTACTO)
     # -----------------------------------------------------------------
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
@@ -473,7 +512,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO (BÚSQUEDA ALFANUMÉRICA AGRESIVA)
+        # 🎯 MOTOR DE CICLOS DEFINITIVO 
         # =======================================================
         dias_ciclo_calc = 0
         try:
@@ -720,9 +759,36 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
 
             coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
-            coctel_piloto_base = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")[0]
+            
+            # --- SEPARAR CÓCTEL Y SIGLA ---
+            partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
+            coctel_piloto_base = partes_coctel[0]
+            sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
 
+            # Ejecuta la IA para el emparejamiento base
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
+            
+            # =====================================================================
+            # 🚀 INYECCIÓN TURBO FORZADA PARA FERTILIZANTES (MODO FACTURACIÓN)
+            # =====================================================================
+            fert_detectado = None
+            if sigla_coctel:
+                for f_n, f_s in dict_fertilizantes.items():
+                    if f_s == sigla_coctel: 
+                        fert_detectado = f_n; break
+                        
+            if not fert_detectado:
+                if "ZN" in sigla_coctel: fert_detectado = "ZINTRAC X LITRO SV"
+                elif "BT" in sigla_coctel: fert_detectado = "BANATREL SC"
+                elif "NM" in sigla_coctel: fert_detectado = "NATURAMIN WSP"
+            
+            if fert_detectado:
+                dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
+                # Inyectar obligatoriamente a la matriz oficial para que el código SAP lo reconozca
+                dosis_oficiales_coctel[fert_detectado.replace(" ", "")] = dosis_real
+                # Actualizar el nombre final del cóctel si no lo tenía
+                if sigla_coctel not in coctel_ganador: coctel_ganador += f" {sigla_coctel}"
+
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
             
             matriz_datos = []
@@ -770,7 +836,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
-                if "ACONDICIONADOR" in nombre_limpio: dosis_teorica = 0.06 if ("ZN" in coctel_ganador or "BT" in coctel_ganador) else 0.02
+                # Acondicionador reacciona correctamente a la sigla inyectada
+                if "ACONDICIONADOR" in nombre_limpio: dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "NM"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio: dosis_teorica = 1.5 if coctel_ganador.startswith("IN") else 1.0
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
@@ -783,7 +850,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             df_matriz = pd.DataFrame(matriz_datos)
             
-            # 🌟 PERSISTENCIA CONTROLADA: Clave dinámica por casilla
             llave_editor_casilla = f"editor_valid_{casilla_key}"
             if llave_editor_casilla in st.session_state:
                 ediciones = st.session_state[llave_editor_casilla].get('edited_rows', {})
@@ -860,10 +926,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with c_sap3: st.caption("🧪 TOTAL Mezcla"); st.code(fmt_sap(costo_mezcla_total), language="text")
         with c_sap4: st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True); c_tot1, c_tot2, c_tot3 = st.columns(3)
-        c_tot1.metric("Subtotal ST (459)", f"$ {fmt_sap(subtotal_st_finca)}")
-        c_tot2.metric("Subtotal Vuelo (429)", f"$ {fmt_sap(subtotal_vuelo_finca)}")
-        c_tot3.subheader(f"🔥 TOTAL: $ {fmt_sap(gran_total)}")
+        # 🌟 ELIMINACIÓN DE LOS ST.METRIC QUE SE CORTABAN
+        html_totales = f"""
+        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
+                <h3 style="margin:0; color: #0d1b2a; font-weight: 900;">$ {fmt_sap(subtotal_st_finca)}</h3>
+            </div>
+            <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
+                <h3 style="margin:0; color: #0d1b2a; font-weight: 900;">$ {fmt_sap(subtotal_vuelo_finca)}</h3>
+            </div>
+            <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 2px solid #d4af37; box-shadow: 0 2px 5px rgba(0,0,0,0.2); text-align: center;">
+                <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
+                <h2 style="margin:0; color: white; font-weight: 900;">$ {fmt_sap(gran_total)}</h2>
+            </div>
+        </div>
+        """
+        st.markdown(html_totales, unsafe_allow_html=True)
         
         st.markdown("---")
         st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
@@ -871,7 +951,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
         c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
         
-        # 🌟 BOTÓN DE NAVEGACIÓN NATIVO
         st.markdown("""
             <a href="#inicio_modulo" target="_self" style="
                 display: block; width: 100%; text-align: center; 
@@ -937,7 +1016,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", ('DRONE' if mision_solo_dron else 'AVION'), ""]
                     
-                    # EJECUCIÓN SECUENCIAL 100% SEGURA
                     col_azul = hoja_maestra.col_values(1)
                     col_apoyo = hoja_apoyo.col_values(2)
                     datos_memoria = hoja_memoria.get_all_values()
@@ -960,7 +1038,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                 filas_memoria.append(fila_m)
                     
-                    # Subidas directas ordenadas
                     hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                     hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                     if filas_memoria: 
