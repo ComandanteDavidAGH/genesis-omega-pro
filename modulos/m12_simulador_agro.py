@@ -63,34 +63,32 @@ def limpiar_moneda(val):
         return 0.0
 
 # =================================================================
-# 🧠 TRADUCTOR DUAL: CRUCE DE PISTA + EQUIPO
+# 🧠 TRADUCTOR ESTRICTO: Limpieza de errores de digitación
 # =================================================================
-def asignar_flota_dual(eq_raw, pista_raw):
+def traducir_flota_estricta(eq_raw, pista_raw):
     eq = str(eq_raw).upper()
     p = str(pista_raw).upper()
     
-    # --- Aviones ---
-    if "AEROPENORT" in p:
-        if "TRUSH" in eq or "THRUS" in eq: return "THRUS SR2 (AEROPENORT)", 4606562.0
-        if "PAWNEE" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375 (AEROPENORT)", 3985831.0
-        if "CESSNA" in eq or "PIPER PA 25" in eq: return "CESSNA O PIPER PA 25 (AEROPENORT)", 3036525.0
-        
-    if "FUMIGARAY" in p:
-        if "AIR TRACTOR" in eq or "TRACTOR" in eq: return "AIR TRACTOR (FUMIGARAY)", 4665107.0
-        if "CESSNA" in eq: return "CESSNA FUMIGARAY (FUMIGARAY)", 3065952.0
-        
-    if "ASA" in p:
-        if "CESSNA" in eq: return "CESSNA ASA (ASA)", 3666600.0
-
-    # --- Drones (Eliminación del Fantasma "Genérico") ---
+    # 1. Drones (Mapeo por nombre o por pista si está genérico)
     if "DRON" in eq or "DRONE" in eq:
-        if "DATAROT" in eq: return "DRONE DATAROT", 84427.0
-        if "NORTE" in eq: return "DRONE NORTE", 75518.0
-        if "AVIL" in eq: return "DRONE AVIL", 71280.0
-        # Si está mal escrito, asume GENESYS para no ensuciar la lista
-        return "DRONE GENESYS", 71280.0
+        if "DATAROT" in eq or "PLUC" in p: return "DRONE DATAROT"
+        if "NORTE" in eq or "PDIV" in p: return "DRONE NORTE"
+        if "AVIL" in eq or "TEHO" in p: return "DRONE AVIL"
+        if "GENESYS" in eq or "LUCI" in p: return "DRONE GENESYS"
+        return "DRONE GENESYS" # Seguro por defecto para drones
+        
+    # 2. Aviones Clásicos (Corrige OMANDER, BRAVO, TOR, etc.)
+    if "TRUSH" in eq or "THRUS" in eq or "OMANDER" in eq: return "THRUS SR2"
+    if "PAWNEE" in eq or "BRAVO" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375"
+    if "AIR TRACTOR" in eq or "TRACTOR" in eq or "TOR" in eq: return "AIR TRACTOR"
+    
+    # 3. Cessnas (Dependen de la pista para su variante)
+    if "CESSNA" in eq or "PIPER PA 25" in eq:
+        if "ASA" in p: return "CESSNA ASA"
+        if "FUMIGARAY" in p: return "CESSNA FUMIGARAY"
+        return "CESSNA O PIPER PA 25" # Para Aeropenort
 
-    return f"{eq} ({p})", 4606562.0
+    return "MODELO NO RECONOCIDO"
 
 # =================================================================
 # 🚁 MOTOR DEL SIMULADOR SIN TOPES
@@ -103,9 +101,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante con Filtros en Cascada y Gestor en Bloque.")
+    st.caption("Análisis de Lucro Cesante - UI Blindada contra errores de Excel.")
 
-    with st.spinner("📥 Sincronizando y cruzando datos de TABLA 1..."):
+    with st.spinner("📥 Sincronizando y depurando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
 
     if df_base.empty:
@@ -134,16 +132,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
     df_sim = df_sim[df_sim["Equipo"].astype(str).str.strip() != ""]
 
-    df_sim[["Equipo", "Tarifa_Defecto"]] = df_sim.apply(
-        lambda r: pd.Series(asignar_flota_dual(r["Equipo"], r["Pista"])), axis=1
-    )
+    # Traducimos toda la basura de Excel a los 10 modelos oficiales
+    df_sim["Equipo"] = df_sim.apply(lambda r: traducir_flota_estricta(r["Equipo"], r["Pista"]), axis=1)
 
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["Horometro"] = df_sim["Horometro"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
     df_sim['Fecha_DT'] = pd.to_datetime(df_sim["Fecha"], dayfirst=True, errors='coerce')
     
-    df_sim = df_sim[df_sim["Hectareas"] > 0]
+    # Filtro de vuelos reales y evitamos los "NO RECONOCIDOS"
+    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "MODELO NO RECONOCIDO")]
 
     if df_sim.empty:
         st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
@@ -155,17 +153,36 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().astype(str).unique().tolist())
     
-    lista_aviones_maestra = sorted(df_sim["Equipo"].unique().tolist())
+    # =================================================================
+    # 🎯 REGLAMENTO ESTRICTO DE PISTAS (El escudo del Gestor UI)
+    # =================================================================
+    FLOTA_OFICIAL_POR_PISTA = {
+        "AEROPENORT": ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25"],
+        "FUMIGARAY": ["AIR TRACTOR", "CESSNA FUMIGARAY"],
+        "ASA": ["CESSNA ASA"],
+        "PLUC": ["DRONE DATAROT"],
+        "PDIV": ["DRONE NORTE"],
+        "TEHO": ["DRONE AVIL"],
+        "LUCI": ["DRONE GENESYS"]
+    }
+    
+    PRECIOS_OFICIALES = {
+        "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0,
+        "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
+        "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
+    }
+    
+    lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
 
-    if 'v_maestra_dual_v4' not in st.session_state:
+    # Inicializar memoria purificada
+    if 'v_maestra_estricta_v5' not in st.session_state:
         st.session_state.tarifas_simulador = {}
-        dict_temp = dict(zip(df_sim["Equipo"], df_sim["Tarifa_Defecto"]))
         for av in lista_aviones_maestra:
-            st.session_state.tarifas_simulador[av] = float(dict_temp.get(av, 4606562.0))
-        st.session_state['v_maestra_dual_v4'] = True
+            st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
+        st.session_state['v_maestra_estricta_v5'] = True
 
     # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL CON FILTROS EN CASCADA
+    # 🎛️ PANEL DE CONTROL GERENCIAL 
     # =================================================================
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -176,9 +193,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         finca_sel = f3.selectbox("📍 Finca", opciones_finca)
         pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
         
-        # 🌟 FILTRO EN CASCADA
+        # 🌟 CASCADA BLINDADA: Solo extrae la lista de nuestro diccionario oficial
         if pista_sel != "🛣️ TODAS LAS PISTAS":
-            lista_aviones_dinamica = sorted(df_sim[df_sim["Pista"] == pista_sel]["Equipo"].unique().tolist())
+            pista_limpia = pista_sel.replace("🛣️ ", "").strip().upper()
+            lista_aviones_dinamica = FLOTA_OFICIAL_POR_PISTA.get(pista_limpia, [])
         else:
             lista_aviones_dinamica = lista_aviones_maestra
             
@@ -188,33 +206,29 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown(f"#### ✈️ Gestor de Tarifas DUAL ({pista_sel.replace('🛣️ ', '')})")
+        st.markdown(f"#### ✈️ Gestor de Tarifas ({pista_sel.replace('🛣️ ', '')})")
         
         equipos_a_mostrar = [av for av in lista_aviones_dinamica if av != "✈️ TODOS LOS EQUIPOS"]
         
         if not equipos_a_mostrar:
-            st.info("📭 No hay aeronaves registradas para esta selección.")
+            st.info("📭 Seleccione una pista válida para configurar tarifas, o deje 'TODAS' para ver la flota completa.")
         else:
-            # 🚀 LA LISTA VISUAL PURA (Cero Menús Desplegables)
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
-                # Renderiza el nombre
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>🚁 {avion_editar}</div>", unsafe_allow_html=True)
                 
-                # Renderiza la casilla del precio directamente al lado
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                key_dinamica = f"in_dual_v4_{avion_editar.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')}"
+                key_dinamica = f"in_v5_{avion_editar.replace(' ', '_').replace('-', '_')}"
                 
                 tarifa_usuario = c_precio.text_input(
                     "Tarifa", 
                     value=tarifa_inicial_formateada,
                     key=key_dinamica,
-                    label_visibility="collapsed" # Oculta el título para mantener la alineación perfecta
+                    label_visibility="collapsed" 
                 )
                 
-                # Si presionas Enter
                 if tarifa_usuario != tarifa_inicial_formateada:
                     try:
                         limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
