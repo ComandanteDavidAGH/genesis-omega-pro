@@ -63,7 +63,38 @@ def limpiar_moneda(val):
         return 0.0
 
 # =================================================================
-# 🚁 MOTOR DEL SIMULADOR SIN TOPES EN BASE A TU ESTRUCTURA REAL
+# 🧠 TRADUCTOR DUAL: CRUCE DE PISTA + EQUIPO (Magia pura)
+# =================================================================
+def asignar_flota_dual(eq_raw, pista_raw):
+    eq = str(eq_raw).upper()
+    p = str(pista_raw).upper()
+    
+    # --- LÓGICA DUAL PARA AVIONES (Basado en tu tabla oficial) ---
+    if "AEROPENORT" in p:
+        if "TRUSH" in eq or "THRUS" in eq: return "THRUS SR2 (AEROPENORT)", 4606562.0
+        if "PAWNEE" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375 (AEROPENORT)", 3985831.0
+        if "CESSNA" in eq or "PIPER PA 25" in eq: return "CESSNA O PIPER PA 25 (AEROPENORT)", 3036525.0
+        
+    if "FUMIGARAY" in p:
+        if "AIR TRACTOR" in eq or "TRACTOR" in eq: return "AIR TRACTOR (FUMIGARAY)", 4665107.0
+        if "CESSNA" in eq: return "CESSNA FUMIGARAY (FUMIGARAY)", 3065952.0
+        
+    if "ASA" in p:
+        if "CESSNA" in eq: return "CESSNA ASA (ASA)", 3666600.0
+
+    # --- LÓGICA PARA DRONES ---
+    if "DRON" in eq or "DRONE" in eq:
+        if "DATAROT" in eq: return "DRONE DATAROT", 84427.0
+        if "NORTE" in eq: return "DRONE NORTE", 75518.0
+        if "AVIL" in eq: return "DRONE AVIL", 71280.0
+        if "GENESYS" in eq: return "DRONE GENESYS", 71280.0
+        return f"DRON GENERICO ({p})", 71280.0
+
+    # Fallback de seguridad si voló una máquina fuera del radar
+    return f"{eq} ({p})", 4606562.0
+
+# =================================================================
+# 🚁 MOTOR DEL SIMULADOR SIN TOPES
 # =================================================================
 def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("""
@@ -73,9 +104,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante por Finca, Pista y Tipo de Aeronave real.")
+    st.caption("Análisis de Lucro Cesante basado en Cruce Dual (Pista + Aeronave).")
 
-    with st.spinner("📥 Sincronizando historial de operaciones (TABLA 1)..."):
+    with st.spinner("📥 Sincronizando y cruzando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
 
     if df_base.empty:
@@ -102,8 +133,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim.columns = ["Fecha", "Finca", "Pista", "Equipo", "Hectareas", "Horometro", "CobroReal"]
     
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
-    df_sim["Equipo"] = df_sim["Equipo"].astype(str).str.strip().str.upper()
-    df_sim = df_sim[df_sim["Equipo"] != ""]
+    df_sim = df_sim[df_sim["Equipo"].astype(str).str.strip() != ""]
+
+    # 🌟 APLICAMOS LA MAGIA DUAL: Traducimos toda la tabla y le inyectamos los precios por defecto
+    df_sim[["Equipo", "Tarifa_Defecto"]] = df_sim.apply(
+        lambda r: pd.Series(asignar_flota_dual(r["Equipo"], r["Pista"])), axis=1
+    )
 
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["Horometro"] = df_sim["Horometro"].apply(limpiar_cantidad)
@@ -113,7 +148,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[df_sim["Hectareas"] > 0]
 
     if df_sim.empty:
-        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) en la TABLA 1.")
+        st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
         return
 
     min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
@@ -121,50 +156,19 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().astype(str).unique().tolist())
-    opciones_avion = ["✈️ TODOS LOS EQUIPOS"] + sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
-    lista_aviones_pura = sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
+    
+    # La lista de aviones ahora estará súper limpia y cruzada con sus pistas
+    lista_aviones_pura = sorted(df_sim["Equipo"].unique().tolist())
+    opciones_avion = ["✈️ TODOS LOS EQUIPOS"] + lista_aviones_pura
 
-    # =================================================================
-    # 🎯 COORDENADAS DE TU FLOTA OFICIAL (Tus diccionarios exactos)
-    # =================================================================
-    dict_aviones = {
-        "THRUS SR2": 4606562.0, 
-        "PIPER PA 36-375": 3985831.0, 
-        "CESSNA O PIPER PA 25": 3036525.0, 
-        "AIR TRACTOR": 4665109.0, 
-        "CESSNA ASA": 3666600.0, 
-        "CESSNA FUMIGARAY": 3065952.0
-    }
-    dict_drones = {
-        "DRONE DATAROT": 84428.0, 
-        "DRONE NORTE": 75518.0, 
-        "DRONE AVIL": 71280.0, 
-        "DRONE GENESYS": 71280.0
-    }
-
-    # 🔥 SISTEMA ANTI-CONGELAMIENTO: Obligamos a reescribir la memoria con tus datos nuevos
-    if 'tarifas_simulador' not in st.session_state or st.session_state.get('reset_tarifas_2026') is None:
+    # 🔥 MEMORIA DEL SISTEMA: Carga los precios por defecto del cruce dual
+    if 'v_maestra_dual' not in st.session_state:
         st.session_state.tarifas_simulador = {}
-        for avion in lista_aviones_pura:
-            avion_up = avion.upper()
-            val_base = 4606562.0  # Respaldo genérico
-            
-            # Validar Aviones
-            for k_av, v_av in dict_aviones.items():
-                if k_av in avion_up or avion_up in k_av:
-                    val_base = v_av
-                    break
-            
-            # Validar Drones
-            if "DRON" in avion_up or "DRONE" in avion_up:
-                val_base = 71280.0  # Respaldo dron genérico
-                for k_dr, v_dr in dict_drones.items():
-                    if k_dr in avion_up or k_dr.replace("DRONE ", "") in avion_up or avion_up in k_dr:
-                        val_base = v_dr
-                        break
-                        
-            st.session_state.tarifas_simulador[avion] = float(val_base)
-        st.session_state['reset_tarifas_2026'] = True
+        # Hacemos un diccionario temporal para saber qué tarifa le tocó a cada equipo
+        dict_temp = dict(zip(df_sim["Equipo"], df_sim["Tarifa_Defecto"]))
+        for av in lista_aviones_pura:
+            st.session_state.tarifas_simulador[av] = float(dict_temp.get(av, 4606562.0))
+        st.session_state['v_maestra_dual'] = True
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
@@ -181,29 +185,21 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
 
         st.markdown("---")
-        st.markdown("#### ✈️ Gestor de Tarifas de Flota")
+        st.markdown("#### ✈️ Gestor de Tarifas DUAL (Flota + Pista)")
         c_tar1, c_tar2 = st.columns(2)
         
-        # CASILLA 1: Elegir Avión
-        avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
+        avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave", lista_aviones_pura)
         
-        # Extraer el valor numérico calibrado de la memoria limpia
         tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
-        
-        # Formatear el número crudo a estética ejecutiva colombiana ($ 4.665.109,00)
         tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        key_dinamica = f"input_dual_{avion_editar.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')}"
 
-        # Llave dinámica estricta para forzar actualización de UI al cambiar el combo
-        key_dinamica = f"input_t2026_{avion_editar.replace(' ', '_').replace('-', '_')}"
-
-        # CASILLA 2: Cuadro de texto reactivo corregido
         tarifa_usuario = c_tar2.text_input(
-            f"✍️ Editar Tarifa para {avion_editar} (Presione Enter para aplicar)", 
+            f"✍️ Editar Tarifa para {avion_editar} (Presione Enter)", 
             value=tarifa_inicial_formateada,
             key=key_dinamica
         )
         
-        # Si el usuario edita y da Enter, se guarda el cambio en caliente
         if tarifa_usuario != tarifa_inicial_formateada:
             try:
                 limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
@@ -240,7 +236,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     def calcular_costo_ha(row):
         eq = str(row["Equipo"]).upper()
-        # Lógica Dual estricta
         if "DRON" in eq or "DRONE" in eq or row["Horometro"] == 0:
             return row["Tarifa_Aplicada"] * multiplicador
         else:
