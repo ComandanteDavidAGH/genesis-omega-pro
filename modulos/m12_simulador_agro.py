@@ -169,43 +169,49 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.markdown("#### ✈️ Gestor de Tarifas de Flota")
         c_tar1, c_tar2 = st.columns(2)
         
-        # CASILLA 1: Elegir Avión
+        # CASILLA 1: Elegir Avión (Si cambia, dispara el cambio en la casilla de texto)
         avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
         
-        # Obtener el valor actual de la memoria interna
-        tarifa_actual = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
+        # Obtener el valor numérico actual desde nuestra base de datos en memoria
+        tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
         
-        # 💎 Transformar el número crudo en formato de alta costura colombiana
-        tarifa_formateada = f"$ {tarifa_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        
-        # CASILLA 2: Ahora es un cuadro de texto elegante que muestra el signo de pesos y puntos
+        # Formatear el número crudo a estética ejecutiva colombiana ($ 4.665.109,00)
+        tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        # MANTENIMIENTO DE LLAVE DINÁMICA: Forzamos el refresco visual solo cuando cambia el avión seleccionado
+        key_dinamica = f"input_tarifa_{avion_editar.replace(' ', '_')}"
+
+        # CASILLA 2: Cuadro de texto reactivo conectado con el modelo
         tarifa_usuario = c_tar2.text_input(
-            f"✍️ Editar Tarifa para {avion_editar} (Presione Enter al cambiar)", 
-            value=tarifa_formateada,
-            key="input_tarifa_estetica"
+            f"✍️ Editar Tarifa para {avion_editar} (Presione Enter para aplicar)", 
+            value=tarifa_inicial_formateada,
+            key=key_dinamica
         )
         
-        # 🧠 CONTRAINTELIGENCIA: Limpiar lo que escriba el usuario para guardarlo como número puro
-        try:
-            limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
-            # Si el usuario escribió con formato colombiano (puntos en miles y coma en decimal)
-            if "," in limpio and "." in limpio:
-                limpio = limpio.replace(".", "").replace(",", ".")
-            elif "." in limpio and len(limpio.split(".")[-1]) == 3:
-                # Si solo usó puntos para miles (Ej: 4.665.109)
-                limpio = limpio.replace(".", "")
-            elif "," in limpio:
-                limpio = limpio.replace(",", ".")
+        # 🧠 PROCESAMIENTO INTELIGENTE: Si el usuario edita y presiona Enter, actualizamos la memoria central
+        if tarifa_usuario != tarifa_inicial_formateada:
+            try:
+                limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
+                # Traducir formato colombiano (puntos en miles, coma en decimales) a formato Python
+                if "," in limpio and "." in limpio:
+                    limpio = limpio.replace(".", "").replace(",", ".")
+                elif "." in limpio and len(limpio.split(".")[-1]) == 3:
+                    limpio = limpio.replace(".", "")
+                elif "," in limpio:
+                    limpio = limpio.replace(",", ".")
+                    
+                valor_final_numerico = float(limpio)
                 
-            valor_final_numerico = float(limpio)
-            # Guardamos el número puro en la memoria silenciosa del sistema
-            st.session_state.tarifas_simulador[avion_editar] = valor_final_numerico
-        except:
-            # Si el usuario borra todo o escribe letras, mantiene el valor anterior seguro
-            pass
+                # Sobrescribimos el nuevo valor en la memoria central para el avión activo
+                st.session_state.tarifas_simulador[avion_editar] = valor_final_numerico
+                
+                # Forzar recarga inmediata de la página para actualizar las métricas de abajo con la nueva tarifa
+                st.rerun()
+            except:
+                pass
 
+        # Sincronizamos las tarifas globales que usará el motor matemático de abajo
         tarifas_aviones = st.session_state.tarifas_simulador
-
     # --- FILTRAR LOS DATOS ---
     df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
 
