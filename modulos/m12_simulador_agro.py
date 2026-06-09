@@ -66,7 +66,7 @@ def limpiar_moneda(val):
         return 0.0
 
 # =================================================================
-# 🧠 TRADUCTOR BLINDADO: Corrige errores de digitación del Excel
+# 🧠 TRADUCTOR BLINDADO
 # =================================================================
 def purificar_datos_vuelo(eq_raw, pista_raw):
     eq = str(eq_raw).upper()
@@ -107,7 +107,6 @@ def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaj
             "Lucro Cesante": "Lucro Cesante Total"
         })
         
-        # Ocultamos la columna técnica de FactorTiempo del Excel final
         if "FactorTiempo" in df_ex.columns: df_ex = df_ex.drop(columns=["FactorTiempo"])
         
         df_ex.to_excel(writer, sheet_name="Resumen_Financiero", index=False, startrow=5)
@@ -130,8 +129,8 @@ def generar_excel_profesional(df_agrupado, t_real, t_ideal, t_perdido, porcentaj
             ws.column_dimensions[get_column_letter(col_num)].width = 18
 
         for r in range(7, len(df_ex) + 7):
-            ws.cell(row=r, column=4).number_format = '#,##0.0' # Ha
-            for c in range(5, 11): # Columnas de dinero
+            ws.cell(row=r, column=4).number_format = '#,##0.0'
+            for c in range(5, 11):
                 ws.cell(row=r, column=c).number_format = '"$"#,##0'
             for c in range(1, 11):
                 ws.cell(row=r, column=c).border = borde
@@ -149,7 +148,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante Puro - Matemática Inteligente Anti-Errores.")
+    st.caption("Análisis de Lucro Cesante - Motor conectado con Línea de Tiempo de Márgenes.")
 
     with st.spinner("📥 Sincronizando y purificando datos de TABLA 1..."):
         df_base = extraer_tabla_1_historica()
@@ -160,7 +159,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo = "FECHA", "FINCA", "PISTA", "MODELO", "ÁREA FUMIG.\n(ha)", "COSTO AVIÒN\n($/ha)"
 
-    # 🌟 BUSCADOR INTELIGENTE DE COLUMNA DE TIEMPO/RENDIMIENTO
     col_tiempo = None
     for c in df_base.columns:
         c_up = str(c).upper()
@@ -224,11 +222,11 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
 
-    if 'v_maestra_blindada_2' not in st.session_state:
+    if 'v_maestra_blindada_4' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_2'] = True
+        st.session_state['v_maestra_blindada_4'] = True
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
@@ -252,6 +250,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
         equipo_sel = f5.selectbox("✈️ Equipo Fijo", opciones_avion_dinamica)
 
+        # 🌟 LÍNEA DE TIEMPO DE MÁRGENES HISTÓRICOS (Caja de cambios)
+        with st.expander("⚙️ Configuración de Márgenes Históricos por Fecha", expanded=False):
+            st.info("El sistema inyectará automáticamente el margen correcto según el mes del vuelo para igualar la matemática histórica.")
+            cm1, cm2, cm3 = st.columns(3)
+            margen_ene_feb = cm1.number_input("Margen Ene-Feb (%)", value=10.0, step=0.1)
+            margen_marzo = cm2.number_input("Margen Marzo (%)", value=11.0, step=0.1)
+            margen_resto = cm3.number_input("Margen Abr-Dic (%)", value=8.0, step=0.1)
+
         st.markdown("---")
         st.markdown(f"#### ✈️ Gestor de Tarifas ({pista_sel.replace('🛣️ ', '')})")
         
@@ -267,10 +273,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                key_dinamica = f"in_blind2_{avion_editar.replace(' ', '_').replace('-', '_')}"
+                key_dinamica = f"in_blind4_{avion_editar.replace(' ', '_').replace('-', '_')}"
                 
                 tarifa_usuario = c_precio.text_input(
-                    "Tarifa", 
+                    "Tarifa Base (Sin Margen)", 
                     value=tarifa_inicial_formateada,
                     key=key_dinamica,
                     label_visibility="collapsed" 
@@ -306,40 +312,44 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR FINANCIERO IA (ANTI-ERRORES DE EXCEL)
+    # 🧠 MOTOR FINANCIERO IA (Conexión a Línea de Tiempo de Margen)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     
-    def calcular_costo_ha(row):
+    def calcular_costo_ha_dinamico(row):
         eq = str(row["Equipo"]).upper()
         tarifa = float(row["Tarifa_Aplicada"])
         val_tiempo = float(row["FactorTiempo"])
         ha = float(row["Hectareas"])
+        
+        # 🌟 LÓGICA DE TIEMPO DE MARGEN
+        mes_vuelo = row["Fecha_DT"].month if pd.notna(row["Fecha_DT"]) else 4
+        if mes_vuelo in [1, 2]: # Enero y Febrero
+            multiplicador = 1 + (margen_ene_feb / 100.0)
+        elif mes_vuelo == 3: # Marzo
+            multiplicador = 1 + (margen_marzo / 100.0)
+        else: # Abril en adelante
+            multiplicador = 1 + (margen_resto / 100.0)
 
-        # Los drones cobran una tarifa plana directa por hectárea
+        # Cálculo matemático
         if "DRON" in eq or "DRONE" in eq:
-            return tarifa
+            return tarifa * multiplicador
             
-        # Rescate si el Excel está en blanco (Asume 60 Ha/Hr estándar)
         if val_tiempo == 0 or ha == 0:
-            return tarifa / 60.0 
+            return (tarifa / 60.0) * multiplicador 
 
-        # 🧠 INFERENCIA MATEMÁTICA
         if val_tiempo > 15:
-            # Es Rendimiento (Ej: 60 Ha/Hr). Fórmula: Tarifa / Rendimiento
-            return tarifa / val_tiempo
+            # Es Rendimiento (Ha/Hr)
+            return (tarifa / val_tiempo) * multiplicador
         else:
-            # Es Horómetro (Horas de vuelo). Verificamos si no es una locura
+            # Es Horómetro (Horas)
             velocidad_implicada = ha / val_tiempo
             if velocidad_implicada > 150:
-                # El digitador escribió mal (ej. 0.06 horas en vez de 60 Ha/Hr).
-                # Aplicamos rendimiento estándar de 60 Ha/Hr para no romper la matemática.
-                return tarifa / 60.0
+                return (tarifa / 60.0) * multiplicador
             else:
-                # Son horas reales y lógicas. Fórmula: (Tarifa * Horas) / Ha
-                return (tarifa * val_tiempo) / ha
+                return ((tarifa * val_tiempo) / ha) * multiplicador
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha_dinamico, axis=1)
     
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
@@ -347,7 +357,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     df_agrupado = df_filtrado.groupby(["Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
-        "FactorTiempo": "sum", # Solo referencial
+        "FactorTiempo": "sum", 
         "Total Real Facturado": "sum",
         "Total Simulado Ideal": "sum",
         "Lucro Cesante": "sum"
