@@ -118,12 +118,11 @@ def obtener_mult(prod):
     return 1.112 
 
 # =================================================================
-# 💾 EXPORTADOR EXCEL MULTI-HOJA REPARADO (Doble Pestaña Real)
+# 💾 EXPORTADOR EXCEL MULTI-HOJA
 # =================================================================
 def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga, titulo_ideal):
     buffer = io.BytesIO()
     
-    # 🌟 Construcción de la data mensual ejecutiva general
     nombres_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
     df_mes = df_filtrado_base.copy()
     df_mes["Mes_Num"] = df_mes["Fecha_DT"].dt.month.fillna(1).astype(int)
@@ -144,11 +143,9 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
     df_mensual_final = df_mensual_final.rename(columns={"Hectareas": "Total Hectáreas"})
 
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        # PESTAÑA 1: Cuadro General Mensual
         df_mensual_final.to_excel(writer, sheet_name="Resumen_Ejecutivo_Mensual", index=False, startrow=5)
         ws1 = writer.sheets["Resumen_Ejecutivo_Mensual"]
         
-        # PESTAÑA 2: Detalle Diario Especifico
         df_diario_renamed = df_diario_agrupado.copy().rename(columns={
             "Hectareas": "Total Ha",
             "Tarifa Real Prom/Ha": "Tarifa Real ($/Ha)",
@@ -161,12 +158,10 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
         df_diario_renamed.to_excel(writer, sheet_name="Detalle_Diario_Auditoria", index=False, startrow=5)
         ws2 = writer.sheets["Detalle_Diario_Auditoria"]
 
-        # Estructuras de Estilo Corporativo
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_header = Font(color="FFFFFF", bold=True)
         borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-        # Estilo Hoja 1 (General)
         ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
         ws1.cell(row=3, column=1, value=f"💰 Cobro Real Acumulado: $ {t_real:,.0f}").font = Font(bold=True)
         ws1.cell(row=3, column=4, value=f"📈 Ideal ({titulo_ideal}): $ {t_ideal:,.0f}").font = Font(bold=True)
@@ -186,7 +181,6 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
             for c in range(1, 9):
                 ws1.cell(row=r, column=c).border = borde
 
-        # Estilo Hoja 2 (Especifico)
         ws2.cell(row=1, column=1, value="📋 INFORME ESPECÍFICO: AUDITORÍA CRONOLÓGICA DIARIA").font = Font(size=14, bold=True, color="0D1B2A")
         
         for col_num in range(1, len(df_diario_renamed.columns) + 1):
@@ -301,15 +295,22 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "TEHO": ["DRONE AVIL"],
         "LUCI": ["DRONE GENESYS"]
     }
+    
+    # 🌟 AQUI RESTAURAMOS EL DICCIONARIO FALTANTE
+    PRECIOS_OFICIALES = {
+        "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0,
+        "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
+        "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
+    }
 
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = list(PRECIOS_OFICIALES.keys())
 
-    if 'v_maestra_blindada_11' not in st.session_state:
+    if 'v_maestra_blindada_10' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float(PRECIOS_OFICIALES.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_11'] = True
+        st.session_state['v_maestra_blindada_10'] = True
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
@@ -402,7 +403,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
-    # Agrupación por Fecha para la UI de pantalla
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
@@ -465,9 +465,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     st.dataframe(df_mostrar.sort_values(by=["Finca", "Fecha Operación"]), use_container_width=True, hide_index=True)
 
-    # 🌟 BOTÓN DE DESCARGA MULTI-HOJA SIN SOBREESCRITURAS ERRÓNEAS
     st.markdown("---")
-    st.markdown("### ### 📑 Reportes Gerenciales (Doble Hoja)")
+    st.markdown("### 📑 Reportes Gerenciales (Doble Hoja)")
     st.download_button(
         label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (CON DOS HOJAS MENS/DIARIO)",
         data=generar_excel_multi_hoja(df_filtrado, df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga, ("Con Margen" if modo_calculo == "Venta Ideal (+Margen Inteligente)" else "Plano Puro")),
