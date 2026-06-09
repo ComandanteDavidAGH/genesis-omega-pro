@@ -113,7 +113,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[df_sim["Hectareas"] > 0]
 
     if df_sim.empty:
-        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) in la TABLA 1.")
+        st.warning("📭 No hay registros matemáticamente válidos (con hectáreas > 0) en la TABLA 1.")
         return
 
     min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
@@ -125,35 +125,46 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     lista_aviones_pura = sorted(df_sim["Equipo"].dropna().astype(str).unique().tolist())
 
     # =================================================================
-    # 🧠 MAESTRO DE TARIFAS REALES (Extraídas de tu pestaña Validación Dosis)
+    # 🎯 COORDENADAS DE TU FLOTA OFICIAL (Tus diccionarios exactos)
     # =================================================================
-    if 'tarifas_simulador' not in st.session_state:
+    dict_aviones = {
+        "THRUS SR2": 4606562.0, 
+        "PIPER PA 36-375": 3985831.0, 
+        "CESSNA O PIPER PA 25": 3036525.0, 
+        "AIR TRACTOR": 4665109.0, 
+        "CESSNA ASA": 3666600.0, 
+        "CESSNA FUMIGARAY": 3065952.0
+    }
+    dict_drones = {
+        "DRONE DATAROT": 84428.0, 
+        "DRONE NORTE": 75518.0, 
+        "DRONE AVIL": 71280.0, 
+        "DRONE GENESYS": 71280.0
+    }
+
+    # 🔥 SISTEMA ANTI-CONGELAMIENTO: Obligamos a reescribir la memoria con tus datos nuevos
+    if 'tarifas_simulador' not in st.session_state or st.session_state.get('reset_tarifas_2026') is None:
         st.session_state.tarifas_simulador = {}
-        
-        # Diccionario con valores exactos de tu captura de pantalla
-        tarifas_oficiales_hoja = {
-            "THRUS SR2": 4606562.0,
-            "PIPER PA 36-375": 3985831.0,
-            "CESSNA O PIPER PA 25": 3036525.0,
-            "AIR TRACTOR": 4665107.0,
-            "CESSNA ASA": 3666600.0,
-            "CESSNA FUMIGARAY": 3065952.0,
-            "DRONE DATAROT": 84427.0,
-            "DRONE GENESYS": 71280.0,
-            "DRONE AVIL": 71280.0,
-            "DRONE NORTE": 75518.0
-        }
-        
         for avion in lista_aviones_pura:
-            avion_upper = avion.upper()
-            val_asignado = 4606562.0  # Por defecto si no se encuentra match
+            avion_up = avion.upper()
+            val_base = 4606562.0  # Respaldo genérico
             
-            for nombre_ref, precio in tarifas_oficiales_hoja.items():
-                if nombre_ref in avion_upper or avion_upper in nombre_ref:
-                    val_asignado = precio
+            # Validar Aviones
+            for k_av, v_av in dict_aviones.items():
+                if k_av in avion_up or avion_up in k_av:
+                    val_base = v_av
                     break
             
-            st.session_state.tarifas_simulador[avion] = float(val_asignado)
+            # Validar Drones
+            if "DRON" in avion_up or "DRONE" in avion_up:
+                val_base = 71280.0  # Respaldo dron genérico
+                for k_dr, v_dr in dict_drones.items():
+                    if k_dr in avion_up or k_dr.replace("DRONE ", "") in avion_up or avion_up in k_dr:
+                        val_base = v_dr
+                        break
+                        
+            st.session_state.tarifas_simulador[avion] = float(val_base)
+        st.session_state['reset_tarifas_2026'] = True
 
     # =================================================================
     # 🎛️ PANEL DE CONTROL GERENCIAL 
@@ -176,23 +187,23 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         # CASILLA 1: Elegir Avión
         avion_editar = c_tar1.selectbox("🚁 Seleccione Aeronave a configurar", lista_aviones_pura)
         
-        # Obtener el valor numérico actual desde la memoria reactiva
+        # Extraer el valor numérico calibrado de la memoria limpia
         tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
         
-        # Formatear el número crudo a estética ejecutiva colombiana ($ 4.665.107,00)
+        # Formatear el número crudo a estética ejecutiva colombiana ($ 4.665.109,00)
         tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        # Generamos una llave dinámica única basada en el avión para obligar el cambio inmediato en la UI
-        key_dinamica = f"input_tar_din_{avion_editar.replace(' ', '_').replace('-', '_')}"
+        # Llave dinámica estricta para forzar actualización de UI al cambiar el combo
+        key_dinamica = f"input_t2026_{avion_editar.replace(' ', '_').replace('-', '_')}"
 
-        # CASILLA 2: Cuadro de texto reactivo alineado al modelo de avión
+        # CASILLA 2: Cuadro de texto reactivo corregido
         tarifa_usuario = c_tar2.text_input(
             f"✍️ Editar Tarifa para {avion_editar} (Presione Enter para aplicar)", 
             value=tarifa_inicial_formateada,
             key=key_dinamica
         )
         
-        # 🧠 PROCESAMIENTO INTELIGENTE: Si cambias el número y das Enter, se sobrescribe en caliente
+        # Si el usuario edita y da Enter, se guarda el cambio en caliente
         if tarifa_usuario != tarifa_inicial_formateada:
             try:
                 limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
@@ -229,11 +240,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     def calcular_costo_ha(row):
         eq = str(row["Equipo"]).upper()
-        # Si es dron, la tarifa de la hoja de cálculo ya es por HECTÁREA de forma directa
+        # Lógica Dual estricta
         if "DRON" in eq or "DRONE" in eq or row["Horometro"] == 0:
             return row["Tarifa_Aplicada"] * multiplicador
         else:
-            # Si es avión, la tarifa es por HORA, por ende se calcula usando el horómetro
             return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
