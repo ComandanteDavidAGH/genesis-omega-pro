@@ -429,52 +429,58 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # ============================
-    # ============================
-    # ============================
     # 🔥 INTEGRACIÓN ORDEN DE SERVICIO
     # ============================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # Limpiar merges anteriores si existen
-    for col_extra in ["TiempoTotalOS", "HectareasTotalOS", "TiempoTotalOS_x", 
-                      "TiempoTotalOS_y", "HectareasTotalOS_x", "HectareasTotalOS_y"]:
+    # Limpiar columnas residuales de merges anteriores
+    for col_extra in ["TiempoTotalOS", "HectareasTotalOS",
+                      "TiempoTotalOS_x", "TiempoTotalOS_y",
+                      "HectareasTotalOS_x", "HectareasTotalOS_y"]:
         if col_extra in df_filtrado.columns:
             df_filtrado = df_filtrado.drop(columns=[col_extra])
 
-    # 1. Agrupar por Nº ORDEN
-    df_os = df_filtrado.groupby("Nº ORDEN").agg({
-        "FactorTiempo": "sum",
-        "Hectareas": "sum"
-    }).reset_index().rename(columns={
-        "FactorTiempo": "TiempoTotalOS",
-        "Hectareas": "HectareasTotalOS"
-    })
+    # ─────────────────────────────────────────────────────────
+    # PASO 1: Calcular totales reales por Nº ORDEN
+    # Usamos df_sim (el universo completo) para no perder
+    # hectáreas de fincas que quedaron fuera del filtro de vista
+    # pero sí pertenecen a la misma OS.
+    # ─────────────────────────────────────────────────────────
+    df_os_universo = df_sim.groupby("Nº ORDEN").agg(
+        TiempoTotalOS  = ("FactorTiempo", "sum"),
+        HectareasTotalOS = ("Hectareas",   "sum")
+    ).reset_index()
 
-    # 2. Unir al detalle
-    df_filtrado = df_filtrado.merge(df_os, on="Nº ORDEN", how="left")
+    # PASO 2: Unir totales de la OS a cada fila del detalle filtrado
+    df_filtrado = df_filtrado.merge(df_os_universo, on="Nº ORDEN", how="left")
 
-    # 3. Verificar que las columnas existen antes de calcular
-    if "TiempoTotalOS" not in df_filtrado.columns or "HectareasTotalOS" not in df_filtrado.columns:
-        st.error("⚠️ Error: No se pudo calcular TiempoTotalOS. Verifica la columna 'Nº ORDEN'.")
+    # Verificación de seguridad
+    if "TiempoTotalOS" not in df_filtrado.columns:
+        st.error("⚠️ No se encontró 'TiempoTotalOS'. Verifica la columna 'Nº ORDEN'.")
         return
 
-    # 4. Fórmula SIN TOPES
-    def calcular_ideal_por_os(row):
+    # PASO 3: Precio/Ha por OS = (horas_OS × valor_hora_avión) ÷ hectáreas_OS
+    # Este precio aplica igual a todas las fincas de esa OS → sin tope
+    def precio_ha_por_os(row):
         try:
-            valor_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-            tiempo_total = float(row["TiempoTotalOS"]) if pd.notna(row["TiempoTotalOS"]) else 0.0
-            ha_total = float(row["HectareasTotalOS"]) if pd.notna(row["HectareasTotalOS"]) else 0.0
-            if ha_total == 0:
+            valor_hora  = float(row["Tarifa_Aplicada"])   if pd.notna(row["Tarifa_Aplicada"])    else 0.0
+            horas_os    = float(row["TiempoTotalOS"])      if pd.notna(row["TiempoTotalOS"])       else 0.0
+            hectareas_os= float(row["HectareasTotalOS"])   if pd.notna(row["HectareasTotalOS"])    else 0.0
+
+            if hectareas_os == 0:
                 return 0.0
-            return (valor_hora * tiempo_total) / ha_total
+
+            # Fórmula central: sin tope, costo real distribuido por ha
+            return (valor_hora * horas_os) / hectareas_os
+
         except:
             return 0.0
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_por_os, axis=1)
+    df_filtrado["Costo Simulado HA"]  = df_filtrado.apply(precio_ha_por_os, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
-    df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
+    df_filtrado["Lucro Cesante"]        = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
     # ============================
     # 📊 AGRUPACIÓN RESUMEN
     # ============================
