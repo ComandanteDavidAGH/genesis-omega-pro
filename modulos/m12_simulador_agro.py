@@ -430,21 +430,24 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     # ============================
     # ============================
+    # ============================
     # 🔥 INTEGRACIÓN ORDEN DE SERVICIO
     # ============================
-    df_filtrado = integrar_os(df_filtrado)
-
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
+
+    # Limpiar merges anteriores si existen
+    for col_extra in ["TiempoTotalOS", "HectareasTotalOS", "TiempoTotalOS_x", 
+                      "TiempoTotalOS_y", "HectareasTotalOS_x", "HectareasTotalOS_y"]:
+        if col_extra in df_filtrado.columns:
+            df_filtrado = df_filtrado.drop(columns=[col_extra])
 
     # 1. Agrupar por Nº ORDEN
     df_os = df_filtrado.groupby("Nº ORDEN").agg({
         "FactorTiempo": "sum",
         "Hectareas": "sum"
-    }).reset_index()
-
-    df_os = df_os.rename(columns={
+    }).reset_index().rename(columns={
         "FactorTiempo": "TiempoTotalOS",
         "Hectareas": "HectareasTotalOS"
     })
@@ -452,21 +455,26 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # 2. Unir al detalle
     df_filtrado = df_filtrado.merge(df_os, on="Nº ORDEN", how="left")
 
-    # 3. Fórmula correcta SIN TOPES
+    # 3. Verificar que las columnas existen antes de calcular
+    if "TiempoTotalOS" not in df_filtrado.columns or "HectareasTotalOS" not in df_filtrado.columns:
+        st.error("⚠️ Error: No se pudo calcular TiempoTotalOS. Verifica la columna 'Nº ORDEN'.")
+        return
+
+    # 4. Fórmula SIN TOPES
     def calcular_ideal_por_os(row):
-        valor_hora = float(row["Tarifa_Aplicada"])
-        tiempo_total = float(row["TiempoTotalOS"])
-        ha_total = float(row["HectareasTotalOS"])
-
-        if ha_total == 0:
+        try:
+            valor_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
+            tiempo_total = float(row["TiempoTotalOS"]) if pd.notna(row["TiempoTotalOS"]) else 0.0
+            ha_total = float(row["HectareasTotalOS"]) if pd.notna(row["HectareasTotalOS"]) else 0.0
+            if ha_total == 0:
+                return 0.0
+            return (valor_hora * tiempo_total) / ha_total
+        except:
             return 0.0
-
-        return (valor_hora * tiempo_total) / ha_total
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_por_os, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
-
     # ============================
     # 📊 AGRUPACIÓN RESUMEN
     # ============================
