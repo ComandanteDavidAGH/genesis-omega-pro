@@ -443,14 +443,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             df_filtrado = df_filtrado.drop(columns=[col_extra])
 
     # ─────────────────────────────────────────────────────────
-    # PASO 1: Calcular totales reales por Nº ORDEN
-    # Usamos df_sim (el universo completo) para no perder
-    # hectáreas de fincas que quedaron fuera del filtro de vista
-    # pero sí pertenecen a la misma OS.
+    # PASO 1: Sumar horas y hectáreas reales por Nº ORDEN
+    # Se usa df_sim (universo completo) para no perder hectáreas
+    # de fincas que quedaron fuera del filtro visual
     # ─────────────────────────────────────────────────────────
     df_os_universo = df_sim.groupby("Nº ORDEN").agg(
-        TiempoTotalOS  = ("FactorTiempo", "sum"),
-        HectareasTotalOS = ("Hectareas",   "sum")
+        TiempoTotalOS    = ("FactorTiempo", "sum"),
+        HectareasTotalOS = ("Hectareas",    "sum")
     ).reset_index()
 
     # PASO 2: Unir totales de la OS a cada fila del detalle filtrado
@@ -461,24 +460,40 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("⚠️ No se encontró 'TiempoTotalOS'. Verifica la columna 'Nº ORDEN'.")
         return
 
-    # PASO 3: Precio/Ha por OS = (horas_OS × valor_hora_avión) ÷ hectáreas_OS
-    # Este precio aplica igual a todas las fincas de esa OS → sin tope
+    # ─────────────────────────────────────────────────────────
+    # PASO 3: Precio/Ha con lógica de tope
+    #
+    # precio_simulado = (horas_OS × valor_hora) ÷ hectáreas_OS
+    #
+    # SI cobro_real >= precio_simulado → OS dentro del tope
+    #    Costo Simulado HA = cobro_real  → Lucro Cesante = 0
+    #
+    # SI cobro_real < precio_simulado  → OS sobre el tope
+    #    Costo Simulado HA = precio_simulado → hay fuga financiera
+    # ─────────────────────────────────────────────────────────
     def precio_ha_por_os(row):
         try:
-            valor_hora  = float(row["Tarifa_Aplicada"])   if pd.notna(row["Tarifa_Aplicada"])    else 0.0
-            horas_os    = float(row["TiempoTotalOS"])      if pd.notna(row["TiempoTotalOS"])       else 0.0
-            hectareas_os= float(row["HectareasTotalOS"])   if pd.notna(row["HectareasTotalOS"])    else 0.0
+            valor_hora    = float(row["Tarifa_Aplicada"])   if pd.notna(row["Tarifa_Aplicada"])   else 0.0
+            horas_os      = float(row["TiempoTotalOS"])      if pd.notna(row["TiempoTotalOS"])     else 0.0
+            hectareas_os  = float(row["HectareasTotalOS"])   if pd.notna(row["HectareasTotalOS"])  else 0.0
+            cobro_real    = float(row["CobroReal"])          if pd.notna(row["CobroReal"])         else 0.0
 
             if hectareas_os == 0:
-                return 0.0
+                return cobro_real  # sin datos de OS, respeta lo cobrado
 
-            # Fórmula central: sin tope, costo real distribuido por ha
-            return (valor_hora * horas_os) / hectareas_os
+            precio_simulado = (valor_hora * horas_os) / hectareas_os
+
+            # OS dentro del tope: lo cobrado ya cubre el costo real
+            if cobro_real >= precio_simulado:
+                return cobro_real  # Lucro Cesante será 0
+
+            # OS sobre el tope: el costo real supera lo cobrado → fuga
+            return precio_simulado
 
         except:
             return 0.0
 
-    df_filtrado["Costo Simulado HA"]  = df_filtrado.apply(precio_ha_por_os, axis=1)
+    df_filtrado["Costo Simulado HA"]    = df_filtrado.apply(precio_ha_por_os, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"]        = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
     # ============================
