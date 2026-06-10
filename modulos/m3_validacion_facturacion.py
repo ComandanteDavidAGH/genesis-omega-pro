@@ -54,8 +54,9 @@ def obtener_historial_completo_ciclos():
 @st.cache_data(show_spinner=False)
 def preprocesar_flota_gspread():
     gc = obtener_cliente_gspread_unificado()
+    # 🌟 SECCIÓN MODIFICADA: Tarifa de Cessna ASA actualizada a 3768500 en los fallbacks obligatorios
     if not gc:
-        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3768500, "CESSNA FUMIGARAY": 3065952}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
     try:
@@ -66,6 +67,10 @@ def preprocesar_flota_gspread():
         df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
         dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
         
+        # Sincronización forzada en el diccionario dinámico por seguridad si no ha actualizado Sheets
+        if "CESSNA ASA" in dict_aviones:
+            dict_aviones["CESSNA ASA"] = 3768500
+        
         df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
         nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
         nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
@@ -74,7 +79,7 @@ def preprocesar_flota_gspread():
         
         return dict_aviones, dict_drones
     except:
-        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3666600, "CESSNA FUMIGARAY": 3065952}
+        dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3768500, "CESSNA FUMIGARAY": 3065952}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
 
@@ -298,7 +303,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         
         st.markdown("<br>", unsafe_allow_html=True) 
         cs5, cs6, cs7, cs8 = st.columns(4)
-        vuelo_sim = cs5.selectbox("🚁 Equipo", ["AVIÓN", "DRONE"])
+        
+        # 🌟 SECCIÓN EVOLUCIONADA: Ahora el selector te permite elegir el modelo de aeronave específico para simular
+        lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
+        vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
+        
         pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
         horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
         dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
@@ -312,7 +321,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                tarifa_vuelo_base = 4606562.0 
                 val_tope = 0.0
                 match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
                 if match: val_tope = float(match.group(1).replace('.', ''))
@@ -323,6 +331,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
+                    # 🌟 SECCIÓN DINÁMICA: Extrae el precio exacto (ej: 3.768.500 para el Cessna ASA) según tu selección
+                    tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
                     unitario_vuelo = costo_bruto * mult_v
@@ -341,13 +351,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     d = pd.to_numeric(row.iloc[2], errors='coerce')
                     if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
-                # =====================================================================
-                # 🚀 INYECCIÓN TURBO FORZADA PARA FERTILIZANTES CON BUSCADOR DE DOSIS
-                # =====================================================================
                 coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
                 
                 fert_encontrado_obj = None
-                # Intenta buscar la sigla en la configuración
                 sigla_f = partes[1] if len(partes) > 1 else ""
                 if sigla_f:
                     try:
@@ -360,13 +366,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     break
                     except: pass
                 
-                # Si no lo encuentra en la hoja, usa los fallbacks por seguridad
                 if not fert_encontrado_obj:
                     if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): fert_encontrado_obj = "ZINTRAC X LITRO SV"
                     elif " BT" in coctel_texto_puro or coctel_texto_puro.endswith("BT"): fert_encontrado_obj = "BANATREL SC"
                     elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): fert_encontrado_obj = "NATURAMIN WSP"
                 
-                # Si identificamos el fertilizante, VAMOS AL EXCEL a buscar su dosis real
                 if fert_encontrado_obj:
                     dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
                     prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
@@ -415,7 +419,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.caption(f"🗓️ **Días Ciclo:** {dias_ciclo_sim} | 🚜 **Área:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
                 st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
                 
-                # APLICAMOS EL CÓDIGO HTML A PRUEBA DE CORTES
                 st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
                 
                 st.markdown("---")
@@ -784,9 +787,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             if fert_detectado:
                 dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
-                # Inyectar obligatoriamente a la matriz oficial para que el código SAP lo reconozca
                 dosis_oficiales_coctel[fert_detectado.replace(" ", "")] = dosis_real
-                # Actualizar el nombre final del cóctel si no lo tenía
                 if sigla_coctel not in coctel_ganador: coctel_ganador += f" {sigla_coctel}"
 
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
@@ -836,7 +837,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
-                # Acondicionador reacciona correctamente a la sigla inyectada
                 if "ACONDICIONADOR" in nombre_limpio: dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "NM"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio: dosis_teorica = 1.5 if coctel_ganador.startswith("IN") else 1.0
                 
@@ -926,7 +926,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with c_sap3: st.caption("🧪 TOTAL Mezcla"); st.code(fmt_sap(costo_mezcla_total), language="text")
         with c_sap4: st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
-        # 🌟 ELIMINACIÓN DE LOS ST.METRIC QUE SE CORTABAN
         html_totales = f"""
         <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
             <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
