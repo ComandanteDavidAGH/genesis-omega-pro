@@ -96,6 +96,23 @@ def parsear_fecha_robusta(val):
         return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
     except: 
         return pd.NaT
+# ================================================================
+# 🔥 INTEGRACIÓN DE ORDEN DE SERVICIO (Nº ORDEN)
+# ================================================================
+def integrar_os(df):
+    """
+    Suma el FactorTiempo (RENDIMIENTO (horas)) por Nº ORDEN
+    y devuelve el total a cada fila sin alterar la lógica existente.
+    """
+    if "Nº ORDEN" not in df.columns:
+        st.error("⚠️ Falta la columna 'Nº ORDEN' en TABLA 1.")
+        return df
+
+    df_os = df.groupby("Nº ORDEN")["FactorTiempo"].sum().reset_index()
+    df_os = df_os.rename(columns={"FactorTiempo": "TiempoTotalOS"})
+
+    df = df.merge(df_os, on="Nº ORDEN", how="left")
+    return df
 
 def purificar_datos_vuelo(eq_raw, pista_raw):
     eq = str(eq_raw).upper()
