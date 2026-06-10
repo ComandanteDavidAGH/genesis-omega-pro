@@ -128,14 +128,13 @@ def obtener_mult(prod):
 # =================================================================
 # 💾 EXPORTADOR EXCEL PROFESIONAL (Doble Pestaña Avanzada)
 # =================================================================
-def construir_excel_profesional(df_detalle, df_resumen, t_real, t_ideal, t_perdido, titulo_ideal):
+def construir_excel(df_detalle, df_resumen, t_real, t_ideal, t_perdido, titulo_ideal):
     wb = Workbook()
     
-    # PESTAÑA 1: CONTROL GENERAL DIRECTIVO
+    # PESTAÑA 1: RESUMEN MENSUAL / GENERAL
     ws1 = wb.active
     ws1.title = "RESUMEN GERENCIAL"
     
-    # Encabezado corporativo
     fill_header = PatternFill("solid", fgColor="0D1B2A")
     font_header = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"), 
@@ -157,13 +156,13 @@ def construir_excel_profesional(df_detalle, df_resumen, t_real, t_ideal, t_perdi
         for j, val in enumerate(row, start=1):
             cell = ws1.cell(row=i, column=j, value=val)
             cell.border = borde
-            if j == 5: cell.number_format = '#,##0.0'
+            if j == 5: cell.number_format = '#,##0.0' # Hectáreas
             elif j in [6, 7, 8, 9, 10, 11]: cell.number_format = '"$"#,##0'
 
     for j in range(1, len(cols_res) + 1):
         ws1.column_dimensions[get_column_letter(j)].width = 20
 
-    # PESTAÑA 2: DETALLE AUDITORÍA DE VUELOS
+    # PESTAÑA 2: DETALLE AUDITORÍA DIARIA DE VUELOS
     ws2 = wb.create_sheet(title="DETALLE GENERAL DIARIO")
     cols_det = list(df_detalle.columns)
     
@@ -177,8 +176,11 @@ def construir_excel_profesional(df_detalle, df_resumen, t_real, t_ideal, t_perdi
         for j, val in enumerate(row, start=1):
             cell = ws2.cell(row=i, column=j, value=val)
             cell.border = borde
-            if j == 6: cell.number_format = '#,##0.0'
-            elif j in [7, 8, 9, 10, 11, 12, 13, 14]: cell.number_format = '"$"#,##0'
+            if j == 1:
+                # Forzar formato de fecha nativo en Excel
+                cell.alignment = Alignment(horizontal="center")
+            elif j == 6: cell.number_format = '#,##0.0' # Hectáreas
+            elif j in [7, 8, 9, 10, 11, 12, 13]: cell.number_format = '"$"#,##0'
 
     for j in range(1, len(cols_det) + 1):
         ws2.column_dimensions[get_column_letter(j)].width = 18
@@ -201,7 +203,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
     st.caption("Análisis de Inteligencia de Costos con totalización exacta por Orden de Servicio (Nº ORDEN).")
 
-    with st.spinner("📥 Sincronizando datos de TABLA 1 y TABLA 2..."):
+    with st.spinner("📥 Sincronizando Inteligencia de TABLA 1 y TABLA 2..."):
         df_base, df_t2_raw = extraer_datos_boveda()
 
     if df_base.empty:
@@ -234,7 +236,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     col_orden = "Nº ORDEN"
     col_rend_horas = "RENDIMIENTO (horas)"
 
-    # Forzar uso de RENDIMIENTO (horas) como FactorTiempo base
     if col_rend_horas in df_base.columns:
         col_tiempo = col_rend_horas
     else:
@@ -245,14 +246,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         if not col_tiempo:
             for c, c_up in cols_upper.items():
                 if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up: col_tiempo = c; break
-        if not col_tiempo:
-            for c, c_up in cols_upper.items():
-                if "RENDIMIENTO" in c_up or "HORA" in c_up: col_tiempo = c; break
-        if not col_tiempo:
-            df_base["Factor_Tiempo_Fijo"] = 60.0
-            col_tiempo = "Factor_Tiempo_Fijo"
 
-    # Ajuste dinámico de columnas por si contienen saltos de línea imprevistos
     for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_tiempo]:
         if c_req not in df_base.columns:
             posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
@@ -277,7 +271,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
 
     if df_sim.empty:
-        st.warning("📭 No hay vuelos válidos registrados en el rango seleccionado de la TABLA 1.")
+        st.warning("📭 No hay vuelos válidos registrados en la TABLA 1.")
         return
 
     min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
@@ -294,11 +288,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "TEHO": ["DRONE AVIL"],
         "LUCI": ["DRONE GENESYS"]
     }
-
-    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", "DRONE DATAROT", "DRONE NORTE", "DRONE AVIL", "DRONE GENESYS"]
 
-    if 'v_maestra_blindada_12' not in st.session_state:
+    if 'v_maestra_blindada_13' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
@@ -306,7 +298,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
                 "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
             }.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_12'] = True
+        st.session_state['v_maestra_blindada_13'] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -354,7 +346,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         tarifas_aviones = st.session_state.tarifas_simulador
 
     df_filtrado = df_sim[
-        (df_sim["False"] if False else (df_sim["Fecha_DT"].dt.date >= fecha_ini)) &
+        (df_sim["Fecha_DT"].dt.date >= fecha_ini) &
         (df_sim["Fecha_DT"].dt.date <= fecha_fin)
     ].copy()
 
@@ -370,42 +362,50 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # 🔥 INTEGRACIÓN DEL CEREBRO DE ORDEN DE SERVICIO (Nº ORDEN)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
+    
+    # 🌟 FORMATO DE FECHA SÓLIDO PARA ORDENAR EN EXCEL Y PANTALLA
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
+    
+    # 🌟 INYECCIÓN DE LA COLUMNA DE SEMANAS
+    df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
+    
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # Limpiar columnas residuales de posibles colisiones
     for col_extra in ["TiempoTotalOS", "HectareasTotalOS", "TiempoTotalOS_x", "TiempoTotalOS_y", "HectareasTotalOS_x", "HectareasTotalOS_y"]:
         if col_extra in df_filtrado.columns: df_filtrado = df_filtrado.drop(columns=[col_extra])
 
-    # PASO 1: Sumar horas y hectáreas reales por Nº ORDEN del universo completo
+    # Agregación del universo completo por OS
     df_os_universo = df_sim.groupby("Nº ORDEN").agg(
         TiempoTotalOS    = ("FactorTiempo", "sum"),
         HectareasTotalOS = ("Hectareas",    "sum")
     ).reset_index()
 
-    # PASO 2: Unir totales agregados de la Orden de Servicio a cada fila filtrada
     df_filtrado = df_filtrado.merge(df_os_universo, on="Nº ORDEN", how="left")
 
-    # PASO 3: Precio/Ha dinámico basado en tu algoritmo maestro de OS
+    # 🌟 BIOMOTOR MAESTRO ANTI-FUGA CON DETECTOR DE DRONES REPARADO
     def precio_ha_por_os(row):
         try:
-            valor_hora    = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-            horas_os      = float(row["TiempoTotalOS"])   if pd.notna(row["TiempoTotalOS"]) else 0.0
-            hectareas_os  = float(row["HectareasTotalOS"]) if pd.notna(row["HectareasTotalOS"]) else 0.0
-            cobro_real    = float(row["CobroReal"])         if pd.notna(row["CobroReal"]) else 0.0
+            eq = str(row["Equipo"]).upper()
+            valor_hora    = float(row["Tarifa_Aplicada"])   if pd.notna(row["Tarifa_Aplicada"])   else 0.0
+            horas_os      = float(row["TiempoTotalOS"])      if pd.notna(row["TiempoTotalOS"])      else 0.0
+            hectareas_os  = float(row["HectareasTotalOS"])   if pd.notna(row["HectareasTotalOS"])   else 0.0
+            cobro_real    = float(row["CobroReal"])          if pd.notna(row["CobroReal"])          else 0.0
             finca_name    = str(row["Finca"]).upper()
 
-            if hectareas_os == 0: return cobro_real
-
-            # Aplicar margen si está en modo Venta Ideal
             mult = 1.0
             if modo_calculo == "Venta Ideal (+Margen Inteligente)":
                 prod_tipo = dict_productores.get(finca_name, "COOPERATIVA")
                 mult = obtener_mult(prod_tipo)
 
+            # 🚀 BYPASS DE SEGURIDAD EXCLUSIVO PARA DRONES (Saca los 100M erróneos)
+            if "DRON" in eq or "DRONE" in eq:
+                return valor_hora * mult
+
+            if hectareas_os == 0: return cobro_real
+
+            # Fórmula maestra: (Precio hora × Horas totales OS) ÷ Hectáreas totales OS
             precio_simulado = ((valor_hora * horas_os) / hectareas_os) * mult
 
-            # Si el cobro real en el Excel ya cubre o supera el costo simulado, no hay fuga
             if cobro_real >= precio_simulado: return cobro_real
 
             return precio_simulado
@@ -417,9 +417,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 📊 AGRUPACIÓN HISTÓRICA PARA PANTALLA
+    # 📊 AGRUPACIÓN HISTÓRICA CON SEMANAS Y FECHAS CORREGIDAS
     # =================================================================
-    df_agrupado = df_filtrado.groupby(["Fecha Operación", "Pista", "Finca", "Equipo"]).agg({
+    df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
         "Total Simulado Ideal": "sum",
@@ -430,7 +430,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
-    df_agrupado = df_agrupado[["Fecha Operación", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
+    df_agrupado = df_agrupado[["Fecha Operación", "Semana", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
+    
+    # Ordenamos de forma natural por Finca y de forma cronológica por Fecha
     df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"])
 
     # =================================================================
@@ -450,15 +452,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     html_cards = f"""
     <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
         <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #1b263b; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase; font-weight: bold;">Cobro Real Facturado</div>
+            <div style="font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Cobro Real Facturado</div>
             <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_real)}</div>
         </div>
         <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #d4af37; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase; font-weight: bold;">{titulo_ideal}</div>
+            <div style="font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">{titulo_ideal}</div>
             <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_ideal)}</div>
         </div>
         <div style="flex: 1.2; min-width: 200px; background-color: #0d1b2a; border: 2px solid #ff4d4d; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
-            <div style="font-size: 12px; color: #ff4d4d; font-weight: 800; text-transform: uppercase; font-weight: bold;">⚠️ Brecha Operativa (Fuga por Topes)</div>
+            <div style="font-size: 12px; color: #ff4d4d; font-weight: bold; text-transform: uppercase;">⚠️ Brecha Operativa Semestral</div>
             <div style="font-size: 22px; color: white; font-weight: 900; margin-top: 4px;">$ {f_h(t_perdido)} <span style="font-size: 13px; color: #ff4d4d;">({porcentaje_fuga:.1f}%)</span></div>
         </div>
     </div>
@@ -466,11 +468,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown(html_cards, unsafe_allow_html=True)
 
     # =================================================================
-    # 📊 VISOR EN PANTALLA
+    # 📊 VISOR EN PANTALLA CON FECHAS COMO DATETIME LELEGIBLE
     # =================================================================
-    st.markdown("### 📋 Resumen por Día / Finca / Equipo")
+    st.markdown("### 📋 Resumen Diario con Control de Semanas")
+    
+    df_visual = df_agrupado.copy()
+    df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"]).dt.strftime('%d/%m/%Y')
+
     st.dataframe(
-        df_agrupado.style.format({
+        df_visual.style.format({
             "Hectareas": "{:,.2f}",
             "Tarifa Real Prom/Ha": "{:,.0f}",
             "Tarifa Ideal Prom/Ha": "{:,.0f}",
@@ -485,58 +491,94 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     )
 
     # =================================================================
-    # 📈 GRÁFICOS INTERACTIVOS (Sincronizados)
+    # 📈 GRÁFICOS CORPORATIVOS REPOTENCIADOS (Estilo Ejecutivo)
     # =================================================================
-    st.markdown("### 📈 Comparativo de Tarifas Promedio por Hectárea")
+    st.markdown("### 📈 Tendencia y Brechas del Escenario")
+
+    # Re-ordenamos por fecha solo para el gráfico para que la línea temporal sea limpia
+    df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy()
+    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"]).dt.strftime('%d/%m/%Y')
+
     fig_tarifas = px.bar(
-        df_agrupado,
-        x="Fecha Operación",
+        df_graficos,
+        x="Fecha Formateada",
         y=["Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha"],
-        color_discrete_sequence=["#1b263b", "#d4af37"],
         barmode="group",
         hover_data=["Finca", "Equipo", "Hectareas"],
-        labels={"value": "Tarifa ($/ha)", "Fecha Operación": "Fecha"},
-        title="Tarifa Real vs Tarifa Ideal por Día"
+        labels={"value": "Tarifa ($/ha)", "Fecha Formateada": "Fecha de Vuelo"},
+        title="<b>Análisis Comparativo: Tarifa Real vs Tarifa Ideal</b>"
     )
-    fig_tarifas.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    
+    # 🌟 Inyección de diseño de alta gama para Gráfico de Tarifas
+    fig_tarifas.update_traces(marker_border_width=0)
+    fig_tarifas.data[0].marker.color = "#1B263B"  # Azul Oscuro Real
+    fig_tarifas.data[0].name = "Cobro Real Facturado"
+    fig_tarifas.data[1].marker.color = "#D4AF37"  # Dorado Ideal
+    fig_tarifas.data[1].name = titulo_ideal
+    
+    fig_tarifas.update_layout(
+        plot_bgcolor="white", paper_bgcolor="white",
+        font=dict(family="Arial", size=12, color="#333333"),
+        xaxis=dict(showgrid=False, tickangle=-45),
+        yaxis=dict(showgrid=True, gridcolor="#F0F0F0", zeroline=True, zerolinecolor="#CCCCCC"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=40, r=40, t=60, b=60)
+    )
     st.plotly_chart(fig_tarifas, use_container_width=True)
 
-    st.markdown("### 💰 Impacto de Lucro Cesante por Día")
-    df_lucro = df_agrupado.groupby("Fecha Operación")["Lucro Cesante"].sum().reset_index()
+    # Gráfico 2: Lucro Cesante por Semana para hacerlo más gerencial y menos caótico
+    st.markdown("### 💰 Impacto Consolidado de Lucro Cesante por Semana")
+    df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
+    
     fig_lucro = px.bar(
-        df_lucro,
-        x="Fecha Operación",
+        df_lucro_sem,
+        x="Semana",
         y="Lucro Cesante",
-        labels={"Lucro Cesante": "Lucro Cesante ($)", "Fecha Operación": "Fecha"},
-        color_discrete_sequence=["#d62728"],
-        title="Lucro Cesante Absoluto por Día"
+        labels={"Lucro Cesante": "Lucro Cesante ($)", "Semana": "Semana Calendario"},
+        title="<b>Fuga Financiera Absoluta Agrupada por Semana</b>"
     )
-    fig_lucro.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    
+    # 🌟 Inyección de diseño de alta gama para Gráfico de Pérdidas
+    fig_lucro.update_traces(marker_color="#D62728", marker_border_width=0)
+    fig_lucro.update_layout(
+        plot_bgcolor="white", paper_bgcolor="white",
+        font=dict(family="Arial", size=12, color="#333333"),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#F0F0F0"),
+        margin=dict(l=40, r=40, t=60, b=60)
+    )
     st.plotly_chart(fig_lucro, use_container_width=True)
 
     # =================================================================
-    # 📤 DESCARGA DE EXCEL PROFESIONAL EN DOS HOJAS
+    # 📤 DESCARGA DE EXCEL MULTI-HOJA COMPLETO
     # =================================================================
-    st.markdown("### 📤 Exportar Análisis Escenario")
+    st.markdown("---")
+    st.markdown("### 📤 Exportar Escenario Autorizado")
     
     df_detalle_export = df_filtrado[[
-        "Fecha Operación", "Nº ORDEN", "Finca", "Pista", "Equipo",
+        "Fecha Operación", "Semana", "Nº ORDEN", "Finca", "Pista", "Equipo",
         "Hectareas", "FactorTiempo", "TiempoTotalOS", "HectareasTotalOS",
         "Tarifa_Aplicada", "CobroReal", "Costo Simulado HA", 
         "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
     ]].copy()
+    
+    # Formateamos las fechas antes de ir a openpyxl para que Excel las reconozca nativamente como fechas cortas
+    df_detalle_export["Fecha Operación"] = pd.to_datetime(df_detalle_export["Fecha Operación"]).dt.strftime('%Y-%m-%d')
+    
+    df_resumen_export = df_agrupado.copy()
+    df_resumen_export["Fecha Operación"] = pd.to_datetime(df_resumen_export["Fecha Operación"]).dt.strftime('%Y-%m-%d')
 
-    buffer_excel = construir_excel_profesional(df_detalle_export, df_agrupado, t_real, t_ideal, t_perdido, titulo_ideal)
+    buffer_excel = construir_excel(df_detalle_export, df_resumen_export, t_real, t_ideal, t_perdido, titulo_ideal)
 
     st.download_button(
-        label="📥 DESCARGAR REPORTE MULTI-HOJA (EXCEL PROFESIONAL)",
+        label="📥 DESCARGAR REPORTE MULTI-HOJA (EXCEL GERENCIAL)",
         data=buffer_excel,
-        file_name=f"Simulador_Financiero_Ordenes_Servicio_{fecha_ini}_{fecha_fin}.xlsx",
+        file_name=f"Simulador_Financiero_Semanas_{fecha_ini}_{fecha_fin}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
 
-    st.success("✅ Escenario sincronizado con éxito. Tarjetas, gráficos y Excel configurados al 100%.")
+    st.success("✅ Sistema purificado. Drones protegidos, fechas normalizadas, columna de semanas inyectada y gráficos premium activos.")
 
 if __name__ == "__main__":
     pass
