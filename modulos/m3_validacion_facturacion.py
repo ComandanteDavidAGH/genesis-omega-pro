@@ -1,4 +1,4 @@
-import streamlit st
+import streamlit as st
 import pandas as pd
 import gspread
 import requests
@@ -253,7 +253,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
         except: pass
         
-        # 🌟 MODIFICADO: Actualizado fallback de la porción terrestre PDIV a $8.740
         if not pistas_con_tope: 
             pistas_con_tope = ["PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", "PDIV - PORCION TERRESTRE ($8.740)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"]
 
@@ -631,7 +630,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
                 pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
                 
-                # 🌟 MODIFICADO: Actualizada la porción fija de la etiqueta de 8504 a 8740
                 opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
                 
                 if f"pista_last_{casilla_key}" not in st.session_state:
