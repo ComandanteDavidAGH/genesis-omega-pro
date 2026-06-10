@@ -429,6 +429,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # ============================
+    # ============================
     # 🔥 INTEGRACIÓN ORDEN DE SERVICIO
     # ============================
     df_filtrado = integrar_os(df_filtrado)
@@ -437,34 +438,32 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-# 1. Agrupar por Nº ORDEN
-df_os = df_filtrado.groupby("Nº ORDEN").agg({
-    "FactorTiempo": "sum",
-    "Hectareas": "sum"
-}).reset_index()
+    # 1. Agrupar por Nº ORDEN
+    df_os = df_filtrado.groupby("Nº ORDEN").agg({
+        "FactorTiempo": "sum",
+        "Hectareas": "sum"
+    }).reset_index()
 
-df_os = df_os.rename(columns={
-    "FactorTiempo": "TiempoTotalOS",
-    "Hectareas": "HectareasTotalOS"
-})
+    df_os = df_os.rename(columns={
+        "FactorTiempo": "TiempoTotalOS",
+        "Hectareas": "HectareasTotalOS"
+    })
 
-# 2. Unir al detalle
-df_filtrado = df_filtrado.merge(df_os, on="Nº ORDEN", how="left")
+    # 2. Unir al detalle
+    df_filtrado = df_filtrado.merge(df_os, on="Nº ORDEN", how="left")
 
-# 3. Fórmula correcta SIN TOPES
-def calcular_ideal_por_os(row):
-    valor_hora = float(row["Tarifa_Aplicada"])   # valor hora del avión
-    tiempo_total = float(row["TiempoTotalOS"])
-    ha_total = float(row["HectareasTotalOS"])
+    # 3. Fórmula correcta SIN TOPES
+    def calcular_ideal_por_os(row):
+        valor_hora = float(row["Tarifa_Aplicada"])
+        tiempo_total = float(row["TiempoTotalOS"])
+        ha_total = float(row["HectareasTotalOS"])
 
-    if ha_total == 0:
-        return 0.0
+        if ha_total == 0:
+            return 0.0
 
-    return (valor_hora * tiempo_total) / ha_total
+        return (valor_hora * tiempo_total) / ha_total
 
-df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_por_os, axis=1)
-
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_con_os, axis=1)
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_por_os, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
