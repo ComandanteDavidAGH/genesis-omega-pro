@@ -47,12 +47,17 @@ def extraer_datos_boveda():
     except:
         return pd.DataFrame(), pd.DataFrame()
 
+# 🌟 NUEVOS MOTORES DE LIMPIEZA MATEMÁTICA A PRUEBA DE BALAS
 def limpiar_cantidad(val):
     if isinstance(val, pd.Series): val = val.iloc[0]
     if pd.isna(val) or str(val).strip() == "": return 0.0
     try:
         texto = str(val).replace(" ", "").strip()
-        if "," in texto: texto = texto.replace(",", ".")
+        if "," in texto and "." in texto:
+            if texto.rfind(".") > texto.rfind(","): texto = texto.replace(",", "")
+            else: texto = texto.replace(".", "").replace(",", ".")
+        elif "," in texto:
+            texto = texto.replace(",", ".")
         return float(texto)
     except:
         return 0.0
@@ -62,9 +67,14 @@ def limpiar_moneda(val):
     if pd.isna(val) or str(val).strip() == "": return 0.0
     try:
         texto = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
-        if "." in texto:
-            partes = texto.split(".")
-            if len(partes[-1]) == 3: texto = texto.replace(".", "")
+        if "." in texto and "," in texto:
+            if texto.rfind(".") > texto.rfind(","): texto = texto.replace(",", "")
+            else: texto = texto.replace(".", "").replace(",", ".")
+        else:
+            sep = "." if "." in texto else ("," if "," in texto else None)
+            if sep:
+                if len(texto.split(sep)[-1]) == 3: texto = texto.replace(sep, "")
+                else: texto = texto.replace(sep, ".")
         return float(texto)
     except:
         return 0.0
@@ -73,7 +83,6 @@ def parsear_fecha_robusta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
     if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
-    
     meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
     match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
     if match1:
@@ -259,7 +268,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim[["Equipo", "Pista"]] = df_sim.apply(lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])), axis=1)
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
-    df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
+    df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda) # 🌟 Aplicamos el Limpiador Fuerte
     df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
     df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
@@ -377,7 +386,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
-    # 🌟 AGRUPAMOS Y FORZAMOS EL ORDENAMIENTO (Mismo en UI y en Excel)
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
@@ -390,8 +398,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
     df_agrupado = df_agrupado[["Fecha Operación", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
-    
-    # Ordenamiento global para que la pantalla y el Excel sean gemelos idénticos
     df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"])
 
     st.markdown("---")
