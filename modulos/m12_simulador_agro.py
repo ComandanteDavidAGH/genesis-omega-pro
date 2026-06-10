@@ -213,6 +213,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
     st.caption("Análisis Inteligente: Costo Puro Operativo vs Precio de Venta Ideal.")
 
+    # ============================
+    # 📥 EXTRACCIÓN DE DATOS
+    # ============================
     with st.spinner("📥 Sincronizando Inteligencia de TABLA 1 y TABLA 2..."):
         df_base, df_t2_raw = extraer_datos_boveda()
 
@@ -220,12 +223,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Base de datos vacía o sin acceso a TABLA 1.")
         return
         
+    # ============================
+    # 🧩 TABLA 2: TIPOS DE PRODUCTOR
+    # ============================
     dict_productores = {}
     if not df_t2_raw.empty:
         idx_t2 = 0
         for i in range(min(5, len(df_t2_raw))):
             if "FINCA" in [str(x).upper() for x in df_t2_raw.iloc[i]]:
-                idx_t2 = i; break
+                idx_t2 = i
+                break
         if len(df_t2_raw) > idx_t2 + 1:
             df_t2 = pd.DataFrame(df_t2_raw.values[idx_t2+1:], columns=df_t2_raw.values[idx_t2])
             for idx, row in df_t2.iterrows():
@@ -234,51 +241,92 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                     if f_name and f_name != 'NAN':
                         p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "COOPERATIVA"
                         dict_productores[f_name] = p_tipo
-                except: pass
+                except:
+                    pass
 
-    col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo = "FECHA", "FINCA", "PISTA", "MODELO", "ÁREA FUMIG.\n(ha)", "COSTO AVIÒN\n($/ha)"
+    # ============================
+    # 🔗 MAPEOS DE COLUMNAS TABLA 1
+    # ============================
+    col_fecha = "FECHA"
+    col_finca = "FINCA"
+    col_pista = "PISTA"
+    col_avion = "MODELO"
+    col_ha = "ÁREA FUMIG.\n(ha)"
+    col_vuelo = " COSTO AVIÒN\n($/ha) "
+    col_orden = "Nº ORDEN"
+    col_rend_horas = "RENDIMIENTO (horas)"
 
-    col_tiempo = None
-    cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
-    for c, c_up in cols_upper.items():
-        if "HORO" in c_up: col_tiempo = c; break
-    if not col_tiempo:
+    # Forzamos a usar RENDIMIENTO (horas) como FactorTiempo
+    if col_rend_horas in df_base.columns:
+        col_tiempo = col_rend_horas
+    else:
+        col_tiempo = None
+        cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
         for c, c_up in cols_upper.items():
-            if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up: col_tiempo = c; break
-    if not col_tiempo:
-        for c, c_up in cols_upper.items():
-            if "RENDIMIENTO" in c_up or "HORA" in c_up: col_tiempo = c; break
-    if not col_tiempo:
-        df_base["Factor_Tiempo"] = 60.0
-        col_tiempo = "Factor_Tiempo"
+            if "HORO" in c_up:
+                col_tiempo = c
+                break
+        if not col_tiempo:
+            for c, c_up in cols_upper.items():
+                if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up:
+                    col_tiempo = c
+                    break
+        if not col_tiempo:
+            for c, c_up in cols_upper.items():
+                if "RENDIMIENTO" in c_up or "HORA" in c_up:
+                    col_tiempo = c
+                    break
+        if not col_tiempo:
+            df_base["Factor_Tiempo_Fijo"] = 60.0
+            col_tiempo = "Factor_Tiempo_Fijo"
 
-    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo]:
+    # Ajuste de columnas requeridas si hay pequeñas diferencias
+    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_tiempo]:
         if c_req not in df_base.columns:
             posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
             if posible_match:
-                if c_req == col_ha: col_ha = posible_match[0]
-                if c_req == col_vuelo: col_vuelo = posible_match[0]
+                if c_req == col_ha:
+                    col_ha = posible_match[0]
+                if c_req == col_vuelo:
+                    col_vuelo = posible_match[0]
+                if c_req == col_orden:
+                    col_orden = posible_match[0]
+                if c_req == col_tiempo:
+                    col_tiempo = posible_match[0]
 
-    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_tiempo, col_vuelo]].copy()
-    df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "FactorTiempo", "CobroReal"]
+    # ============================
+    # 🧱 CONSTRUCCIÓN DEL DATAFRAME BASE
+    # ============================
+    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_tiempo, col_vuelo, col_orden]].copy()
+    df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "FactorTiempo", "CobroReal", "Nº ORDEN"]
     
-    df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
+    df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
 
-    df_sim[["Equipo", "Pista"]] = df_sim.apply(lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])), axis=1)
+    df_sim[["Equipo", "Pista"]] = df_sim.apply(
+        lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])),
+        axis=1
+    )
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
-    df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda) # 🌟 Aplicamos el Limpiador Fuerte
-    df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
+    df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
+    df_sim["Fecha_DT"] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
-    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
+    df_sim = df_sim[
+        (df_sim["Hectareas"] > 0) &
+        (df_sim["Equipo"] != "IGNORAR") &
+        (df_sim["Fecha_DT"].notna())
+    ]
 
     if df_sim.empty:
         st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
         return
 
-    min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
-    max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
+    # ============================
+    # 🎛️ FILTROS
+    # ============================
+    min_date = df_sim["Fecha_DT"].min().date() if not df_sim["Fecha_DT"].isnull().all() else datetime(2023, 1, 1).date()
+    max_date = df_sim["Fecha_DT"].max().date() if not df_sim["Fecha_DT"].isnull().all() else datetime.today().date()
     
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
     
@@ -293,13 +341,35 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     }
 
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
-    lista_aviones_maestra = list({"THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0, "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0}.keys())
+    lista_aviones_maestra = list({
+        "THRUS SR2": 4606562.0,
+        "PIPER PA 36-375": 3985831.0,
+        "CESSNA O PIPER PA 25": 3036525.0,
+        "AIR TRACTOR": 4665107.0,
+        "CESSNA ASA": 3666600.0,
+        "CESSNA FUMIGARAY": 3065952.0,
+        "DRONE DATAROT": 84427.0,
+        "DRONE NORTE": 75518.0,
+        "DRONE AVIL": 71280.0,
+        "DRONE GENESYS": 71280.0
+    }.keys())
 
-    if 'v_maestra_blindada_11' not in st.session_state:
+    if "v_maestra_blindada_11" not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
-            st.session_state.tarifas_simulador[av] = float({"THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0, "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0, "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0}.get(av, 4606562.0))
-        st.session_state['v_maestra_blindada_11'] = True
+            st.session_state.tarifas_simulador[av] = float({
+                "THRUS SR2": 4606562.0,
+                "PIPER PA 36-375": 3985831.0,
+                "CESSNA O PIPER PA 25": 3036525.0,
+                "AIR TRACTOR": 4665107.0,
+                "CESSNA ASA": 3666600.0,
+                "CESSNA FUMIGARAY": 3065952.0,
+                "DRONE DATAROT": 84427.0,
+                "DRONE NORTE": 75518.0,
+                "DRONE AVIL": 71280.0,
+                "DRONE GENESYS": 71280.0
+            }.get(av, 4606562.0))
+        st.session_state["v_maestra_blindada_11"] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -328,65 +398,91 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         else:
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
-                c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>🚁 {avion_editar}</div>", unsafe_allow_html=True)
+                c_nombre.markdown(
+                    f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>🚁 {avion_editar}</div>",
+                    unsafe_allow_html=True
+                )
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 
-                tarifa_usuario = c_precio.text_input("Tarifa", value=tarifa_inicial_formateada, key=f"in_bl_{avion_editar.replace(' ', '_')}", label_visibility="collapsed")
+                tarifa_usuario = c_precio.text_input(
+                    "Tarifa",
+                    value=tarifa_inicial_formateada,
+                    key=f"in_bl_{avion_editar.replace(' ', '_')}",
+                    label_visibility="collapsed"
+                )
                 
                 if tarifa_usuario != tarifa_inicial_formateada:
                     try:
                         limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
-                        if "," in limpio and "." in limpio: limpio = limpio.replace(".", "").replace(",", ".")
-                        elif "." in limpio and len(limpio.split(".")[-1]) == 3: limpio = limpio.replace(".", "")
-                        elif "," in limpio: limpio = limpio.replace(",", ".")
+                        if "," in limpio and "." in limpio:
+                            limpio = limpio.replace(".", "").replace(",", ".")
+                        elif "." in limpio and len(limpio.split(".")[-1]) == 3:
+                            limpio = limpio.replace(".", "")
+                        elif "," in limpio:
+                            limpio = limpio.replace(",", ".")
                         st.session_state.tarifas_simulador[avion_editar] = float(limpio)
                         st.rerun()
-                    except: pass
+                    except:
+                        pass
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
-    df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
-    
+    # ============================
+    # 🔍 FILTRADO DE ESCENARIO
+    # ============================
+    df_filtrado = df_sim[
+        (df_sim["Fecha_DT"].dt.date >= fecha_ini) &
+        (df_sim["Fecha_DT"].dt.date <= fecha_fin)
+    ].copy()
 
-    if finca_sel != "🌍 TODAS LAS FINCAS": df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
-    if pista_sel != "🛣️ TODAS LAS PISTAS": df_filtrado = df_filtrado[df_filtrado["Pista"] == pista_sel.replace("🛣️ ", "")]
-    if equipo_sel != "✈️ TODOS LOS EQUIPOS": df_filtrado = df_filtrado[df_filtrado["Equipo"] == equipo_sel]
+    if finca_sel != "🌍 TODAS LAS FINCAS":
+        df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
+    if pista_sel != "🛣️ TODAS LAS PISTAS":
+        df_filtrado = df_filtrado[df_filtrado["Pista"] == pista_sel.replace("🛣️ ", "")]
+    if equipo_sel != "✈️ TODOS LOS EQUIPOS":
+        df_filtrado = df_filtrado[df_filtrado["Equipo"] == equipo_sel]
 
     if df_filtrado.empty:
         st.warning("📭 No hay vuelos registrados con esos criterios en las fechas seleccionadas.")
         return
 
+    # ============================
+    # 🔥 INTEGRACIÓN ORDEN DE SERVICIO
+    # ============================
+    df_filtrado = integrar_os(df_filtrado)
+
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
-    df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime('%Y-%m-%d')
+    df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
-    
-    def calcular_ideal_inteligente(row):
-        eq = str(row["Equipo"]).upper()
+
+    # ============================
+    # 🧮 FÓRMULA AJUSTADA (TU EXCEL)
+    # ============================
+    def calcular_ideal_con_os(row):
         tarifa = float(row["Tarifa_Aplicada"])
-        val_tiempo = float(row["FactorTiempo"])
-        ha = float(row["Hectareas"])
+        tiempo_vuelo = float(row["FactorTiempo"])
+        tiempo_total_os = float(row["TiempoTotalOS"])
         finca_name = str(row["Finca"]).upper()
-        
+
+        if tiempo_total_os == 0:
+            return 0.0
+
         mult = 1.0
         if modo_calculo == "Venta Ideal (+Margen Inteligente)":
             prod_tipo = dict_productores.get(finca_name, "COOPERATIVA")
             mult = obtener_mult(prod_tipo)
-        
-        if "DRON" in eq or "DRONE" in eq: costo_base = tarifa 
-        elif val_tiempo == 0 or ha == 0: costo_base = tarifa / 60.0 
-        elif val_tiempo > 15: costo_base = tarifa / val_tiempo 
-        else: 
-            velocidad_implicada = ha / val_tiempo
-            if velocidad_implicada > 150: costo_base = tarifa / 60.0 
-            else: costo_base = (tarifa * val_tiempo) / ha 
-                
+
+        costo_base = (tarifa * tiempo_vuelo) / tiempo_total_os
         return costo_base * mult
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_inteligente, axis=1)
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_con_os, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
+    # ============================
+    # 📊 AGRUPACIÓN RESUMEN
+    # ============================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
@@ -398,64 +494,128 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
-    df_agrupado = df_agrupado[["Fecha Operación", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
+    df_agrupado = df_agrupado[[
+        "Fecha Operación", "Pista", "Finca", "Equipo",
+        "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha",
+        "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
+    ]]
     df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"])
 
-    st.markdown("---")
-    st.markdown("### 💎 Impacto Financiero de la Operación")
-    
-    t_real = df_agrupado["Total Real Facturado"].sum()
-    t_ideal = df_agrupado["Total Simulado Ideal"].sum()
-    t_perdido = df_agrupado["Lucro Cesante"].sum()
-    porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
-
-    def f_h(val): return f"{val:,.0f}".replace(",", ".")
-    titulo_ideal = "Precio de Venta Ideal" if modo_calculo == "Venta Ideal (+Margen Inteligente)" else "Costo Operativo Puro"
-
-    html_cards = f"""
-    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
-        <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #1b263b; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">Cobro Real (Facturado)</div>
-            <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_real)}</div>
-        </div>
-        <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #d4af37; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: 800; text-transform: uppercase;">{titulo_ideal}</div>
-            <div style="font-size: 20px; color: #0d1b2a; font-weight: 900; margin-top: 4px;">$ {f_h(t_ideal)}</div>
-        </div>
-        <div style="flex: 1.2; min-width: 200px; background-color: #0d1b2a; border: 2px solid #ff4d4d; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
-            <div style="font-size: 12px; color: #ff4d4d; font-weight: 800; text-transform: uppercase;">⚠️ Brecha (Lucro Cesante / Ganancia)</div>
-            <div style="font-size: 22px; color: white; font-weight: 900; margin-top: 4px;">$ {f_h(t_perdido)}</div>
-        </div>
-    </div>
-    """
-    st.markdown(html_cards, unsafe_allow_html=True)
-
-    st.markdown("#### 📉 Comparativa de Escenarios por Finca")
-    df_g_resumen = df_agrupado.groupby("Finca")[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
-    df_g = df_g_resumen.melt(id_vars="Finca", value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
-    fig = px.bar(df_g, x="Finca", y="Monto ($)", color="Escenario", barmode="group", color_discrete_map={"Total Real Facturado": "#1b263b", "Total Simulado Ideal": "#d4af37"})
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("#### 📋 Visor Detallado Diario")
-    df_mostrar = df_agrupado.copy()
-    df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    df_mostrar["Tarifa Real Prom/Ha"] = df_mostrar["Tarifa Real Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
-    df_mostrar["Tarifa Ideal Prom/Ha"] = df_mostrar["Tarifa Ideal Prom/Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
-    df_mostrar["Brecha por Ha"] = df_mostrar["Brecha por Ha"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
-    df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}".replace(",", "."))
-    
-    st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-    st.markdown("### 📑 Reportes Gerenciales (Doble Hoja)")
-    st.download_button(
-        label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (MENS/DIARIO)",
-        data=generar_excel_multi_hoja(df_filtrado, df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga, ("Con Margen" if modo_calculo == "Venta Ideal (+Margen Inteligente)" else "Plano Puro")),
-        file_name=f"Simulador_Financiero_Ejecutivo_{datetime.today().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+    # ============================
+    # 📊 TABLA EN PANTALLA
+    # ============================
+    st.markdown("### 📊 Resumen por Día / Finca / Equipo")
+    st.dataframe(
+        df_agrupado.style.format({
+            "Hectareas": "{:,.2f}",
+            "Tarifa Real Prom/Ha": "{:,.0f}",
+            "Tarifa Ideal Prom/Ha": "{:,.0f}",
+            "Brecha por Ha": "{:,.0f}",
+            "Total Real Facturado": "{:,.0f}",
+            "Total Simulado Ideal": "{:,.0f}",
+            "Lucro Cesante": "{:,.0f}"
+        }),
+        use_container_width=True,
+        height=420
     )
+
+    # ============================
+    # 📈 GRÁFICOS
+    # ============================
+    st.markdown("### 📈 Comparativo de Tarifas Promedio por Hectárea")
+
+    fig_tarifas = px.bar(
+        df_agrupado,
+        x="Fecha Operación",
+        y=["Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha"],
+        color_discrete_sequence=["#1f77b4", "#ff7f0e"],
+        barmode="group",
+        hover_data=["Finca", "Equipo", "Hectareas"],
+        labels={"value": "Tarifa ($/ha)", "Fecha Operación": "Fecha"},
+        title="Tarifa Real vs Tarifa Ideal por Día"
+    )
+    st.plotly_chart(fig_tarifas, use_container_width=True)
+
+    st.markdown("### 💰 Lucro Cesante por Día")
+
+    df_lucro = df_agrupado.groupby("Fecha Operación")["Lucro Cesante"].sum().reset_index()
+    fig_lucro = px.bar(
+        df_lucro,
+        x="Fecha Operación",
+        y="Lucro Cesante",
+        labels={"Lucro Cesante": "Lucro Cesante ($)", "Fecha Operación": "Fecha"},
+        color_discrete_sequence=["#d62728"],
+        title="Lucro Cesante Total por Día"
+    )
+    st.plotly_chart(fig_lucro, use_container_width=True)
+
+    # ============================
+    # 📤 EXPORTAR A EXCEL
+    # ============================
+    st.markdown("### 📤 Exportar Escenario a Excel")
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io
+
+    def construir_excel(df_detalle, df_resumen):
+        wb = Workbook()
+        ws1 = wb.active
+        ws1.title = "DETALLE VUELOS"
+
+        cols_det = list(df_detalle.columns)
+        for j, col in enumerate(cols_det, start=1):
+            cell = ws1.cell(row=1, column=j, value=col)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1f4e78")
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for i, row in enumerate(df_detalle.itertuples(index=False), start=2):
+            for j, val in enumerate(row, start=1):
+                ws1.cell(row=i, column=j, value=val)
+
+        for j in range(1, len(cols_det) + 1):
+            ws1.column_dimensions[get_column_letter(j)].width = 18
+
+        ws2 = wb.create_sheet(title="RESUMEN AGRUPADO")
+        cols_res = list(df_resumen.columns)
+        for j, col in enumerate(cols_res, start=1):
+            cell = ws2.cell(row=1, column=j, value=col)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1f4e78")
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for i, row in enumerate(df_resumen.itertuples(index=False), start=2):
+            for j, val in enumerate(row, start=1):
+                ws2.cell(row=i, column=j, value=val)
+
+        for j in range(1, len(cols_res) + 1):
+            ws2.column_dimensions[get_column_letter(j)].width = 20
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+
+    df_detalle_export = df_filtrado.copy()
+    df_detalle_export = df_detalle_export[[
+        "Fecha Operación", "Nº ORDEN", "Finca", "Pista", "Equipo",
+        "Hectareas", "FactorTiempo", "TiempoTotalOS",
+        "Tarifa_Aplicada", "CobroReal",
+        "Costo Simulado HA", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
+    ]]
+
+    buffer_excel = construir_excel(df_detalle_export, df_agrupado)
+
+    st.download_button(
+        label="📥 Descargar Escenario en Excel",
+        data=buffer_excel,
+        file_name=f"Simulador_Financiero_Libre_{fecha_ini}_{fecha_fin}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    st.success("✅ Escenario calculado con Orden de Servicio integrada (Nº ORDEN + RENDIMIENTO (horas)).")
 
 if __name__ == "__main__":
     pass
