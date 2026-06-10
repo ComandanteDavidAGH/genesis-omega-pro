@@ -230,9 +230,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
     st.caption("Análisis Inteligente: Costo Puro Operativo vs Precio de Venta Ideal.")
 
-    # ============================
-    # 📥 EXTRACCIÓN DE DATOS
-    # ============================
     with st.spinner("📥 Sincronizando Inteligencia de TABLA 1 y TABLA 2..."):
         df_base, df_t2_raw = extraer_datos_boveda()
 
@@ -240,16 +237,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Base de datos vacía o sin acceso a TABLA 1.")
         return
         
-    # ============================
-    # 🧩 TABLA 2: TIPOS DE PRODUCTOR
-    # ============================
     dict_productores = {}
     if not df_t2_raw.empty:
         idx_t2 = 0
         for i in range(min(5, len(df_t2_raw))):
             if "FINCA" in [str(x).upper() for x in df_t2_raw.iloc[i]]:
-                idx_t2 = i
-                break
+                idx_t2 = i; break
         if len(df_t2_raw) > idx_t2 + 1:
             df_t2 = pd.DataFrame(df_t2_raw.values[idx_t2+1:], columns=df_t2_raw.values[idx_t2])
             for idx, row in df_t2.iterrows():
@@ -258,12 +251,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                     if f_name and f_name != 'NAN':
                         p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "COOPERATIVA"
                         dict_productores[f_name] = p_tipo
-                except:
-                    pass
+                except: pass
 
-    # ============================
-    # 🔗 MAPEOS DE COLUMNAS TABLA 1
-    # ============================
+    # Mapeo de columnas según tu TABLA 1
     col_fecha = "FECHA"
     col_finca = "FINCA"
     col_pista = "PISTA"
@@ -273,77 +263,55 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     col_orden = "Nº ORDEN"
     col_rend_horas = "RENDIMIENTO (horas)"
 
-    # Forzamos a usar RENDIMIENTO (horas) como FactorTiempo
+    # Detectar columna de tiempo: aquí forzamos a usar RENDIMIENTO (horas)
     if col_rend_horas in df_base.columns:
         col_tiempo = col_rend_horas
     else:
         col_tiempo = None
         cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
         for c, c_up in cols_upper.items():
-            if "HORO" in c_up:
-                col_tiempo = c
-                break
+            if "HORO" in c_up: col_tiempo = c; break
         if not col_tiempo:
             for c, c_up in cols_upper.items():
-                if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up:
-                    col_tiempo = c
-                    break
+                if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up: col_tiempo = c; break
         if not col_tiempo:
             for c, c_up in cols_upper.items():
-                if "RENDIMIENTO" in c_up or "HORA" in c_up:
-                    col_tiempo = c
-                    break
+                if "RENDIMIENTO" in c_up or "HORA" in c_up: col_tiempo = c; break
         if not col_tiempo:
             df_base["Factor_Tiempo_Fijo"] = 60.0
             col_tiempo = "Factor_Tiempo_Fijo"
 
-    # Ajuste de columnas requeridas si hay pequeñas diferencias
+    # Ajuste de columnas requeridas
     for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_tiempo]:
         if c_req not in df_base.columns:
             posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
             if posible_match:
-                if c_req == col_ha:
-                    col_ha = posible_match[0]
-                if c_req == col_vuelo:
-                    col_vuelo = posible_match[0]
-                if c_req == col_orden:
-                    col_orden = posible_match[0]
-                if c_req == col_tiempo:
-                    col_tiempo = posible_match[0]
+                if c_req == col_ha: col_ha = posible_match[0]
+                if c_req == col_vuelo: col_vuelo = posible_match[0]
+                if c_req == col_orden: col_orden = posible_match[0]
+                if c_req == col_tiempo: col_tiempo = posible_match[0]
 
-    # ============================
-    # 🧱 CONSTRUCCIÓN DEL DATAFRAME BASE
-    # ============================
+    # Construcción del dataframe base del simulador
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_tiempo, col_vuelo, col_orden]].copy()
     df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "FactorTiempo", "CobroReal", "Nº ORDEN"]
     
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
 
-    df_sim[["Equipo", "Pista"]] = df_sim.apply(
-        lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])),
-        axis=1
-    )
+    df_sim[["Equipo", "Pista"]] = df_sim.apply(lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])), axis=1)
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
-    df_sim["Fecha_DT"] = df_sim["Fecha"].apply(parsear_fecha_robusta)
+    df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
-    df_sim = df_sim[
-        (df_sim["Hectareas"] > 0) &
-        (df_sim["Equipo"] != "IGNORAR") &
-        (df_sim["Fecha_DT"].notna())
-    ]
+    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
 
     if df_sim.empty:
         st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
         return
 
-    # ============================
-    # 🎛️ FILTROS
-    # ============================
-    min_date = df_sim["Fecha_DT"].min().date() if not df_sim["Fecha_DT"].isnull().all() else datetime(2023, 1, 1).date()
-    max_date = df_sim["Fecha_DT"].max().date() if not df_sim["Fecha_DT"].isnull().all() else datetime.today().date()
+    min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
+    max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
     
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
     
@@ -371,7 +339,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "DRONE GENESYS": 71280.0
     }.keys())
 
-    if "v_maestra_blindada_11" not in st.session_state:
+    if 'v_maestra_blindada_11' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
@@ -386,7 +354,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "DRONE AVIL": 71280.0,
                 "DRONE GENESYS": 71280.0
             }.get(av, 4606562.0))
-        st.session_state["v_maestra_blindada_11"] = True
+        st.session_state['v_maestra_blindada_11'] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario")
@@ -432,16 +400,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 if tarifa_usuario != tarifa_inicial_formateada:
                     try:
                         limpio = tarifa_usuario.replace("$", "").replace(" ", "").strip()
-                        if "," in limpio and "." in limpio:
-                            limpio = limpio.replace(".", "").replace(",", ".")
-                        elif "." in limpio and len(limpio.split(".")[-1]) == 3:
-                            limpio = limpio.replace(".", "")
-                        elif "," in limpio:
-                            limpio = limpio.replace(",", ".")
+                        if "," in limpio and "." in limpio: limpio = limpio.replace(".", "").replace(",", ".")
+                        elif "." in limpio and len(limpio.split(".")[-1]) == 3: limpio = limpio.replace(".", "")
+                        elif "," in limpio: limpio = limpio.replace(",", ".")
                         st.session_state.tarifas_simulador[avion_editar] = float(limpio)
                         st.rerun()
-                    except:
-                        pass
+                    except: pass
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
