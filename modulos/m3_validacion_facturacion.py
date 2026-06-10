@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st
 import pandas as pd
 import gspread
 import requests
@@ -9,7 +9,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# ⚡ MOTORES ACELERADORES INDUSTRIALES (Conector Único Central)
+# 🔌 CONEXIÓN A BÓVEDA DE DATOS
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -54,7 +54,6 @@ def obtener_historial_completo_ciclos():
 @st.cache_data(show_spinner=False)
 def preprocesar_flota_gspread():
     gc = obtener_cliente_gspread_unificado()
-    # 🌟 SECCIÓN MODIFICADA: Tarifa de Cessna ASA actualizada a 3768500 en los fallbacks obligatorios
     if not gc:
         dict_aviones = {"THRUS SR2": 4606562, "PIPER PA 36-375": 3985831, "CESSNA O PIPER PA 25": 3036525, "AIR TRACTOR": 4665109, "CESSNA ASA": 3768500, "CESSNA FUMIGARAY": 3065952}
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
@@ -67,7 +66,6 @@ def preprocesar_flota_gspread():
         df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
         dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
         
-        # Sincronización forzada en el diccionario dinámico por seguridad si no ha actualizado Sheets
         if "CESSNA ASA" in dict_aviones:
             dict_aviones["CESSNA ASA"] = 3768500
         
@@ -84,7 +82,6 @@ def preprocesar_flota_gspread():
         return dict_aviones, dict_drones
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
-    """ Escanea todo el Excel para encontrar la dosis real del producto """
     try:
         for col_idx in range(len(df_hoja.columns) - 1):
             mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
@@ -92,7 +89,7 @@ def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
                 val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
     except: pass
-    return 0.5 # Fallback de seguridad
+    return 0.5 
 
 @st.cache_data(show_spinner=False)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
@@ -165,7 +162,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     </style>
     """, unsafe_allow_html=True)
 
-    # Función HTML para evitar cortes en los números
     def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
         def f_h(val): return f"{val:,.0f}".replace(",", ".")
         return f"""
@@ -257,6 +253,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
         except: pass
         
+        # 🌟 MODIFICADO: Actualizado fallback de la porción terrestre PDIV a $8.740
         if not pistas_con_tope: 
             pistas_con_tope = ["PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", "PDIV - PORCION TERRESTRE ($8.740)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"]
 
@@ -304,7 +301,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.markdown("<br>", unsafe_allow_html=True) 
         cs5, cs6, cs7, cs8 = st.columns(4)
         
-        # 🌟 SECCIÓN EVOLUCIONADA: Ahora el selector te permite elegir el modelo de aeronave específico para simular
         lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
         vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
         
@@ -331,7 +327,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
-                    # 🌟 SECCIÓN DINÁMICA: Extrae el precio exacto (ej: 3.768.500 para el Cessna ASA) según tu selección
                     tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0: costo_bruto = min(costo_bruto, val_tope)
@@ -372,7 +367,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): fert_encontrado_obj = "NATURAMIN WSP"
                 
                 if fert_encontrado_obj:
-                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
+                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_mez, fert_encontrado_obj)
                     prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
 
                 for item in prods_f:
@@ -636,8 +631,20 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
                 pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
                 
-                opciones_rec = ["0 (Sin Recargo)", "8504 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
-                recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=(1 if pista_sel == "PDIV" else 0), key=f"rl_{casilla_key}")
+                # 🌟 MODIFICADO: Actualizada la porción fija de la etiqueta de 8504 a 8740
+                opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
+                
+                if f"pista_last_{casilla_key}" not in st.session_state:
+                    st.session_state[f"pista_last_{casilla_key}"] = pista_sel
+                    st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
+                elif st.session_state[f"pista_last_{casilla_key}"] != pista_sel:
+                    st.session_state[f"pista_last_{casilla_key}"] = pista_sel
+                    st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
+                    if f"rl_{casilla_key}" in st.session_state:
+                        del st.session_state[f"rl_{casilla_key}"]
+
+                recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=st.session_state[f"default_rec_idx_{casilla_key}"], key=f"rl_{casilla_key}")
+                
                 if recargo_lista == "Otro Valor Manual...":
                     recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
                 else:
@@ -763,17 +770,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
             
-            # --- SEPARAR CÓCTEL Y SIGLA ---
             partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
             coctel_piloto_base = partes_coctel[0]
             sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
 
-            # Ejecuta la IA para el emparejamiento base
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
             
-            # =====================================================================
-            # 🚀 INYECCIÓN TURBO FORZADA PARA FERTILIZANTES (MODO FACTURACIÓN)
-            # =====================================================================
             fert_detectado = None
             if sigla_coctel:
                 for f_n, f_s in dict_fertilizantes.items():
