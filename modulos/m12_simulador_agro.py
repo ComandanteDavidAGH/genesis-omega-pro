@@ -437,25 +437,32 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # ============================
-    # 🧮 FÓRMULA AJUSTADA (TU EXCEL)
-    # ============================
-    def calcular_ideal_con_os(row):
-        tarifa = float(row["Tarifa_Aplicada"])
-        tiempo_vuelo = float(row["FactorTiempo"])
-        tiempo_total_os = float(row["TiempoTotalOS"])
-        finca_name = str(row["Finca"]).upper()
+# 1. Agrupar por Nº ORDEN
+df_os = df_filtrado.groupby("Nº ORDEN").agg({
+    "FactorTiempo": "sum",
+    "Hectareas": "sum"
+}).reset_index()
 
-        if tiempo_total_os == 0:
-            return 0.0
+df_os = df_os.rename(columns={
+    "FactorTiempo": "TiempoTotalOS",
+    "Hectareas": "HectareasTotalOS"
+})
 
-        mult = 1.0
-        if modo_calculo == "Venta Ideal (+Margen Inteligente)":
-            prod_tipo = dict_productores.get(finca_name, "COOPERATIVA")
-            mult = obtener_mult(prod_tipo)
+# 2. Unir al detalle
+df_filtrado = df_filtrado.merge(df_os, on="Nº ORDEN", how="left")
 
-        costo_base = (tarifa * tiempo_vuelo) / tiempo_total_os
-        return costo_base * mult
+# 3. Fórmula correcta SIN TOPES
+def calcular_ideal_por_os(row):
+    valor_hora = float(row["Tarifa_Aplicada"])   # valor hora del avión
+    tiempo_total = float(row["TiempoTotalOS"])
+    ha_total = float(row["HectareasTotalOS"])
+
+    if ha_total == 0:
+        return 0.0
+
+    return (valor_hora * tiempo_total) / ha_total
+
+df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_por_os, axis=1)
 
     df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_ideal_con_os, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
