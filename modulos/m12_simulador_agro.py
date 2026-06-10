@@ -288,7 +288,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "LUCI": ["DRONE GENESYS"]
     }
     
-    # 🌟 CORRECCIÓN 1: RE-INYECCIÓN DE OPCIONES_PISTA (Evita el NameError)
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", "DRONE DATAROT", "DRONE NORTE", "DRONE AVIL", "DRONE GENESYS"]
 
@@ -302,7 +301,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             }.get(av, 4606562.0))
         st.session_state['tarifas_agro_estables_v3'] = True
 
-    # 🌟 CORRECCIÓN 2: LAYOUT RESTAURADO A 6 COLUMNAS COMPLETO (Evita NameError en f6)
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
         f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.1, 1, 1.1, 1.5])
@@ -388,7 +386,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
             if hectareas_os == 0: return cobro_real
 
-            # Lógica matemática plana solicitada: (Tarifa hora × Horas totales OS) ÷ Hectáreas totales OS
+            # Lógica matemática plana: (Tarifa hora × Horas totales OS) ÷ Hectáreas totales OS
             precio_simulado = (valor_hora * horas_os) / hectareas_os
 
             if cobro_real >= precio_simulado: return cobro_real
@@ -474,7 +472,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     )
 
     # =================================================================
-    # 📈 GRÁFICOS HIGH-END PREMIUM (Estilo Corporativo Impecable)
+    # 📈 GRÁFICOS HIGH-END PREMIUM (Estilo Corporativo - CORREGIDOS)
     # =================================================================
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
@@ -492,11 +490,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         title="<b>Evolución Cronológica: Tarifa Cobrada vs Costo OS Calculado</b>"
     )
     
-    fig_tarifas.update_traces(marker_border_width=0)
-    fig_tarifas.data[0].marker.color = "#0D1B2A"  
-    fig_tarifas.data[0].name = "Cobro Real Facturado"
-    fig_tarifas.data[1].marker.color = "#D4AF37"  
-    fig_tarifas.data[1].name = "Costo Base OS Ideal"
+    # 🌟 CORRECCIÓN TÉCNICA: Reemplazo de marker_border_width por marker_line_width nativo
+    fig_tarifas.update_traces(marker_line_width=0)
+    
+    if len(fig_tarifas.data) >= 2:
+        fig_tarifas.data[0].marker.color = "#0D1B2A"  
+        fig_tarifas.data[0].name = "Cobro Real Facturado"
+        fig_tarifas.data[1].marker.color = "#D4AF37"  
+        fig_tarifas.data[1].name = "Costo Base OS Ideal"
     
     fig_tarifas.update_layout(
         plot_bgcolor="white", paper_bgcolor="white",
@@ -518,7 +519,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         title="<b>Fuga Operativa Consolidada Semanal (Lucro Cesante Puro)</b>"
     )
     
-    fig_lucro.update_traces(marker_color="#A31D1D", marker_border_width=0)
+    # 🌟 CORRECCIÓN TÉCNICA: Reemplazo de marker_border_width por marker_line_width nativo
+    fig_lucro.update_traces(marker_color="#A31D1D", marker_line_width=0)
     fig_lucro.update_layout(
         plot_bgcolor="white", paper_bgcolor="white",
         font=dict(family="Segoe UI, Arial", size=12, color="#333333"),
