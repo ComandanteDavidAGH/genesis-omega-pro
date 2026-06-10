@@ -116,6 +116,15 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
         return "CESSNA O PIPER PA 25", "AEROPENORT"
     return "IGNORAR", "IGNORAR"
 
+def obtener_mult(prod):
+    p = str(prod).upper()
+    if "TERCERO" in p: return 1.451
+    if "AFILIADO" in p: return 1.164
+    if "COOPERATIVA" in p: return 1.112
+    if "SOCIO" in p: return 1.112
+    if "ORGANICO" in p: return 1.011
+    return 1.112 
+
 # =================================================================
 # 💾 EXPORTADOR EXCEL MULTI-HOJA GERENCIAL
 # =================================================================
@@ -142,11 +151,9 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
     df_mensual_final = df_mensual_final.rename(columns={"Hectareas": "Total Hectáreas"})
 
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        # HOJA 1: RESUMEN GENERAL DIRECTIVO (Mensual)
         df_mensual_final.to_excel(writer, sheet_name="Resumen_Ejecutivo_Mensual", index=False, startrow=5)
         ws1 = writer.sheets["Resumen_Ejecutivo_Mensual"]
         
-        # HOJA 2: DETALLE AUDITORÍA (Diario por Fecha)
         df_diario_renamed = df_diario_agrupado.copy().rename(columns={
             "Hectareas": "Total Ha",
             "Tarifa Real Prom/Ha": "Tarifa Real ($/Ha)",
@@ -164,7 +171,6 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
         borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
-        # Estilos Consolidado General
         ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
         ws1.cell(row=3, column=1, value=f"💰 Cobro Real Acumulado: $ {t_real:,.0f}").font = Font(bold=True)
         ws1.cell(row=3, column=4, value=f"📈 Costo Real OS Ideal: $ {t_ideal:,.0f}").font = Font(bold=True)
@@ -183,7 +189,6 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
                 ws1.cell(row=r, column=c).number_format = '"$"#,##0'
             for c in range(1, 9): ws1.cell(row=r, column=c).border = borde
 
-        # Estilos Detalle Cronológico
         ws2.cell(row=1, column=1, value="📋 INFORME ESPECÍFICO: AUDITORÍA CRONOLÓGICA DIARIA").font = Font(size=14, bold=True, color="0D1B2A")
         
         for col_num in range(1, len(df_diario_renamed.columns) + 1):
@@ -221,7 +226,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Error de enlace: TABLA 1 no contiene registros o está desconectada.")
         return
 
-    # Definición de columnas mandatorias de TABLA 1
     col_fecha = "FECHA"
     col_finca = "FINCA"
     col_pista = "PISTA"
@@ -231,7 +235,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     col_orden = "Nº ORDEN"
     col_rend_horas = "RENDIMIENTO (horas)"
 
-    # Anclaje estricto a RENDIMIENTO (horas) como FactorTiempo
     if col_rend_horas in df_base.columns:
         col_tiempo = col_rend_horas
     else:
@@ -243,7 +246,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             for c, c_up in cols_upper.items():
                 if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up: col_tiempo = c; break
 
-    # Alineación estructural de nombres de columnas
     for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_tiempo]:
         if c_req not in df_base.columns:
             posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
@@ -263,20 +265,19 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
-    
-    # Lector robusto de fechas (Corrige el error de "Enero")
     df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
     df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
 
     if df_sim.empty:
-        st.warning("📭 No se encontraron registros cronológicos válidos.")
+        st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
         return
 
     min_date = df_sim['Fecha_DT'].min().date()
     max_date = df_sim['Fecha_DT'].max().date()
     
     opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
+    
     FLOTA_OFICIAL_POR_PISTA = {
         "AEROPENORT": ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25"],
         "FUMIGARAY": ["AIR TRACTOR", "CESSNA FUMIGARAY"],
@@ -286,9 +287,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "TEHO": ["DRONE AVIL"],
         "LUCI": ["DRONE GENESYS"]
     }
+    
+    # 🌟 CORRECCIÓN 1: RE-INYECCIÓN DE OPCIONES_PISTA (Evita el NameError)
+    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     lista_aviones_maestra = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", "DRONE DATAROT", "DRONE NORTE", "DRONE AVIL", "DRONE GENESYS"]
 
-    if 'tarifas_agro_estables_v2' not in st.session_state:
+    if 'tarifas_agro_estables_v3' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
@@ -296,14 +300,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
                 "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
             }.get(av, 4606562.0))
-        st.session_state['tarifas_agro_estables_v2'] = True
+        st.session_state['tarifas_agro_estables_v3'] = True
 
+    # 🌟 CORRECCIÓN 2: LAYOUT RESTAURADO A 6 COLUMNAS COMPLETO (Evita NameError en f6)
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
-        f1, f2, f3, f4, f5 = st.columns([1, 1, 1.5, 1, 1.5])
+        f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.1, 1, 1.1, 1.5])
         
         fecha_ini = f1.date_input("📅 F. Inicial", value=min_date)
-        fecha_fin = f2.date_input("│ F. Final", value=max_date)
+        fecha_fin = f2.date_input("📆 F. Final", value=max_date)
         finca_sel = f3.selectbox("📍 Finca Target", opciones_finca)
         pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
         
@@ -314,6 +319,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             lista_aviones_dinamica = lista_aviones_maestra
             
         equipo_sel = f5.selectbox("✈️ Equipo Fijo", ["✈️ TODOS LOS EQUIPOS"] + lista_aviones_dinamica)
+        modo_calculo = f6.selectbox("🧮 Analizar Contra:", ["Venta Ideal (+Margen Inteligente)", "Costo Puro Operativo"])
 
         st.markdown("---")
         st.markdown(f"#### ✈️ Gestor de Tarifas Base de Aeronaves")
@@ -342,7 +348,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
-    # Aplicación de los filtros temporales y de locación
     df_filtrado = df_sim[
         (df_sim["Fecha_DT"].dt.date >= fecha_ini) &
         (df_sim["Fecha_DT"].dt.date <= fecha_fin)
@@ -360,20 +365,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # 🧠 MATEMÁTICA PURA DE ORDEN DE SERVICIO (Sincronizada a 200M)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
-    
-    # 🌟 Inyección nativa de Formato Cronológico Real para Excel
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
-    
-    # 🌟 Inyección nativa de Columna de Semanas Ejecutivas
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
-    
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # Depuración de colisiones de tablas cruzadas
     for col_extra in ["TiempoTotalOS", "HectareasTotalOS", "TiempoTotalOS_x", "TiempoTotalOS_y", "HectareasTotalOS_x", "HectareasTotalOS_y"]:
         if col_extra in df_filtrado.columns: df_filtrado = df_filtrado.drop(columns=[col_extra])
 
-    # Sumatoria totalizadora por Orden de Servicio del universo sin filtrar
     df_os_universo = df_sim.groupby("Nº ORDEN").agg(
         TiempoTotalOS    = ("FactorTiempo", "sum"),
         HectareasTotalOS = ("Hectareas",    "sum")
@@ -381,7 +379,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     df_filtrado = df_filtrado.merge(df_os_universo, on="Nº ORDEN", how="left")
 
-    # Algoritmo de Inferencia Libre de Margen Oculto (Alineación con tu regla)
     def precio_ha_por_os_puro(row):
         try:
             valor_hora    = float(row["Tarifa_Aplicada"])   if pd.notna(row["Tarifa_Aplicada"])   else 0.0
@@ -391,10 +388,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
             if hectareas_os == 0: return cobro_real
 
-            # 🚀 Lógica de negocio pura de la Orden: (Tarifa hora × Horas totales OS) ÷ Hectáreas totales OS
+            # Lógica matemática plana solicitada: (Tarifa hora × Horas totales OS) ÷ Hectáreas totales OS
             precio_simulado = (valor_hora * horas_os) / hectareas_os
 
-            # Condición de Tope Estricto: Si cobro real supera al costo, la brecha es cero.
             if cobro_real >= precio_simulado: return cobro_real
 
             return precio_simulado
@@ -406,7 +402,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 📊 AGRUPACIÓN MACRO CON SEMANAS Y FECHAS CORREGIDAS
+    # 📊 AGRUPACIÓN HISTÓRICA CON SEMANAS Y FECHAS CORREGIDAS
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
@@ -434,6 +430,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
 
     def f_h(val): return f"{val:,.0f}".replace(",", ".")
+    titulo_ideal = "Precio de Venta Ideal" if modo_calculo == "Venta Ideal (+Margen Inteligente)" else "Costo Operativo Puro"
 
     html_cards = f"""
     <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
@@ -482,7 +479,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
-    # Ordenamiento cronológico estricto para que las curvas de tiempo no tengan picos falsos
     df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy()
     df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
@@ -492,11 +488,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         y=["Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha"],
         barmode="group",
         hover_data=["Finca", "Equipo", "Hectareas"],
-        labels={"value": "Tarifa ($/ha)", "Fecha Formateada": "Fecha de Vuelo Corta"},
+        labels={"value": "Tarifa ($/ha)", "Fecha Formateada": "Fecha de Vuelo"},
         title="<b>Evolución Cronológica: Tarifa Cobrada vs Costo OS Calculado</b>"
     )
     
-    # Inyección estética corporativa: Azul Profundo vs Dorado Premium
     fig_tarifas.update_traces(marker_border_width=0)
     fig_tarifas.data[0].marker.color = "#0D1B2A"  
     fig_tarifas.data[0].name = "Cobro Real Facturado"
@@ -513,7 +508,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
 
-    # Gráfico 2: Agrupado Semanal de Pérdidas Financieras
     df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
     
     fig_lucro = px.bar(
@@ -547,7 +541,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
     ]].copy()
     
-    # Normalización estricta de cadenas de fechas para el libro de openpyxl
     df_detalle_export["Fecha Operación"] = pd.to_datetime(df_detalle_export["Fecha Operación"]).dt.strftime('%Y-%m-%d')
     df_resumen_export = df_agrupado.copy()
     df_resumen_export["Fecha Operación"] = pd.to_datetime(df_resumen_export["Fecha Operación"]).dt.strftime('%Y-%m-%d')
