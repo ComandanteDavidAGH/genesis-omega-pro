@@ -370,10 +370,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
 
                 for item in prods_f:
+                    # 🌟 MODIFICACIÓN EN SIMULADOR: Solo cambia si es Zintrac (ZN), Banatrel (BT) o Zitron (ZT/ZITRON)
                     if "ACONDICIONADOR" in item["PRODUCTO"]: 
-                        item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "NM"]) else 0.02
+                        item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: 
-                        item["DOSIS"] = 1.0 if any(x in coctel_u for x in ["ZN", "BT", "NM"]) else 1.5
+                        item["DOSIS"] = 1.0 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 1.5
 
                 tabla_visual = []
                 mezcla_total = 0
@@ -429,7 +430,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     with st.container(border=True):
-        st.markdown("### 📡 Panel de Operaciones")
+        st.markdown("### 📡 Panel de Operations")
     
         c_vacio, c_radar = st.columns([2, 2])
         pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
@@ -837,8 +838,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
-                if "ACONDICIONADOR" in nombre_limpio: dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "NM"]) else 0.02
-                elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio: dosis_teorica = 1.5 if coctel_ganador.startswith("IN") else 1.0
+                # 🌟 MODIFICACIÓN EN FACTURACIÓN REAL: Solo cambia si es Zintrac (ZN), Banatrel (BT) o Zitron (ZT/ZITRON). Naturamin (NM) queda por fuera.
+                if "ACONDICIONADOR" in nombre_limpio: 
+                    dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio: 
+                    dosis_teorica = 1.0 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 1.5
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
