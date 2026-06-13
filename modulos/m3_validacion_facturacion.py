@@ -606,6 +606,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
 
+        # 🚀 RECONEXIÓN CRÍTICA DE VARIABLE PUERA PARA EVALUACIÓN DIRECTA DE MEZCLAS
+        coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
+        
+        partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
+        coctel_piloto_base = partes_coctel[0]
+        sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
+
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
@@ -767,12 +774,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if fert_name and fert_sigla and fert_name not in ["NAN", "FERTILIZANTES", ""]:
                             dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
 
-            coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
-            
-            partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
-            coctel_piloto_base = partes_coctel[0]
-            sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
-
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
             
             fert_detectado = None
@@ -845,12 +846,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = d_oficial; break
 
                 # ===========================================================================
-                # 🧪 DETECCIÓN INTELIGENTE DE MEZCLA DE FERTILIZANTES (DINÁMICA GLOBAL)
+                # 🧪 DETECCIÓN MAESTRA DE MEZCLAS EN VIVO (MIGRADO DE FORMA INTACTA)
                 # ===========================================================================
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ","") or "INBIOMAG" in nombre_limpio: 
-                    # Si 'sigla_coctel' tiene contenido (como 'IN', 'ZN', etc.), significa que hay mezcla, por ende dosis = 1.0. Si está vacío, va solo = 1.5
+                    # 🎯 LA FIJACIÓN CORRETA: Si sigla_coctel trae texto (ej: IN, ZN, BT), va en mezcla = 1.0. Si no, va solo = 1.5
                     dosis_teorica = 1.0 if (sigla_coctel != "") else 1.5
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
