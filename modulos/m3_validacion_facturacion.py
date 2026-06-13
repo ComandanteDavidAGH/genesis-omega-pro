@@ -622,6 +622,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
 
+        # 🚀 PRESERVAMOS LA VARIABLE ORIGINAL PARA EVALUACIÓN DIRECTA DE MEZCLAS
+        coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
+        coctel_u = coctel_piloto_raw
+
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
@@ -783,8 +787,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if fert_name and fert_sigla and fert_name not in ["NAN", "FERTILIZANTES", ""]:
                             dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
 
-            coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
-            
             partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
             coctel_piloto_base = partes_coctel[0]
             sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
@@ -815,9 +817,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 nombre_p, nombre_limpio, cant_total_pedido = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
                 costo_unit, lote_sap, saldo_sap = 0.0, "SIN LOTE EN PISTA", 0.0
 
-                # ===========================================================================
-                # 🚀 EXTRACCIÓN QUIRÚRGICA: LECTURA EXACTA DEL LOTE ACTIVO (MITIGACIÓN SAP)
-                # ===========================================================================
                 if not df_sab.empty:
                     col_0_limpia = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0') if str(x).lower() not in ['nan', 'none', '<na>', ''] else "")
                     match_sabana_global = df_sab[col_0_limpia == cod_item]
@@ -826,20 +825,17 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
                     if not match_sabana_global.empty:
-                        # 1. Filtramos PRIMERO por el almacén/pista correcta
                         if idx_almacen != -1:
                             match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
                         else:
                             match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
 
-                        # 2. Asignamos un fallback por si no hay stock, pero priorizamos encontrar un lote vivo
                         fila_a_usar = match_sabana_global.iloc[0]
 
                         if not match_pista.empty:
                             try:
                                 if idx_saldo != -1:
                                     match_pista['Temp_Sort'] = match_pista.iloc[:, idx_saldo].apply(extraer_numero)
-                                    # Obligamos a que el sistema escoja la fila con inventario real (FIFO)
                                     if not match_pista[match_pista['Temp_Sort'] > 0].empty: 
                                         match_pista = match_pista[match_pista['Temp_Sort'] > 0].sort_values(by='Temp_Sort', ascending=True) 
                                     else: 
@@ -850,7 +846,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if idx_lote != -1: lote_sap = str(fila_a_usar.iloc[idx_lote])
                             if idx_saldo != -1: saldo_sap = extraer_numero(fila_a_usar.iloc[idx_saldo])
 
-                        # 3. EXTRAEMOS EL PRECIO DE LA FILA CORRECTA (Evitamos el fantasma de lotes viejos agotados)
                         if idx_precio != -1: costo_unit = extraer_numero(fila_a_usar.iloc[idx_precio])
                         if costo_unit == 0.0:
                             col_v = [c for c in fila_a_usar.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
@@ -858,7 +853,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if col_v and col_c:
                                 v_t, c_t = extraer_numero(fila_a_usar[col_v[0]]), extraer_numero(fila_a_usar[col_c[0]])
                                 if c_t > 0: costo_unit = v_t / c_t
-                # ===========================================================================
 
                 total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                 dosis_teorica = None
@@ -866,10 +860,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
+                # ===========================================================================
+                # 🛡️ REGLAS DE NEGOCIO ORIGINALES DE DOSIS FIJAS (100% RESTAURADAS CON COCTEL_U)
+                # ===========================================================================
                 if "ACONDICIONADOR" in nombre_limpio: 
-                    dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio: 
-                    dosis_teorica = 1.0 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 1.5
+                    dosis_teorica = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                elif "IMBIOSIL" in nombre_limpio.replace(" ","") or "INBIOMAG" in nombre_limpio: 
+                    dosis_teorica = 1.0 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 1.5
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
