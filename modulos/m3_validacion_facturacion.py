@@ -370,7 +370,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
 
                 for item in prods_f:
-                    # 🌟 MODIFICACIÓN EN SIMULADOR: Solo cambia si es Zintrac (ZN), Banatrel (BT) o Zitron (ZT/ZITRON)
                     if "ACONDICIONADOR" in item["PRODUCTO"]: 
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: 
@@ -838,7 +837,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
-                # 🌟 MODIFICACIÓN EN FACTURACIÓN REAL: Solo cambia si es Zintrac (ZN), Banatrel (BT) o Zitron (ZT/ZITRON). Naturamin (NM) queda por fuera.
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", "") or "INBIOMAG" in nombre_limpio: 
@@ -895,6 +893,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         # --- LIQUIDACIÓN FINAL ---
         def sap_round(n): return math.floor(n + 0.5)
         unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
+        
+        # 🌟 MATEMÁTICA PROTEGIDA: Evitamos errores si el escuadrón viene vacío (0 Ha)
         unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
         
         subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
@@ -942,10 +942,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             </div>
             <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 2px solid #d4af37; box-shadow: 0 2px 5px rgba(0,0,0,0.2); text-align: center;">
                 <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
-                <h2 style="margin:0; color: white; font-weight: 900;">$ {fmt_sap(gran_total)}</h2>
+                <h2 style="margin:0; color: white; font-weight: 900;">$ {gran_total:,.0f}</h2>
             </div>
         </div>
-        """
+        """.replace(",", ".")
         st.markdown(html_totales, unsafe_allow_html=True)
         
         st.markdown("---")
@@ -965,11 +965,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             </a>
         """, unsafe_allow_html=True)
 
+        # 🌟 SECCIÓN OPTIMIZADA: Eliminado el bloqueo restrictivo para habilitar misiones sin aeronaves registradas
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
-            if total_ha_cobro_escuadron == 0:
-                st.error("🚫 OPERACIÓN RECHAZADA: No ha ingresado ninguna aeronave en el Hangar de Despliegue.")
-                st.stop()
-                
             with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz..."):
                 try:
                     gc_save = obtener_cliente_gspread_unificado()
@@ -994,18 +991,31 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
 
                     ha_f = float(ha_dosis_final)
-                    h_total_v = ha_f / 10 if mision_solo_dron else ((ha_f / total_ha_cobro_escuadron) * horometro_final_avion if total_ha_cobro_escuadron > 0 else 0.0)
-                    vol_total_gln, rend_min = ha_f * 6, h_total_v * 60
-                    piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
                     
-                    if mision_solo_dron:
-                        if not escuadron_drones.empty:
-                            dr_name_str = str(escuadron_drones.iloc[0].get('Drone', '')).upper()
-                            hk_f = "DR51" if "DATAROT" in dr_name_str else ("DR52" if "GENESYS" in dr_name_str else "DRONE_GEN")
-                        else: hk_f = "DRONE_GEN"
+                    # Prorrateo blindado contra división por cero
+                    if total_ha_cobro_escuadron == 0:
+                        h_total_v = 0.0
                     else:
-                        if not escuadron_aviones.empty: hk_f = str(escuadron_aviones.iloc[0].get('Avión', 'AVION_REG')).upper()
-                        else: hk_f = "AVION_REG"
+                        h_total_v = ha_f / 10 if mision_solo_dron else ((ha_f / total_ha_cobro_escuadron) * horometro_final_avion)
+                        
+                    vol_total_gln, rend_min = ha_f * 6, h_total_v * 60
+                    
+                    # 🌟 Ajuste dinámico de etiquetas de auditoría para equipos de la finca
+                    if total_ha_cobro_escuadron == 0:
+                        piloto_f = "CLIENTE (DRON PROPIO)"
+                        hk_f = "DRON PROPIO"
+                        tipo_mision_str = "DRONE PROPIO"
+                    else:
+                        piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
+                        tipo_mision_str = 'DRONE' if mision_solo_dron else 'AVION'
+                        if mision_solo_dron:
+                            if not escuadron_drones.empty:
+                                dr_name_str = str(escuadron_drones.iloc[0].get('Drone', '')).upper()
+                                hk_f = "DR51" if "DATAROT" in dr_name_str else ("DR52" if "GENESYS" in dr_name_str else "DRONE_GEN")
+                            else: hk_f = "DRONE_GEN"
+                        else:
+                            if not escuadron_aviones.empty: hk_f = str(escuadron_aviones.iloc[0].get('Avión', 'AVION_REG')).upper()
+                            else: hk_f = "AVION_REG"
                     
                     tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                     total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
@@ -1014,10 +1024,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     row_azul[0], row_azul[1], row_azul[2], row_azul[3], row_azul[4], row_azul[5] = os_virtual, bloque_f, finca_limpia, sector_f, ha_bruta_f, ha_f
                     row_azul[6], row_azul[7], row_azul[8], row_azul[9], row_azul[10] = coctel_ganador, fecha_str, dia_sem, num_sem, round(h_total_v, 2)
                     row_azul[11], row_azul[12], row_azul[13], row_azul[14], row_azul[15] = 6, round(vol_total_gln, 2), round(h_total_v, 2), round(rend_min, 2), piloto_f
-                    row_azul[16], row_azul[17], row_azul[18], row_azul[19], row_azul[20] = hk_f, ('DRONE' if mision_solo_dron else 'AVION'), float(gran_total), round(tarifa_vuelo_neta_ha, 2), round(float(recargo_final), 2)
+                    row_azul[16], row_azul[17], row_azul[18], row_azul[19], row_azul[20] = hk_f, tipo_mision_str, float(gran_total), round(tarifa_vuelo_neta_ha, 2), round(float(recargo_final), 2)
                     row_azul[21], row_azul[23], row_azul[28], row_azul[29], row_azul[32], row_azul[33] = float(gran_total), pista_manual, float(gran_total), round(total_pago_avion_neto, 2), tipo_productor, "GÉNESIS_V2_PRO"
                     
-                    fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", ('DRONE' if mision_solo_dron else 'AVION'), ""]
+                    fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_mision_str, ""]
                     
                     col_azul = hoja_maestra.col_values(1)
                     col_apoyo = hoja_apoyo.col_values(2)
@@ -1031,7 +1041,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
                     
                     set_existentes = {f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}" for r in datos_memoria[1:] if len(r) >= 10}
-                    bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron else "BODEGA PRINCIPAL AVIÓN"
+                    bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron or total_ha_cobro_escuadron == 0 else "BODEGA PRINCIPAL AVIÓN"
                     filas_memoria = []
                     
                     for idx, row_m in edited_df.iterrows():
