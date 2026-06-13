@@ -815,38 +815,50 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 nombre_p, nombre_limpio, cant_total_pedido = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
                 costo_unit, lote_sap, saldo_sap = 0.0, "SIN LOTE EN PISTA", 0.0
 
+                # ===========================================================================
+                # 🚀 EXTRACCIÓN QUIRÚRGICA: LECTURA EXACTA DEL LOTE ACTIVO (MITIGACIÓN SAP)
+                # ===========================================================================
                 if not df_sab.empty:
                     col_0_limpia = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0') if str(x).lower() not in ['nan', 'none', '<na>', ''] else "")
                     match_sabana_global = df_sab[col_0_limpia == cod_item]
+                    
                     if match_sabana_global.empty and nombre_limpio != "" and "ITEM" not in nombre_limpio:
                         match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
                     if not match_sabana_global.empty:
-                        fila_precio = match_sabana_global.iloc[0]
-                        if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
-                        if costo_unit == 0.0:
-                            col_v = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
-                            col_c = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
-                            if col_v and col_c:
-                                v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_c[0]])
-                                if c_t > 0: costo_unit = v_t / c_t
-
+                        # 1. Filtramos PRIMERO por el almacén/pista correcta
                         if idx_almacen != -1:
                             match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
                         else:
                             match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
 
+                        # 2. Asignamos un fallback por si no hay stock, pero priorizamos encontrar un lote vivo
+                        fila_a_usar = match_sabana_global.iloc[0]
+
                         if not match_pista.empty:
                             try:
                                 if idx_saldo != -1:
                                     match_pista['Temp_Sort'] = match_pista.iloc[:, idx_saldo].apply(extraer_numero)
-                                    if not match_pista[match_pista['Temp_Sort'] > 0].empty: match_pista = match_pista.sort_values(by='Temp_Sort', ascending=True) 
-                                    else: match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
+                                    # Obligamos a que el sistema escoja la fila con inventario real (FIFO)
+                                    if not match_pista[match_pista['Temp_Sort'] > 0].empty: 
+                                        match_pista = match_pista[match_pista['Temp_Sort'] > 0].sort_values(by='Temp_Sort', ascending=True) 
+                                    else: 
+                                        match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
                             except: pass
                             
-                            fila_final = match_pista.iloc[0]
-                            if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
-                            if idx_saldo != -1: saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
+                            fila_a_usar = match_pista.iloc[0]
+                            if idx_lote != -1: lote_sap = str(fila_a_usar.iloc[idx_lote])
+                            if idx_saldo != -1: saldo_sap = extraer_numero(fila_a_usar.iloc[idx_saldo])
+
+                        # 3. EXTRAEMOS EL PRECIO DE LA FILA CORRECTA (Evitamos el fantasma de lotes viejos agotados)
+                        if idx_precio != -1: costo_unit = extraer_numero(fila_a_usar.iloc[idx_precio])
+                        if costo_unit == 0.0:
+                            col_v = [c for c in fila_a_usar.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
+                            col_c = [c for c in fila_a_usar.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
+                            if col_v and col_c:
+                                v_t, c_t = extraer_numero(fila_a_usar[col_v[0]]), extraer_numero(fila_a_usar[col_c[0]])
+                                if c_t > 0: costo_unit = v_t / c_t
+                # ===========================================================================
 
                 total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                 dosis_teorica = None
@@ -919,7 +931,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
         precio_columna_ref = dict_aviones.get(escuadron_aviones.iloc[0]['Avión'], 0) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
-        precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadrón_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
+        precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadron_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
 
         st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP)")
         m1, m2, m3, m4, m5 = st.columns(5)
