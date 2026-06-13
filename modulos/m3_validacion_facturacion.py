@@ -618,23 +618,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
             mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
+            # ===========================================================================
+            # 🚜 CORRECCIÓN DE MAQUETACIÓN UI (FORZAR CONTENEDOR 'WITH' PARA EVITAR RECORES)
+            # ===========================================================================
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-            r1c1.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
-            d_ciclo_factura = r1c2.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
-            
-            ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
-            if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+            with r1c1:
+                st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
+            with r1c2:
+                d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
+            with r1c3:
+                ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
+                if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+                ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
+            with r1c4:
+                multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
+                mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
                 
-            ha_dosis_final = r1c3.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
-            
-            # ===========================================================================
-            # 🚜 ENSAMBLAJE DE CONTROLES LATERALES (RECUADRO ROJO APILADO VISUAL)
-            # ===========================================================================
-            multi_aviones = r1c4.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-            mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
-            
-            # El nuevo interruptor táctico queda exactamente en la zona solicitada
-            interciclo_menor_20 = r1c4.toggle("🚜 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
+                # Al encapsularse dentro del bloque context 'with', Streamlit reserva el alto real y ya no se ocultará
+                interciclo_menor_20 = st.toggle("🚜 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
             # ===========================================================================
 
             recargo_final = 0.0
@@ -665,12 +666,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
         
-        # ===========================================================================
-        # 🧠 CONDICIONAL INTERMEDIO: FORZAR CONTRATO DE PARCELA SI SE ACTIVA INTERCICLO
-        # ===========================================================================
         tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
         val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
-        # ===========================================================================
         
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
@@ -936,7 +933,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             ha_av_r = float(escuadron_aviones['Hectáreas'].sum()) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
             es_dr_dom = mision_solo_dron or (ha_av_r == 0 and precio_dron_ref > 0)
             
-            # 🌟 TELEMETRÍA FEEDBACK: Si el interruptor está activo, la tarjeta de SAP reflejará de inmediato el cambio
             pista_display_text = "PARCELA < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
             st.markdown(mini_metric("¼️", "Pista", pista_display_text if not es_dr_dom else "DRON"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
