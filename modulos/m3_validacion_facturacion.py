@@ -337,6 +337,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 coctel_u = coctel_sim.upper().strip()
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
+                sigla_sim = partes[1] if len(partes) > 1 else ""
 
                 receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
                 prods_f = []
@@ -373,7 +374,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if "ACONDICIONADOR" in item["PRODUCTO"]: 
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: 
-                        item["DOSIS"] = 1.0 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 1.5
+                        item["DOSIS"] = 1.0 if (sigla_sim != "") else 1.5
 
                 tabla_visual = []
                 mezcla_total = 0
@@ -805,16 +806,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
 
                     if not match_sabana_global.empty:
-                        # ===========================================================================
-                        # 🎯 CORRECCIÓN QUIRÚRGICA SPRAYFIX: FILTRAR FILA DE PRECIO POR PISTA ACTUAL
-                        # ===========================================================================
                         if idx_almacen != -1:
                             match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)]
                         else:
                             match_pista_precio = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
                         
                         fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
-                        # ===========================================================================
 
                         if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
                         if costo_unit == 0.0:
@@ -847,11 +844,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
-                # 🛡️ TU CÓDIGO INTACTO ORIGINAL EVALUANDO SOBRE COCTEL_GANADOR
+                # ===========================================================================
+                # 🧪 DETECCIÓN INTELIGENTE DE MEZCLA DE FERTILIZANTES (DINÁMICA GLOBAL)
+                # ===========================================================================
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ","") or "INBIOMAG" in nombre_limpio: 
-                    dosis_teorica = 1.0 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 1.5
+                    # Si 'sigla_coctel' tiene contenido (como 'IN', 'ZN', etc.), significa que hay mezcla, por ende dosis = 1.0. Si está vacío, va solo = 1.5
+                    dosis_teorica = 1.0 if (sigla_coctel != "") else 1.5
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
@@ -873,7 +873,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
             costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
-            # 🛠️ CORRECCIÓN DE SINTAXIS EXTRALIGERA EN EL .sum() ORIGINAL
             def colorear_matriz(row):
                 global_sap = df_matriz[df_matriz["A: Producto"] == row["A: Producto"]]["I: Sugerido SAP (Total)"].sum()
                 diferencia = abs(global_sap - row["D: Dosis Total (Sistema)"])
