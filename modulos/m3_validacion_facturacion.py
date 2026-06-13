@@ -863,6 +863,26 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 })
 
             df_matriz = pd.DataFrame(matriz_datos)
+# ===========================================================================
+            # 🪤 TRAMPA DE DIAGNÓSTICO EN VIVO (Misión Crítica)
+            # ===========================================================================
+            st.markdown("### 🪤 Caja de Inspección de Variables (Telemetría)")
+            c_tr1, c_tr2, c_tr3 = st.columns(3)
+            with c_tr1: st.code(f"COCTEL CRUDO REPORTE:\n'{coctel_piloto_raw}'", language="text")
+            with c_tr2: st.code(f"SIGLA EXTRAÍDA REPORTE:\n'{sigla_coctel}'", language="text")
+            with c_tr3: st.code(f"COCTEL MAESTRO IA:\n'{coctel_ganador}'", language="text")
+            
+            # Inspección directa sobre las filas del Imbiosil en el DataFrame
+            filas_imbiosil = df_matriz[df_matriz["A: Producto"].astype(str).str.contains("IMBIOSIL", na=False)]
+            if not filas_imbiosil.empty:
+                for _, r_imb in filas_imbiosil.iterrows():
+                    st.warning(f"🔎 Analizando: {r_imb['A: Producto']} | Dosis en Memoria: {r_imb['B: Dosis/Ha (SAP)']} | Sugerido SAP: {r_imb['I: Sugerido SAP (Total)']}")
+            st.markdown("---")
+            # ===========================================================================
+
+            # [Aquí abajo continúa tu código normal del data_editor...]
+            edited_df = st.data_editor(
+                df_matriz.style.apply(colorear_matriz, axis=1), key=llave_editor_casilla,
             
             llave_editor_casilla = f"editor_valid_{casilla_key}"
             if llave_editor_casilla in st.session_state:
