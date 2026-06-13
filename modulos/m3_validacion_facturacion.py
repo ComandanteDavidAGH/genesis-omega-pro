@@ -152,6 +152,23 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
+    # =================================================================
+    # 🧹 SENSOR DE PURGA DE EMERGENCIA (EVITA VALORES ATORADOS EN RAM)
+    # =================================================================
+    with st.sidebar:
+        st.markdown("### 🛠️ Mantenimiento de Núcleo")
+        if st.button("🧹 PURGAR CACHÉ Y REFRESCAR PRECIOS", use_container_width=True, type="secondary"):
+            st.cache_data.clear()
+            llaves_a_limpiar = ['df_pedidos', 'df_sabana', 'df_mezclas', 'df_config', 'df_config_base', 'memoria_excel']
+            for llave in llaves_a_limpiar:
+                if llave in st.session_state:
+                    del st.session_state[llave]
+            st.toast("🔥 Memoria RAM liberada. Cargue los nuevos archivos en el Módulo 2.", icon="🗑️")
+            import time
+            time.sleep(0.6)
+            st.rerun()
+        st.markdown("---")
+
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
@@ -894,7 +911,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         def sap_round(n): return math.floor(n + 0.5)
         unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
         
-        # 🌟 MATEMÁTICA PROTEGIDA: Evitamos errores si el escuadrón viene vacío (0 Ha)
         unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
         
         subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
@@ -903,7 +919,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
         precio_columna_ref = dict_aviones.get(escuadron_aviones.iloc[0]['Avión'], 0) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
-        precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadron_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
+        precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadrón_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
 
         st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP)")
         m1, m2, m3, m4, m5 = st.columns(5)
@@ -965,7 +981,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             </a>
         """, unsafe_allow_html=True)
 
-        # 🌟 SECCIÓN OPTIMIZADA: Eliminado el bloqueo restrictivo para habilitar misiones sin aeronaves registradas
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
             with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz..."):
                 try:
@@ -992,7 +1007,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                     ha_f = float(ha_dosis_final)
                     
-                    # Prorrateo blindado contra división por cero
                     if total_ha_cobro_escuadron == 0:
                         h_total_v = 0.0
                     else:
@@ -1000,7 +1014,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                     vol_total_gln, rend_min = ha_f * 6, h_total_v * 60
                     
-                    # 🌟 Ajuste dinámico de etiquetas de auditoría para equipos de la finca
                     if total_ha_cobro_escuadron == 0:
                         piloto_f = "CLIENTE (DRON PROPIO)"
                         hk_f = "DRON PROPIO"
