@@ -626,8 +626,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
                 
             ha_dosis_final = r1c3.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
+            
+            # ===========================================================================
+            # 🚜 ENSAMBLAJE DE CONTROLES LATERALES (RECUADRO ROJO APILADO VISUAL)
+            # ===========================================================================
             multi_aviones = r1c4.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
             mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+            
+            # El nuevo interruptor táctico queda exactamente en la zona solicitada
+            interciclo_menor_20 = r1c4.toggle("🚜 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
+            # ===========================================================================
 
             recargo_final = 0.0
             pista_sel = "PLUC"
@@ -656,7 +664,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     recargo_final = float(recargo_lista.split(" ")[0])
 
         dict_topes_pista = {"TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}}
-        val_tope = dict_topes_pista.get(tipo_de_tope_finca, {}).get(pista_sel, 999999)
+        
+        # ===========================================================================
+        # 🧠 CONDICIONAL INTERMEDIO: FORZAR CONTRATO DE PARCELA SI SE ACTIVA INTERCICLO
+        # ===========================================================================
+        tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
+        val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
+        # ===========================================================================
         
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
@@ -844,13 +858,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
 
-                # ===========================================================================
-                # 🧪 DETECCIÓN DE MEZCLAS MEDIANTE EL ESTADO REAL DE LA ORDEN DE SAP
-                # ===========================================================================
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ","") or "INBIOMAG" in nombre_limpio: 
-                    # 🎯 SOLUCIÓN DEFINITIVA: Si el cóctel maestro de la IA detecta mezcla (ej: KRMN53 IN) o hay más de un producto en el pedido de SAP, es mezcla (1.0). De lo contrario, va solo (1.5).
                     es_mezcla = (coctel_ganador != "SIN COINCIDENCIA" and coctel_ganador != "IN" and coctel_ganador != "IMBIOSIL O") or len(sap_dict_pista) > 1
                     dosis_teorica = 1.0 if es_mezcla else 1.5
                 
@@ -874,7 +884,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
             costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
-            # ⚙️ REPARACIÓN DE SINTAXIS: Se restablece el método .sum() limpio para los estilos
             def colorear_matriz(row):
                 global_sap = df_matriz[df_matriz["A: Producto"] == row["A: Producto"]]["I: Sugerido SAP (Total)"].sum()
                 diferencia = abs(global_sap - row["D: Dosis Total (Sistema)"])
@@ -926,7 +935,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with m2: 
             ha_av_r = float(escuadron_aviones['Hectáreas'].sum()) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
             es_dr_dom = mision_solo_dron or (ha_av_r == 0 and precio_dron_ref > 0)
-            st.markdown(mini_metric("¼️", "Pista", tipo_de_tope_finca if not es_dr_dom else "DRON"), unsafe_allow_html=True)
+            
+            # 🌟 TELEMETRÍA FEEDBACK: Si el interruptor está activo, la tarjeta de SAP reflejará de inmediato el cambio
+            pista_display_text = "PARCELA < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
+            st.markdown(mini_metric("¼️", "Pista", pista_display_text if not es_dr_dom else "DRON"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
             st.markdown(mini_metric("🚧", "Valor Tope", f"$ {fmt_sap(precio_dron_ref)}" if es_dr_dom else ("Sin Tope" if val_tope in [0, 999999] else f"$ {fmt_sap(val_tope)}")), unsafe_allow_html=True)
         with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
