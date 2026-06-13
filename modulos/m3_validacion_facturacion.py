@@ -606,7 +606,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
 
-        # 🚀 RECONEXIÓN CRÍTICA DE VARIABLE PUERA PARA EVALUACIÓN DIRECTA DE MEZCLAS
         coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
         
         partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
@@ -846,13 +845,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = d_oficial; break
 
                 # ===========================================================================
-                # 🧪 DETECCIÓN MAESTRA DE MEZCLAS EN VIVO (MIGRADO DE FORMA INTACTA)
+                # 🧪 DETECCIÓN DE MEZCLAS MEDIANTE EL ESTADO REAL DE LA ORDEN DE SAP
                 # ===========================================================================
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ","") or "INBIOMAG" in nombre_limpio: 
-                    # 🎯 LA FIJACIÓN CORRETA: Si sigla_coctel trae texto (ej: IN, ZN, BT), va en mezcla = 1.0. Si no, va solo = 1.5
-                    dosis_teorica = 1.0 if (sigla_coctel != "") else 1.5
+                    # 🎯 SOLUCIÓN DEFINITIVA: Si el cóctel maestro de la IA detecta mezcla (ej: KRMN53 IN) o hay más de un producto en el pedido de SAP, es mezcla (1.0). De lo contrario, va solo (1.5).
+                    es_mezcla = (coctel_ganador != "SIN COINCIDENCIA" and coctel_ganador != "IN" and coctel_ganador != "IMBIOSIL O") or len(sap_dict_pista) > 1
+                    dosis_teorica = 1.0 if es_mezcla else 1.5
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
@@ -863,26 +863,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 })
 
             df_matriz = pd.DataFrame(matriz_datos)
-# ===========================================================================
-            # 🪤 TRAMPA DE DIAGNÓSTICO EN VIVO (Misión Crítica)
-            # ===========================================================================
-            st.markdown("### 🪤 Caja de Inspección de Variables (Telemetría)")
-            c_tr1, c_tr2, c_tr3 = st.columns(3)
-            with c_tr1: st.code(f"COCTEL CRUDO REPORTE:\n'{coctel_piloto_raw}'", language="text")
-            with c_tr2: st.code(f"SIGLA EXTRAÍDA REPORTE:\n'{sigla_coctel}'", language="text")
-            with c_tr3: st.code(f"COCTEL MAESTRO IA:\n'{coctel_ganador}'", language="text")
-            
-            # Inspección directa sobre las filas del Imbiosil en el DataFrame
-            filas_imbiosil = df_matriz[df_matriz["A: Producto"].astype(str).str.contains("IMBIOSIL", na=False)]
-            if not filas_imbiosil.empty:
-                for _, r_imb in filas_imbiosil.iterrows():
-                    st.warning(f"🔎 Analizando: {r_imb['A: Producto']} | Dosis en Memoria: {r_imb['B: Dosis/Ha (SAP)']} | Sugerido SAP: {r_imb['I: Sugerido SAP (Total)']}")
-            st.markdown("---")
-            # ===========================================================================
-
-            # [Aquí abajo continúa tu código normal del data_editor...]
-            edited_df = st.data_editor(
-                df_matriz.style.apply(colorear_matriz, axis=1), key=llave_editor_casilla,
             
             llave_editor_casilla = f"editor_valid_{casilla_key}"
             if llave_editor_casilla in st.session_state:
@@ -894,6 +874,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
             costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
+            # ⚙️ REPARACIÓN DE SINTAXIS: Se restablece el método .sum() limpio para los estilos
             def colorear_matriz(row):
                 global_sap = df_matriz[df_matriz["A: Producto"] == row["A: Producto"]]["I: Sugerido SAP (Total)"].sum()
                 diferencia = abs(global_sap - row["D: Dosis Total (Sistema)"])
@@ -967,7 +948,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
                 <h3 style="margin:0; color: #0d1b2a; font-weight: 900;">$ {fmt_sap(subtotal_st_finca)}</h3>
             </div>
-            <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-bottom: 20px;">
                 <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
                 <h3 style="margin:0; color: #0d1b2a; font-weight: 900;">$ {fmt_sap(subtotal_vuelo_finca)}</h3>
             </div>
