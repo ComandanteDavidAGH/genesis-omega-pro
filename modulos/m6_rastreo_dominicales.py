@@ -176,7 +176,7 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                         # Volcado rápido por lote hacia la base destino
                         ws_dest.update(range_name=f'B{prox_fila}', values=filas_nuevas, value_input_option='USER_ENTERED')
                         st.success(f"🎯 ¡IMPACTO PERFECTO! Se inyectaron exitosamente {len(filas_nuevas)} registros nuevos empezando en la fila {prox_fila}.")
-                        st.ballonos()
+                        st.balloons() # 🌟 ¡SISTEMA REPARADO AQUÍ!
                     else:
                         st.warning("⚠️ El escáner detectó recargos en el archivo origen, pero ninguno es posterior al radar de fecha de la base destino.")
 
