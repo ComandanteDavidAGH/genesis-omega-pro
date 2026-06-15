@@ -203,7 +203,8 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                             dict_dosis[prod_m] = val_seguro(row[10])
 
                 # 2. Analizar Destino
-                url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+                # Conexión directa a la sábana destino (Sábana Real Activa)
+                url_dest = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4ult9rRNB40pBT8d/edit"
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
