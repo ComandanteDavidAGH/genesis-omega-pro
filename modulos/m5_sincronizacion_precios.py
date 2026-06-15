@@ -13,7 +13,6 @@ import io
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     try:
-        # 🌟 CORRECCIÓN MAESTRA: Cambiamos "gcp_credentials" por "gcp_service_account"
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
@@ -47,14 +46,13 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
         justify-content: space-between; align-items: center;
     }
     .hud-tarifas-item { text-align: center; flex: 1; }
-    .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .hud-recargos-title, .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-tarifas-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>Sincronización de Precios y Tarifas</h1>", unsafe_allow_html=True)
     
-    # Cliente acelerado en RAM único para todo el archivo
     gc = inicializar_cliente_gspread()
     if gc is None:
         st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
@@ -77,7 +75,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         if len(row) > 9:
                             prod = str(row[8]).upper().strip()
                             
-                            # 🛡️ FILTRO ANTI-FANTASMAS (Destruye 0, 0.0, 0.00 y vacíos)
                             es_cero_basura = False
                             try:
                                 if float(prod) == 0: es_cero_basura = True
@@ -105,11 +102,9 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 except Exception as e:
                     st.error(f"🚨 Error al generar tarifario: {e}")
                     
-        # Despliegue del Tarifario si existe en el estado de la sesión
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
             
-            # 🚀 LANZAMIENTO DEL HUD DE CONTROL CORPORATIVO DE TARIFAS
             total_quimicos_tarifados = len(df_t)
             costo_maximo_comercial = df_t['TERCERO (+45.1%)'].max()
             costo_medio_base = df_t['COSTO BASE'].mean()
@@ -200,12 +195,12 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                 sh_gen = gc.open_by_url(url_gen)
                 
-                # Descarga unificada de configuraciones y dosis
+                # 📡 EXTRACCIÓN ALINEADA: Forzamos .upper().strip() para evitar baches de tipografía
                 raw_config = sh_gen.worksheet("Configuración").get_all_values(value_render_option='UNFORMATTED_VALUE')
                 dict_precios = {}
                 for row in raw_config:
                     if len(row) > 9:
-                        prod = limpiar_texto_vba(row[8])
+                        prod = limpiar_texto_vba(row[8]).upper().strip()
                         if prod and prod != "PRODUCTO":
                             dict_precios[prod] = val_seguro(row[9])
 
@@ -213,7 +208,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 dict_dosis = {}
                 for row in raw_mezclas[12:]: 
                     if len(row) > 10:
-                        prod_m = limpiar_texto_vba(row[9])
+                        prod_m = limpiar_texto_vba(row[9]).upper().strip()
                         if prod_m:
                             dict_dosis[prod_m] = val_seguro(row[10])
 
@@ -223,9 +218,11 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
+                # 🎯 RECTIFICACIÓN ÓPTICA DE LA SEMANA: Rompe el fantasma del "19.0"
                 col_semana = -1
                 for i, v in enumerate(datos_dest[6]):
-                    if str(v).strip() == str(semana_target):
+                    v_limpio = str(v).strip().split('.')[0]
+                    if v_limpio == str(semana_target):
                         col_semana = i + 1
                         break
                 
@@ -235,10 +232,13 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     updates = []
                     for r_idx, row in enumerate(datos_dest):
                         n_fila = r_idx + 1
-                        if n_fila < 8 or len(row) < 4: continue
+                        if n_fila < 8: continue
                         
-                        tipo_tabla = limpiar_texto_vba(row[1]) 
-                        producto_dest = limpiar_texto_vba(row[3])
+                        # Relleno de seguridad para evitar quiebres por celdas cortas
+                        row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
+                        
+                        tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
+                        producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
                         
                         if not producto_dest: continue
                         
@@ -259,12 +259,12 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                             })
 
                     if updates:
-                        # Ejecución veloz por lotes atómicos (Batch update)
+                        # Inyección masiva y veloz por lote atómico
                         ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                        st.success(f"🎯 IMPACTO PERFECTO. {len(updates)} precios inyectados de forma masiva con precisión absoluta.")
+                        st.success(f"🎯 IMPACTO PERFECTO. {len(updates)} precios inyectados con precisión absoluta en la columna {col_semana}.")
                         st.balloons()
                     else:
-                        st.warning("⚠️ No se encontraron productos coincidentes en el barrido actual.")
+                        st.warning("⚠️ No se encontraron productos coincidentes en el barrido actual. Revise las nomenclaturas.")
 
         except Exception as e:
             st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA TRANSACCIONAL V12: {e}")
