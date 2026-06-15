@@ -187,7 +187,9 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
-    semana_target = st.select_slider("Semana a actualizar en el satélite financiero:", options=list(range(1, 53)), value=19)
+    
+    # 🌟 MEJORA UX SOLICITADA: Reemplazamos la línea/slider por una casilla numérica exacta para las 53 semanas
+    semana_target = st.number_input("🔢 Digite la Semana a actualizar en el satélite financiero (1 a 53):", min_value=1, max_value=53, value=24, step=1)
 
     if st.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
         try:
@@ -218,23 +220,43 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
-                # 🎯 RECTIFICACIÓN ÓPTICA DE LA SEMANA: Rompe el fantasma del "19.0"
+                # 🎯 RADAR DE CABECERA ADAPTATIVO: Localiza dinámicamente la fila de semanas sin desalinearse
+                idx_fila_semanas = 6  # Fila 7 por defecto
+                for idx, r in enumerate(datos_dest[:12]):
+                    r_str = [str(cell).strip().split('.')[0] for cell in r]
+                    if any(w in r_str for w in ["11", "12", "13", "18"]):
+                        idx_fila_semanas = idx
+                        break
+                
+                # Buscamos textualmente la semana elegida en esa fila de control
                 col_semana = -1
-                for i, v in enumerate(datos_dest[6]):
+                for i, v in enumerate(datos_dest[idx_fila_semanas]):
                     v_limpio = str(v).strip().split('.')[0]
                     if v_limpio == str(semana_target):
                         col_semana = i + 1
                         break
                 
+                # 🔄 CORTAFUEGOS MATEMÁTICO PREMIUM: Si la cabecera está borrada o vacía (como las semanas 19-23)
+                # El sistema calcula la columna por progresión lineal exacta de Agroaéreo (Semana + 5 = Columna)
                 if col_semana == -1:
-                    st.error(f"❌ No se halló la columna correspondiente a la semana {semana_target} en la Fila 7.")
+                    col_semana = int(semana_target) + 5
+                
+                if col_semana < 6:
+                    st.error(f"❌ Índice de columna inválido calculado para la semana {semana_target}.")
                 else:
                     updates = []
+                    
+                    # 🛡️ AUTO-REPARACIÓN DE CABECERAS: Si la celda de la fila de control está vacía, le inyectamos su número
+                    updates.append({
+                        'range': gspread.utils.rowcol_to_a1(idx_fila_semanas + 1, col_semana),
+                        'values': [[int(semana_target)]]
+                    })
+                    
                     for r_idx, row in enumerate(datos_dest):
                         n_fila = r_idx + 1
-                        if n_fila < 8: continue
+                        if n_fila < (idx_fila_semanas + 2): continue # Saltamos hasta las filas de datos reales
                         
-                        # Relleno de seguridad para evitar quiebres por celdas cortas
+                        # Relleno de seguridad estructural para evitar desbordamientos
                         row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
                         
                         tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
@@ -258,13 +280,13 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                                 'values': [[valor_final]]
                             })
 
-                    if updates:
-                        # Inyección masiva y veloz por lote atómico
+                    if len(updates) > 1:
+                        # Inyección atómica por bloque único aislado
                         ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                        st.success(f"🎯 IMPACTO PERFECTO. {len(updates)} precios inyectados con precisión absoluta en la columna {col_semana}.")
+                        st.success(f"🎯 ¡OBJETIVO NEUTRALIZADO! Se inyectaron exitosamente {len(updates) - 1} precios con precisión absoluta bloqueando de forma segura la columna {col_semana} (Semana {semana_target}).")
                         st.balloons()
                     else:
-                        st.warning("⚠️ No se encontraron productos coincidentes en el barrido actual. Revise las nomenclaturas.")
+                        st.warning("⚠️ No se encontraron insumos coincidentes en el barrido actual. Verifique nomenclaturas.")
 
         except Exception as e:
             st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA TRANSACCIONAL V12: {e}")
