@@ -205,7 +205,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 # 2. Analizar Destino
                 # Conexión directa a la sábana destino (Sábana Real Activa)
                 # 🎯 Conexión directa a la sábana destino (ID Rectificado al 100%)
-                url_dest = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4ult9rRNB40pPBt8d/edit"
+                url_dest = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4uIt9rRNB40pPBt8d/edit?gid=1519581905#gid=1519581905"
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
