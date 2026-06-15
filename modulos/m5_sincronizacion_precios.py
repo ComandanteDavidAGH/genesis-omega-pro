@@ -138,7 +138,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 st.markdown("#### Caja de Copiado Masivo")
                 col_margen = st.selectbox("1️⃣ Seleccione el Perfil de Productor:", 
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
-                
                 incluir_nombres = st.toggle("🔘 Incluir Nombre del Producto (Alineación Perfecta)", value=False)
                 
                 if col_margen in df_t.columns:
@@ -154,7 +153,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     else:
                         lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
                         texto_para_copiar = "\n".join(lista_textos)
-                        
                     st.code(texto_para_copiar, language="text")
                     
             with t3:
@@ -172,18 +170,28 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
-    semana_target = st.number_input("🔢 Digite la Semana a actualizar en el satélite financiero (1 a 53):", min_value=1, max_value=53, value=24, step=1)
+    
+    # 📡 PANEL DE ENTRADAS DINÁMICAS (EL CAMBIO DE ESTRATEGIA)
+    c_url1, c_url2 = st.columns(2)
+    with c_url1:
+        url_ori = st.text_input("🔗 1. URL de Bóveda Origen (GÉNESIS_CONFIG):", value="https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+    with c_url2:
+        # 🌟 AQUÍ ESTÁ EL CEBO: Ahora tú pegas la URL real limpia (sin .XLSM) directamente en la pantalla
+        url_dest = st.text_input("🎯 2. URL de Sábana Destino (Google Sheets Nativo convertido):", placeholder="Pegue aquí el enlace completo de 44 caracteres...")
+    
+    semana_target = st.number_input("🔢 Digite la Semana a actualizar (1 a 53):", min_value=1, max_value=53, value=24, step=1)
 
     if st.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
+        if not url_ori or not url_dest or "http" not in url_dest:
+            st.error("❌ Por favor, asegúrese de ingresar ambas URLs válidas en la pantalla antes de disparar.")
+            return
+            
         try:
-            # 🕵️‍♂️ EL CEBO: Inicializamos el contenedor de la caja negra de auditoría
-            with st.status("🕵️‍♂️ DESPLEGANDO CEBO DE CONTROL - ANALIZANDO COORDENADAS...", expanded=True) as status:
+            with st.status("🕵️‍♂️ ANALIZANDO CONEXIÓN PERIMETRAL EN VIVO...", expanded=True) as status:
                 
-                url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                sh_gen = gc.open_by_url(url_gen)
-                
-                # 1. Analizar Origen
+                sh_gen = gc.open_by_url(url_ori)
                 raw_config = sh_gen.worksheet("Configuración").get_all_values(value_render_option='UNFORMATTED_VALUE')
+                
                 dict_precios = {}
                 for row in raw_config:
                     if len(row) > 9:
@@ -191,8 +199,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         if prod and prod != "PRODUCTO":
                             dict_precios[prod] = val_seguro(row[9])
                 
-                st.write(f"📊 **Bóveda Origen:** Se cargaron `{len(dict_precios)}` precios únicos de la pestaña Configuración.")
-                st.write("🔍 *Muestra de llaves origen (Primeras 3):*", list(dict_precios.keys())[:3])
+                st.write(f"📊 **Origen:** `{len(dict_precios)}` precios leídos de Configuración.")
 
                 raw_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values(value_render_option='UNFORMATTED_VALUE')
                 dict_dosis = {}
@@ -202,15 +209,11 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         if prod_m:
                             dict_dosis[prod_m] = val_seguro(row[10])
 
-                # 2. Analizar Destino
-                # Conexión directa a la sábana destino (Sábana Real Activa)
-                # 🎯 Conexión directa a la sábana destino (ID Rectificado al 100%)
-                url_dest = "https://docs.google.com/spreadsheets/d/1zUWm-sLwz7Wya4y4uIt9rRNB40pPBt8d/edit?gid=1519581905#gid=1519581905"
+                # 🚀 CONEXIÓN EN CALIENTE: Lee la URL que pegaste en la pantalla en vivo
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
-                # Encontrar fila de semanas
                 idx_fila_semanas = 6
                 for idx, r in enumerate(datos_dest[:12]):
                     r_str = [str(cell).strip().split('.')[0] for cell in r]
@@ -218,13 +221,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         idx_fila_semanas = idx
                         break
                 
-                st.write(f"📍 **Fila de Semanas Detectada:** Fila Número `{idx_fila_semanas + 1}`")
-                
-                # Muestra visual estricta de los encabezados reales leídos por Python
-                valores_cabecera = [str(x).strip() for x in datos_dest[idx_fila_semanas]]
-                st.write("📋 **Contenido bruto de la fila de cabecera (Primeras 35 columnas):**", valores_cabecera[:35])
-                
-                # Localizar Columna de Destino
                 col_semana = -1
                 for i, v in enumerate(datos_dest[idx_fila_semanas]):
                     v_limpio = str(v).strip().split('.')[0]
@@ -232,18 +228,10 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         col_semana = i + 1
                         break
                 
-                st.write(f"🔎 **Búsqueda por texto de Semana {semana_target}:** Columna localizada -> `{col_semana}`")
-                
                 if col_semana == -1:
-                    col_calculada = int(semana_target) + 5
-                    st.write(f"⚠️ **Cabecera Vacía:** No se encontró texto '{semana_target}'. Aplicando Paracaídas Matemático (Semana+5) -> Columna destino definitiva: `{col_calculada}`")
-                    col_semana = col_calculada
+                    col_semana = int(semana_target) + 5
                 
-                # 3. Mapear Simulación de Filas
                 updates = []
-                tabla_auditoria = []
-                
-                # Inyectar el número de la semana en la cabecera para sanar la hoja
                 updates.append({
                     'range': gspread.utils.rowcol_to_a1(idx_fila_semanas + 1, col_semana),
                     'values': [[int(semana_target)]]
@@ -254,13 +242,11 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     if n_fila < (idx_fila_semanas + 2): continue
                     
                     row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
-                    
                     tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
                     producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
                     
                     if not producto_dest: continue
                     
-                    # Verificación minuciosa de coincidencia
                     if producto_dest in dict_precios:
                         precio_unitario = dict_precios[producto_dest]
                         if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
@@ -272,40 +258,22 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         else:
                             valor_final = precio_unitario
                             
-                        celda_a1 = gspread.utils.rowcol_to_a1(n_fila, col_semana)
                         updates.append({
-                            'range': celda_a1,
+                            'range': gspread.utils.rowcol_to_a1(n_fila, col_semana),
                             'values': [[valor_final]]
                         })
-                        
-                        # Guardamos en nuestra bitácora visual
-                        if len(tabla_auditoria) < 10:  # Limitamos la muestra en pantalla para no saturar
-                            tabla_auditoria.append({
-                                "Fila": n_fila,
-                                "Celda": celda_a1,
-                                "Insumo Encontrado": producto_dest,
-                                "Tipo": tipo_tabla,
-                                "Valor Calculado": valor_final
-                            })
-                
-                st.write(f"📊 **Simulación de Carga:** El software generó `{len(updates) - 1}` coincidencias de productos listas para escribir en Drive.")
-                
-                if tabla_auditoria:
-                    st.write("📝 **Muestra del lote listo para impactar (Primeros 10 registros):**")
-                    st.dataframe(pd.DataFrame(tabla_auditoria), use_container_width=True)
-                
-                # 4. Impacto Real en Drive
+
                 if len(updates) > 1:
                     ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                    status.update(label="🎯 ¡PRESA CAPTURADA! Inyección masiva ejecutada en Google Drive.", state="complete")
-                    st.success(f"🎉 Éxito absoluto. Se escribieron de forma segura los precios en la columna {col_semana}.")
+                    status.update(label="🎯 ¡IMPACTO EXITOSO EN LA NUEVA HOJA!", state="complete")
+                    st.success(f"🎉 Los precios han sido inyectados directamente en la columna {col_semana} de la hoja en vivo.")
                     st.balloons()
                 else:
-                    status.update(label="❌ OPERACIÓN FALLIDA - COINCIDENCIAS EN CERO", state="error")
-                    st.error("El cebo revela que no se generó ninguna inyección porque los nombres de los productos de la hoja Configuración no coinciden en absoluto con los de la hoja DATOS. Revise si hay diferencias de ortografía o tildes.")
+                    status.update(label="❌ OPERACIÓN SIN COINCIDENCIAS", state="error")
+                    st.error("No se generaron actualizaciones.")
 
         except Exception as e:
-            st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA TRANSACCIONAL V12: {e}")
+            st.error(f"🚨 FALLA TRANSACCIONAL: {e}")
 
 if __name__ == "__main__":
     pass
