@@ -37,8 +37,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
         border-radius: 8px !important; 
         overflow: hidden !important; 
     }
-    
-    /* HUD de Mando de Tarifas */
     .hud-tarifas {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
@@ -96,7 +94,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado en la caché local: {len(lista_precios)} productos ordenados alfabéticamente (A-Z).")
+                        st.success(f"✅ Tarifario cargado en la caché local: {len(lista_precios)} productos.")
                     else:
                         st.warning("⚠️ El escáner no encontró productos con precios válidos en la hoja.")
                 except Exception as e:
@@ -137,12 +135,11 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 st.dataframe(df_visual, use_container_width=True, hide_index=True)
                 
             with t2:
-                st.markdown("#### Caja de Copiado Masivo (Formación Alineada)")
+                st.markdown("#### Caja de Copiado Masivo")
                 col_margen = st.selectbox("1️⃣ Seleccione el Perfil de Productor:", 
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
                 
                 incluir_nombres = st.toggle("🔘 Incluir Nombre del Producto (Alineación Perfecta)", value=False)
-                st.caption("2️⃣ Copie la lista haciendo clic en el ícono de la esquina superior derecha:")
                 
                 if col_margen in df_t.columns:
                     if incluir_nombres:
@@ -161,43 +158,31 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     st.code(texto_para_copiar, language="text")
                     
             with t3:
-                st.markdown("#### Búsqueda y Copia Rápida Individual (Modo Francotirador)")
+                st.markdown("#### Búsqueda Rápida Individual")
                 prod_sel = st.selectbox("🔍 Buscar Producto Específico:", df_t["PRODUCTO"].tolist())
-                
                 if prod_sel:
                     datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
                     st.info(f"🎯 Valores calculados para: **{prod_sel}**")
-                    
                     c1, c2, c3, c4, c5 = st.columns(5)
-                    with c1:
-                        st.caption("Costo Base")
-                        st.code(fmt_sap(datos_prod["COSTO BASE"]), language="text")
-                    with c2:
-                        st.caption("Orgánico")
-                        st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]), language="text")
-                    with c3:
-                        st.caption("Socio / Coop")
-                        st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]), language="text")
-                    with c4:
-                        st.caption("Afiliado")
-                        st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]), language="text")
-                    with c5:
-                        st.caption("Tercero")
-                        st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]), language="text")
+                    with c1: st.code(fmt_sap(datos_prod["COSTO BASE"]))
+                    with c2: st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
+                    with c3: st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
+                    with c4: st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
+                    with c5: st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
                         
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
-    
-    # 🌟 MEJORA UX SOLICITADA: Reemplazamos la línea/slider por una casilla numérica exacta para las 53 semanas
     semana_target = st.number_input("🔢 Digite la Semana a actualizar en el satélite financiero (1 a 53):", min_value=1, max_value=53, value=24, step=1)
 
     if st.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
         try:
-            with st.spinner(f"Sincronizando Semana {semana_target} al estilo Macro sin latencias..."):
+            # 🕵️‍♂️ EL CEBO: Inicializamos el contenedor de la caja negra de auditoría
+            with st.status("🕵️‍♂️ DESPLEGANDO CEBO DE CONTROL - ANALIZANDO COORDENADAS...", expanded=True) as status:
+                
                 url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                 sh_gen = gc.open_by_url(url_gen)
                 
-                # 📡 EXTRACCIÓN ALINEADA: Forzamos .upper().strip() para evitar baches de tipografía
+                # 1. Analizar Origen
                 raw_config = sh_gen.worksheet("Configuración").get_all_values(value_render_option='UNFORMATTED_VALUE')
                 dict_precios = {}
                 for row in raw_config:
@@ -205,6 +190,9 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         prod = limpiar_texto_vba(row[8]).upper().strip()
                         if prod and prod != "PRODUCTO":
                             dict_precios[prod] = val_seguro(row[9])
+                
+                st.write(f"📊 **Bóveda Origen:** Se cargaron `{len(dict_precios)}` precios únicos de la pestaña Configuración.")
+                st.write("🔍 *Muestra de llaves origen (Primeras 3):*", list(dict_precios.keys())[:3])
 
                 raw_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values(value_render_option='UNFORMATTED_VALUE')
                 dict_dosis = {}
@@ -214,21 +202,27 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         if prod_m:
                             dict_dosis[prod_m] = val_seguro(row[10])
 
-                # Conexión directa a la sábana destino
+                # 2. Analizar Destino
                 url_dest = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
                 
-                # 🎯 RADAR DE CABECERA ADAPTATIVO: Localiza dinámicamente la fila de semanas sin desalinearse
-                idx_fila_semanas = 6  # Fila 7 por defecto
+                # Encontrar fila de semanas
+                idx_fila_semanas = 6
                 for idx, r in enumerate(datos_dest[:12]):
                     r_str = [str(cell).strip().split('.')[0] for cell in r]
                     if any(w in r_str for w in ["11", "12", "13", "18"]):
                         idx_fila_semanas = idx
                         break
                 
-                # Buscamos textualmente la semana elegida en esa fila de control
+                st.write(f"📍 **Fila de Semanas Detectada:** Fila Número `{idx_fila_semanas + 1}`")
+                
+                # Muestra visual estricta de los encabezados reales leídos por Python
+                valores_cabecera = [str(x).strip() for x in datos_dest[idx_fila_semanas]]
+                st.write("📋 **Contenido bruto de la fila de cabecera (Primeras 35 columnas):**", valores_cabecera[:35])
+                
+                # Localizar Columna de Destino
                 col_semana = -1
                 for i, v in enumerate(datos_dest[idx_fila_semanas]):
                     v_limpio = str(v).strip().split('.')[0]
@@ -236,57 +230,77 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                         col_semana = i + 1
                         break
                 
-                # 🔄 CORTAFUEGOS MATEMÁTICO PREMIUM: Si la cabecera está borrada o vacía (como las semanas 19-23)
-                # El sistema calcula la columna por progresión lineal exacta de Agroaéreo (Semana + 5 = Columna)
-                if col_semana == -1:
-                    col_semana = int(semana_target) + 5
+                st.write(f"🔎 **Búsqueda por texto de Semana {semana_target}:** Columna localizada -> `{col_semana}`")
                 
-                if col_semana < 6:
-                    st.error(f"❌ Índice de columna inválido calculado para la semana {semana_target}.")
-                else:
-                    updates = []
+                if col_semana == -1:
+                    col_calculada = int(semana_target) + 5
+                    st.write(f"⚠️ **Cabecera Vacía:** No se encontró texto '{semana_target}'. Aplicando Paracaídas Matemático (Semana+5) -> Columna destino definitiva: `{col_calculada}`")
+                    col_semana = col_calculada
+                
+                # 3. Mapear Simulación de Filas
+                updates = []
+                tabla_auditoria = []
+                
+                # Inyectar el número de la semana en la cabecera para sanar la hoja
+                updates.append({
+                    'range': gspread.utils.rowcol_to_a1(idx_fila_semanas + 1, col_semana),
+                    'values': [[int(semana_target)]]
+                })
+                
+                for r_idx, row in enumerate(datos_dest):
+                    n_fila = r_idx + 1
+                    if n_fila < (idx_fila_semanas + 2): continue
                     
-                    # 🛡️ AUTO-REPARACIÓN DE CABECERAS: Si la celda de la fila de control está vacía, le inyectamos su número
-                    updates.append({
-                        'range': gspread.utils.rowcol_to_a1(idx_fila_semanas + 1, col_semana),
-                        'values': [[int(semana_target)]]
-                    })
+                    row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
                     
-                    for r_idx, row in enumerate(datos_dest):
-                        n_fila = r_idx + 1
-                        if n_fila < (idx_fila_semanas + 2): continue # Saltamos hasta las filas de datos reales
-                        
-                        # Relleno de seguridad estructural para evitar desbordamientos
-                        row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
-                        
-                        tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
-                        producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
-                        
-                        if not producto_dest: continue
-                        
-                        if producto_dest in dict_precios:
-                            precio_unitario = dict_precios[producto_dest]
-                            if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
-                                if producto_dest in dict_dosis:
-                                    dosis_valor = dict_dosis[producto_dest]
-                                    valor_final = precio_unitario * dosis_valor
-                                else:
-                                    valor_final = precio_unitario
+                    tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
+                    producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
+                    
+                    if not producto_dest: continue
+                    
+                    # Verificación minuciosa de coincidencia
+                    if producto_dest in dict_precios:
+                        precio_unitario = dict_precios[producto_dest]
+                        if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
+                            if producto_dest in dict_dosis:
+                                dosis_valor = dict_dosis[producto_dest]
+                                valor_final = precio_unitario * dosis_valor
                             else:
                                 valor_final = precio_unitario
-                                
-                            updates.append({
-                                'range': gspread.utils.rowcol_to_a1(n_fila, col_semana),
-                                'values': [[valor_final]]
+                        else:
+                            valor_final = precio_unitario
+                            
+                        celda_a1 = gspread.utils.rowcol_to_a1(n_fila, col_semana)
+                        updates.append({
+                            'range': celda_a1,
+                            'values': [[valor_final]]
+                        })
+                        
+                        # Guardamos en nuestra bitácora visual
+                        if len(tabla_auditoria) < 10:  # Limitamos la muestra en pantalla para no saturar
+                            tabla_auditoria.append({
+                                "Fila": n_fila,
+                                "Celda": celda_a1,
+                                "Insumo Encontrado": producto_dest,
+                                "Tipo": tipo_tabla,
+                                "Valor Calculado": valor_final
                             })
-
-                    if len(updates) > 1:
-                        # Inyección atómica por bloque único aislado
-                        ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                        st.success(f"🎯 ¡OBJETIVO NEUTRALIZADO! Se inyectaron exitosamente {len(updates) - 1} precios con precisión absoluta bloqueando de forma segura la columna {col_semana} (Semana {semana_target}).")
-                        st.balloons()
-                    else:
-                        st.warning("⚠️ No se encontraron insumos coincidentes en el barrido actual. Verifique nomenclaturas.")
+                
+                st.write(f"📊 **Simulación de Carga:** El software generó `{len(updates) - 1}` coincidencias de productos listas para escribir en Drive.")
+                
+                if tabla_auditoria:
+                    st.write("📝 **Muestra del lote listo para impactar (Primeros 10 registros):**")
+                    st.dataframe(pd.DataFrame(tabla_auditoria), use_container_width=True)
+                
+                # 4. Impacto Real en Drive
+                if len(updates) > 1:
+                    ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
+                    status.update(label="🎯 ¡PRESA CAPTURADA! Inyección masiva ejecutada en Google Drive.", state="complete")
+                    st.success(f"🎉 Éxito absoluto. Se escribieron de forma segura los precios en la columna {col_semana}.")
+                    st.balloons()
+                else:
+                    status.update(label="❌ OPERACIÓN FALLIDA - COINCIDENCIAS EN CERO", state="error")
+                    st.error("El cebo revela que no se generó ninguna inyección porque los nombres de los productos de la hoja Configuración no coinciden en absoluto con los de la hoja DATOS. Revise si hay diferencias de ortografía o tildes.")
 
         except Exception as e:
             st.error(f"🚨 FALLA CRÍTICA EN EL SISTEMA TRANSACCIONAL V12: {e}")
