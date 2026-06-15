@@ -171,12 +171,10 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
     
-    # 📡 PANEL DE ENTRADAS DINÁMICAS (EL CAMBIO DE ESTRATEGIA)
     c_url1, c_url2 = st.columns(2)
     with c_url1:
         url_ori = st.text_input("🔗 1. URL de Bóveda Origen (GÉNESIS_CONFIG):", value="https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
     with c_url2:
-        # 🌟 AQUÍ ESTÁ EL CEBO: Ahora tú pegas la URL real limpia (sin .XLSM) directamente en la pantalla
         url_dest = st.text_input("🎯 2. URL de Sábana Destino (Google Sheets Nativo convertido):", placeholder="Pegue aquí el enlace completo de 44 caracteres...")
     
     semana_target = st.number_input("🔢 Digite la Semana a actualizar (1 a 53):", min_value=1, max_value=53, value=24, step=1)
@@ -201,15 +199,7 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                 
                 st.write(f"📊 **Origen:** `{len(dict_precios)}` precios leídos de Configuración.")
 
-                raw_mezclas = sh_gen.worksheet("DD_Mesclas").get_all_values(value_render_option='UNFORMATTED_VALUE')
-                dict_dosis = {}
-                for row in raw_mezclas[12:]: 
-                    if len(row) > 10:
-                        prod_m = limpiar_texto_vba(row[9]).upper().strip()
-                        if prod_m:
-                            dict_dosis[prod_m] = val_seguro(row[10])
-
-                # 🚀 CONEXIÓN EN CALIENTE: Lee la URL que pegaste en la pantalla en vivo
+                # Conexión directa a la sábana destino
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
@@ -249,13 +239,17 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     
                     if producto_dest in dict_precios:
                         precio_unitario = dict_precios[producto_dest]
+                        
+                        # 🎯 LA JUGADA MAESTRA: Si pertenece a la tabla de dosis por hectárea
                         if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
-                            if producto_dest in dict_dosis:
-                                dosis_valor = dict_dosis[producto_dest]
+                            # Extraemos el factor numérico directamente de la Columna A (índice 0) de la misma fila
+                            dosis_valor = extraer_numero(row_padded[0])
+                            if dosis_valor > 0:
                                 valor_final = precio_unitario * dosis_valor
                             else:
-                                valor_final = precio_unitario
+                                valor_final = 0 # Imita fielmente tu =SI.ERROR(..., 0) si la celda de dosis está vacía o es texto
                         else:
+                            # Primera tabla: Precio por Litro puro
                             valor_final = precio_unitario
                             
                         updates.append({
@@ -265,8 +259,8 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
 
                 if len(updates) > 1:
                     ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                    status.update(label="🎯 ¡IMPACTO EXITOSO EN LA NUEVA HOJA!", state="complete")
-                    st.success(f"🎉 Los precios han sido inyectados directamente en la columna {col_semana} de la hoja en vivo.")
+                    status.update(label="🎯 ¡MÓDULO DE DOSIS AJUSTADO AL 100%!", state="complete")
+                    st.success(f"🎉 Los precios unitarios y por dosis calculados desde la Columna A han impactado en la columna {col_semana}.")
                     st.balloons()
                 else:
                     status.update(label="❌ OPERACIÓN SIN COINCIDENCIAS", state="error")
