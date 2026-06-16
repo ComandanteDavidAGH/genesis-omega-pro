@@ -430,7 +430,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # ===========================================================================
-    # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD (Descarga directa desde Google Sheets)
+    # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD (Sincronización robusta de TABLA 2)
     # ===========================================================================
     if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
         with st.spinner("📡 Descargando bases maestras de Fincas y Configuración desde Google Drive..."):
@@ -440,7 +440,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                     if 'df_config' not in st.session_state:
                         t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
-                        if t2_data: st.session_state['df_config'] = pd.DataFrame(t2_data[1:], columns=t2_data[0])
+                        if t2_data: 
+                            # Escaneo de cabecera real por si hay filas vacías arriba
+                            idx_t2 = 0
+                            for i in range(min(6, len(t2_data))):
+                                if "FINCA" in [str(x).upper().strip() for x in t2_data[i]]:
+                                    idx_t2 = i
+                                    break
+                            st.session_state['df_config'] = pd.DataFrame(t2_data[idx_t2+1:], columns=t2_data[idx_t2])
                     if 'df_config_base' not in st.session_state:
                         cfg_data = boveda_m.worksheet("Configuración").get_all_values()
                         if cfg_data: st.session_state['df_config_base'] = pd.DataFrame(cfg_data[1:], columns=cfg_data[0])
@@ -481,23 +488,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
         
         # ===========================================================================
-        # 🚜 🚀 ESCUDO INTEGRAL CONTRA CASILLA DE FINCA VACÍA
+        # 🔒 CERROJO INQUEBRANTABLE: OBLIGATORIEDAD ABSOLUTA DE LA TABLA 2
         # ===========================================================================
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         
         if not df_t2.empty:
-            lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist())
+            # Filtramos y limpiamos únicamente las fincas que existan físicamente en la TABLA 2
+            lista_fincas_raw = df_t2.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+            lista_fincas = sorted([f for f in lista_fincas_raw if f not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
         else:
-            # Failsafe: Si no hay tabla maestra, barremos los pedidos de SAP subidos para extraer las fincas vivas
-            if 'df_pedidos' in st.session_state:
-                try:
-                    df_p_backup = st.session_state['df_pedidos']
-                    col_f_backup = [c for c in df_p_backup.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
-                    lista_fincas = sorted(df_p_backup[col_f_backup].dropna().astype(str).str.strip().str.upper().unique().tolist())
-                except:
-                    lista_fincas = []
-            else:
-                lista_fincas = []
+            # ⛔ BLOQUEO TOTAL: Si no hay tabla maestra, se congelan los controles para evitar dañar la estructura destino
+            st.error("🚨 CRÍTICO: El sistema no detecta la 'TABLA 2' maestra en memoria. Bloqueo de seguridad activado para evitar desalineación de columnas en el reporte final. Verifique la conexión con Google Drive.")
+            st.stop()
                 
         opciones_finca = ["---"] + lista_fincas
         
@@ -530,11 +532,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
         
-        if not df_t2.empty:
-            match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
-            if not match_t2.empty:
-                tipo_productor = str(match_t2.iloc[0].iloc[5]).strip().upper()
-                tipo_de_tope_finca = str(match_t2.iloc[0].iloc[6]).strip().upper()
+        # Extracción de parámetros indexados de la TABLA 2
+        match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
+        if not match_t2.empty:
+            tipo_productor = str(match_t2.iloc[0].iloc[5]).strip().upper()
+            tipo_de_tope_finca = str(match_t2.iloc[0].iloc[6]).strip().upper()
         
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
@@ -855,9 +857,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
                         if costo_unit == 0.0:
                             col_v = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
-                            col_c = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
-                            if col_v and col_c:
-                                v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_c[0]])
+                            col_v = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
+                            if col_v and col_v:
+                                v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_v[0]])
                                 if c_t > 0: costo_unit = v_t / c_t
 
                         if idx_almacen != -1:
