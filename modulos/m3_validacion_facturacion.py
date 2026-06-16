@@ -429,6 +429,23 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.info("💡 Por favor, cargue los tres archivos fuente en el Módulo 2 y procese antes de validar.")
         st.stop()
 
+    # ===========================================================================
+    # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD (Descarga directa desde Google Sheets)
+    # ===========================================================================
+    if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
+        with st.spinner("📡 Descargando bases maestras de Fincas y Configuración desde Google Drive..."):
+            gc_maestro = obtener_cliente_gspread_unificado()
+            if gc_maestro:
+                try:
+                    boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    if 'df_config' not in st.session_state:
+                        t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
+                        if t2_data: st.session_state['df_config'] = pd.DataFrame(t2_data[1:], columns=t2_data[0])
+                    if 'df_config_base' not in st.session_state:
+                        cfg_data = boveda_m.worksheet("Configuración").get_all_values()
+                        if cfg_data: st.session_state['df_config_base'] = pd.DataFrame(cfg_data[1:], columns=cfg_data[0])
+                except: pass
+
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operations")
     
@@ -463,8 +480,25 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c0, c1, c2 = st.columns([1, 2, 2])
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
         
+        # ===========================================================================
+        # 🚜 🚀 ESCUDO INTEGRAL CONTRA CASILLA DE FINCA VACÍA
+        # ===========================================================================
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
-        lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist()) if not df_t2.empty else []
+        
+        if not df_t2.empty:
+            lista_fincas = sorted(df_t2.iloc[:, 0].dropna().unique().tolist())
+        else:
+            # Failsafe: Si no hay tabla maestra, barremos los pedidos de SAP subidos para extraer las fincas vivas
+            if 'df_pedidos' in st.session_state:
+                try:
+                    df_p_backup = st.session_state['df_pedidos']
+                    col_f_backup = [c for c in df_p_backup.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
+                    lista_fincas = sorted(df_p_backup[col_f_backup].dropna().astype(str).str.strip().str.upper().unique().tolist())
+                except:
+                    lista_fincas = []
+            else:
+                lista_fincas = []
+                
         opciones_finca = ["---"] + lista_fincas
         
         idx_finca = 0
@@ -474,8 +508,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     idx_finca = i; break
 
         finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
-        vuelos_informe = st.session_state.get('df_pistas', pd.DataFrame())
-        lista_origenes = vuelos_informe['ORIGEN'].unique().tolist() if not vuelos_informe.empty else []
+        vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
+        lista_origenes = vuegos_informe['ORIGEN'].unique().tolist() if not vuegos_informe.empty else []
         vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
         if finca_sel == "---" or vuelo_ref == "---":
@@ -569,7 +603,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         except:
             pass
 
-        datos_vuelo = vuelos_informe[vuelos_informe['ORIGEN'] == vuelo_ref].iloc[0]
+        datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
         
         num_pedido = "S/N"
@@ -618,9 +652,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
             mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
-            # ===========================================================================
-            # 🚜 CORRECCIÓN DE MAQUETACIÓN UI (FORZAR CONTENEDOR 'WITH' PARA EVITAR RECORES)
-            # ===========================================================================
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             with r1c1:
                 st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
@@ -633,10 +664,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             with r1c4:
                 multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
                 mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
-                
-                # Al encapsularse dentro del bloque context 'with', Streamlit reserva el alto real y ya no se ocultará
                 interciclo_menor_20 = st.toggle("🚜 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
-            # ===========================================================================
 
             recargo_final = 0.0
             pista_sel = "PLUC"
@@ -1080,6 +1108,3 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if 'memoria_excel' in st.session_state: del st.session_state['memoria_excel']
                 except Exception as e_save: 
                     st.error(f"🚨 Falla en el Guardado: {e_save}")
-
-if __name__ == "__main__":
-    pass
