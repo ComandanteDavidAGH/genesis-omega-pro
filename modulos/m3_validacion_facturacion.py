@@ -214,7 +214,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 hojas = xls.sheet_names
                                 nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
                                 st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
-                                st.success("✅ Matrices cargadas y listas.")
+                                st.success("✅ Matrices cargadas and listas.")
                                 st.rerun()
                             else: st.error(f"❌ Error de descarga: {resp.status_code}")
                     else: st.error("❌ Link inválido.")
@@ -430,28 +430,35 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # ===========================================================================
-    # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD (Sincronización robusta de TABLA 2)
+    # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO (Sincronización robusta de TABLA 2)
     # ===========================================================================
     if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
         with st.spinner("📡 Descargando bases maestras de Fincas y Configuración desde Google Drive..."):
             gc_maestro = obtener_cliente_gspread_unificado()
-            if gc_maestro:
+            if not gc_maestro:
+                st.error("❌ Error de Credenciales: No se pudo inicializar el enlace de Google Drive. Revise el secreto 'gcp_service_account' en Streamlit Cloud.")
+            else:
                 try:
                     boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    
                     if 'df_config' not in st.session_state:
                         t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
                         if t2_data: 
-                            # Escaneo de cabecera real por si hay filas vacías arriba
                             idx_t2 = 0
-                            for i in range(min(6, len(t2_data))):
+                            for i in range(min(10, len(t2_data))):
                                 if "FINCA" in [str(x).upper().strip() for x in t2_data[i]]:
                                     idx_t2 = i
                                     break
-                            st.session_state['df_config'] = pd.DataFrame(t2_data[idx_t2+1:], columns=t2_data[idx_t2])
+                            cols_limpias = [str(c).strip() for c in t2_data[idx_t2]]
+                            st.session_state['df_config'] = pd.DataFrame(t2_data[idx_t2+1:], columns=cols_limpias)
+                            
                     if 'df_config_base' not in st.session_state:
                         cfg_data = boveda_m.worksheet("Configuración").get_all_values()
-                        if cfg_data: st.session_state['df_config_base'] = pd.DataFrame(cfg_data[1:], columns=cfg_data[0])
-                except: pass
+                        if cfg_data: 
+                            st.session_state['df_config_base'] = pd.DataFrame(cfg_data[1:], columns=cfg_data[0])
+                except Exception as e:
+                    st.error(f"🚨 Falla en la descarga de Google Drive: {e}")
+                    st.info("💡 **Nota de Seguridad de Redes:** Asegúrese de que el Google Sheet esté compartido con la dirección de correo electrónico de su Cuenta de Servicio de Google Cloud (el campo 'client_email' que se encuentra en la configuración de sus secretos). Copie ese correo y dele acceso de Editor o Lector en el Sheets.")
 
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operations")
@@ -493,11 +500,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         
         if not df_t2.empty:
-            # Filtramos y limpiamos únicamente las fincas que existan físicamente en la TABLA 2
             lista_fincas_raw = df_t2.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
             lista_fincas = sorted([f for f in lista_fincas_raw if f not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
         else:
-            # ⛔ BLOQUEO TOTAL: Si no hay tabla maestra, se congelan los controles para evitar dañar la estructura destino
             st.error("🚨 CRÍTICO: El sistema no detecta la 'TABLA 2' maestra en memoria. Bloqueo de seguridad activado para evitar desalineación de columnas en el reporte final. Verifique la conexión con Google Drive.")
             st.stop()
                 
@@ -532,7 +537,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         tipo_productor = "REVISAR FINCA"
         tipo_de_tope_finca = "SIN TOPE"
         
-        # Extracción de parámetros indexados de la TABLA 2
         match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
         if not match_t2.empty:
             tipo_productor = str(match_t2.iloc[0].iloc[5]).strip().upper()
@@ -665,7 +669,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
             with r1c4:
                 multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-                mult_avion_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+                multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
                 interciclo_menor_20 = st.toggle("🚜 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
 
             recargo_final = 0.0
@@ -718,7 +722,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     total_ha_cobro_escuadron += ha_dr
                     tarifa_dron_neta = dict_drones.get(dr_sel, 0)
                     costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
-                    costo_total_vuegos += (tarifa_dron_neta * ha_dr) * mult_avion_final 
+                    costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final 
             else:
                 c_av, c_dr = st.columns(2)
                 with c_av: 
@@ -740,7 +744,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av if ha_av > 0 else 0
                     tarifa_base_tope = tarifa_base_ha if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope)
                     costo_neto_vuelo_total += (tarifa_base_tope * ha_av) 
-                    costo_total_vuegos += ((tarifa_base_tope + recargo_final) * ha_av) * mult_avion_final 
+                    costo_total_vuegos += ((tarifa_base_tope + recargo_final) * ha_av) * multi_aviones_final 
                     
                 for _, row in escuadron_drones.iterrows():
                     dr_sel, ha_dr = row.get("Drone"), row.get("Hectáreas")
@@ -749,7 +753,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     total_ha_cobro_escuadron += ha_dr
                     tarifa_dron_neta = dict_drones.get(dr_sel, 0)
                     costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
-                    costo_total_vuegos += (tarifa_dron_neta * ha_dr) * mult_avion_final
+                    costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final
             
         st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
         pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
@@ -857,9 +861,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
                         if costo_unit == 0.0:
                             col_v = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
-                            col_v = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
-                            if col_v and col_v:
-                                v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_v[0]])
+                            col_c = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
+                            if col_v and col_c:
+                                v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_c[0]])
                                 if c_t > 0: costo_unit = v_t / c_t
 
                         if idx_almacen != -1:
@@ -968,7 +972,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
             st.markdown(mini_metric("🚧", "Valor Tope", f"$ {fmt_sap(precio_dron_ref)}" if es_dr_dom else ("Sin Tope" if val_tope in [0, 999999] else f"$ {fmt_sap(val_tope)}")), unsafe_allow_html=True)
         with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
-        with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {mult_avion_final}"), unsafe_allow_html=True)
+        with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
         with m5: 
             st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
@@ -1034,10 +1038,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     os_virtual = f"VIRT-{finca_limpia[:3]}-{datetime.now().strftime('%H%M')}"
                     
                     bloque_f, sector_f, ha_bruta_f = "", "", ""
-                    if not df_t2.empty:
-                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_limpia.upper().strip()]
-                        if not match_f.empty:
-                            sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
+                    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_limpia.upper().strip()]
+                    if not match_f.empty:
+                        sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
 
                     ha_f = float(ha_dosis_final)
                     
