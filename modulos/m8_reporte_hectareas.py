@@ -58,7 +58,7 @@ def limpiar_numero(val):
 # =================================================================
 # 🚁 MOTOR DEL SIMULADOR SIN TOPES EN BASE A TU ESTRUCTURA REAL
 # =================================================================
-def ejecutar():
+def ejecutar(descargar_matriz_rapida=None, extraer_numero=None, procesar_fecha_pesada=None, HAS_MATPLOTLIB=None):
     st.markdown("""
     <style>
     .titulo-simulador { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
