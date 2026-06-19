@@ -1,225 +1,268 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import gspread
 from datetime import datetime
-from oauth2client.service_account import ServiceAccountCredentials
+import io
 
-# =================================================================
-# 🔌 CONEXIÓN A BÓVEDA DE DATOS
-# =================================================================
-def obtener_cliente_gspread_unificado():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS_MATPLOTLIB):
+    st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
+    
     try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return gspread.service_account(filename='credenciales.json')
-    except:
-        return None
+        with st.spinner("🛰️ Escaneando la Bóveda Maestra con Motor Turbo (TABLA 1)..."):
+            url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+            datos_brutos = descargar_matriz_rapida(url_maestra, "TABLA 1")
+            
+        if len(datos_brutos) > 5:
+            columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
+            
+            filas_limpias = [r + [""]*(24 - len(r)) for r in datos_brutos[5:]]
+            df_rep = pd.DataFrame([r[:24] for r in filas_limpias], columns=columnas)
+            
+            df_rep['HA_NETAS'] = df_rep['HA_NETAS'].apply(extraer_numero)
+            df_rep['H_PROPORCIONAL'] = df_rep['H_PROPORCIONAL'].apply(extraer_numero)
+            df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
+            df_rep['PISTA'] = df_rep['PISTA'].astype(str).str.strip().str.upper()
+            
+            df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
+            
+            meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
+            
+            def extraer_mes_año(fecha_str):
+                dt = procesar_fecha_pesada(fecha_str)
+                if dt: return meses_nom.get(dt.month, "00-Desc"), str(dt.year)
+                return "00-Desc", "00-Desc"
+            
+            df_rep[['MES', 'AÑO']] = df_rep['FECHA'].apply(lambda x: pd.Series(extraer_mes_año(x)))
+            df_rep = df_rep[df_rep['AÑO'] != "00-Desc"]
+            
+            st.markdown("### 🎛️ Centro de Comando y Filtros")
+            c1, c2, c3 = st.columns([2, 1, 1])
+            
+            vista_seleccionada = c1.radio(
+                "👁️ Seleccione la Vista del Radar:", 
+                ["📊 Resumen Gerencial (Hectáreas)", "📅 Mapa Semanal (Detalle)"], 
+                horizontal=True
+            )
+            
+            pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
+            años_disp = sorted(df_rep['AÑO'].unique().tolist(), reverse=True)
+            
+            año_sel = c2.selectbox("📅 Año Fiscal", años_disp if años_disp else [str(datetime.now().year)])
+            pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp)
+            
+            mostrar_horas = False
+            if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
+                mostrar_horas = st.checkbox("⏱️ Mostrar también el Rendimiento (Horas de Vuelo)")
 
-@st.cache_data(show_spinner=False, ttl=600)
-def extraer_tabla_1_historica():
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame()
-    try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        t1 = boveda.worksheet("TABLA 1").get_all_values()
-        idx_t1 = 4
-        for i in range(min(6, len(t1))):
-            if "FINCA" in [str(x).upper() for x in t1[i]]:
-                idx_t1 = i
-                break
-        
-        if len(t1) > idx_t1:
-            df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1])
-            df_t1 = df_t1.loc[:, ~df_t1.columns.duplicated()]
-            return df_t1
-        return pd.DataFrame()
-    except:
-        return pd.DataFrame()
+            df_filt = df_rep[df_rep['AÑO'] == año_sel]
+            if pista_sel != "TODAS":
+                df_filt = df_filt[df_filt['PISTA'] == pista_sel]
+            
+            if df_filt.empty:
+                st.warning("⚠️ No hay operaciones registradas para estos parámetros.")
+            else:
+                st.markdown("---")
+                
+                if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
+                    st.markdown(f"#### 📑 Consolidado Gerencial - {año_sel}")
+                    
+                    df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
+                        REND_HR=('H_PROPORCIONAL', 'sum'),
+                        AREA_FUMIG=('HA_NETAS', 'sum')
+                    ).reset_index()
+                    
+                    tabla_final = []
+                    total_hr_gral = 0
+                    total_ha_gral = 0
+                    
+                    for pista in sorted(df_gerencia['PISTA'].unique()):
+                        datos_pista = df_gerencia[df_gerencia['PISTA'] == pista].sort_values(by='MES')
+                        sum_hr = datos_pista['REND_HR'].sum()
+                        sum_ha = datos_pista['AREA_FUMIG'].sum()
+                        
+                        fila_sub = {'NIVEL': f"➖ {pista}", 'MES': ''}
+                        if mostrar_horas: fila_sub['REND (hr)'] = sum_hr
+                        fila_sub['ÁREA FUMIG (ha)'] = sum_ha
+                        tabla_final.append(fila_sub)
+                        
+                        for _, row in datos_pista.iterrows():
+                            mes_limpio = row['MES'].split('-')[1] if '-' in row['MES'] else row['MES']
+                            fila_mes = {'NIVEL': '', 'MES': mes_limpio}
+                            if mostrar_horas: fila_mes['REND (hr)'] = row['REND_HR']
+                            fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
+                            tabla_final.append(fila_mes)
+                            
+                        total_hr_gral += sum_hr
+                        total_ha_gral += sum_ha
+                        
+                    fila_tot = {'NIVEL': 'TOTAL GENERAL', 'MES': ''}
+                    if mostrar_horas: fila_tot['REND (hr)'] = total_hr_gral
+                    fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
+                    tabla_final.append(fila_tot)
+                    
+                    df_visual = pd.DataFrame(tabla_final)
+                    
+                    def estilizar_filas(row):
+                        if "➖" in row['NIVEL'] or "TOTAL" in row['NIVEL']:
+                            return ['background-color: #e2e6ea; font-weight: bold;'] * len(row)
+                        return [''] * len(row)
+                    
+                    formato_columnas = {'ÁREA FUMIG (ha)': "{:.2f}"}
+                    if mostrar_horas: formato_columnas['REND (hr)'] = "{:.2f}"
+                    
+                    st.dataframe(
+                        df_visual.style.apply(estilizar_filas, axis=1).format(formato_columnas),
+                        use_container_width=True,
+                        hide_index=True
+                    )
 
-def limpiar_numero(val):
-    if isinstance(val, pd.Series):
-        val = val.iloc[0]
-    if pd.isna(val) or str(val).strip() == "": return 0.0
-    try:
-        texto = str(val).upper().replace("$", "").replace("COP", "").strip()
-        if "," in texto and "." in texto:
-            texto = texto.replace(".", "").replace(",", ".")
-        elif "," in texto:
-            texto = texto.replace(",", ".")
-        texto = texto.replace(" ", "")
-        return float(texto)
-    except:
-        return 0.0
+                else:
+                    matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
+                    matriz = matriz.sort_index()
+                    cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
+                    matriz = matriz[cols_ordenadas]
+                    
+                    matriz.index = [m.split('-')[1] if '-' in m else m for m in matriz.index]
+                    matriz['TOTAL MES'] = matriz.sum(axis=1)
+                    matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
+                    
+                    st.markdown(f"#### 🚜 Rendimiento Semana a Semana: **{pista_sel}**")
+                    if HAS_MATPLOTLIB:
+                        st.dataframe(matriz.style.format("{:.2f}").background_gradient(cmap="YlGn", axis=None), use_container_width=True)
+                    else:
+                        st.dataframe(matriz.style.format("{:.2f}"), use_container_width=True)
+                    
+                    st.markdown("---")
+                    df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
+                    if not df_grafico.empty:
+                        fig = px.bar(
+                            df_grafico, x='index', y='TOTAL MES', text='TOTAL MES',
+                            labels={'TOTAL MES': 'Hectáreas Fumigadas', 'index': 'Mes de Operación'},
+                            color='TOTAL MES', color_continuous_scale='Greens'
+                        )
+                        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                        fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes")
+                        st.plotly_chart(fig, use_container_width=True)
 
-# =================================================================
-# 🚁 MOTOR DEL SIMULADOR SIN TOPES EN BASE A TU ESTRUCTURA REAL
-# =================================================================
-def ejecutar(descargar_matriz_rapida=None, extraer_numero=None, procesar_fecha_pesada=None, HAS_MATPLOTLIB=None):
-    st.markdown("""
-    <style>
-    .titulo-simulador { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
-    </style>
-    """, unsafe_allow_html=True)
+                st.markdown("---")
+                buffer_rep = io.BytesIO()
+                with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
+                    nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
+                    
+                    if "Gerencial" in vista_seleccionada:
+                        df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
+                    else:
+                        matriz.to_excel(writer, sheet_name=nombre_hoja)
+                        
+                    workbook = writer.book
+                    worksheet = writer.sheets[nombre_hoja]
+                    worksheet.sheet_view.showGridLines = False
+                    worksheet.row_dimensions[1].height = 30
+                    
+                    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                    from openpyxl.chart import BarChart, Reference
+                    from openpyxl.chart.label import DataLabelList
+                    from openpyxl.utils import get_column_letter
 
-    st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
-    st.caption("Análisis de Lucro Cesante por Finca, Pista y Tipo de Aeronave real.")
+                    borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), 
+                                       top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
+                    fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    fuente_blanca = Font(color="FFFFFF", bold=True, size=11)
+                    fondo_meses = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+                    fondo_sub = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+                    fondo_total = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
 
-    with st.spinner("📥 Sincronizando historial de operaciones (TABLA 1)..."):
-        df_base = extraer_tabla_1_historica()
+                    max_row = worksheet.max_row
+                    max_col = worksheet.max_column
 
-    if df_base.empty:
-        st.error("🚨 Base de datos vacía o sin acceso a TABLA 1.")
-        return
+                    if "Gerencial" in vista_seleccionada:
+                        rango_total_ha = []
+                        col_ha_letra = "C" if not mostrar_horas else "D"
+                        col_ha_idx = 3 if not mostrar_horas else 4
+                        
+                        for i in range(2, max_row + 1):
+                            nivel = str(worksheet.cell(row=i, column=1).value or "").strip()
+                            if "➖" in nivel:
+                                inicio = i + 1
+                                fin = i + 1
+                                for j in range(i + 1, max_row + 1):
+                                    val_j = str(worksheet.cell(row=j, column=1).value or "").strip()
+                                    if val_j == "" or val_j == "None": fin = j
+                                    else: break
+                                worksheet.cell(row=i, column=col_ha_idx).value = f"=SUM({col_ha_letra}{inicio}:{col_ha_letra}{fin})"
+                                rango_total_ha.append(f"{col_ha_letra}{i}")
+                            elif "TOTAL GENERAL" in nivel:
+                                if rango_total_ha:
+                                    worksheet.cell(row=i, column=col_ha_idx).value = f"=SUM({','.join(rango_total_ha)})"
 
-    # --- 🛰️ MAPEO ESTÁTICO DE TUS COLUMNAS REALES (CERO ERRORES DE DETECCIÓN) ---
-    col_fecha = "FECHA"
-    col_finca = "FINCA"
-    col_pista = "PISTA"
-    col_avion = "MODELO"
-    col_ha = "ÁREA FUMIG.\n(ha)"
-    col_horo = "ODÒM."
-    col_vuelo = "COSTO AVIÒN\n($/ha)"
+                    for row in worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
+                        for cell in row:
+                            cell.border = borde_pro
+                            if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
+                                cell.number_format = '#,##0.00'
+                            if cell.row == 1:
+                                cell.fill = fondo_navy; cell.font = fuente_blanca
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
+                            else:
+                                cell.alignment = Alignment(vertical='center', indent=1)
+                                
+                            if "Gerencial" in vista_seleccionada and cell.row > 1:
+                                nivel_v = str(worksheet.cell(row=cell.row, column=1).value or "").strip()
+                                if "➖" in nivel_v:
+                                    cell.fill = fondo_sub; cell.font = Font(bold=True)
+                                elif "TOTAL GENERAL" in nivel_v:
+                                    cell.fill = fondo_total; cell.font = Font(bold=True, color="FFFFFF")
+                                elif nivel_v == "" or nivel_v == "None":
+                                    cell.fill = fondo_meses
 
-    # Verificar que las columnas existan en la tabla para evitar caídas
-    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo]:
-        if c_req not in df_base.columns:
-            # Fallback de emergencia si hay un salto de línea sutil en el nombre
-            posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
-            if posible_match:
-                if c_req == col_ha: col_ha = posible_match[0]
-                if c_req == col_vuelo: col_vuelo = posible_match[0]
+                    chart = BarChart()
+                    chart.type = "col"; chart.style = 10
+                    chart.title = "Rendimiento Operativo (Ha)"; chart.y_axis.title = "Hectáreas"
+                    chart.legend = None
+                    chart.dataLabels = DataLabelList(); chart.dataLabels.showVal = True
+                    chart.height = 14; chart.width = 24
+                    
+                    if "Gerencial" in vista_seleccionada:
+                        worksheet.cell(row=1, column=27).value = "Mes"
+                        worksheet.cell(row=1, column=28).value = "Ha"
+                        meses_para_grafico = [m for m in df_visual['MES'] if str(m).strip() not in ["", "None"]]
+                        row_g = 2
+                        for m in meses_para_grafico:
+                            worksheet.cell(row=row_g, column=27).value = m
+                            fila_origen = 2
+                            for r_b in range(2, max_row):
+                                if str(worksheet.cell(row=r_b, column=2).value) == m:
+                                    fila_origen = r_b; break
+                            worksheet.cell(row=row_g, column=28).value = f"={col_ha_letra}{fila_origen}"
+                            row_g += 1
+                        
+                        data = Reference(worksheet, min_col=28, min_row=1, max_row=row_g-1)
+                        cats = Reference(worksheet, min_col=27, min_row=2, max_row=row_g-1)
+                        chart.add_data(data, titles_from_data=True)
+                        chart.set_categories(cats)
+                        
+                        for r_inv in range(1, row_g):
+                            worksheet.cell(row=r_inv, column=27).font = Font(color="FFFFFF")
+                            worksheet.cell(row=r_inv, column=28).font = Font(color="FFFFFF")
+                        
+                        worksheet.add_chart(chart, "H2")
+                    else:
+                        data = Reference(worksheet, min_col=max_col, min_row=1, max_row=max_row-1)
+                        cats = Reference(worksheet, min_col=1, min_row=2, max_row=max_row-1)
+                        chart.add_data(data, titles_from_data=True)
+                        chart.set_categories(cats)
+                        worksheet.add_chart(chart, f"{get_column_letter(max_col + 2)}2")
+                    
+                    for col_idx in range(1, max_col + 1):
+                        worksheet.column_dimensions[get_column_letter(col_idx)].width = 22
+                    worksheet.freeze_panes = "A2"
 
-    # --- PREPROCESAMIENTO ---
-    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_horo, col_vuelo]].copy()
-    df_sim.columns = ["Fecha", "Finca", "Pista", "Equipo", "Hectareas", "Horometro", "CobroReal"]
-    
-    # Limpiar filas vacías en la columna principal
-    df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
-    df_sim["Equipo"] = df_sim["Equipo"].astype(str).str.strip().str.upper()
-    df_sim = df_sim[df_sim["Equipo"] != ""]
-
-    df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_numero)
-    df_sim["Horometro"] = df_sim["Horometro"].apply(limpiar_numero)
-    df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_numero)
-    df_sim['Fecha_DT'] = pd.to_datetime(df_sim["Fecha"], dayfirst=True, errors='coerce')
-    
-    # Solo vuelos con hectáreas procesadas
-    df_sim = df_sim[df_sim["Hectareas"] > 0]
-
-    if df_sim.empty:
-        st.warning("📭 No hay registros con ÁREA FUMIG. mayor a 0 en la TABLA 1.")
-        return
-
-    # --- ELEMENTOS DE LOS FILTROS ---
-    min_date = df_sim['Fecha_DT'].min().date() if not df_sim['Fecha_DT'].isnull().all() else datetime(2023, 1, 1).date()
-    max_date = df_sim['Fecha_DT'].max().date() if not df_sim['Fecha_DT'].isnull().all() else datetime.today().date()
-    
-    opciones_finca = ["🌍 TODAS LAS FINCAS"] + sorted(df_sim["Finca"].dropna().unique().tolist())
-    opciones_pista = ["🛣️ TODAS LAS PISTAS"] + sorted(df_sim["Pista"].dropna().astype(str).unique().tolist())
-    opciones_avion = ["✈️ TODOS LOS EQUIPOS"] + sorted(df_sim["Equipo"].dropna().unique().tolist())
-    
-    lista_aviones_pura = sorted(df_sim["Equipo"].dropna().unique().tolist())
-
-    # =================================================================
-    # 🎛️ PANEL DE CONTROL GERENCIAL (Filtros en 6 Columnas)
-    # =================================================================
-    with st.container(border=True):
-        st.markdown("#### 🎛️ Filtros de Escenario")
-        f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.2, 1, 1.2, 0.8])
-        
-        fecha_ini = f1.date_input("📅 F. Inicial", value=min_date)
-        fecha_fin = f2.date_input("📆 F. Final", value=max_date)
-        finca_sel = f3.selectbox("📍 Finca", opciones_finca)
-        pista_sel = f4.selectbox("🛣️ Pista", opciones_pista)
-        equipo_sel = f5.selectbox("✈️ Equipo Fijo", opciones_avion)
-        multiplicador = f6.number_input("✖️ Mult.", value=1.112, format="%.3f")
-
-        st.markdown("---")
-        st.markdown("#### ✈️ Tarifas Dinámicas de Flota Real (Hora Avión / Ha Dron)")
-        cols_av = st.columns(4)
-        tarifas_aviones = {}
-        
-        # Genera casillas SOLO para tus modelos reales de la Tabla 1
-        for i, avion in enumerate(lista_aviones_pura):
-            with cols_av[i % 4]:
-                val_defecto = 84428.0 if "DRON" in avion or "DRONE" in avion else 4606562.0
-                tarifas_aviones[avion] = st.number_input(f"💰 {avion}", value=val_defecto, step=10000.0, key=f"av_{i}")
-
-    # --- FILTRAR ---
-    df_filtrado = df_sim[(df_sim['Fecha_DT'].dt.date >= fecha_ini) & (df_sim['Fecha_DT'].dt.date <= fecha_fin)].copy()
-
-    if finca_sel != "🌍 TODAS LAS FINCAS": df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
-    if pista_sel != "🛣️ TODAS LAS PISTAS": df_filtrado = df_filtrado[df_filtrado["Pista"] == pista_sel]
-    if equipo_sel != "✈️ TODOS LOS EQUIPOS": df_filtrado = df_filtrado[df_filtrado["Equipo"] == equipo_sel]
-
-    if df_filtrado.empty:
-        st.warning("📭 No hay vuelos registrados con esos criterios en las fechas seleccionadas.")
-        return
-
-    # =================================================================
-    # 🧠 MOTOR FINANCIERO CON LÓGICA DUAL REAL
-    # =================================================================
-    df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
-    
-    def calcular_costo_ha(row):
-        # Si el modelo es un Dron o el odómetro está en cero, cobra tarifa plana por hectárea
-        if "DRON" in row["Equipo"] or "DRONE" in row["Equipo"] or row["Horometro"] == 0:
-            return row["Tarifa_Aplicada"] * multiplicador
-        else:
-            # Si es Avión, calcula en base a tiempo volado / hectáreas
-            return ((row["Tarifa_Aplicada"] * row["Horometro"]) / row["Hectareas"]) * multiplicador
-
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_costo_ha, axis=1)
-    
-    df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
-    df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
-    df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
-
-    df_agrupado = df_filtrado.groupby(["Pista", "Finca", "Equipo"]).agg({
-        "Hectareas": "sum",
-        "Horometro": "sum",
-        "Total Real Facturado": "sum",
-        "Total Simulado Ideal": "sum",
-        "Lucro Cesante": "sum"
-    }).reset_index()
-
-    # =================================================================
-    # 📊 RENDERIZADO DEL DASHBOARD TÁCTICO
-    # =================================================================
-    st.markdown("---")
-    st.markdown("### 💎 Impacto Financiero de la Operación")
-    
-    t_real = df_agrupado["Total Real Facturado"].sum()
-    t_ideal = df_agrupado["Total Simulado Ideal"].sum()
-    t_perdido = df_agrupado["Lucro Cesante"].sum()
-    porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Cobro Real Registrado (Con Topes)", f"$ {t_real:,.0f}")
-    m2.metric("Cobro Matemático Puro (Sin Topes)", f"$ {t_ideal:,.0f}")
-    m3.metric("⚠️ Lucro Cesante (Brecha)", f"$ {t_perdido:,.0f}", delta=f"{porcentaje_fuga:.1f}% de fuga", delta_color="inverse")
-
-    c_grafico, c_tabla = st.columns([1.5, 1])
-
-    with c_grafico:
-        st.markdown("#### 📉 Comparativa Facturación por Finca")
-        df_g_resumen = df_agrupado.groupby("Finca")[["Total Real Facturado", "Total Simulado Ideal"]].sum().reset_index()
-        df_g = df_g_resumen.melt(id_vars="Finca", value_vars=["Total Real Facturado", "Total Simulado Ideal"], var_name="Escenario", value_name="Monto ($)")
-        fig = px.bar(df_g, x="Finca", y="Monto ($)", color="Escenario", barmode="group",
-                     color_discrete_map={"Total Real Facturado": "#1b263b", "Total Simulado Ideal": "#d4af37"})
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350, legend=dict(yanchor="top", y=1.1, xanchor="left", x=0.01))
-        st.plotly_chart(fig, use_container_width=True)
-
-    with c_tabla:
-        st.markdown("#### 📋 Reporte de Fugas por Equipo y Pista")
-        df_mostrar = df_agrupado[["Pista", "Finca", "Equipo", "Hectareas", "Lucro Cesante"]].copy()
-        df_mostrar["Lucro Cesante"] = df_mostrar["Lucro Cesante"].apply(lambda x: f"$ {x:,.0f}")
-        df_mostrar["Hectareas"] = df_mostrar["Hectareas"].apply(lambda x: f"{x:,.1f}")
-        st.dataframe(df_mostrar.sort_values(by=["Lucro Cesante"], ascending=False), use_container_width=True, hide_index=True)
-
-if __name__ == "__main__":
-    ejecutar()
+                st.download_button(
+                    label="💾 DESCARGAR REPORTE GERENCIAL TOP",
+                    data=buffer_rep.getvalue(),
+                    file_name=f"Reporte_Gerencial_{año_sel}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )                       
+    except Exception as e:
+        st.error(f"🚨 Falla en el sistema de radares: {e}")
