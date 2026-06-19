@@ -4,6 +4,10 @@ from datetime import datetime
 import gspread
 import time
 import base64
+import os
+
+# ⚙️ REGLA DE ORO: Configuración de página primero
+st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
 # --- 🛰️ CONEXIÓN DE HANGARES MODULARES ---
 from modulos.utilidades import purificar_lote, quitar_tildes, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro, limpiar_val_dom, procesar_fecha_pesada
@@ -19,8 +23,7 @@ import modulos.m8_reporte_hectareas as m8
 import modulos.m9_dashboard_tactico as m9
 import modulos.m10_bi_tarifas as m10
 import modulos.m11_manual_tecnico as m11 
-import modulos.m12_simulador_agro as m12 # 👈 NUEVA COORDENADA 1: IMPORTACIÓN DEL SIMULADOR
-
+import modulos.m12_simulador_agro as m12
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
@@ -40,8 +43,6 @@ try:
 except ImportError: 
     HAS_MATPLOTLIB = False
 
-st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
-
 # --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA (4%) ---
 try:
     with open("escudo.png", "rb") as image_file:
@@ -57,49 +58,75 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🛡️ ARTILLERÍA VISUAL Y CSS ---
+# --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO ---
 st.markdown("""
 <style>
-[data-testid="stToolbarActions"] { display: none !important; }
-.stAppDeployButton { display: none !important; }
-.viewerBadge_container { display: none !important; visibility: hidden !important; opacity: 0 !important; }
-div[class^="viewerBadge"] { display: none !important; }
+/* 🚫 ANIQUILACIÓN DEL GATO DE GITHUB Y BARRA SUPERIOR */
+[class^="viewerBadge_container"], [class*="viewerBadge"] { display: none !important; }
+[data-testid="stToolbar"] a, 
+[data-testid="stToolbar"] button:not([aria-label="Main menu"]):not([title="Main menu"]) {
+    display: none !important;
+}
+.stAppDeployButton, [data-testid="manage-app-button"] { display: none !important; }
 footer { display: none !important; visibility: hidden !important; }
-#MainMenu { visibility: visible !important; display: block !important; }
+
+/* 🎨 ESTILOS BASE AGROAÉREOS */
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
+
+/* CONTROL DE INPUTS EN BARRA LATERAL (Ojo de contraseña visible) */
+[data-testid="stSidebar"] input { color: #0d1b2a !important; background-color: #ffffff !important; }
+[data-testid="stSidebar"] button svg { fill: #0d1b2a !important; color: #0d1b2a !important; }
+
+/* 🛑 BOTÓN ROJO TÁCTICO EXCLUSIVO PARA "CERRAR SESIÓN" (Secondary) */
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
+[data-testid="stSidebar"] button[kind="secondary"] p { color: #ffffff !important; }
+
+/* 🟡 BOTÓN PRIMARIO INTACTO (Cargar Cócteles) */
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
+
 .titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
 .tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
-button[kind="secondary"] { background-color: transparent !important; color: #0d1b2a !important; border: 1px solid #0d1b2a !important; transition: 0.3s; }
-button[kind="secondary"]:hover { background-color: #0d1b2a !important; color: #d4af37 !important; }
-[data-testid="stSidebar"] button[kind="secondary"] { color: white !important; border: 1px solid #d4af37 !important; }
-[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #d4af37 !important; color: #0d1b2a !important; }
 div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important; }
-[data-testid="stNotification"] { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 3px 3px 10px rgba(0,0,0,0.15) !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 🔐 CONTROL DE ACCESO (LOGIN) ---
+# --- 3. 🔐 CONTROL DE ACCESO CENTRALIZADO (LOGIN) ---
 if not st.session_state['autenticado']:
+    # Ocultar barra lateral en el login
+    st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
-    c_log1, c_log2, c_log3 = st.columns([1, 1.5, 1])
+    
+    c_log1, c_log2, c_log3 = st.columns([1, 1.2, 1])
     with c_log2:
-        try: st.image("escudo.png", use_container_width=True)
-        except: st.markdown("<h2 style='text-align: center; color: #0d1b2a;'>🚀 GÉNESIS OMEGA PRO</h2>", unsafe_allow_html=True)
+        # 🪤 Trampa Antifallos Escudo
+        if os.path.exists("escudo.png"):
+            try: st.image("escudo.png", use_container_width=True)
+            except: st.markdown("<h1 style='text-align: center; color: #D97706; font-size: 5rem;'>🛡️</h1>", unsafe_allow_html=True)
+        else:
+            st.markdown("<h2 style='text-align: center; color: #0d1b2a;'>🚀 GÉNESIS OMEGA PRO</h2>", unsafe_allow_html=True)
+            
+        st.markdown("<h2 style='text-align: center; color: #0d1b2a; margin-top: 10px; font-weight: bold;'>GÉNESIS AGROAÉREO</h2>", unsafe_allow_html=True)
+        
         with st.form("Formulario"):
-            u_in = st.text_input("🛰️ Usuario:")
-            p_in = st.text_input("🔑 Contraseña:", type="password")
+            u_in = st.text_input("🛰️ Usuario:", placeholder="Ingrese su usuario")
+            p_in = st.text_input("🔑 Contraseña:", type="password", placeholder="Ingrese su contraseña")
             if st.form_submit_button("🔓 ACTIVAR SISTEMA", use_container_width=True):
                 if u_in in USUARIOS_CREDENTIALS["usernames"] and p_in == USUARIOS_CREDENTIALS["usernames"][u_in]["password"]:
-                    st.session_state['autenticado'], st.session_state['usuario_rol'], st.session_state['usuario_nombre'] = True, USUARIOS_CREDENTIALS["usernames"][u_in]["role"], USUARIOS_CREDENTIALS["usernames"][u_in]["name"]
+                    st.session_state['autenticado'] = True
+                    st.session_state['usuario_rol'] = USUARIOS_CREDENTIALS["usernames"][u_in]["role"]
+                    st.session_state['usuario_nombre'] = USUARIOS_CREDENTIALS["usernames"][u_in]["name"]
                     st.rerun()
-                else: st.error("🚨 Credenciales incorrectas.")
-    st.stop()
+                else: 
+                    st.error("🚨 Credenciales incorrectas.")
+    st.stop() # Bloquea el resto del código hasta que se inicie sesión
 
 # --- 4. CONEXIÓN SATELITAL GLOBAL ---
 @st.cache_resource(show_spinner=False)
@@ -116,21 +143,25 @@ def descargar_matriz_rapida(url, pestaña):
             if i < 2: time.sleep(2); continue
             else: return []
 
-# --- 5. MENÚ MAESTRO ---
+# --- 5. MENÚ MAESTRO TÁCTICO ---
 with st.sidebar:
-    try: st.image("escudo.png", width=150)
-    except: st.markdown("<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center; color: white; font-size:12px;'>👤 {st.session_state['usuario_nombre']}</p>", unsafe_allow_html=True)
-    
-    if st.button("🔒 Cerrar Sesión", use_container_width=True):
-        st.session_state['autenticado'], st.session_state['usuario_rol'], st.session_state['usuario_nombre'] = False, None, None
-        st.rerun()
+    # 🎯 Maniobra para Centrar Milimétricamente el Escudo
+    col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
+    with col_img2:
+        try: 
+            st.image("escudo.png", use_container_width=True)
+        except: 
+            st.markdown("<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
+            
+    st.markdown(f"<p style='text-align: center; color: white; font-size:14px; font-weight: bold;'>👤 {st.session_state['usuario_nombre']}</p>", unsafe_allow_html=True)
     st.markdown("---")
     
     if st.session_state['usuario_rol'] == "ADMIN":
-        if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True): st.cache_data.clear(); st.rerun()
-        
-        # 🎯 NUEVA COORDENADA 2: NUEVA CASILLA AGREGADA AL VECTOR DE RADIO LATERAL
+        # Botón primario (Mantiene estilo dorado)
+        if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True): 
+            st.cache_data.clear()
+            st.rerun()
+            
         menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
             "🛠️ 1. Mantenimiento Plantilla SAP", 
@@ -144,11 +175,17 @@ with st.sidebar:
             "📈 9. Dashboard Táctico", 
             "📊 10. Inteligencia de Costos (BI)",
             "📜 11. Manual de Gobierno Técnico",
-            "🚁 12. Simulador Financiero Libre" # 👈 Casilla instalada
+            "🚁 12. Simulador Financiero Libre"
         ])
     else: 
         menu = "📈 9. Dashboard Táctico"
         st.info("🛰️ Modo Consulta Gerencial Activado.")
+        
+    st.markdown("---")
+    # Botón Secundario (El CSS lo vuelve Rojo Alerta)
+    if st.button("🔒 CERRAR SESIÓN", use_container_width=True):
+        st.session_state['autenticado'], st.session_state['usuario_rol'], st.session_state['usuario_nombre'] = False, None, None
+        st.rerun()
 
 # --- 6. DELEGACIÓN A ESCUADRONES ---
 if menu == "🏠 Centro de Mando": m0.renderizar()
