@@ -61,14 +61,13 @@ except: pass
 # --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO ---
 st.markdown("""
 <style>
-/* 🚫 ANIQUILACIÓN DEL GATO DE GITHUB Y BARRA SUPERIOR */
-[class^="viewerBadge_container"], [class*="viewerBadge"] { display: none !important; }
-[data-testid="stToolbar"] a, 
-[data-testid="stToolbar"] button:not([aria-label="Main menu"]):not([title="Main menu"]) {
-    display: none !important;
-}
-.stAppDeployButton, [data-testid="manage-app-button"] { display: none !important; }
+/* 🛡️ TU CÓDIGO ORIGINAL RECUPERADO (Mantiene la hamburguesa viva y mata al gato) */
+[data-testid="stToolbarActions"] { display: none !important; }
+.stAppDeployButton { display: none !important; }
+.viewerBadge_container { display: none !important; visibility: hidden !important; opacity: 0 !important; }
+div[class^="viewerBadge"] { display: none !important; }
 footer { display: none !important; visibility: hidden !important; }
+#MainMenu { visibility: visible !important; display: block !important; }
 
 /* 🎨 ESTILOS BASE AGROAÉREOS */
 .stApp { background-color: #f4f6f9; }
@@ -97,7 +96,6 @@ th { background-color: #f0f2f6 !important; color: black !important; }
 div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important; }
 </style>
 """, unsafe_allow_html=True)
-
 # --- 3. 🔐 CONTROL DE ACCESO CENTRALIZADO (LOGIN) ---
 if not st.session_state['autenticado']:
     # Ocultar barra lateral en el login
