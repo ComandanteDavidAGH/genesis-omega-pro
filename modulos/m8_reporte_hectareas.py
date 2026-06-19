@@ -99,7 +99,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero=None, procesar_fecha_p
     
     # Limpiar filas vacías en la columna principal
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""] 
-    df_sim["Equipo"] = df_sim["Equipo"].astype(str).str.strip().upper()
+    df_sim["Equipo"] = df_sim["Equipo"].astype(str).str.strip().str.upper()
     df_sim = df_sim[df_sim["Equipo"] != ""]
 
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_numero)
