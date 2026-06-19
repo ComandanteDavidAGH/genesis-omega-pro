@@ -1,34 +1,78 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import gspread
 from datetime import datetime
+from oauth2client.service_account import ServiceAccountCredentials
 import io
 
-def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS_MATPLOTLIB):
+# =================================================================
+# 🔌 CONEXIÓN DIRECTA A BÓVEDA DE DATOS (NATIVA E INFALIBLE)
+# =================================================================
+def obtener_cliente_gspread_m8():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
+
+# =================================================================
+# 🚁 MOTOR PRINCIPAL DEL RADAR DE HECTÁREAS
+# =================================================================
+def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
+    # --- FUNCIONES DE FALLBACK LOCALES (Por si las externas fallan) ---
+    def extraer_numero(val):
+        if pd.isna(val) or str(val).strip() == "": return 0.0
+        try:
+            texto = str(val).upper().replace("$", "").replace("COP", "").strip()
+            if "," in texto and "." in texto: texto = texto.replace(".", "").replace(",", ".")
+            elif "," in texto: texto = texto.replace(",", ".")
+            return float(texto.replace(" ", ""))
+        except: return 0.0
+
+    def procesar_fecha_pesada(val):
+        if pd.isna(val) or str(val).strip() == "": return None
+        for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d'):
+            try: return datetime.strptime(str(val).strip(), fmt)
+            except: pass
+        return None
+
+    # --- DESPLIEGUE DE CONEXIÓN ---
     try:
-        with st.spinner("🛰️ Escaneando la Bóveda Maestra con Motor Turbo (TABLA 1)..."):
-            url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-            datos_brutos = descargar_matriz_rapida(url_maestra, "TABLA 1")
+        with st.spinner("🛰️ Escaneando la Bóveda Maestra con Motor Nativo (TABLA 1)..."):
+            gc = obtener_cliente_gspread_m8()
+            if not gc:
+                st.error("🚨 ALERTA ROJA: El conector gspread no pudo inicializarse. Revise el formato de [gcp_service_account] en los secretos.")
+                return
+                
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            datos_brutos = boveda.worksheet("TABLA 1").get_all_values()
             
         # =================================================================
-        # 🚨 TRAMPA DE DIAGNÓSTICO (Para evitar pantallas blancas)
+        # 🪤 TRAMPA DE DIAGNÓSTICO INTERNA
         # =================================================================
         if not datos_brutos:
-            st.error("🚨 ALERTA ROJA: Falla de conexión con Google Sheets. La Bóveda (TABLA 1) no envió información.")
+            st.error("🚨 ALERTA ROJA: Conexión establecida pero la pestaña 'TABLA 1' está totalmente vacía.")
             return
         elif len(datos_brutos) <= 5:
-            st.warning(f"⚠️ La TABLA 1 tiene solo {len(datos_brutos)} filas. Se requieren más de 5 filas para encender el radar.")
+            st.warning(f"⚠️ La 'TABLA 1' existe pero solo tiene {len(datos_brutos)} filas. Se necesitan más de 5 filas.")
             return
         # =================================================================
             
         if len(datos_brutos) > 5:
             columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
             
+            # Recortamos a partir de la fila 6 (índice 5) y limitamos a 24 columnas exactas
             filas_limpias = [r + [""]*(24 - len(r)) for r in datos_brutos[5:]]
             df_rep = pd.DataFrame([r[:24] for r in filas_limpias], columns=columnas)
             
+            # Aplicamos limpieza de datos blindada
             df_rep['HA_NETAS'] = df_rep['HA_NETAS'].apply(extraer_numero)
             df_rep['H_PROPORCIONAL'] = df_rep['H_PROPORCIONAL'].apply(extraer_numero)
             df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
@@ -177,11 +221,11 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
 
                     borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), 
                                        top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
-                    fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    fuente_blanca = Font(color="FFFFFF", bold=True, size=11)
-                    fondo_meses = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
-                    fondo_sub = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-                    fondo_total = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
+                    navy_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    white_font = Font(color="FFFFFF", bold=True, size=11)
+                    months_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+                    sub_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+                    total_fill = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
 
                     max_row = worksheet.max_row
                     max_col = worksheet.max_column
@@ -212,7 +256,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
                             if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
                                 cell.number_format = '#,##0.00'
                             if cell.row == 1:
-                                cell.fill = fondo_navy; cell.font = fuente_blanca
+                                cell.fill = navy_fill; cell.font = white_font
                                 cell.alignment = Alignment(horizontal='center', vertical='center')
                             else:
                                 cell.alignment = Alignment(vertical='center', indent=1)
@@ -220,11 +264,11 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
                             if "Gerencial" in vista_seleccionada and cell.row > 1:
                                 nivel_v = str(worksheet.cell(row=cell.row, column=1).value or "").strip()
                                 if "➖" in nivel_v:
-                                    cell.fill = fondo_sub; cell.font = Font(bold=True)
+                                    cell.fill = sub_fill; cell.font = Font(bold=True)
                                 elif "TOTAL GENERAL" in nivel_v:
-                                    cell.fill = fondo_total; cell.font = Font(bold=True, color="FFFFFF")
+                                    cell.fill = total_fill; cell.font = Font(bold=True, color="FFFFFF")
                                 elif nivel_v == "" or nivel_v == "None":
-                                    cell.fill = fondo_meses
+                                    cell.fill = months_fill
 
                     chart = BarChart()
                     chart.type = "col"; chart.style = 10
