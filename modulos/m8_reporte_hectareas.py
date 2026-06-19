@@ -12,6 +12,17 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS
             url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
             datos_brutos = descargar_matriz_rapida(url_maestra, "TABLA 1")
             
+        # =================================================================
+        # 🚨 TRAMPA DE DIAGNÓSTICO (Para evitar pantallas blancas)
+        # =================================================================
+        if not datos_brutos:
+            st.error("🚨 ALERTA ROJA: Falla de conexión con Google Sheets. La Bóveda (TABLA 1) no envió información.")
+            return
+        elif len(datos_brutos) <= 5:
+            st.warning(f"⚠️ La TABLA 1 tiene solo {len(datos_brutos)} filas. Se requieren más de 5 filas para encender el radar.")
+            return
+        # =================================================================
+            
         if len(datos_brutos) > 5:
             columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
             
