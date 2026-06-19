@@ -232,19 +232,30 @@ def ejecutar(quitar_tildes, purificar_lote):
                     df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
                     df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().str.upper()
                     
-                    # 🌟 FIX LIMPIEZA REGIONAL DE NÚMEROS LATAM / SAP
+                    # 🌟 FIX DEFINITIVO: LIMPIEZA REGIONAL Y RESPETO DE DECIMALES SAP
                     def limpiar_numeros_sap(x):
                         if pd.isna(x): return 0.0
+                        
+                        # 1. ESCUDO PRIMARIO: Si Excel ya lo entendió como número, no lo tocamos.
+                        if isinstance(x, (int, float)):
+                            return float(x)
+                            
+                        # 2. Si SAP lo envió como texto puro, procedemos a limpiarlo
                         s = str(x).strip().replace(' ', '')
                         if not s or s.lower() == 'nan': return 0.0
                         
+                        # 3. Tratamiento de formatos europeos/latinos (Ej: 1.234,56)
                         if '.' in s and ',' in s:
-                            s = s.replace('.', '').replace(',', '.')
+                            # Comparamos cuál está al final para saber cuál es el decimal real
+                            if s.rfind(',') > s.rfind('.'):
+                                s = s.replace('.', '').replace(',', '.')
+                            else:
+                                s = s.replace(',', '')
                         elif ',' in s:
+                            # En SAP LATAM, la coma solitaria siempre es el decimal (23,144 -> 23.144)
                             s = s.replace(',', '.')
-                        elif '.' in s:
-                            if s.endswith('.0'): s = s[:-2]
-                            elif len(s.split('.')[-1]) == 3: s = s.replace('.', '')
+                            
+                        # 4. Conversión a matemática pura (sin la regla destructiva de los 3 ceros)
                         try: return float(s)
                         except: return 0.0
 
