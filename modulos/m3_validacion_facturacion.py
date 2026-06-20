@@ -432,8 +432,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     # ===========================================================================
     # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO (Sincronización robusta de TABLA 2)
     # ===========================================================================
+    
+    # 💥 PURGA TÁCTICA: Obligamos al sistema a olvidar precios viejos y buscar los nuevos
+    if 'purga_precios' not in st.session_state:
+        if 'df_config_base' in st.session_state: del st.session_state['df_config_base']
+        st.session_state['purga_precios'] = True
+
     if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
-        with st.spinner("📡 Descargando bases maestras de Fincas y Configuración desde Google Drive..."):
+        with st.spinner("📡 Descargando bases maestras de Fincas y Configuración actualizadas desde Google Drive..."):
             gc_maestro = obtener_cliente_gspread_unificado()
             if not gc_maestro:
                 st.error("❌ Error de Credenciales: No se pudo inicializar el enlace de Google Drive. Revise el secreto 'gcp_service_account' en Streamlit Cloud.")
