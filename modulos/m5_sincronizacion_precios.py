@@ -162,11 +162,22 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
                     st.info(f"🎯 Valores calculados para: **{prod_sel}**")
                     c1, c2, c3, c4, c5 = st.columns(5)
-                    with c1: st.code(fmt_sap(datos_prod["COSTO BASE"]))
-                    with c2: st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
-                    with c3: st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
-                    with c4: st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
-                    with c5: st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
+                    
+                    with c1: 
+                        st.caption("🏷️ COSTO BASE")
+                        st.code(fmt_sap(datos_prod["COSTO BASE"]))
+                    with c2: 
+                        st.caption("🌱 ORGÁNICO (+1.1%)")
+                        st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
+                    with c3: 
+                        st.caption("🤝 COOPERATIVA (+11.2%)")
+                        st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
+                    with c4: 
+                        st.caption("🏢 AFILIADO (+16.4%)")
+                        st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
+                    with c5: 
+                        st.caption("👤 TERCERO (+45.1%)")
+                        st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
                         
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
