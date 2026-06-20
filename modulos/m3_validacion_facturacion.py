@@ -889,6 +889,30 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
                             if idx_saldo != -1: saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
 
+                # =====================================================================
+                # 🔒 PROTOCOLO DE BLINDAJE: FORZAR PRECIO DE BÓVEDA MAESTRA (V12)
+                # =====================================================================
+                try:
+                    if not df_cfg.empty:
+                        c_p_i, c_c_i = 8, 9
+                        for i_cfg in range(min(5, len(df_cfg))):
+                            r_c = df_cfg.iloc[i_cfg].astype(str).str.upper().tolist()
+                            if 'PRODUCTO' in r_c and 'COSTO' in r_c: 
+                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
+                                break
+                        
+                        # Escanear matriz en busca del producto
+                        mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
+                        if not mask_cfg.any(): mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
+                        
+                        if mask_cfg.any():
+                            precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
+                            if precio_maestro > 0:
+                                costo_unit = float(precio_maestro) # 💥 REESCRIBE Y ANULA EL PRECIO FLOTANTE DE SAP
+                except Exception as e:
+                    pass
+                # =====================================================================
+
                 total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
