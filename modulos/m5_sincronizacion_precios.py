@@ -163,20 +163,23 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     st.info(f"🎯 Valores calculados para: **{prod_sel}**")
                     c1, c2, c3, c4, c5 = st.columns(5)
                     
+                    # 🎨 Estilo forzado: Letra oscura, gruesa y fácil de leer
+                    estilo_etiqueta = "font-size: 13px; font-weight: 900; color: #0d1b2a; margin-bottom: 2px; letter-spacing: 0.5px;"
+                    
                     with c1: 
-                        st.caption("🏷️ COSTO BASE")
+                        st.markdown(f"<p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COSTO BASE"]))
                     with c2: 
-                        st.caption("🌱 ORGÁNICO (+1.1%)")
+                        st.markdown(f"<p style='{estilo_etiqueta}'>🌱 ORGÁNICO (+1.1%)</p>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
                     with c3: 
-                        st.caption("🤝 COOPERATIVA (+11.2%)")
+                        st.markdown(f"<p style='{estilo_etiqueta}'>🤝 SOCIO / COOP (+11.2%)</p>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
                     with c4: 
-                        st.caption("🏢 AFILIADO (+16.4%)")
+                        st.markdown(f"<p style='{estilo_etiqueta}'>🏢 AFILIADO (+16.4%)</p>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
                     with c5: 
-                        st.caption("👤 TERCERO (+45.1%)")
+                        st.markdown(f"<p style='{estilo_etiqueta}'>👤 TERCERO (+45.1%)</p>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
                         
     st.markdown("---")
