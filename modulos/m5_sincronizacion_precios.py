@@ -157,29 +157,42 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     
             with t3:
                 st.markdown("#### Búsqueda Rápida Individual")
+                
+                # 🎨 INYECCIÓN CSS: Bordes negros para las casillas de resultados
+                st.markdown("""
+                <style>
+                div[data-testid="stCodeBlock"] {
+                    border: 2px solid #000000 !important;
+                    border-radius: 6px !important;
+                    background-color: #f8f9fa !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
                 prod_sel = st.selectbox("🔍 Buscar Producto Específico:", df_t["PRODUCTO"].tolist())
                 if prod_sel:
                     datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
                     st.info(f"🎯 Valores calculados para: **{prod_sel}**")
                     c1, c2, c3, c4, c5 = st.columns(5)
                     
-                    # 🎨 Estilo forzado: Letra oscura, gruesa y fácil de leer
-                    estilo_etiqueta = "font-size: 13px; font-weight: 900; color: #0d1b2a; margin-bottom: 2px; letter-spacing: 0.5px;"
+                    # 📏 Estructura de altura fija para absorber saltos de línea sin desalinear
+                    caja_titulo = "height: 45px; display: flex; align-items: flex-end; margin-bottom: 5px;"
+                    estilo_etiqueta = "font-size: 11px; font-weight: 900; color: #0d1b2a; margin: 0; line-height: 1.2;"
                     
                     with c1: 
-                        st.markdown(f"<p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COSTO BASE"]))
                     with c2: 
-                        st.markdown(f"<p style='{estilo_etiqueta}'>🌱 ORGÁNICO (+1.1%)</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO<br>(+1.1%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
                     with c3: 
-                        st.markdown(f"<p style='{estilo_etiqueta}'>🤝 SOCIO / COOP (+11.2%)</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP<br>(+11.2%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
                     with c4: 
-                        st.markdown(f"<p style='{estilo_etiqueta}'>🏢 AFILIADO (+16.4%)</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO<br>(+16.4%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
                     with c5: 
-                        st.markdown(f"<p style='{estilo_etiqueta}'>👤 TERCERO (+45.1%)</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO<br>(+45.1%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
                         
     st.markdown("---")
