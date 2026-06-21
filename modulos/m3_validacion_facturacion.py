@@ -373,7 +373,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 for item in prods_f:
                     if "ACONDICIONADOR" in item["PRODUCTO"]: 
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ",""): 
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""): 
+                        item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0 
                         # 🧪 REGLA DEFINITIVA: Separar la base de la sigla
                         coctel_txt = coctel_sim.strip().upper()
                         base_c = coctel_txt.split()[0] if len(coctel_txt.split()) > 0 else ""
@@ -930,7 +931,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                elif "IMBIOSIL" in nombre_limpio.replace(" ",""): 
+                elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
+                    dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0 
                     # 📡 REGLA DEFINITIVA SAP: Separar la base de la sigla
                     coctel_txt = coctel_ganador.strip().upper()
                     base_c = coctel_txt.split()[0] if len(coctel_txt.split()) > 0 else ""
