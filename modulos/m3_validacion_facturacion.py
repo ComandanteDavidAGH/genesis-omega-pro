@@ -373,11 +373,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 for item in prods_f:
                     if "ACONDICIONADOR" in item["PRODUCTO"]: 
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ","") or "INBIOMAG" in item["PRODUCTO"]: 
-                        # REGLA DE DOSIS INTELIGENTE: Si la base es "IN" (solo) o "IMBIOSIL O", es aplicación directa (1.5).
-                        # Cualquier otro cóctel (IN6, IN2, CO, etc.) significa que va en mezcla (1.0).
-                        if base_c.strip().upper() in ["IN", "IMBIOSIL O"]:
-                            item["DOSIS"] = 1.5
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ",""): 
+                        # 🧪 REGLA DEFINITIVA: Separar la base de la sigla
+                        coctel_txt = coctel_sim.strip().upper()
+                        base_c = coctel_txt.split()[0] if len(coctel_txt.split()) > 0 else ""
+                        
+                        if base_c.startswith("IN") or "IMBIOSIL" in base_c:
+                            item["DOSIS"] = 1.5  # Va Solo (Ej: IN, IN6, IN6 IN, IMBIOSIL O)
+                        else:
+                            item["DOSIS"] = 1.0  # Va en Mezcla (Ej: KRMN63 IN, OPMN53 IN)
                         else:
                             item["DOSIS"] = 1.0
 
@@ -926,10 +930,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                elif "IMBIOSIL" in nombre_limpio.replace(" ","") or "INBIOMAG" in nombre_limpio: 
-                    # REGLA DE DOSIS INTELIGENTE SAP:
-                    es_aplicacion_sola = coctel_piloto_base.strip().upper() in ["IN", "IMBIOSIL", "IMBIOSIL O"]
-                    dosis_teorica = 1.5 if es_aplicacion_sola else 1.0
+                elif "IMBIOSIL" in nombre_limpio.replace(" ",""): 
+                    # 📡 REGLA DEFINITIVA SAP: Separar la base de la sigla
+                    coctel_txt = coctel_ganador.strip().upper()
+                    base_c = coctel_txt.split()[0] if len(coctel_txt.split()) > 0 else ""
+                    
+                    if base_c.startswith("IN") or "IMBIOSIL" in base_c:
+                        dosis_teorica = 1.5  # Va Solo (Ej: IN, IN6, IN6 IN, IMBIOSIL O)
+                    else:
+                        dosis_teorica = 1.0  # Va en Mezcla (Ej: KRMN63 IN, OPMN53 IN)
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
