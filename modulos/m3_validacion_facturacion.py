@@ -95,45 +95,74 @@ def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
-    max_p = -999
+    max_p = -9999
 
     for iter_id, receta in dict_recetas.items():
-        es_valido = True
         puntaje = 0
-        lider_db = dict_lideres.get(iter_id, "")
+        es_valido = True
         
-        match_lider = False
+        # 1. VALIDACIÓN DEL LÍDER (Solo si la receta exige un líder con 'X')
+        lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
+            match_lider = False
             for k_sap in sap_dict_pista.keys():
                 if lider_db == k_sap or (len(k_sap) >= 4 and lider_db in k_sap) or (len(lider_db) >= 4 and k_sap in lider_db):
                     match_lider = True
                     break
+            if not match_lider:
+                es_valido = False # Si pide líder y no está en SAP, se descarta el cóctel.
         
-        if match_lider: puntaje += 1000
-        else: es_valido = False
+        if not es_valido:
+            continue
 
-        if es_valido:
-            if iter_id == coctel_piloto_base: puntaje += 10000
+        # 2. ANÁLISIS QUÍMICO RIGUROSO (SAP vs Receta)
+        # A. Revisar qué pide la receta vs qué hay en SAP
+        for p_receta, d_esperada in receta.items():
+            match_receta = False
+            dose_matched = False
+            for k_sap, d_sap in sap_dict_pista.items():
+                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
+                    match_receta = True
+                    if abs(d_sap - d_esperada) <= 0.5: dose_matched = True 
+                    break
+            
+            if match_receta:
+                puntaje += 100  # +100 por cada producto que coincide
+                if dose_matched: puntaje += 20  # Bono por dosis exacta
+            else:
+                puntaje -= 100  # -100 si la receta exige un producto que SAP NO trajo
 
-            for p_receta, d_esperada in receta.items():
-                match_receta = False
-                dose_matched = False
-                for k_sap, d_sap in sap_dict_pista.items():
-                    if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
-                        match_receta = True
-                        if abs(d_sap - d_esperada) <= 0.5: dose_matched = True 
+        # B. Revisar qué trajo SAP vs qué pide la receta (Penalizar productos invasores)
+        for k_sap in sap_dict_pista.keys():
+            sap_en_receta = False
+            for p_receta in receta.keys():
+                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
+                    sap_en_receta = True
+                    break
+            
+            if not sap_en_receta:
+                # Si el producto extra de SAP es un fertilizante, no penalizamos al cóctel base
+                is_fert = False
+                for f_name in dict_fertilizantes.keys():
+                    if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
+                        is_fert = True
                         break
                 
-                if match_receta: puntaje += 50 if dose_matched else 10
-                else: 
-                    es_valido = False
-                    break
+                if not is_fert:
+                    puntaje -= 100  # -100 si SAP trajo un producto invasor (como BANADAK) que la receta no pide
 
-        if es_valido and puntaje > max_p:
+        # 3. EL PILOTO YA NO ES DIOS (Bono de desempate en lugar de dominio absoluto)
+        if iter_id == coctel_piloto_base: 
+            puntaje += 50
+
+        # 4. CORONAR AL GANADOR
+        if puntaje > max_p:
             max_p = puntaje
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
+    # ---------------------------------------------------------
+    # AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
@@ -144,7 +173,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
-
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
