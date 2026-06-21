@@ -374,18 +374,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if "ACONDICIONADOR" in item["PRODUCTO"]: 
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""): 
-                        item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0 
-                        # 🧪 REGLA DEFINITIVA: Separar la base de la sigla
-                        coctel_txt = coctel_sim.strip().upper()
-                        base_c = coctel_txt.split()[0] if len(coctel_txt.split()) > 0 else ""
-                        
-                        if base_c.startswith("IN") or "IMBIOSIL" in base_c:
-                            item["DOSIS"] = 1.5  # Va Solo (Ej: IN, IN6, IN6 IN, IMBIOSIL O)
-                        else:
-                            item["DOSIS"] = 1.0  # Va en Mezcla (Ej: KRMN63 IN, OPMN53 IN)
-                        else:
-                            item["DOSIS"] = 1.0
-
+                        item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0
                 tabla_visual = []
                 mezcla_total = 0
                 c_p_i, c_c_i = 8, 9 
@@ -932,15 +921,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if "ACONDICIONADOR" in nombre_limpio: 
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
-                    dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0 
-                    # 📡 REGLA DEFINITIVA SAP: Separar la base de la sigla
-                    coctel_txt = coctel_ganador.strip().upper()
-                    base_c = coctel_txt.split()[0] if len(coctel_txt.split()) > 0 else ""
-                    
-                    if base_c.startswith("IN") or "IMBIOSIL" in base_c:
-                        dosis_teorica = 1.5  # Va Solo (Ej: IN, IN6, IN6 IN, IMBIOSIL O)
-                    else:
-                        dosis_teorica = 1.0  # Va en Mezcla (Ej: KRMN63 IN, OPMN53 IN)
+                    dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                 
                 if dosis_teorica is None: dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                     
