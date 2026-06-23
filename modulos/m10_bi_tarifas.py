@@ -99,8 +99,14 @@ def cargar_boveda_recetas_y_precios():
         if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        
+        # 💥 CARGA ROBUSTA DE RECETAS (Evita filas vacías)
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-        df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0]) if len(data_mez) > 1 else pd.DataFrame()
+        idx_mez = 0
+        for i in range(min(5, len(data_mez))):
+            if any('COCTEL' in str(c).upper() for c in data_mez[i]) or any('SIGLA' in str(c).upper() for c in data_mez[i]):
+                idx_mez = i; break
+        df_mezclas = pd.DataFrame(data_mez[idx_mez+1:], columns=data_mez[idx_mez]) if len(data_mez) > idx_mez else pd.DataFrame()
         if not df_mezclas.empty:
             df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:,0].astype(str).str.upper().str.replace(" ", "")
             
@@ -124,17 +130,12 @@ def cargar_boveda_recetas_y_precios():
             if idx_header != -1:
                 for row in datos_hoja[idx_header+1:]:
                     if len(row) > max(col_anio, col_prod):
-                        anio_str, prod_str = str(row[col_anio]).strip().upper()
-                        if anio_str and prod_str:
-                            col_inicio_semanas = max(col_anio, col_prod) + 1
-                            valores_semana = []
-                            for v in row[col_inicio_semanas:]:
-                                try:
-                                    v_num = float(str(v).strip().replace(',', '.'))
-                                    if v_num > 0: valores_semana.append(v_num)
-                                except: pass
-                            promedio = sum(valores_semana)/len(valores_semana) if valores_semana else 0.0
-                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': prod_str, 'PRECIO_PROM': promedio})
+                        anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
+                        if anio_str and str_prod:
+                            col_inicio = max(col_anio, col_prod) + 1
+                            vals = [float(str(v).strip().replace(',', '.')) for v in row[col_inicio:] if str(v).strip().replace(',', '.').replace('-','').replace('.','').isdigit()]
+                            prom = sum(vals)/len(vals) if vals else 0.0
+                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRECIO_PROM': prom})
 
         df_precios = pd.DataFrame(precios_consolidados)
         return df_mezclas, df_conf, df_dicc, df_precios, df_t2
