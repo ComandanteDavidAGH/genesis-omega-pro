@@ -698,15 +698,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown(f"### 📦 Nivel 3: Consumo Volumétrico de Insumos ({año_comp})")
         st.info(f"Cálculo volumétrico avanzado basado en el comportamiento individual de las siglas para **{area_b:,.1f} Ha**.")
 
-        if not df_periodo_b.empty and 'COCTEL_MAESTRO' in df_periodo_b.columns:
+        # 🔥 CORRECCIÓN TÁCTICA: Ahora usa 'col_coctel' para que no importa si la base dice "COCTEL" o "COCTEL_MAESTRO"
+        if not df_periodo_b.empty and col_coctel and col_coctel in df_periodo_b.columns:
             with st.spinner("Desglosando matrices químicas..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
-                    resumen_ha = df_periodo_b.groupby('COCTEL_MAESTRO')['AREA_NUM'].sum().reset_index()
+                    resumen_ha = df_periodo_b.groupby(col_coctel)['AREA_NUM'].sum().reset_index()
                     consumo_log = {}
 
                     for _, fila in resumen_ha.iterrows():
-                        nombre_coctel = str(fila['COCTEL_MAESTRO']).upper().strip()
+                        nombre_coctel = str(fila[col_coctel]).upper().strip()
                         ha_aplicadas = fila['AREA_NUM']
                         if ha_aplicadas <= 0 or nombre_coctel in ["NAN", ""]: continue
 
@@ -730,7 +731,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
-
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
