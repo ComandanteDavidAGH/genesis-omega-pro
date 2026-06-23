@@ -326,18 +326,40 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
+        # =====================================================================
+        # 🎛️ PANEL TÁCTICO DE TIEMPO Y ESPACIO (Con Rango Personalizado)
+        # =====================================================================
         t1, t2, t3, t4 = st.columns(4)
         año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=(1 if len(años_disp) > 1 else 0))
         año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
-        tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES"])
+        
+        # 🟢 1. AGREGAMOS EL RANGO PERSONALIZADO A LA LUPA TEMPORAL
+        tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES", "RANGO PERSONALIZADO"])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
         
+        # Función auxiliar para alinear años garantizando comparaciones justas (YoY)
+        def alinear_anio(fecha, nuevo_anio):
+            try: return fecha.replace(year=nuevo_anio)
+            except ValueError: return fecha.replace(year=nuevo_anio, day=28) # Blindaje bisiesto
+
         if tipo_periodo == "POR TRIMESTRE":
             periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
             etiq_periodo = f"Q{periodo_sel}"
         elif tipo_periodo == "POR MES":
             periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
             etiq_periodo = meses_dict[periodo_sel]
+        elif tipo_periodo == "RANGO PERSONALIZADO":
+            # 🟢 2. SE DESPLIEGA EL CALENDARIO DE RANGO LIBRE
+            rango_val = t4.date_input("🎯 Seleccione Rango (Inicio - Fin)", value=[], key="rango_bi")
+            
+            if isinstance(rango_val, tuple) and len(rango_val) == 2:
+                fecha_inicio, fecha_fin = rango_val
+            elif isinstance(rango_val, tuple) and len(rango_val) == 1:
+                fecha_inicio = fecha_fin = rango_val[0]
+            else:
+                fecha_inicio = fecha_fin = datetime.now().date()
+                
+            etiq_periodo = f"{fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')}"
         else:
             t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
             periodo_sel, etiq_periodo = "TODOS", "Total"
@@ -346,17 +368,28 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
 
-        df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
-        df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
-        
-        if tipo_periodo == "POR TRIMESTRE":
-            df_periodo_a = df_periodo_a[df_periodo_a['TRIMESTRE'] == periodo_sel]
-            df_periodo_b = df_periodo_b[df_periodo_b['TRIMESTRE'] == periodo_sel]
-        elif tipo_periodo == "POR MES":
-            df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
-            df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
+        # 🟢 3. FILTRADO INTELIGENTE DEPENDIENDO DE LA LUPA
+        if tipo_periodo == "RANGO PERSONALIZADO":
+            # Ajustamos el rango elegido a los años seleccionados en T1 y T2
+            f_ini_b = alinear_anio(fecha_inicio, año_comp)
+            f_fin_b = alinear_anio(fecha_fin, año_comp)
+            df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= f_ini_b) & (df_finca['FECHA_DT'].dt.date <= f_fin_b)].copy()
+            
+            f_ini_a = alinear_anio(fecha_inicio, año_base)
+            f_fin_a = alinear_anio(fecha_fin, año_base)
+            df_periodo_a = df_finca[(df_finca['FECHA_DT'].dt.date >= f_ini_a) & (df_finca['FECHA_DT'].dt.date <= f_fin_a)].copy()
+        else:
+            df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
+            df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
+            
+            if tipo_periodo == "POR TRIMESTRE":
+                df_periodo_a = df_periodo_a[df_periodo_a['TRIMESTRE'] == periodo_sel]
+                df_periodo_b = df_periodo_b[df_periodo_b['TRIMESTRE'] == periodo_sel]
+            elif tipo_periodo == "POR MES":
+                df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
+                df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🎯 CORRECCIÓN FRACCIONAMIENTO: Ya no usamos drop_duplicates para respetar los fraccionamientos de SAP.
+        # 🎯 CORRECCIÓN FRACCIONAMIENTO (Conservamos fraccionamientos de SAP)
         df_area_a = df_periodo_a.copy()
         df_area_b = df_periodo_b.copy()
 
