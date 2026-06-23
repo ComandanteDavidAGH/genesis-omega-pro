@@ -698,16 +698,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown(f"### 📦 Nivel 3: Consumo Volumétrico de Insumos ({año_comp})")
         st.info(f"Cálculo volumétrico avanzado basado en el comportamiento individual de las siglas para **{area_b:,.1f} Ha**.")
 
-        # 🔥 CORRECCIÓN TÁCTICA: Ahora usa 'col_coctel' para que no importa si la base dice "COCTEL" o "COCTEL_MAESTRO"
-        if not df_periodo_b.empty and col_coctel and col_coctel in df_periodo_b.columns:
+        # 💥 RADAR INTELIGENTE: Busca la columna sin importar espacios invisibles
+        c_coctel = next((c for c in df_periodo_b.columns if 'COCTEL' in str(c).upper()), None)
+
+        if not df_periodo_b.empty and c_coctel:
             with st.spinner("Desglosando matrices químicas..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
-                    resumen_ha = df_periodo_b.groupby(col_coctel)['AREA_NUM'].sum().reset_index()
+                    resumen_ha = df_periodo_b.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
                     consumo_log = {}
 
                     for _, fila in resumen_ha.iterrows():
-                        nombre_coctel = str(fila[col_coctel]).upper().strip()
+                        nombre_coctel = str(fila[c_coctel]).upper().strip()
                         ha_aplicadas = fila['AREA_NUM']
                         if ha_aplicadas <= 0 or nombre_coctel in ["NAN", ""]: continue
 
@@ -729,8 +731,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             fig = px.bar(df_log.head(10), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", text_auto='.1f', title="Top 10 Insumos")
                             fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
                             st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning(f"⚠️ Radar vacío. El sistema procesó los cócteles (ej: '{resumen_ha.iloc[0][c_coctel]}') pero no encontró coincidencias en la pestaña DD_Mesclas.")
                 except Exception as e:
-                    st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
+                    st.error(f"🚨 Error interno en el motor logístico: {e}")
+        else:
+            st.error("🚨 CRÍTICO: No se detectó la columna de Cócteles en la base de datos para este periodo.")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
