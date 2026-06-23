@@ -196,16 +196,16 @@ def limpiar_dinero(val):
     except: return 0.0
 
 # =================================================================
-# 🔑 CEREBRO QUÍMICO AVANZADO (Cálculo de Dosis Reales para BI)
+# 🔑 CEREBRO QUÍMICO HÍBRIDO (Lectura de Excel + Reglas Dinámicas)
 # =================================================================
 def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
-    coctel_crudo = str(coctel_sel).upper().replace(" ", "")
-    partes_coctel = coctel_crudo.split('+')
-    base_coctel, aditivos = partes_coctel[0], partes_coctel[1:] if len(partes_coctel) > 1 else []
+    # 1. Separación limpia de Base y Aditivos
+    coctel_u = str(coctel_sel).upper().strip()
+    coctel_norm = coctel_u.replace("+", " ").replace("-", " ")
+    partes_coctel = coctel_norm.split()
     
-    match_num = re.search(r'\d+', base_coctel)
-    dosis_aceite = int(match_num.group()) if match_num else 0
-    solo_letras = re.sub(r'\d+', '', base_coctel)
+    base_coctel = partes_coctel[0] if len(partes_coctel) > 0 else ""
+    aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
     
     dict_prods = {}
     es_organico = False
@@ -213,59 +213,60 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
     try:
         if not df_t2.empty:
             match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
-            if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
+            if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): 
+                es_organico = True
     except: pass
 
-    # Búsqueda en Mezclas (Base)
-    receta_base = pd.DataFrame()
-    if not df_mezclas.empty:
-        c_p = f"{base_coctel}O" if es_organico and not base_coctel.endswith('O') else base_coctel
-        receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == c_p]
-        if receta_base.empty: receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
-
-    if not receta_base.empty:
-        for _, r in receta_base.iterrows():
-            p, d = str(r.iloc[1]).strip().upper(), limpiar_area(r.iloc[2])
-            if d > 0 and p not in ['NAN', '']: dict_prods[p] = d
+    if es_organico and not base_coctel.endswith('O'):
+        base_buscar = f"{base_coctel}O"
     else:
-        # Fallback a Diccionario de Siglas si no existe en Mezclas
-        if not df_dicc.empty:
-            siglas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
-            siglas.sort(key=len, reverse=True)
-            temp_l = solo_letras
-            for s in siglas:
-                if s in temp_l:
-                    m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == s]
-                    dict_prods[str(m_s.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(m_s.iloc[0]['DOSIS'])
-                    temp_l = temp_l.replace(s, '', 1)
+        base_buscar = base_coctel
 
-    # 1. Reglas de Aceite
-    if dosis_aceite > 0: dict_prods['ACEITE DICAM'] = float(dosis_aceite)
-    
-    # 2. Reglas de Adyuvantes
-    dict_prods['ACONDICIONADOR SV'] = 0.02
-    dict_prods['ADHERENTE SV'] = 0.13 if not es_organico else 0
+    # 2. LECTURA CIEGA DEL ESQUELETO (DD_Mesclas)
+    if not df_mezclas.empty:
+        rb = df_mezclas[df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip() == base_buscar]
+        if rb.empty and es_organico: 
+            rb = df_mezclas[df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip() == base_coctel]
+            
+        for _, r in rb.iterrows():
+            p = str(r.iloc[1]).strip().upper()
+            d = limpiar_area(r.iloc[2])
+            if d > 0 and p not in ['NAN', 'NONE', '']: 
+                dict_prods[p] = d
 
-    # 3. Aditivos (Fertilizantes y otros)
-    for ad in aditivos:
-        if not df_dicc.empty:
+    # 3. LECTURA CIEGA DE LOS FERTILIZANTES / ADITIVOS (DICCIONARIO_SIGLAS)
+    if not df_dicc.empty and aditivos:
+        for ad in aditivos:
             m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == ad]
-            if not m_s.empty: dict_prods[str(m_s.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(m_s.iloc[0]['DOSIS'])
-            else:
-                if "ZN" in ad: dict_prods["ZINTRAC"] = 0.5
-                elif "BT" in ad: dict_prods["BANATREL"] = 0.5
-                elif "NM" in ad: dict_prods["NATURAMIN WSP"] = 0.5
+            if not m_s.empty:
+                p_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper()
+                d_ad = limpiar_area(m_s.iloc[0]['DOSIS'])
+                if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']:
+                    dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
 
-    # 4. Reglas Especiales de Dosis Dinámicas (Acondicionador e Imbiosil)
-    coctel_u = str(coctel_sel).upper().strip()
-    for prod_name in list(dict_prods.keys()):
-        if "ACONDICIONADOR" in prod_name:
-             dict_prods[prod_name] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON", "NM"]) else 0.02
-        elif "IMBIOSIL" in prod_name.replace(" ", ""):
-             dict_prods[prod_name] = 1.5 if (coctel_u.split()[0].startswith("IN") or "IMBIOSIL" in coctel_u.split()[0]) else 1.0
+    # =================================================================
+    # 💥 4. REGLAS DE ORO DINÁMICAS (La Inteligencia del Módulo 3)
+    # =================================================================
+    for p in list(dict_prods.keys()):
+        # Regla del Acondicionador (Sube a 0.06 si hay aditivos pesados)
+        if "ACONDICIONADOR" in p:
+            if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON", "NM"]):
+                dict_prods[p] = 0.06
+                
+        # Regla del Imbiosil (Sube a 1.5 si es la base 'IN')
+        elif "IMBIOSIL" in p.replace(" ", ""):
+            if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel:
+                dict_prods[p] = 1.5
+                
+        # Ajuste Orgánico (Fuerza la eliminación del adherente si la finca es orgánica)
+        if es_organico and "ADHERENTE" in p:
+            del dict_prods[p]
+
+    # Inyección del Sprayfix si es finca orgánica y no estaba en la receta
+    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()):
+        dict_prods["SPRAYFIX"] = 0.2
 
     return dict_prods
-
 # =================================================================
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
