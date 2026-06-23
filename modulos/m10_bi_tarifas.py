@@ -193,54 +193,9 @@ def limpiar_dinero(val):
         if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
-def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
-    """Motor de desfragmentación de cócteles para cálculo volumétrico"""
-    coctel_crudo = str(coctel_sel).upper().replace(" ", "")
-    partes_coctel = coctel_crudo.split('+')
-    base_coctel, aditivos = partes_coctel[0], partes_coctel[1:] if len(partes_coctel) > 1 else []
-    
-    match_num = re.search(r'\d+', base_coctel)
-    dosis_aceite = int(match_num.group()) if match_num else 0
-    solo_letras = re.sub(r'\d+', '', base_coctel)
-    
-    dict_prods = {}
-    es_organico = False
-    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()] if not df_t2.empty else pd.DataFrame()
-    if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
 
-    # Búsqueda en Mezclas
-    receta_base = pd.DataFrame()
-    if not df_mezclas.empty:
-        c_p = f"{base_coctel}O" if es_organico and not base_coctel.endswith('O') else base_coctel
-        receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == c_p]
-        if receta_base.empty: receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
-
-    if not receta_base.empty:
-        for _, r in receta_base.iterrows():
-            p, d = str(r.iloc[1]).strip().upper(), limpiar_area(r.iloc[2])
-            if d > 0 and p not in ['NAN', '']: dict_prods[p] = d
-    else:
-        # Fallback a Diccionario de Siglas
-        if not df_dicc.empty:
-            siglas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
-            siglas.sort(key=len, reverse=True)
-            temp_l = solo_letras
-            for s in siglas:
-                if s in temp_l:
-                    m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == s]
-                    dict_prods[str(m_s.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(m_s.iloc[0]['DOSIS'])
-                    temp_l = temp_l.replace(s, '', 1)
-        if dosis_aceite > 0: dict_prods['ACEITE DICAM'] = float(dosis_aceite)
-        dict_prods['ACONDICIONADOR SV'] = 0.02
-        dict_prods['ADHERENTE SV'] = 0.13 if not es_organico else 0
-
-    for ad in aditivos:
-        m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == ad] if not df_dicc.empty else pd.DataFrame()
-        if not m_s.empty: dict_prods[str(m_s.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(m_s.iloc[0]['DOSIS'])
-
-    return dict_prods
 # =================================================================
-# 🔑 CEREBRO QUÍMICO AVANZADO (Cálculo de Dosis Reales)
+# 🔑 CEREBRO QUÍMICO AVANZADO (Cálculo de Dosis Reales para BI)
 # =================================================================
 def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_crudo = str(coctel_sel).upper().replace(" ", "")
@@ -310,6 +265,7 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
 
     return dict_prods
 
+# =================================================================
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
@@ -411,18 +367,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
-        # 🎯 SEGURO ANTI-INFLACIÓN DE PRECIOS: Si alguien anotó el costo TOTAL del vuelo en lugar del unitario, lo corregimos.
+        # 🎯 SEGURO ANTI-INFLACIÓN DE PRECIOS
         def purgar_avion(row):
             avion = row['AVION_NUM']
             area = row['AREA_NUM']
             if avion > 90000 and area > 0:
                 avion = avion / area
-                if avion > 90000: avion = 55000  # Cap de emergencia si el dato es insalvable
+                if avion > 90000: avion = 55000 
             return avion
             
         super_base_bi['AVION_NUM'] = super_base_bi.apply(purgar_avion, axis=1)
 
-        # 🎯 CORRECCIÓN FRACCIONAMIENTO: Ya NO borramos duplicados en el total histórico para sumar cada gota fraccionada
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
@@ -443,7 +398,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
         # =====================================================================
-        # 🎛️ PANEL TÁCTICO DE TIEMPO Y ESPACIO (Estructura Tipo Simulador)
+        # 🎛️ PANEL TÁCTICO DE TIEMPO Y ESPACIO (Con Rango Personalizado)
         # =====================================================================
         t1, t2, t3, t4 = st.columns(4)
         año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=(1 if len(años_disp) > 1 else 0))
@@ -451,7 +406,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES", "RANGO PERSONALIZADO"])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
         
-        # Inyección de Calendarios Independientes Tipo Simulador si se activa el Rango
         if tipo_periodo == "POR TRIMESTRE":
             periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
             etiq_periodo = f"Q{periodo_sel}"
@@ -459,7 +413,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
             etiq_periodo = meses_dict[periodo_sel]
         elif tipo_periodo == "RANGO PERSONALIZADO":
-            # Creamos dos columnas pequeñas dentro de t4 para meter los dos calendarios limpios
             c_fecha1, c_fecha2 = t4.columns(2)
             fecha_inicial_libre = c_fecha1.date_input("📅 Desde:", value=datetime.now().date(), key="bi_f_ini_libre")
             fecha_final_libre = c_fecha2.date_input("📅 Hasta:", value=datetime.now().date(), key="bi_f_fin_libre")
@@ -468,7 +421,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
             periodo_sel, etiq_periodo = "TODOS", "Total"
 
-        # Base geográfica filtrada
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
@@ -477,28 +429,23 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # 🚀 MOTOR DE EXTRACCIÓN ESPEJO (PROYECCIÓN YoY DINÁMICA)
         # =====================================================================
         if tipo_periodo == "RANGO PERSONALIZADO":
-            # Extraemos únicamente el mes y el día elegidos por el usuario
             mes_inicio, dia_inicio = fecha_inicial_libre.month, fecha_inicial_libre.day
             mes_fin, dia_fin = fecha_final_libre.month, fecha_final_libre.day
             
-            # Creamos las fronteras nativas de tiempo para el AÑO ACTUAL (Evaluar)
             f_ini_b = datetime(int(año_comp), mes_inicio, dia_inicio)
             f_fin_b = datetime(int(año_comp), mes_fin, dia_fin)
             df_periodo_b = df_finca[(df_finca['FECHA_DT'] >= f_ini_b) & (df_finca['FECHA_DT'] <= f_fin_b)].copy()
             
-            # Espejo: Creamos las mismas fronteras pero para el AÑO BASE (Referencia / Histórico lejano)
             try:
                 f_ini_a = datetime(int(año_base), mes_inicio, dia_inicio)
                 f_fin_a = datetime(int(año_base), mes_fin, dia_fin)
             except ValueError:
-                # Blindaje por si cruzamos febreros de años bisiestos
                 f_ini_a = datetime(int(año_base), mes_inicio, 28)
                 f_fin_a = datetime(int(año_base), mes_fin, 28)
                 
             df_periodo_a = df_finca[(df_finca['FECHA_DT'] >= f_ini_a) & (df_finca['FECHA_DT'] <= f_fin_a)].copy()
             
         else:
-            # Filtrado estándar por año completo, mes o trimestre fijo
             df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
             df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
             
@@ -509,7 +456,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
                 df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # Conservamos fraccionamientos de SAP para el cálculo de Hectáreas
         df_area_a = df_periodo_a.copy()
         df_area_b = df_periodo_b.copy()
 
@@ -617,7 +563,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             fig_glob.update_xaxes(type='category')
             st.plotly_chart(fig_glob, use_container_width=True)
         
-        # --- DESGLOSE OPERATIVO DE CÓCTELES ---
         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
         
@@ -647,14 +592,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
             
             tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL')).fillna(0)
-            tabla_autopsia.rename(columns={col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM_BASE': f'Costo/Ha ({año_base})', 'COSTO_NUM_ACTUAL': f'Costo/Ha ({año_comp})'}, inplace=True)
-            tabla_autopsia['Variación ($)'] = tabla_autopsia[f'Costo/Ha ({año_comp})'] - tabla_autopsia[f'Costo/Ha ({año_base})']
-            if col_gln: tabla_autopsia.rename(columns={f'{col_gln}_BASE': f'Gln/Ha ({año_base})', f'{col_gln}_ACTUAL': f'Gln/Ha ({año_comp})'}, inplace=True)
+            
+            tabla_autopsia['Variación ($)'] = tabla_autopsia['COSTO_NUM_ACTUAL'] - tabla_autopsia['COSTO_NUM_BASE']
+            nombre_base = f'Costo/Ha ({año_base})'
+            nombre_comp = f'Costo/Ha ({año_comp})' if año_base != año_comp else f'Costo/Ha ({año_comp} - Act)'
+            
+            dicc_renombres = {col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM_BASE': nombre_base, 'COSTO_NUM_ACTUAL': nombre_comp}
+            if col_gln: 
+                dicc_renombres[f'{col_gln}_BASE'] = f'Gln/Ha ({año_base})'
+                dicc_renombres[f'{col_gln}_ACTUAL'] = f'Gln/Ha ({año_comp})' if año_base != año_comp else f'Gln/Ha ({año_comp} - Act)'
                 
-            if not tabla_autopsia.empty and (tabla_autopsia[f'Costo/Ha ({año_base})'].sum() > 0 or tabla_autopsia[f'Costo/Ha ({año_comp})'].sum() > 0):
+            tabla_autopsia.rename(columns=dicc_renombres, inplace=True)
+                
+            if not tabla_autopsia.empty and (tabla_autopsia[nombre_base].sum() > 0 or tabla_autopsia[nombre_comp].sum() > 0):
                 st.markdown("##### 📊 Comparativo Histórico de Inversión por Cóctel")
                 df_graf_coctel = pd.melt(tabla_autopsia, id_vars=['CÓCTEL APLICADO'], 
-                                         value_vars=[f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'],
+                                         value_vars=[nombre_base, nombre_comp],
                                          var_name='Periodo', value_name='Costo Promedio')
                 
                 fig_coctel = px.bar(df_graf_coctel, x='CÓCTEL APLICADO', y='Costo Promedio', color='Periodo', 
@@ -672,8 +625,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 st.plotly_chart(fig_coctel, use_container_width=True)
 
             df_vista = tabla_autopsia.copy()
-            df_vista[f'Costo/Ha ({año_base})'] = df_vista[f'Costo/Ha ({año_base})'].map("$ {:,.0f}".format)
-            df_vista[f'Costo/Ha ({año_comp})'] = df_vista[f'Costo/Ha ({año_comp})'].map("$ {:,.0f}".format)
+            df_vista[nombre_base] = df_vista[nombre_base].map("$ {:,.0f}".format)
+            df_vista[nombre_comp] = df_vista[nombre_comp].map("$ {:,.0f}".format)
             df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
             st.dataframe(df_vista, use_container_width=True, hide_index=True)
             
@@ -688,70 +641,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
             if coctel_sel != "SELECCIONE UN CÓCTEL...":
                 with st.spinner("Extrayendo matrices químicas desde la caché en RAM..."):
-                    df_mezclas, df_conf, df_dicc, df_precios, df_t2 = cargar_boveda_recetas_y_precios()
+                    df_mezclas, df_conf, df_dicc, df_precios, df_t2_cache = cargar_boveda_recetas_y_precios()
                     
                     if df_mezclas.empty or df_precios.empty:
                         st.error("🚨 Enlace roto con la bóveda de ingredientes históricos.")
                         st.stop()
 
-                coctel_crudo = coctel_sel.upper().replace(" ", "")
-                partes_coctel = coctel_crudo.split('+')
-                base_coctel, aditivos = partes_coctel[0], partes_coctel[1:] if len(partes_coctel) > 1 else []
-
-                match_num = re.search(r'\d+', base_coctel)
-                dosis_aceite = int(match_num.group()) if match_num else 0
-                solo_letras = re.sub(r'\d+', '', base_coctel)
-
-                dict_prods_unicos, es_organico = {}, False
-                match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()] if not df_t2.empty else pd.DataFrame()
-                if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
-
-                receta_base = pd.DataFrame()
-                if not df_mezclas.empty:
-                    if es_organico and not base_coctel.endswith('O'):
-                        coctel_prueba = f"{base_coctel}O"
-                        if not df_mezclas[df_mezclas['COCTEL_CLEAN'] == coctel_prueba].empty: base_coctel = coctel_prueba
-                    receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == base_coctel]
-                    if receta_base.empty: receta_base = df_mezclas[df_mezclas['COCTEL_CLEAN'] == solo_letras]
-
-                if not receta_base.empty:
-                    for idx, row in receta_base.iterrows():
-                        prod, dosis = str(row.iloc[1]).strip().upper(), limpiar_area(row.iloc[2])
-                        if dosis > 0 and prod not in ['NAN', '']: dict_prods_unicos[prod] = dosis
-                else:
-                    if not df_dicc.empty:
-                        siglas_validas = df_dicc[df_dicc['SIGLA'].astype(str).str.strip() != '']['SIGLA'].astype(str).str.strip().str.upper().unique().tolist()
-                        siglas_validas.sort(key=len, reverse=True)
-                        resto_letras = solo_letras
-                        for sigla in siglas_validas:
-                            if sigla in resto_letras:
-                                match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == sigla]
-                                if not match_sig.empty:
-                                    dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(match_sig.iloc[0]['DOSIS'])
-                                    resto_letras = resto_letras.replace(sigla, '', 1)
-                        if dosis_aceite > 0: dict_prods_unicos['ACEITE DICAM'] = float(dosis_aceite)
-                        dict_prods_unicos['ACONDICIONADOR SV'] = 0.02
-                        dict_prods_unicos['ADHERENTE SV'] = 0.13
-
-                for ad in aditivos:
-                    match_sig = df_dicc[df_dicc['SIGLA'].astype(str).str.strip().str.upper() == ad] if not df_dicc.empty else pd.DataFrame()
-                    if not match_sig.empty: dict_prods_unicos[str(match_sig.iloc[0]['PRODUCTO']).strip().upper()] = limpiar_area(match_sig.iloc[0]['DOSIS'])
-                    else:
-                        if "ZN" in ad: dict_prods_unicos["ZINTRAC"] = 0.5
-                        elif "BT" in ad: dict_prods_unicos["BANATREL"] = 0.5
-
-                if dosis_aceite > 0:
-                    dict_prods_unicos[next((k for k in dict_prods_unicos.keys() if "ACEITE" in k), "ACEITE DICAM")] = float(dosis_aceite)
-                else:
-                    for k in [k for k in dict_prods_unicos.keys() if "ACEITE" in k]: dict_prods_unicos.pop(k, None)
-
-                if es_organico:
-                    for k in [k for k in dict_prods_unicos.keys() if "ADHERENTE" in k]: dict_prods_unicos.pop(k, None)
-                    if next((k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k), "SPRAYFIX") not in dict_prods_unicos: dict_prods_unicos["SPRAYFIX"] = 0.2
-                else:
-                    for k in [k for k in dict_prods_unicos.keys() if "SPRAYFIX" in k]: dict_prods_unicos.pop(k, None)
-                    if next((k for k in dict_prods_unicos.keys() if "ADHERENTE" in k), "ADHERENTE SV") not in dict_prods_unicos: dict_prods_unicos["ADHERENTE SV"] = 0.13
-
+                dict_prods_unicos = extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2_cache)
                 prods_receta = [{"PRODUCTO": k, "DOSIS": v} for k, v in dict_prods_unicos.items() if v > 0]
                 
                 if prods_receta:
@@ -814,58 +710,47 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                             candidatos_encontrados = True; break
                                     if candidatos_encontrados: break
                 else: st.info("No se encontraron ingredientes válidos para esta receta.")
-                    
-# =====================================================================
-        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA (CONSOLIDADO DE INSUMOS)
+                
+        # =====================================================================
+        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA (CON MOTOR DE PRECISIÓN V2)
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown(f"### 📦 Nivel 3: Consumo Volumétrico de Insumos ({año_comp})")
-        st.info(f"Cálculo del volumen total de químicos requerido para cubrir las **{area_b:,.1f} Ha** del periodo seleccionado.")
+        st.info(f"Cálculo volumétrico avanzado basado en el comportamiento individual de las siglas para **{area_b:,.1f} Ha**.")
 
-        if not df_periodo_b.empty and col_coctel in df_periodo_b.columns:
-            with st.spinner("Calculando demanda logística..."):
-                # 1. Agrupamos hectáreas por cóctel en el periodo evaluado
-                resumen_ha_coctel = df_periodo_b.groupby(col_coctel)['AREA_NUM'].sum().reset_index()
-                df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
-                
-                consumo_total_periodo = {}
+        if not df_periodo_b.empty and 'COCTEL_MAESTRO' in df_periodo_b.columns:
+            with st.spinner("Desglosando matrices químicas..."):
+                try:
+                    df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
+                    resumen_ha = df_periodo_b.groupby('COCTEL_MAESTRO')['AREA_NUM'].sum().reset_index()
+                    consumo_log = {}
 
-                # 2. Desglosamos y multiplicamos (Hectáreas * Dosis)
-                for _, fila in resumen_ha_coctel.iterrows():
-                    nombre_coctel = fila[col_coctel]
-                    ha_aplicadas = fila['AREA_NUM']
-                    
-                    if ha_aplicadas <= 0: continue
-                    
-                    # Llamamos a nuestra nueva llave maestra
-                    receta_desglosada = extraer_receta_de_sigla_bi(nombre_coctel, finca_sel, df_m, df_d, df_t2_b)
-                    
-                    for producto, dosis_unitaria in receta_desglosada.items():
-                        litros_totales = dosis_unitaria * ha_aplicadas
-                        consumo_total_periodo[producto] = consumo_total_periodo.get(producto, 0) + litros_totales
+                    for _, fila in resumen_ha.iterrows():
+                        nombre_coctel = str(fila['COCTEL_MAESTRO']).upper().strip()
+                        ha_aplicadas = fila['AREA_NUM']
+                        if ha_aplicadas <= 0 or nombre_coctel in ["NAN", ""]: continue
 
-                if consumo_total_periodo:
-                    # 3. Presentación de Resultados
-                    df_logistica = pd.DataFrame(list(consumo_total_periodo.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
-                    df_logistica = df_logistica.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False)
-                    
-                    # Formato estético
-                    df_log_vista = df_logistica.copy()
-                    df_log_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_log_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
-                    
-                    col_tabla, col_graf = st.columns([1, 1.2])
-                    with col_tabla:
-                        st.dataframe(df_log_vista, use_container_width=True, hide_index=True)
-                    
-                    with col_graf:
-                        fig_inv = px.bar(df_logistica.head(10), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", 
-                                         orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu",
-                                         text_auto='.1f', title="Top 10 Insumos de Mayor Consumo")
-                        fig_inv.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
-                        st.plotly_chart(fig_inv, use_container_width=True)
-                else:
-                    st.warning("No se pudo determinar el consumo. Verifique las siglas de los cócteles.")
-        
+                        # Llamada directa al cerebro químico central
+                        dict_temp = extraer_receta_de_sigla_bi(nombre_coctel, finca_sel, df_m, df_d, df_t2_b)
+
+                        # Totalizar Litros
+                        for p, d in dict_temp.items():
+                            consumo_log[p] = consumo_log.get(p, 0) + (d * ha_aplicadas)
+
+                    if consumo_log:
+                        df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]).sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False)
+                        df_vista = df_log.copy()
+                        df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
+                        
+                        c1, c2 = st.columns([1, 1.2])
+                        with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                        with c2:
+                            fig = px.bar(df_log.head(10), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", text_auto='.1f', title="Top 10 Insumos")
+                            fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
+                            st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
+
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
