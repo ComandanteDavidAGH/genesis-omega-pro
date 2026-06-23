@@ -17,7 +17,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
-    """ Llave Nueva (gcp_service_account) """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
@@ -29,7 +28,6 @@ def obtener_cliente_gspread_unificado():
         return None
 
 def obtener_cliente_gspread_viejo():
-    """ Llave Vieja de Respaldo (gcp_credentials) """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_credentials" in st.secrets:
@@ -42,10 +40,8 @@ def obtener_cliente_gspread_viejo():
 
 @st.cache_data(show_spinner=False)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
-    """ Descarga y unifica las bases actual e histórica usando MOTOR HÍBRIDO """
     gc_nuevo = obtener_cliente_gspread_unificado()
     
-    # --- 1. BASE VIVA (2026) ---
     try:
         boveda_act = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
@@ -57,20 +53,11 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         
-        df_vivos.rename(columns={
-            'AREA_FUMIG': 'AREA_MAESTRA',
-            'COSTO_HA': 'AVION_MAESTRO',
-            'DOMINICAL_HA': 'DOMINIC_MAESTRO',
-            'FINCA': 'FINCA_MAESTRA',
-            'FECHA': 'FECHA_MAESTRA',
-            'OS': 'OS_MAESTRA',
-            'COCTEL': 'COCTEL_MAESTRO'
-        }, inplace=True)
+        df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
         df_vivos['ORIGEN_BI'] = 'ACTUAL'
     else:
         df_vivos = pd.DataFrame()
 
-    # --- 2. BASE HISTÓRICA (2023-2024-2025) ---
     datos_brutos_hist = []
     try:
         boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
@@ -81,7 +68,7 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
             boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
             datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
         except Exception as error_viejo:
-            st.error(f"🚨 **RADAR DE SEGURIDAD BI:** El archivo histórico rechazó ambas llaves.\n\nNuevo: {error_nuevo}\nViejo: {error_viejo}")
+            st.error(f"🚨 **RADAR DE SEGURIDAD BI:** El archivo histórico rechazó ambas llaves.")
     
     if len(datos_brutos_hist) > 0:
         df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
@@ -100,7 +87,6 @@ def cargar_boveda_recetas_y_precios():
         
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         
-        # 💥 CARGA ROBUSTA DE RECETAS (Evita filas vacías)
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         idx_mez = 0
         for i in range(min(5, len(data_mez))):
@@ -199,7 +185,6 @@ def limpiar_dinero(val):
 # 🔑 CEREBRO QUÍMICO HÍBRIDO (Lectura de Excel + Reglas Dinámicas)
 # =================================================================
 def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
-    # 1. Separación limpia de Base y Aditivos
     coctel_u = str(coctel_sel).upper().strip()
     coctel_norm = coctel_u.replace("+", " ").replace("-", " ")
     partes_coctel = coctel_norm.split()
@@ -222,7 +207,7 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
     else:
         base_buscar = base_coctel
 
-    # 2. LECTURA CIEGA DEL ESQUELETO (DD_Mesclas)
+    # 1. LECTURA CIEGA DEL ESQUELETO (DD_Mesclas)
     if not df_mezclas.empty:
         rb = df_mezclas[df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip() == base_buscar]
         if rb.empty and es_organico: 
@@ -234,7 +219,7 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
             if d > 0 and p not in ['NAN', 'NONE', '']: 
                 dict_prods[p] = d
 
-    # 3. LECTURA CIEGA DE LOS FERTILIZANTES / ADITIVOS (DICCIONARIO_SIGLAS)
+    # 2. LECTURA CIEGA DE LOS FERTILIZANTES / ADITIVOS (DICCIONARIO_SIGLAS)
     if not df_dicc.empty and aditivos:
         for ad in aditivos:
             m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == ad]
@@ -244,30 +229,25 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
                 if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']:
                     dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
 
-    # =================================================================
-    # 💥 4. REGLAS DE ORO DINÁMICAS (La Inteligencia del Módulo 3)
-    # =================================================================
+    # 3. REGLAS DE ORO DINÁMICAS
     for p in list(dict_prods.keys()):
-        # Regla del Acondicionador (Sube a 0.06 si hay aditivos pesados)
         if "ACONDICIONADOR" in p:
-            if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON", "NM"]):
+            # EL NM NO ALTERA EL ACONDICIONADOR. Solo ZN, BT, ZT, ZITRON.
+            if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]):
                 dict_prods[p] = 0.06
                 
-        # Regla del Imbiosil (Sube a 1.5 si es la base 'IN')
         elif "IMBIOSIL" in p.replace(" ", ""):
             if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel:
                 dict_prods[p] = 1.5
                 
-        # Ajuste Orgánico (Fuerza la eliminación del adherente si la finca es orgánica)
         if es_organico and "ADHERENTE" in p:
             del dict_prods[p]
 
-    # Inyección del Sprayfix si es finca orgánica y no estaba en la receta
     if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()):
         dict_prods["SPRAYFIX"] = 0.2
 
     return dict_prods
-# =================================================================
+
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
         
@@ -369,7 +349,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
-        # 🎯 SEGURO ANTI-INFLACIÓN DE PRECIOS
         def purgar_avion(row):
             avion = row['AVION_NUM']
             area = row['AREA_NUM']
@@ -528,7 +507,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # 🎯 CORRECCIÓN: Promedio Ponderado para equilibrar la barra azul
         vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
         vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
         costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
