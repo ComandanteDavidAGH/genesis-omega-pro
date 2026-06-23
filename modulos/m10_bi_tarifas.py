@@ -744,7 +744,58 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                             candidatos_encontrados = True; break
                                     if candidatos_encontrados: break
                 else: st.info("No se encontraron ingredientes válidos para esta receta.")
+                    
+# =====================================================================
+        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA (CONSOLIDADO DE INSUMOS)
+        # =====================================================================
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown(f"### 📦 Nivel 3: Consumo Volumétrico de Insumos ({año_comp})")
+        st.info(f"Cálculo del volumen total de químicos requerido para cubrir las **{area_b:,.1f} Ha** del periodo seleccionado.")
 
+        if not df_periodo_b.empty and col_coctel in df_periodo_b.columns:
+            with st.spinner("Calculando demanda logística..."):
+                # 1. Agrupamos hectáreas por cóctel en el periodo evaluado
+                resumen_ha_coctel = df_periodo_b.groupby(col_coctel)['AREA_NUM'].sum().reset_index()
+                df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
+                
+                consumo_total_periodo = {}
+
+                # 2. Desglosamos y multiplicamos (Hectáreas * Dosis)
+                for _, fila in resumen_ha_coctel.iterrows():
+                    nombre_coctel = fila[col_coctel]
+                    ha_aplicadas = fila['AREA_NUM']
+                    
+                    if ha_aplicadas <= 0: continue
+                    
+                    # Llamamos a nuestra nueva llave maestra
+                    receta_desglosada = extraer_receta_de_sigla_bi(nombre_coctel, finca_sel, df_m, df_d, df_t2_b)
+                    
+                    for producto, dosis_unitaria in receta_desglosada.items():
+                        litros_totales = dosis_unitaria * ha_aplicadas
+                        consumo_total_periodo[producto] = consumo_total_periodo.get(producto, 0) + litros_totales
+
+                if consumo_total_periodo:
+                    # 3. Presentación de Resultados
+                    df_logistica = pd.DataFrame(list(consumo_total_periodo.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
+                    df_logistica = df_logistica.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False)
+                    
+                    # Formato estético
+                    df_log_vista = df_logistica.copy()
+                    df_log_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_log_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
+                    
+                    col_tabla, col_graf = st.columns([1, 1.2])
+                    with col_tabla:
+                        st.dataframe(df_log_vista, use_container_width=True, hide_index=True)
+                    
+                    with col_graf:
+                        fig_inv = px.bar(df_logistica.head(10), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", 
+                                         orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu",
+                                         text_auto='.1f', title="Top 10 Insumos de Mayor Consumo")
+                        fig_inv.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
+                        st.plotly_chart(fig_inv, use_container_width=True)
+                else:
+                    st.warning("No se pudo determinar el consumo. Verifique las siglas de los cócteles.")
+        
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
