@@ -327,21 +327,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
         # =====================================================================
-        # 🎛️ PANEL TÁCTICO DE TIEMPO Y ESPACIO (Con Rango Personalizado)
+        # 🎛️ PANEL TÁCTICO DE TIEMPO Y ESPACIO (Estructura Tipo Simulador)
         # =====================================================================
         t1, t2, t3, t4 = st.columns(4)
         año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=(1 if len(años_disp) > 1 else 0))
         año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
-        
-        # 🟢 1. AGREGAMOS EL RANGO PERSONALIZADO A LA LUPA TEMPORAL
         tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES", "RANGO PERSONALIZADO"])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
         
-        # Función auxiliar para alinear años garantizando comparaciones justas (YoY)
-        def alinear_anio(fecha, nuevo_anio):
-            try: return fecha.replace(year=nuevo_anio)
-            except ValueError: return fecha.replace(year=nuevo_anio, day=28) # Blindaje bisiesto
-
+        # Inyección de Calendarios Independientes Tipo Simulador si se activa el Rango
         if tipo_periodo == "POR TRIMESTRE":
             periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
             etiq_periodo = f"Q{periodo_sel}"
@@ -349,36 +343,46 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
             etiq_periodo = meses_dict[periodo_sel]
         elif tipo_periodo == "RANGO PERSONALIZADO":
-            # 🟢 2. SE DESPLIEGA EL CALENDARIO DE RANGO LIBRE
-            rango_val = t4.date_input("🎯 Seleccione Rango (Inicio - Fin)", value=[], key="rango_bi")
-            
-            if isinstance(rango_val, tuple) and len(rango_val) == 2:
-                fecha_inicio, fecha_fin = rango_val
-            elif isinstance(rango_val, tuple) and len(rango_val) == 1:
-                fecha_inicio = fecha_fin = rango_val[0]
-            else:
-                fecha_inicio = fecha_fin = datetime.now().date()
-                
-            etiq_periodo = f"{fecha_inicio.strftime('%d/%m')} al {fecha_fin.strftime('%d/%m')}"
+            # Creamos dos columnas pequeñas dentro de t4 para meter los dos calendarios limpios
+            c_fecha1, c_fecha2 = t4.columns(2)
+            fecha_inicial_libre = c_fecha1.date_input("📅 Desde:", value=datetime.now().date(), key="bi_f_ini_libre")
+            fecha_final_libre = c_fecha2.date_input("📅 Hasta:", value=datetime.now().date(), key="bi_f_fin_libre")
+            etiq_periodo = f"{fecha_inicial_libre.strftime('%d/%m')} al {fecha_final_libre.strftime('%d/%m')}"
         else:
             t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
             periodo_sel, etiq_periodo = "TODOS", "Total"
 
+        # Base geográfica filtrada
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
 
-        # 🟢 3. FILTRADO INTELIGENTE DEPENDIENDO DE LA LUPA
+        # =====================================================================
+        # 🚀 MOTOR DE EXTRACCIÓN ESPEJO (PROYECCIÓN YoY DINÁMICA)
+        # =====================================================================
         if tipo_periodo == "RANGO PERSONALIZADO":
-            # Ajustamos el rango elegido a los años seleccionados en T1 y T2
-            f_ini_b = alinear_anio(fecha_inicio, año_comp)
-            f_fin_b = alinear_anio(fecha_fin, año_comp)
-            df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= f_ini_b) & (df_finca['FECHA_DT'].dt.date <= f_fin_b)].copy()
+            # Extraemos únicamente el mes y el día elegidos por el usuario
+            mes_inicio, dia_inicio = fecha_inicial_libre.month, fecha_inicial_libre.day
+            mes_fin, dia_fin = fecha_final_libre.month, fecha_final_libre.day
             
-            f_ini_a = alinear_anio(fecha_inicio, año_base)
-            f_fin_a = alinear_anio(fecha_fin, año_base)
-            df_periodo_a = df_finca[(df_finca['FECHA_DT'].dt.date >= f_ini_a) & (df_finca['FECHA_DT'].dt.date <= f_fin_a)].copy()
+            # Creamos las fronteras nativas de tiempo para el AÑO ACTUAL (Evaluar)
+            f_ini_b = datetime(int(año_comp), mes_inicio, dia_inicio)
+            f_fin_b = datetime(int(año_comp), mes_fin, dia_fin)
+            df_periodo_b = df_finca[(df_finca['FECHA_DT'] >= f_ini_b) & (df_finca['FECHA_DT'] <= f_fin_b)].copy()
+            
+            # Espejo: Creamos las mismas fronteras pero para el AÑO BASE (Referencia / Histórico lejano)
+            try:
+                f_ini_a = datetime(int(año_base), mes_inicio, dia_inicio)
+                f_fin_a = datetime(int(año_base), mes_fin, dia_fin)
+            except ValueError:
+                # Blindaje por si cruzamos febreros de años bisiestos
+                f_ini_a = datetime(int(año_base), mes_inicio, 28)
+                f_fin_a = datetime(int(año_base), mes_fin, 28)
+                
+            df_periodo_a = df_finca[(df_finca['FECHA_DT'] >= f_ini_a) & (df_finca['FECHA_DT'] <= f_fin_a)].copy()
+            
         else:
+            # Filtrado estándar por año completo, mes o trimestre fijo
             df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
             df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
             
@@ -389,7 +393,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
                 df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🎯 CORRECCIÓN FRACCIONAMIENTO (Conservamos fraccionamientos de SAP)
+        # Conservamos fraccionamientos de SAP para el cálculo de Hectáreas
         df_area_a = df_periodo_a.copy()
         df_area_b = df_periodo_b.copy()
 
