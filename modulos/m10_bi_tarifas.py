@@ -539,27 +539,42 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
         
-        # --- 📅 1. SELECTORES DE FECHA INTERNOS (ESTRICTAMENTE VISIBLES) ---
-        c_inv1, c_inv2 = st.columns(2)
+        # --- 📅 1. PANEL DE CONTROL TRIPARTITO (FECHAS Y PISTA) ---
+        c_inv1, c_inv2, c_inv3 = st.columns(3)
         fecha_hace_un_mes = datetime.now().date() - pd.Timedelta(days=30)
         
-        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_finalisimo")
-        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_finalisimo")
+        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_pista")
+        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_pista")
         
-        # --- 🚜 2. FILTRADO EN RAM ---
+        # 🛰️ RADAR DE PISTAS: Detectamos dinámicamente la columna de pistas en la base maestra
+        col_pista_inv = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
+        if col_pista_inv:
+            pistas_inv_disp = ["TODAS"] + sorted(super_base_bi[col_pista_inv].dropna().astype(str).str.upper().unique().tolist())
+        else:
+            pistas_inv_disp = ["TODAS"]
+            
+        pista_inv_sel = c_inv3.selectbox("📍 Filtrar por Base / Pista:", pistas_inv_disp, key="pista_inv_sel_key")
+        
+        # --- 🚜 2. FILTRADO INTEGRAL EN RAM (FINCA + FECHAS + PISTA) ---
         df_inventario = super_base_bi.copy()
         if finca_sel != "TODAS": 
             df_inventario = df_inventario[df_inventario['FINCA_MAESTRA'] == finca_sel]
             
-        df_inventario = df_inventario[(df_inventario['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_inventario['FECHA_DT'].dt.date <= inv_fecha_fin)].copy()
+        # Aplicamos filtro de fechas
+        df_inventario = df_inventario[(df_inventario['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_inventario['FECHA_DT'].dt.date <= inv_fecha_fin)]
+        
+        # Aplicamos filtro de pista si no se seleccionó "TODAS"
+        if col_pista_inv and pista_inv_sel != "TODAS":
+            df_inventario = df_inventario[df_inventario[col_pista_inv].astype(str).str.upper().str.strip() == pista_inv_sel.strip()]
+            
         area_inv = df_inventario['AREA_NUM'].sum() if not df_inventario.empty else 0.0
 
-        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_inv:,.1f} Ha)** contra la matriz de **DD_Mesclas** en el periodo seleccionado.")
+        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_inv:,.1f} Ha)** contra la matriz de **DD_Mesclas**.")
 
         c_coctel = next((c for c in df_inventario.columns if 'COCTEL' in str(c).upper()), None)
 
-        if not df_inventario.empty and c_coctel:
-            with st.spinner("Desglosando matrices químicas..."):
+        if not df_inventario.empty and area_inv > 0 and c_coctel:
+            with st.spinner("Desglosando matrices químicas por Pista..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
                     
@@ -585,11 +600,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         if consumo_log:
                             st.markdown("#### 🔎 Auditoría de Consumo por Insumo")
                             lista_insumos = ["📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)"] + sorted(list(consumo_log.keys()))
-                            insumo_filtrado = st.selectbox("Seleccione el producto a auditar en el rango de fechas:", lista_insumos)
+                            insumo_filtrado = st.selectbox("Seleccione el producto a auditar en el rango de fechas:", lista_insumos, key="insumo_pista_key")
 
                             df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
-                            # 💥 TRADUCTOR METRICO LATINO: Punto para miles, Coma para decimales
+                            # 💥 TRADUCTOR MÉTRICO LATINO (Garantiza puntos para miles y coma para decimales)
                             def formatear_numero_latino(val):
                                 try:
                                     s = "{:,.1f}".format(float(val))
@@ -606,21 +621,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 with c1: 
                                     st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
-                                    # Gráfica de barras - Mantiene el Top 15 ordenado por volumen
+                                    # Gráfica de barras - Mantiene el Top 15 ordenado por volumen de mayor a menor
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15)
-                                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
+                                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title=f"Top 15 Insumos - Pista: {pista_inv_sel}")
                                     fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
                                     
-                                    # 💥 FORCE METRICO EN PLOTLY: El comando 'separators' cambia las comas por puntos en las etiquetas del gráfico
+                                    # 💥 REPARACIÓN DE GRÁFICO LATINO: separators=",." configura decimales con coma y miles con punto en Plotly
                                     fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=60), separators=",.")
                                     st.plotly_chart(fig, use_container_width=True)
                             else:
-                                # Vista en Solitario de un Insumo Seleccionado
+                                # Vista de impacto para un único insumo seleccionado
                                 vol_especifico = consumo_log[insumo_filtrado]
                                 vol_formateado = formatear_numero_latino(vol_especifico)
                                 st.markdown(f"""
                                 <div style='background-color:#0d1b2a; padding:25px; border-radius:10px; border-left:8px solid #27AE60; text-align:center;'>
-                                    <h4 style='color:#27AE60; margin:0; text-transform: uppercase;'>CONSUMO TOTAL EN EL PERIODO</h4>
+                                    <h4 style='color:#27AE60; margin:0; text-transform: uppercase;'>CONSUMO TOTAL EN EL PERIODO ({pista_inv_sel})</h4>
                                     <h1 style='color:white; margin:10px 0; font-size: 45px;'>{vol_formateado}</h1>
                                     <p style='color:#d4af37; margin:0; font-size:18px;'>Litros o Kilos teóricos de {insumo_filtrado}</p>
                                 </div>
@@ -630,7 +645,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else:
-            st.warning("⚠️ No se encontraron operaciones registradas en el rango seleccionado.")
+            st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Finca/Fechas/Pista).")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
