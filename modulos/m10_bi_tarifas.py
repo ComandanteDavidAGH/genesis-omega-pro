@@ -79,26 +79,37 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
 
 @st.cache_data(show_spinner=False)
 def cargar_boveda_recetas_y_precios():
-    try:
-        gc = obtener_cliente_gspread_unificado()
-        if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-        
-        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-        
-        if data_mez:
-            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-        else:
-            df_mezclas = pd.DataFrame()
-            
-        df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
-        df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
-        df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
+    # MOTOR 1: BOVEDA PRINCIPAL AISLADA
+    try:
+        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        
+        try:
+            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+            if data_mez:
+                df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+        except Exception as e: st.error(f"🚨 Falla en DD_Mesclas: {e}")
+
+        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        except: pass
+        
+        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        except: pass
+
+        try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
+        except: pass
+    except Exception as e:
+        st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
+
+    # MOTOR 2: BOVEDA DE PRECIOS AISLADA (Si falla, no tumba las recetas)
+    try:
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
-        
         precios_consolidados = []
         for ws in sh_precios.worksheets():
             datos_hoja = ws.get_all_values()
@@ -107,8 +118,7 @@ def cargar_boveda_recetas_y_precios():
             for i in range(min(10, len(datos_hoja))):
                 fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                 if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO')
-                    break
+                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
             if idx_header != -1:
                 for row in datos_hoja[idx_header+1:]:
                     if len(row) > max(col_anio, col_prod):
@@ -118,11 +128,10 @@ def cargar_boveda_recetas_y_precios():
                             vals = [float(str(v).strip().replace(',', '.')) for v in row[col_inicio:] if str(v).strip().replace(',', '.').replace('-','').replace('.','').isdigit()]
                             prom = sum(vals)/len(vals) if vals else 0.0
                             precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRECIO_PROM': prom})
-
         df_precios = pd.DataFrame(precios_consolidados)
-        return df_mezclas, df_conf, df_dicc, df_precios, df_t2
-    except:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    except: pass
+
+    return df_mezclas, df_conf, df_dicc, df_precios, df_t2
 
 # --- AUXILIARES GLOBALES ---
 def limpiar_encabezados(df):
@@ -539,11 +548,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
                     
                     if df_m.empty:
+                        # Intento de purga automática si falla la primera vez
                         st.cache_data.clear()
                         df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
                     
                     if df_m.empty:
-                        st.error("🚨 ENLACE SATELITAL ROTO: No se pudo leer la pestaña 'DD_Mesclas' desde Google Drive.")
+                        st.error("🚨 ENLACE SATELITAL ROTO: La bóveda DD_Mesclas sigue vacía. Revise la conexión de Google Drive.")
                     else:
                         resumen_ha = df_periodo_b.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
                         consumo_log = {}
@@ -570,8 +580,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 c1, c2 = st.columns([1, 1.2])
                                 with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
-                                    fig = px.bar(df_log.head(15), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", text_auto='.1f', title="Top 15 Insumos con Mayor Demanda")
-                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
+                                    # 💥 CORRECCIÓN DE GRÁFICA: Forzando etiquetas afuera
+                                    fig = px.bar(df_log.head(15), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
+                                    fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
+                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=60))
                                     st.plotly_chart(fig, use_container_width=True)
                             else:
                                 vol_especifico = consumo_log[insumo_filtrado]
@@ -586,7 +598,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match con las recetas de DD_Mesclas.")
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
-
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
