@@ -87,11 +87,14 @@ def cargar_boveda_recetas_y_precios():
         
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         
+        # 💥 CORRECCIÓN TÁCTICA: Ahora busca "FINCA" o "PRODUCTO" en lugar de "COCTEL"
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
         idx_mez = 0
         for i in range(min(5, len(data_mez))):
-            if any('COCTEL' in str(c).upper() for c in data_mez[i]) or any('SIGLA' in str(c).upper() for c in data_mez[i]):
+            fila_str = [str(c).upper() for c in data_mez[i]]
+            if any('FINCA' in c for c in fila_str) or any('PRODUCTO' in c for c in fila_str):
                 idx_mez = i; break
+                
         df_mezclas = pd.DataFrame(data_mez[idx_mez+1:], columns=data_mez[idx_mez]) if len(data_mez) > idx_mez else pd.DataFrame()
         if not df_mezclas.empty:
             df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:,0].astype(str).str.upper().str.replace(" ", "")
@@ -127,7 +130,6 @@ def cargar_boveda_recetas_y_precios():
         return df_mezclas, df_conf, df_dicc, df_precios, df_t2
     except:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-
 # --- 🧪 APARTADO DE BARREDORAS Y AUXILIARES GLOBALES ---
 def limpiar_encabezados(df):
     df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
