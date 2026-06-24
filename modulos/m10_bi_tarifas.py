@@ -449,15 +449,65 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # 💥 REPARACIÓN CRÍTICA DE VARIABLES 💥
         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
         
+        # 🧪 Traductor monetario latino exclusivo para las barras apiladas
+        def fmt_cop_vertical(val):
+            try:
+                return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return str(val)
+        
         st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
         tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
+        
         with tab_unit:
-            fig_unit = go.Figure(data=[go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5'), go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60')])
-            fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha")
+            fig_unit = go.Figure(data=[
+                go.Bar(
+                    name='Costo Avión / Ha', 
+                    x=categorias, 
+                    y=[vuelo_a, vuelo_b], 
+                    marker_color='#2F75B5',
+                    text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)],
+                    textposition='inside',
+                    textfont=dict(color='white', size=12, family='Arial Black')
+                ), 
+                go.Bar(
+                    name='Costo Insumos / Ha', 
+                    x=categorias, 
+                    y=[insumos_a, insumos_b], 
+                    marker_color='#27AE60',
+                    text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)],
+                    textposition='inside',
+                    textfont=dict(color='white', size=12, family='Arial Black')
+                )
+            ])
+            fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.")
             st.plotly_chart(fig_unit, use_container_width=True)
+            
         with tab_glob:
-            fig_glob = go.Figure(data=[go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5'), go.Bar(name='Total Insumos', x=categorias, y=[costo_tot_a - vuelo_tot_a, costo_tot_b - vuelo_tot_b], marker_color='#27AE60')])
-            fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP")
+            insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
+            insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
+            
+            fig_glob = go.Figure(data=[
+                go.Bar(
+                    name='Total Avión', 
+                    x=categorias, 
+                    y=[vuelo_tot_a, vuelo_tot_b], 
+                    marker_color='#2F75B5',
+                    text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)],
+                    textposition='inside',
+                    textfont=dict(color='white', size=11, family='Arial Black')
+                ), 
+                go.Bar(
+                    name='Total Insumos', 
+                    x=categorias, 
+                    y=[insumos_tot_a, insumos_tot_b], 
+                    marker_color='#27AE60',
+                    text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)],
+                    textposition='inside',
+                    textfont=dict(color='white', size=11, family='Arial Black')
+                )
+            ])
+            fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.")
             st.plotly_chart(fig_glob, use_container_width=True)
         
         # --- DESGLOSE OPERATIVO DE CÓCTELES ---
