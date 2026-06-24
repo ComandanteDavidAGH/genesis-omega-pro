@@ -539,12 +539,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
         
-        # --- 📅 NUEVOS SELECTORES DE FECHA ESPECÍFICOS PARA INVENTARIO ---
+        # 🗓️ PROTOCOLO ANCLA: Detectar fechas reales para no inicializar en blanco
+        if not df_finca.empty and 'FECHA_DT' in df_finca.columns:
+            min_fecha_real = df_finca['FECHA_DT'].min().date()
+            max_fecha_real = df_finca['FECHA_DT'].max().date()
+        else:
+            min_fecha_real = datetime.now().date()
+            max_fecha_real = datetime.now().date()
+
+        # --- 📅 SELECTORES DE FECHA ESPECÍFICOS AUTOMATIZADOS ---
         c_inv1, c_inv2 = st.columns(2)
-        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=datetime.now().date(), key="inv_f_ini")
-        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin")
+        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=min_fecha_real, key="inv_f_ini")
+        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=max_fecha_real, key="inv_f_fin")
         
-        # Filtramos la base maestra (que ya tiene el filtro de finca) por estas fechas
+        # Filtrado quirúrgico temporal
         df_inventario = df_finca[(df_finca['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_finca['FECHA_DT'].dt.date <= inv_fecha_fin)].copy()
         area_inv = df_inventario['AREA_NUM'].sum() if not df_inventario.empty else 0.0
 
@@ -552,7 +560,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
         c_coctel = next((c for c in df_inventario.columns if 'COCTEL' in str(c).upper()), None)
 
-        if not df_inventario.empty and c_coctel:
+        if not df_inventario.empty and area_inv > 0 and c_coctel:
             with st.spinner("Desglosando matrices químicas..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
@@ -578,14 +586,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         if consumo_log:
                             st.markdown("#### 🔎 Auditoría de Consumo por Insumo")
+                            
+                            # 🔤 AJUSTE: El selector individual ahora también viene ordenado alfabéticamente
                             lista_insumos = ["📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)"] + sorted(list(consumo_log.keys()))
                             insumo_filtrado = st.selectbox("Seleccione el producto a auditar en el rango de fechas:", lista_insumos)
 
-                            # Creamos el dataframe base sin ordenar aún
                             df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                # 🔤 CORRECCIÓN: Tabla ordenada ALFABÉTICAMENTE por Producto
+                                # 🔤 TABLA ORDENADA ALFABÉTICAMENTE A->Z
                                 df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
                                 df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
                                 
@@ -593,7 +602,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 with c1: 
                                     st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
-                                    # La gráfica se mantiene como Top 15 (Ordenada por mayor volumen)
+                                    # El gráfico se mantiene como Top 15 de Mayor Demanda
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15)
                                     fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
                                     fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
@@ -613,7 +622,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else:
-            st.info("Esperando datos de operaciones en el periodo evaluado...")
+            st.warning("⚠️ No hay registros de vuelo para el rango de fechas seleccionado en esta Finca.")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
