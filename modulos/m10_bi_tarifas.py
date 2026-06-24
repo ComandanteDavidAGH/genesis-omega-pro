@@ -117,7 +117,6 @@ def cargar_boveda_recetas_y_precios():
                             col_inicio = max(col_anio, col_prod) + 1
                             vals = [float(str(v).strip().replace(',', '.')) for v in row[col_inicio:] if str(v).strip().replace(',', '.').replace('-','').replace('.','').isdigit()]
                             prom = sum(vals)/len(vals) if vals else 0.0
-                            # 💥 PROTOCOLO CORREGIDO: 'prom' mapeado correctamente sin colapsar la descarga
                             precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRECIO_PROM': prom})
 
         df_precios = pd.DataFrame(precios_consolidados)
@@ -220,6 +219,7 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
 
     for p in list(dict_prods.keys()):
         if "ACONDICIONADOR" in p:
+            # EL NM NO ALTERA EL ACONDICIONADOR.
             if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]): dict_prods[p] = 0.06
         elif "IMBIOSIL" in p.replace(" ", ""):
             if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: dict_prods[p] = 1.5
@@ -437,6 +437,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         insumos_a = max(0, (costo_tot_a / area_a if area_a > 0 else 0) - vuelo_a)
         insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
         
+        # 💥 REPARACIÓN CRÍTICA DE VARIABLES 💥
+        categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
+        
         st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
         tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
         with tab_unit:
@@ -448,6 +451,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP")
             st.plotly_chart(fig_glob, use_container_width=True)
         
+        # --- DESGLOSE OPERATIVO DE CÓCTELES ---
         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
         
