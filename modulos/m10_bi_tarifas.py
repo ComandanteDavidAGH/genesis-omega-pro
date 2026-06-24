@@ -539,28 +539,28 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
         
-        # 🗓️ PROTOCOLO ANCLA: Detectar fechas reales para no inicializar en blanco
-        if not df_finca.empty and 'FECHA_DT' in df_finca.columns:
-            min_fecha_real = df_finca['FECHA_DT'].min().date()
-            max_fecha_real = df_finca['FECHA_DT'].max().date()
-        else:
-            min_fecha_real = datetime.now().date()
-            max_fecha_real = datetime.now().date()
-
-        # --- 📅 SELECTORES DE FECHA ESPECÍFICOS AUTOMATIZADOS ---
+        # --- 📅 CONTROL DIRECTO DE CALENDARIO INDEPENDIENTE ---
         c_inv1, c_inv2 = st.columns(2)
-        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=min_fecha_real, key="inv_f_ini")
-        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=max_fecha_real, key="inv_f_fin")
         
-        # Filtrado quirúrgico temporal
-        df_inventario = df_finca[(df_finca['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_finca['FECHA_DT'].dt.date <= inv_fecha_fin)].copy()
+        # Inicializamos 30 días atrás de forma fija para forzar a que capture el rango histórico real de vuelos
+        fecha_hace_un_mes = datetime.now().date() - pd.Timedelta(days=30)
+        
+        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_fija")
+        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_fija")
+        
+        # Filtrado directo saltándose los candados de arriba
+        df_inventario = super_base_bi.copy()
+        if finca_sel != "TODAS": 
+            df_inventario = df_inventario[df_inventario['FINCA_MAESTRA'] == finca_sel]
+            
+        df_inventario = df_inventario[(df_inventario['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_inventario['FECHA_DT'].dt.date <= inv_fecha_fin)].copy()
         area_inv = df_inventario['AREA_NUM'].sum() if not df_inventario.empty else 0.0
 
         st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_inv:,.1f} Ha)** contra la matriz de **DD_Mesclas** en el periodo seleccionado.")
 
         c_coctel = next((c for c in df_inventario.columns if 'COCTEL' in str(c).upper()), None)
 
-        if not df_inventario.empty and area_inv > 0 and c_coctel:
+        if not df_inventario.empty and c_coctel:
             with st.spinner("Desglosando matrices químicas..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
@@ -586,23 +586,19 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         if consumo_log:
                             st.markdown("#### 🔎 Auditoría de Consumo por Insumo")
-                            
-                            # 🔤 AJUSTE: El selector individual ahora también viene ordenado alfabéticamente
                             lista_insumos = ["📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)"] + sorted(list(consumo_log.keys()))
                             insumo_filtrado = st.selectbox("Seleccione el producto a auditar en el rango de fechas:", lista_insumos)
 
                             df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                # 🔤 TABLA ORDENADA ALFABÉTICAMENTE A->Z
+                                # Tabla ordenada ALFABÉTICAMENTE
                                 df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
                                 df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
                                 
                                 c1, c2 = st.columns([1, 1.2])
-                                with c1: 
-                                    st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                                with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
-                                    # El gráfico se mantiene como Top 15 de Mayor Demanda
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15)
                                     fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
                                     fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
@@ -622,7 +618,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else:
-            st.warning("⚠️ No hay registros de vuelo para el rango de fechas seleccionado en esta Finca.")
+            st.warning("⚠️ No se encontraron operaciones registradas en el rango seleccionado.")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
