@@ -539,16 +539,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
         
-        # --- 📅 CONTROL DIRECTO DE CALENDARIO INDEPENDIENTE ---
+        # --- 📅 1. SELECTORES DE FECHA INTERNOS (TOTALMENTE VISIBLES AL INICIO) ---
         c_inv1, c_inv2 = st.columns(2)
-        
-        # Inicializamos 30 días atrás de forma fija para forzar a que capture el rango histórico real de vuelos
         fecha_hace_un_mes = datetime.now().date() - pd.Timedelta(days=30)
         
-        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_fija")
-        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_fija")
+        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_definitiva")
+        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_definitiva")
         
-        # Filtrado directo saltándose los candados de arriba
+        # --- 🚜 2. FILTRADO INDEPENDIENTE EN RAM ---
         df_inventario = super_base_bi.copy()
         if finca_sel != "TODAS": 
             df_inventario = df_inventario[df_inventario['FINCA_MAESTRA'] == finca_sel]
@@ -592,7 +590,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                # Tabla ordenada ALFABÉTICAMENTE
+                                # 🔤 TABLA ORDENADA ALFABÉTICAMENTE
                                 df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
                                 df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
                                 
