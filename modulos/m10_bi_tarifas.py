@@ -87,18 +87,18 @@ def cargar_boveda_recetas_y_precios():
         
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         
-        # 💥 CORRECCIÓN TÁCTICA: Ahora busca "FINCA" o "PRODUCTO" en lugar de "COCTEL"
+        # 🟢 INYECCIÓN DIRECTA: Carga la pestaña completa sin buscar palabras clave
         data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-        idx_mez = 0
-        for i in range(min(5, len(data_mez))):
-            fila_str = [str(c).upper() for c in data_mez[i]]
-            if any('FINCA' in c for c in fila_str) or any('PRODUCTO' in c for c in fila_str):
-                idx_mez = i; break
-                
-        df_mezclas = pd.DataFrame(data_mez[idx_mez+1:], columns=data_mez[idx_mez]) if len(data_mez) > idx_mez else pd.DataFrame()
-        if not df_mezclas.empty:
-            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:,0].astype(str).str.upper().str.replace(" ", "")
+        
+        if data_mez:
+            # Determinamos si la primera fila tiene datos para usarla de encabezado
+            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+            # Forzamos la creación de la columna limpia apuntando estrictamente a la primera columna
+            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+        else:
+            df_mezclas = pd.DataFrame()
             
+        # Carga del resto de las pestañas de soporte
         df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
         df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
@@ -124,12 +124,13 @@ def cargar_boveda_recetas_y_precios():
                             col_inicio = max(col_anio, col_prod) + 1
                             vals = [float(str(v).strip().replace(',', '.')) for v in row[col_inicio:] if str(v).strip().replace(',', '.').replace('-','').replace('.','').isdigit()]
                             prom = sum(vals)/len(vals) if vals else 0.0
-                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRECIO_PROM': prom})
+                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRECIO_PROM': promedio})
 
         df_precios = pd.DataFrame(precios_consolidados)
         return df_mezclas, df_conf, df_dicc, df_precios, df_t2
     except:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        
 # --- 🧪 APARTADO DE BARREDORAS Y AUXILIARES GLOBALES ---
 def limpiar_encabezados(df):
     df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
