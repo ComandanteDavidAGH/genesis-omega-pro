@@ -539,14 +539,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
         
-        # --- 📅 1. SELECTORES DE FECHA INTERNOS (TOTALMENTE VISIBLES AL INICIO) ---
+        # --- 📅 1. SELECTORES DE FECHA INTERNOS (ESTRICTAMENTE VISIBLES) ---
         c_inv1, c_inv2 = st.columns(2)
         fecha_hace_un_mes = datetime.now().date() - pd.Timedelta(days=30)
         
-        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_definitiva")
-        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_definitiva")
+        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_finalisimo")
+        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_finalisimo")
         
-        # --- 🚜 2. FILTRADO INDEPENDIENTE EN RAM ---
+        # --- 🚜 2. FILTRADO EN RAM ---
         df_inventario = super_base_bi.copy()
         if finca_sel != "TODAS": 
             df_inventario = df_inventario[df_inventario['FINCA_MAESTRA'] == finca_sel]
@@ -589,25 +589,39 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                             df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
+                            # 💥 TRADUCTOR METRICO LATINO: Punto para miles, Coma para decimales
+                            def formatear_numero_latino(val):
+                                try:
+                                    s = "{:,.1f}".format(float(val))
+                                    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+                                except:
+                                    return str(val)
+
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                # 🔤 TABLA ORDENADA ALFABÉTICAMENTE
+                                # Tabla ordenada alfabéticamente de la A a la Z
                                 df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
-                                df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
+                                df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].apply(formatear_numero_latino)
                                 
                                 c1, c2 = st.columns([1, 1.2])
-                                with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                                with c1: 
+                                    st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
+                                    # Gráfica de barras - Mantiene el Top 15 ordenado por volumen
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15)
                                     fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
                                     fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
-                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=60))
+                                    
+                                    # 💥 FORCE METRICO EN PLOTLY: El comando 'separators' cambia las comas por puntos en las etiquetas del gráfico
+                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=60), separators=",.")
                                     st.plotly_chart(fig, use_container_width=True)
                             else:
+                                # Vista en Solitario de un Insumo Seleccionado
                                 vol_especifico = consumo_log[insumo_filtrado]
+                                vol_formateado = formatear_numero_latino(vol_especifico)
                                 st.markdown(f"""
                                 <div style='background-color:#0d1b2a; padding:25px; border-radius:10px; border-left:8px solid #27AE60; text-align:center;'>
                                     <h4 style='color:#27AE60; margin:0; text-transform: uppercase;'>CONSUMO TOTAL EN EL PERIODO</h4>
-                                    <h1 style='color:white; margin:10px 0; font-size: 45px;'>{vol_especifico:,.1f}</h1>
+                                    <h1 style='color:white; margin:10px 0; font-size: 45px;'>{vol_formateado}</h1>
                                     <p style='color:#d4af37; margin:0; font-size:18px;'>Litros o Kilos teóricos de {insumo_filtrado}</p>
                                 </div>
                                 """, unsafe_allow_html=True)
