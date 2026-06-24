@@ -622,12 +622,25 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                     st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
                                     # Gráfica de barras - Mantiene el Top 15 ordenado por volumen de mayor a menor
-                                    df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15)
-                                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title=f"Top 15 Insumos - Pista: {pista_inv_sel}")
-                                    fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
+                                    df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15).copy()
                                     
-                                    # 💥 REPARACIÓN DE GRÁFICO LATINO: separators=",." configura decimales con coma y miles con punto en Plotly
-                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=60), separators=",.")
+                                    # 💥 SOLUCIÓN DE ORO: Pre-formateamos en Python para obligar a Plotly a pintar el texto sin fallas
+                                    df_grafica['ETIQUETA_LATINA'] = df_grafica["📦 VOLUMEN ESTIMADO (L/Kg)"].apply(formatear_numero_latino)
+                                    
+                                    fig = px.bar(
+                                        df_grafica, 
+                                        y="🧪 PRODUCTO", 
+                                        x="📦 VOLUMEN ESTIMADO (L/Kg)", 
+                                        text="ETIQUETA_LATINA", # <-- Pasamos la columna formateada
+                                        orientation='h', 
+                                        color="📦 VOLUMEN ESTIMADO (L/Kg)", 
+                                        color_continuous_scale="GnBu", 
+                                        title=f"Top 15 Insumos - Pista: {pista_inv_sel}"
+                                    )
+                                    
+                                    # Ampliamos el margen derecho (r=100) para que entren holgadamente los números grandes
+                                    fig.update_traces(textposition='outside', textfont_size=11)
+                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100), separators=",.")
                                     st.plotly_chart(fig, use_container_width=True)
                             else:
                                 # Vista de impacto para un único insumo seleccionado
