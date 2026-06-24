@@ -692,51 +692,76 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 else: st.info("No se encontraron ingredientes válidos para esta receta.")
                 
         # =====================================================================
-        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA (CON MOTOR DE PRECISIÓN V2)
+        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA Y AUDITORÍA DE INVENTARIOS
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown(f"### 📦 Nivel 3: Consumo Volumétrico de Insumos ({año_comp})")
-        st.info(f"Cálculo volumétrico avanzado basado en el comportamiento individual de las siglas para **{area_b:,.1f} Ha**.")
+        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_b:,.1f} Ha)** contra la matriz de **DD_Mesclas**.")
 
-        # 💥 RADAR INTELIGENTE: Busca la columna sin importar espacios invisibles
+        # Buscamos la columna de cócteles dinámica
         c_coctel = next((c for c in df_periodo_b.columns if 'COCTEL' in str(c).upper()), None)
 
         if not df_periodo_b.empty and c_coctel:
-            with st.spinner("Desglosando matrices químicas..."):
+            with st.spinner("Desglosando matrices químicas y cruzando con TABLA 1..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
-                    resumen_ha = df_periodo_b.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
-                    consumo_log = {}
-
-                    for _, fila in resumen_ha.iterrows():
-                        nombre_coctel = str(fila[c_coctel]).upper().strip()
-                        ha_aplicadas = fila['AREA_NUM']
-                        if ha_aplicadas <= 0 or nombre_coctel in ["NAN", ""]: continue
-
-                        # Llamada directa al cerebro químico central
-                        dict_temp = extraer_receta_de_sigla_bi(nombre_coctel, finca_sel, df_m, df_d, df_t2_b)
-
-                        # Totalizar Litros
-                        for p, d in dict_temp.items():
-                            consumo_log[p] = consumo_log.get(p, 0) + (d * ha_aplicadas)
-
-                    if consumo_log:
-                        df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]).sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False)
-                        df_vista = df_log.copy()
-                        df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
-                        
-                        c1, c2 = st.columns([1, 1.2])
-                        with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
-                        with c2:
-                            fig = px.bar(df_log.head(10), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", text_auto='.1f', title="Top 10 Insumos")
-                            fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
-                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    if df_m.empty:
+                        st.cache_data.clear()
+                        df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
+                    
+                    if df_m.empty:
+                        st.error("🚨 ENLACE SATELITAL ROTO: No se pudo leer la pestaña 'DD_Mesclas' desde Google Drive.")
                     else:
-                        st.warning(f"⚠️ Radar vacío. El sistema procesó los cócteles (ej: '{resumen_ha.iloc[0][c_coctel]}') pero no encontró coincidencias en la pestaña DD_Mesclas.")
+                        resumen_ha = df_periodo_b.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
+                        consumo_log = {}
+
+                        for _, fila in resumen_ha.iterrows():
+                            nombre_coctel = str(fila[c_coctel]).upper().strip()
+                            ha_aplicadas = fila['AREA_NUM']
+                            if ha_aplicadas <= 0 or nombre_coctel in ["NAN", ""]: continue
+
+                            # Llamada al cerebro químico
+                            dict_temp = extraer_receta_de_sigla_bi(nombre_coctel, finca_sel, df_m, df_d, df_t2_b)
+
+                            # Multiplicación y Sumatoria (Fase 3)
+                            for p, d in dict_temp.items():
+                                consumo_log[p] = consumo_log.get(p, 0) + (d * ha_aplicadas)
+
+                        if consumo_log:
+                            # --- 🔎 NUEVO: SELECTOR DE PRODUCTOS (AUDITORÍA) ---
+                            st.markdown("#### 🔎 Auditoría de Consumo por Insumo")
+                            lista_insumos = ["📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)"] + sorted(list(consumo_log.keys()))
+                            insumo_filtrado = st.selectbox("Seleccione el producto a auditar en el rango de fechas:", lista_insumos)
+
+                            df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]).sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False)
+                            
+                            if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
+                                df_vista = df_log.copy()
+                                df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
+                                
+                                c1, c2 = st.columns([1, 1.2])
+                                with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                                with c2:
+                                    fig = px.bar(df_log.head(15), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", text_auto='.1f', title="Top 15 Insumos con Mayor Demanda")
+                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)')
+                                    st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                # Vista en Solitario (Impacto Visual del Insumo Elegido)
+                                vol_especifico = consumo_log[insumo_filtrado]
+                                st.markdown(f"""
+                                <div style='background-color:#0d1b2a; padding:25px; border-radius:10px; border-left:8px solid #27AE60; text-align:center; box-shadow: 0 4px 8px rgba(0,0,0,0.2);'>
+                                    <h4 style='color:#27AE60; margin:0; text-transform: uppercase; letter-spacing: 2px;'>CONSUMO TOTAL EN EL PERIODO</h4>
+                                    <h1 style='color:white; margin:10px 0; font-size: 45px;'>{vol_especifico:,.1f}</h1>
+                                    <p style='color:#d4af37; margin:0; font-size: 18px; font-weight: bold;'>Litros o Kilos teóricos de {insumo_filtrado}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match entre los cócteles de la TABLA 1 y las recetas de DD_Mesclas. Verifique nombres.")
                 except Exception as e:
-                    st.error(f"🚨 Error interno en el motor logístico: {e}")
+                    st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else:
-            st.error("🚨 CRÍTICO: No se detectó la columna de Cócteles en la base de datos para este periodo.")
+            st.info("Esperando datos de operaciones en el periodo evaluado...")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
