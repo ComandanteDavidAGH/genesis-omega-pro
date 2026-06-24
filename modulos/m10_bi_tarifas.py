@@ -534,28 +534,37 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
 
         # =====================================================================
-        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA (CÁCULO PURO - SÓLO CONSULTA BI)
+        # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA Y AUDITORÍA DE INVENTARIOS
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown(f"### 📦 Nivel 3: Consumo Volumétrico de Insumos ({año_comp})")
-        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_b:,.1f} Ha)** contra la matriz de **DD_Mesclas**.")
+        st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
+        
+        # --- 📅 NUEVOS SELECTORES DE FECHA ESPECÍFICOS PARA INVENTARIO ---
+        c_inv1, c_inv2 = st.columns(2)
+        inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=datetime.now().date(), key="inv_f_ini")
+        inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin")
+        
+        # Filtramos la base maestra (que ya tiene el filtro de finca) por estas fechas
+        df_inventario = df_finca[(df_finca['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_finca['FECHA_DT'].dt.date <= inv_fecha_fin)].copy()
+        area_inv = df_inventario['AREA_NUM'].sum() if not df_inventario.empty else 0.0
 
-        c_coctel = next((c for c in df_periodo_b.columns if 'COCTEL' in str(c).upper()), None)
+        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_inv:,.1f} Ha)** contra la matriz de **DD_Mesclas** en el periodo seleccionado.")
 
-        if not df_periodo_b.empty and c_coctel:
+        c_coctel = next((c for c in df_inventario.columns if 'COCTEL' in str(c).upper()), None)
+
+        if not df_inventario.empty and c_coctel:
             with st.spinner("Desglosando matrices químicas..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
                     
                     if df_m.empty:
-                        # Intento de purga automática si falla la primera vez
                         st.cache_data.clear()
                         df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
                     
                     if df_m.empty:
-                        st.error("🚨 ENLACE SATELITAL ROTO: La bóveda DD_Mesclas sigue vacía. Revise la conexión de Google Drive.")
+                        st.error("🚨 ENLACE SATELITAL ROTO: No se pudo leer la pestaña 'DD_Mesclas' desde Google Drive.")
                     else:
-                        resumen_ha = df_periodo_b.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
+                        resumen_ha = df_inventario.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
                         consumo_log = {}
 
                         for _, fila in resumen_ha.iterrows():
@@ -572,16 +581,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             lista_insumos = ["📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)"] + sorted(list(consumo_log.keys()))
                             insumo_filtrado = st.selectbox("Seleccione el producto a auditar en el rango de fechas:", lista_insumos)
 
-                            df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]).sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False)
+                            # Creamos el dataframe base sin ordenar aún
+                            df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                df_vista = df_log.copy()
+                                # 🔤 CORRECCIÓN: Tabla ordenada ALFABÉTICAMENTE por Producto
+                                df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
                                 df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].map("{:,.1f}".format)
+                                
                                 c1, c2 = st.columns([1, 1.2])
-                                with c1: st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                                with c1: 
+                                    st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
-                                    # 💥 CORRECCIÓN DE GRÁFICA: Forzando etiquetas afuera
-                                    fig = px.bar(df_log.head(15), y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
+                                    # La gráfica se mantiene como Top 15 (Ordenada por mayor volumen)
+                                    df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15)
+                                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title="Top 15 Insumos con Mayor Demanda")
                                     fig.update_traces(texttemplate='%{x:,.1f}', textposition='outside', textfont_size=12)
                                     fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=60))
                                     st.plotly_chart(fig, use_container_width=True)
@@ -598,6 +612,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match con las recetas de DD_Mesclas.")
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
+        else:
+            st.info("Esperando datos de operaciones en el periodo evaluado...")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
