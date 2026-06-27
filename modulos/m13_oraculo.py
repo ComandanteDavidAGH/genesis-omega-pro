@@ -44,7 +44,6 @@ def fmt_latino(val, decimales=1):
 
 # 🧠 BUSCADOR DE DOSIS PARA FERTILIZANTES
 def obtener_dosis_fertilizante(df_mezclas, fert_name):
-    """Escanea la tabla para encontrar la dosis predeterminada de un fertilizante si no está en la base principal"""
     try:
         for col_idx in range(len(df_mezclas.columns) - 1):
             mask = df_mezclas.iloc[:, col_idx].astype(str).str.strip().str.upper() == fert_name
@@ -52,7 +51,7 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
                 val = pd.to_numeric(df_mezclas[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
     except: pass
-    return 0.5 # Dosis de respaldo genérica
+    return 0.5 
 
 # 🧠 CEREBRO QUÍMICO COMPLETO (Dinámico basado en la imagen DD_Mesclas)
 def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico):
@@ -63,7 +62,6 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
     
     dict_prods = {}
     
-    # 1. Extraer la base del cóctel (Columnas A, B, C)
     if not df_mezclas.empty:
         col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
         rb = df_mezclas[col_0_limpia == base_coctel]
@@ -72,14 +70,12 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
             d = a_numero_limpio(r.iloc[2])
             if d > 0 and p not in ['NAN', 'NONE', '']: dict_prods[p] = d
 
-    # 2. Inyección Dinámica de Fertilizantes según Siglas (Columnas M y N)
     for aditivo in aditivos:
         if aditivo in dict_fertilizantes_dinamico:
             nombre_fert = dict_fertilizantes_dinamico[aditivo]
             dosis_fert = obtener_dosis_fertilizante(df_mezclas, nombre_fert)
             dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
     
-    # 3. Validadores Estructurales (En caso de que la receta base no los traiga)
     if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
     if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
         dict_prods["ACONDICIONADOR SV"] = 0.02
@@ -137,19 +133,25 @@ def ejecutar(purificar_lote, extraer_numero):
                 
                 cols_limpias = [purificar_columna(c) for c in df_sap.columns]
                 
-                idx_prod = next((i for i, c in enumerate(cols_limpias) if 'DESC' in c or 'PRODUCTO' in c or 'TEXTO' in c or 'MATERIAL' in c), None)
+                # 💥 EL BLINDAJE CONTRA EL CÓDIGO DUPLICADO ESTÁ AQUÍ 💥
+                idx_cod = next((i for i, c in enumerate(cols_limpias) if 'MATERIAL' in c or 'COD' in c or 'ITEM' in c), None)
+                # Obligamos a que la columna de descripción sea DIFERENTE a la del código
+                idx_prod = next((i for i, c in enumerate(cols_limpias) if ('TEXTO' in c or 'DESC' in c or 'PRODUCTO' in c or 'DENOMINACION' in c) and i != idx_cod), None)
+                
                 idx_pista = next((i for i, c in enumerate(cols_limpias) if 'ALMACEN' in c or 'PISTA' in c or 'LGORT' in c), None)
                 idx_saldo = next((i for i, c in enumerate(cols_limpias) if 'LIBRE' in c or 'SALDO' in c or 'UTILIZACION' in c or 'LABST' in c), None)
-                idx_cod = next((i for i, c in enumerate(cols_limpias) if 'MATERIAL' in c or 'COD' in c or 'ITEM' in c), None)
 
                 if idx_prod is None or idx_pista is None or idx_saldo is None:
-                    st.error("❌ Error: Columnas críticas no encontradas en SAP.")
+                    st.error(f"❌ Error de Radar: No se pudieron mapear las columnas críticas en SAP. Columnas detectadas: {list(df_sap.columns)}")
                     return
                 
-                c_prod, c_pista, c_saldo, c_cod = df_sap.columns[idx_prod], df_sap.columns[idx_pista], df_sap.columns[idx_saldo], df_sap.columns[idx_cod] if idx_cod is not None else None
+                c_prod = df_sap.columns[idx_prod]
+                c_pista = df_sap.columns[idx_pista]
+                c_saldo = df_sap.columns[idx_saldo]
+                c_cod = df_sap.columns[idx_cod] if idx_cod is not None else None
 
-                # Fusión de Código y Nombre
-                if c_cod:
+                # Fusión de Código y Nombre asegurada
+                if c_cod is not None and c_prod is not None:
                     df_sap['PRODUCTO_RADAR'] = df_sap[c_cod].astype(str).str.split('.').str[0].str.strip() + " | " + df_sap[c_prod].astype(str).str.upper().str.strip()
                 else:
                     df_sap['PRODUCTO_RADAR'] = df_sap[c_prod].astype(str).str.upper().str.strip()
@@ -170,12 +172,11 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1 = pd.DataFrame(boveda.worksheet("TABLA 1").get_all_values()[5:], columns=[str(c).upper().strip() for c in boveda.worksheet("TABLA 1").get_all_values()[4]])
                 df_mezclas = pd.DataFrame(boveda.worksheet("DD_Mesclas").get_all_values()[1:], columns=[str(c).upper().strip() for c in boveda.worksheet("DD_Mesclas").get_all_values()[0]])
 
-                # CONSTRUCCIÓN DEL DICCIONARIO DINÁMICO DE FERTILIZANTES (Lectura de Columnas M y N)
                 dict_fert = {}
                 if len(df_mezclas.columns) > 13:
                     for _, row in df_mezclas.iterrows():
-                        f_n = str(row.iloc[12]).strip().upper() # Columna M
-                        f_s = str(row.iloc[13]).strip().upper() # Columna N
+                        f_n = str(row.iloc[12]).strip().upper() 
+                        f_s = str(row.iloc[13]).strip().upper() 
                         if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
                             dict_fert[f_s] = f_n
 
@@ -184,7 +185,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
                 col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
 
-                # RECUPERACIÓN DE FECHAS
+                # RECUPERACIÓN DE FECHAS PESADA
                 df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
                 df_t1 = df_t1.dropna(subset=['FECHA_DT'])
                 df_t1['MES'] = df_t1['FECHA_DT'].dt.month
@@ -203,7 +204,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     ha_por_anio = df_hist_mes.groupby(['AÑO', 'PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
                     ha_promedio_hist = ha_por_anio.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].mean().reset_index()
 
-                    # EXPLOSIÓN QUÍMICA TOTAL (Conectado al Cerebro Dinámico)
+                    # EXPLOSIÓN QUÍMICA CON CEREBRO M3
                     for _, row_c in ha_promedio_hist.iterrows():
                         pista_op = row_c['PISTA_OPERATIVA']
                         coctel_completo = str(row_c[col_coctel]).upper().strip()
@@ -216,7 +217,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         for prod_quimico, dosis in receta_dict.items():
                             consumo_esperado_pista[pista_op][prod_quimico] = consumo_esperado_pista[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
 
-                # 💥 DICCIONARIO TRADUCTOR (SAP -> TABLA 1) 💥
+                # DICCIONARIO TRADUCTOR (SAP -> TABLA 1)
                 traductor_pistas = {
                     "PLUC": "FUMIGARAY",
                     "PORI": "AEROPENOR",
@@ -225,7 +226,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     "PDIV": "ASA"
                 }
 
-                # --- E. CRUCE ALGORÍTMICO Y ORDENAMIENTO ---
                 resultados = []
                 for _, row_s in df_sap_agrupado.iterrows():
                     pista_sap = row_s['PISTA_SAP']
@@ -233,9 +233,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     saldo = row_s['SALDO_FISICO']
 
                     consumo_mes_proyectado = 0.0
-                    
                     pista_t1_esperada = traductor_pistas.get(pista_sap, pista_sap)
-
                     pista_clave = next((k for k in consumo_esperado_pista.keys() if pista_t1_esperada in k or k in pista_t1_esperada), None)
                     
                     if pista_clave:
@@ -269,7 +267,6 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 st.markdown("---")
                 
-                # 💥 TESTIGO VISUAL DE VERIFICACIÓN 💥
                 if ha_total_detectada > 0:
                     st.success(f"✅ Memoria Histórica Recuperada: El radar encontró y promedió operaciones sobre **{fmt_latino(ha_total_detectada)} Hectáreas** de fumigación en el mes de {meses_dict[mes_proyeccion]} durante los años analizados.")
                 else:
@@ -280,7 +277,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ORDENAMIENTO ALFABÉTICO (CORREGIDO Y GARANTIZADO) 💥
                     df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True])
                     
                     criticos = len(df_oraculo[df_oraculo['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
