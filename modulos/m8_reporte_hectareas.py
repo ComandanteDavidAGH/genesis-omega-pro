@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st
 import pandas as pd
 import plotly.express as px
 import gspread
@@ -74,18 +74,18 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             
             df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
             
-            meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
+            # 🗓️ Sincronización Temporal Automática en RAM
+            df_rep['FECHA_DT'] = df_rep['FECHA'].apply(procesar_fecha_pesada)
+            df_rep = df_rep.dropna(subset=['FECHA_DT'])
             
-            def extraer_mes_año(fecha_str):
-                dt = procesar_fecha_pesada(fecha_str)
-                if dt: return meses_nom.get(dt.month, "00-Desc"), str(dt.year)
-                return "00-Desc", "00-Desc"
+            # Límites geográficos y temporales reales
+            pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
+            min_fecha_real = df_rep['FECHA_DT'].min().date() if not df_rep.empty else datetime.now().date()
+            max_fecha_real = df_rep['FECHA_DT'].max().date() if not df_rep.empty else datetime.now().date()
             
-            df_rep[['MES', 'AÑO']] = df_rep['FECHA'].apply(lambda x: pd.Series(extraer_mes_año(x)))
-            df_rep = df_rep[df_rep['AÑO'] != "00-Desc"]
-            
+            # --- 🎛️ PANEL DE CONTROL EVOLUCIONADO (CUATRO COLUMNAS) ---
             st.markdown("### 🎛️ Centro de Comando y Filtros")
-            c1, c2, c3 = st.columns([2, 1, 1])
+            c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1])
             
             vista_seleccionada = c1.radio(
                 "👁️ Seleccione la Vista del Radar:", 
@@ -93,32 +93,35 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                 horizontal=True
             )
             
-            pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
-            años_disp = sorted(df_rep['AÑO'].unique().tolist(), reverse=True)
-            
-            año_sel = c2.selectbox("📅 Año Fiscal", años_disp if años_disp else [str(datetime.now().year)])
-            pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistes_disp)
+            # 💥 NUEVOS SELECTORES DE RANGO DE FECHAS DINÁMICOS 💥
+            fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=min_fecha_real, key="m8_f_ini_def")
+            fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=max_fecha_real, key="m8_f_fin_def")
+            pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_perfecta") # Fix typo
             
             mostrar_horas = False
-            # 💥 EL NUEVO INTERRUPTOR TÁCTICO 💥
             calcular_rend_prom = False
-            
             if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
                 cc1, cc2 = st.columns(2)
                 mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas de Vuelo")
                 calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rendimiento Promedio (Ha/Hr)", value=True)
 
-            df_filt = df_rep[df_rep['AÑO'] == año_sel]
+            # Filtrado Quirúrgico Temporal y Geográfico
+            df_filt = df_rep[(df_rep['FECHA_DT'].dt.date >= fecha_sel_ini) & (df_rep['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
             if pista_sel != "TODAS":
                 df_filt = df_filt[df_filt['PISTA'] == pista_sel]
             
             if df_filt.empty:
-                st.warning("⚠️ No hay operaciones registradas para estos parámetros.")
+                st.warning("⚠️ No hay operaciones registradas para estos parámetros en el rango de fechas seleccionado.")
             else:
+                meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
+                df_filt['MES'] = df_filt['FECHA_DT'].dt.month.map(meses_nom)
+                df_filt['AÑO'] = df_filt['FECHA_DT'].dt.year.astype(str)
+                
                 st.markdown("---")
+                rango_txt = f"{fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}"
                 
                 if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
-                    st.markdown(f"#### 📑 Consolidado Gerencial - {año_sel}")
+                    st.markdown(f"#### 📑 Consolidado Gerencial ({rango_txt})")
                     
                     df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
                         REND_HR=('H_PROPORCIONAL', 'sum'),
@@ -190,7 +193,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     matriz['TOTAL MES'] = matriz.sum(axis=1)
                     matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
                     
-                    st.markdown(f"#### 🚜 Rendimiento Semana a Semana: **{pista_sel}**")
+                    st.markdown(f"#### 🚜 Rendimiento Semana a Semana: **{pista_sel}** ({rango_txt})")
                     if HAS_MATPLOTLIB:
                         st.dataframe(matriz.style.format("{:.2f}").background_gradient(cmap="YlGn", axis=None), use_container_width=True)
                     else:
@@ -271,7 +274,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         worksheet.cell(row=1, column=28).value = "Ha"
                         meses_para_grafico = [m for m in df_visual['MES'] if str(m).strip() not in ["", "None"]]
                         row_g = 2
-                        col_ha_letra = "C" if not mostrar_horas and not calcular_rend_prom else ("D" if mostrar_horas ^ calcular_rend_prom else "D")
+                        col_ha_letra = "C" if (not mostrar_horas and not calcular_rend_prom) else "D"
                         for m in meses_para_grafico:
                             worksheet.cell(row=row_g, column=27).value = m
                             fila_origen = 2
@@ -302,10 +305,11 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         worksheet.column_dimensions[get_column_letter(col_idx)].width = 22
                     worksheet.freeze_panes = "A2"
 
+                rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
                 st.download_button(
                     label="💾 DESCARGAR REPORTE GERENCIAL TOP",
                     data=buffer_rep.getvalue(),
-                    file_name=f"Reporte_Gerencial_{año_sel}.xlsx",
+                    file_name=f"Reporte_Rendimiento_{rango_label}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )                       
