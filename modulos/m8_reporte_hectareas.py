@@ -43,6 +43,13 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             except: pass
         return None
 
+    # 💥 TRADUCTOR MÉTRICO LATINO (Puntos para miles, Comas para decimales)
+    def fmt_latino(val):
+        try:
+            return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except:
+            return str(val)
+
     # --- DESPLIEGUE DE CONEXIÓN ---
     try:
         with st.spinner("🛰️ Escaneando la Bóveda Maestra con Motor Nativo (TABLA 1)..."):
@@ -173,9 +180,10 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                             return ['background-color: #e2e6ea; font-weight: bold;'] * len(row)
                         return [''] * len(row)
                     
-                    formato_columnas = {'ÁREA FUMIG (ha)': "{:.2f}"}
-                    if mostrar_horas or calcular_rend_prom: formato_columnas['REND (hr)'] = "{:.2f}"
-                    if calcular_rend_prom: formato_columnas['REND. PROMEDIO (Ha/Hr)'] = "{:.2f}"
+                    # Aplicamos el formato latino exacto a las columnas del resumen gerencial
+                    formato_columnas = {'ÁREA FUMIG (ha)': fmt_latino}
+                    if mostrar_horas or calcular_rend_prom: formato_columnas['REND (hr)'] = fmt_latino
+                    if calcular_rend_prom: formato_columnas['REND. PROMEDIO (Ha/Hr)'] = fmt_latino
                     
                     st.dataframe(
                         df_visual.style.apply(estilizar_filas, axis=1).format(formato_columnas),
@@ -193,22 +201,28 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     matriz['TOTAL MES'] = matriz.sum(axis=1)
                     matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
                     
-                    st.markdown(f"#### 🚜 Rendimiento Semana a Semana: **{pista_sel}** ({rango_txt})")
+                    # ✈️ EMOJI DE AVIÓN REEMPLAZANDO AL TRACTOR
+                    st.markdown(f"#### 🛩️ Rendimiento Semana a Semana: **{pista_sel}** ({rango_txt})")
+                    
+                    # Aplicamos el traductor métrico a TODO el dataframe semanal
                     if HAS_MATPLOTLIB:
-                        st.dataframe(matriz.style.format("{:.2f}").background_gradient(cmap="YlGn", axis=None), use_container_width=True)
+                        st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
                     else:
-                        st.dataframe(matriz.style.format("{:.2f}"), use_container_width=True)
+                        st.dataframe(matriz.style.format(fmt_latino), use_container_width=True)
                     
                     st.markdown("---")
                     df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
                     if not df_grafico.empty:
+                        # Pre-formateamos la etiqueta para Plotly
+                        df_grafico['TEXTO_LATINO'] = df_grafico['TOTAL MES'].apply(fmt_latino)
+                        
                         fig = px.bar(
-                            df_grafico, x='index', y='TOTAL MES', text='TOTAL MES',
+                            df_grafico, x='index', y='TOTAL MES', text='TEXTO_LATINO',
                             labels={'TOTAL MES': 'Hectáreas Fumigadas', 'index': 'Mes de Operación'},
                             color='TOTAL MES', color_continuous_scale='Greens'
                         )
-                        fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-                        fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes")
+                        fig.update_traces(textposition='outside')
+                        fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes", separators=",.")
                         st.plotly_chart(fig, use_container_width=True)
 
                 st.markdown("---")
