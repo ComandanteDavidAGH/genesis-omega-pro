@@ -193,7 +193,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['MES'] = df_t1['FECHA_DT'].dt.month
                 df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
                 
-                # 💥 CÁLCULO ESTADÍSTICO CORRECTO 
                 total_anios_boveda = df_t1['AÑO'].nunique()
                 if total_anios_boveda == 0: total_anios_boveda = 1
 
@@ -277,14 +276,15 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ALGORITMO TRIAGE (ESTADO + ALFABÉTICO) 💥
+                    # 💥 ALGORITMO TRIAGE CORREGIDO (Solo 3 Niveles Reales) 💥
                     def get_sort_weight(estado_str):
                         if "CRÍTICO" in estado_str: return 1
                         if "ALERTA" in estado_str: return 2
-                        if "Sin Consumo" in estado_str: return 4
-                        return 3
+                        return 3 # Agrupa a todos los "Verdes" (Tanto > 21 Días como los Sin Consumo) para que se ordenen juntos de la A a la Z
 
                     df_oraculo['SORT_WEIGHT'] = df_oraculo['ESTADO'].apply(get_sort_weight)
+                    
+                    # Ordena primero por pista, luego por prioridad (Rojo, Amarillo, Verde), y luego ESTRICTAMENTE ALFABÉTICO por código/producto
                     df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "SORT_WEIGHT", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True, True])
                     df_oraculo = df_oraculo.drop(columns=['SORT_WEIGHT'])
                     
@@ -292,7 +292,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     alertas = len(df_oraculo[df_oraculo['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
                     optimos = len(df_oraculo) - (criticos + alertas)
                     
-                    # Cajas limpias (sin HTML hostil)
                     c_k1, c_k2, c_k3 = st.columns(3)
                     
                     c_k1.markdown(f"""
