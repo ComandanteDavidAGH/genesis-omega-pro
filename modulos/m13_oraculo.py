@@ -97,10 +97,6 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("""
     <style>
     .titulo-oraculo { color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }
-    .alerta-roja { background-color: #ffe6e6; color: #cc0000; padding: 15px; border-left: 8px solid #cc0000; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    .alerta-amarilla { background-color: #fff3cd; color: #856404; padding: 15px; border-left: 8px solid #ffc107; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    .alerta-verde { background-color: #d4edda; color: #155724; padding: 15px; border-left: 8px solid #28a745; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -197,7 +193,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['MES'] = df_t1['FECHA_DT'].dt.month
                 df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
                 
-                # 💥 CÁLCULO ESTADÍSTICO CORRECTO (Total de años de la historia de la empresa)
+                # 💥 CÁLCULO ESTADÍSTICO CORRECTO 
                 total_anios_boveda = df_t1['AÑO'].nunique()
                 if total_anios_boveda == 0: total_anios_boveda = 1
 
@@ -212,11 +208,8 @@ def ejecutar(purificar_lote, extraer_numero):
                     ha_total_detectada = df_hist_mes['HA_CALCULO'].sum()
 
                     ha_total_por_coctel = df_hist_mes.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
-                    
-                    # Se divide la sumatoria total del mes entre los años absolutos de la empresa
                     ha_total_por_coctel['HA_PROMEDIO'] = ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda
 
-                    # EXPLOSIÓN QUÍMICA CON CEREBRO CALIBRADO
                     for _, row_c in ha_total_por_coctel.iterrows():
                         pista_op = row_c['PISTA_OPERATIVA']
                         coctel_completo = str(row_c[col_coctel]).upper().strip()
@@ -284,7 +277,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ALGORITMO TRIAGE: ORDENAMIENTO POR PRIORIDAD + ALFABÉTICO 💥
+                    # 💥 ALGORITMO TRIAGE (ESTADO + ALFABÉTICO) 💥
                     def get_sort_weight(estado_str):
                         if "CRÍTICO" in estado_str: return 1
                         if "ALERTA" in estado_str: return 2
@@ -299,14 +292,35 @@ def ejecutar(purificar_lote, extraer_numero):
                     alertas = len(df_oraculo[df_oraculo['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
                     optimos = len(df_oraculo) - (criticos + alertas)
                     
+                    # Cajas limpias (sin HTML hostil)
                     c_k1, c_k2, c_k3 = st.columns(3)
-                    c_k1.markdown(f"<div class='alerta-roja'>🚨 RUPTURA INMINENTE<br><p style='margin:0; font-size: 14px;'>Impacto a &lt; 7 Días</p><h2 style='margin:0;'>{criticos} Insumos</h2></div>", unsafe_allow_html=True)
-                    c_k2.markdown(f"<div class='alerta-amarilla'>⚠️ ALERTA LOGÍSTICA<br><p style='margin:0; font-size: 14px;'>Pedir entre 8 y 21 Días</p><h2 style='margin:0;'>{alertas} Insumos</h2></div>", unsafe_allow_html=True)
-                    c_k3.markdown(f"<div class='alerta-verde'>✅ INVENTARIO SANO<br><p style='margin:0; font-size: 14px;'>Autonomía &gt; 21 Días</p><h2 style='margin:0;'>{optimos} Insumos</h2></div>", unsafe_allow_html=True)
+                    
+                    c_k1.markdown(f"""
+                    <div style="background-color: #ffe6e6; border-left: 5px solid #cc0000; padding: 10px; border-radius: 5px;">
+                        <span style="color: #cc0000; font-weight: bold;">🚨 RUPTURA INMINENTE</span><br/>
+                        <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{criticos} Insumos</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    c_k2.markdown(f"""
+                    <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 10px; border-radius: 5px;">
+                        <span style="color: #856404; font-weight: bold;">⚠️ ALERTA LOGÍSTICA</span><br/>
+                        <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{alertas} Insumos</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    c_k3.markdown(f"""
+                    <div style="background-color: #d4edda; border-left: 5px solid #28a745; padding: 10px; border-radius: 5px;">
+                        <span style="color: #155724; font-weight: bold;">✅ INVENTARIO SANO</span><br/>
+                        <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{optimos} Insumos</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br/>", unsafe_allow_html=True)
                     
                     def pintar_oraculo(row):
-                        if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold; border-bottom:1px solid white;'] * len(row)
-                        if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold; border-bottom:1px solid white;'] * len(row)
+                        if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
+                        if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold;'] * len(row)
                         return [''] * len(row)
 
                     df_vista = df_oraculo.copy()
@@ -314,7 +328,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     df_vista['📈 PROYECCIÓN MES (L/Kg)'] = df_vista['📈 PROYECCIÓN MES (L/Kg)'].apply(lambda x: fmt_latino(x, 1))
                     df_vista['⏳ AUTONOMÍA'] = df_vista['⏳ AUTONOMÍA'].apply(lambda x: "∞ (Sin Consumo Histórico)" if x >= 9999 else f"{x:,.0f} Días")
 
-                    st.markdown("#### 📋 Detalle de Explosión de Materiales")
                     st.dataframe(df_vista.style.apply(pintar_oraculo, axis=1), use_container_width=True, hide_index=True)
                     
             except Exception as e:
