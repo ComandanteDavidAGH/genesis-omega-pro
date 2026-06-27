@@ -46,16 +46,22 @@ def ejecutar(purificar_lote, extraer_numero):
 
     # 1. CARGA DEL INVENTARIO ACTUAL
     st.markdown("### 📥 1. Radar de Existencias Actuales (SAP)")
+    
     archivo_sap = st.file_uploader("Cargue la Sábana SAP actualizada (.xlsx o .csv)", type=['xlsx', 'csv'], key="sap_oraculo")
     
+    # 2. SELECTOR EPIDEMIOLÓGICO (MES OBJETIVO) - AHORA MÁS CORTO
+    st.markdown("### 📅 2. Parámetros de Predicción")
+    col_mes, col_vacia1, col_vacia2 = st.columns([1.5, 1, 1.5]) # Esto hace que el selector sea corto
+    
+    meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+    mes_actual = datetime.now().month
+    mes_proyeccion = col_mes.selectbox("Mes a Proyectar (Ciclo Histórico):", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
     if not archivo_sap:
         st.info("💡 Despliegue el archivo SAP para que el sistema evalúe el blindaje de las pistas.")
         return
-
-    # 2. SELECTOR EPIDEMIOLÓGICO (MES OBJETIVO)
-    meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-    mes_actual = datetime.now().month
-    mes_proyeccion = st.selectbox("📅 Seleccione el Mes a Proyectar (Ciclo Epidemiológico Histórico):", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
 
     if st.button("🚀 EJECUTAR PREDICCIÓN ESTACIONAL", type="primary", use_container_width=True):
         with st.spinner(f"Viajando en el tiempo para analizar los ciclos de {meses_dict[mes_proyeccion]} en años anteriores..."):
@@ -69,16 +75,23 @@ def ejecutar(purificar_lote, extraer_numero):
                         archivo_sap.seek(0)
                         df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='latin1')
 
-                cols = [str(c).upper().strip() for c in df_sap.columns]
-                df_sap.columns = cols
+                # 💥 ESCÁNER ROBUSTO DE COLUMNAS SAP (Igual al M0 y M7)
+                def purificar_columna(col_name):
+                    return str(col_name).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                 
-                c_prod = next((c for c in cols if 'DESC' in c or 'PRODUCTO' in c or 'TEXTO' in c), None)
-                c_pista = next((c for c in cols if 'ALMACEN' in c or 'PISTA' in c), None)
-                c_saldo = next((c for c in cols if 'LIBRE' in c or 'SALDO' in c), None)
+                cols_limpias = [purificar_columna(c) for c in df_sap.columns]
+                
+                idx_prod = next((i for i, c in enumerate(cols_limpias) if 'DESC' in c or 'PRODUCTO' in c or 'TEXTO' in c or 'MATERIAL' in c), None)
+                idx_pista = next((i for i, c in enumerate(cols_limpias) if 'ALMACEN' in c or 'PISTA' in c or 'LGORT' in c), None)
+                idx_saldo = next((i for i, c in enumerate(cols_limpias) if 'LIBRE' in c or 'SALDO' in c or 'UTILIZACION' in c or 'LABST' in c), None)
 
-                if not c_prod or not c_saldo or not c_pista:
-                    st.error("❌ No se detectaron las columnas críticas (Producto, Pista/Almacén, Saldo) en SAP.")
+                if idx_prod is None or idx_pista is None or idx_saldo is None:
+                    st.error(f"❌ Error de Radar: No se pudieron mapear las columnas críticas en SAP. (Encontradas: {list(df_sap.columns)})")
                     return
+                
+                c_prod = df_sap.columns[idx_prod]
+                c_pista = df_sap.columns[idx_pista]
+                c_saldo = df_sap.columns[idx_saldo]
 
                 df_sap['SALDO_FISICO'] = df_sap[c_saldo].apply(a_numero_limpio)
                 df_sap['PISTA_SAP'] = df_sap[c_pista].astype(str).str.upper().str.strip()
