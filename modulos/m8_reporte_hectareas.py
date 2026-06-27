@@ -1,4 +1,4 @@
-import streamlit st
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 import gspread
@@ -96,7 +96,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             # 💥 NUEVOS SELECTORES DE RANGO DE FECHAS DINÁMICOS 💥
             fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=min_fecha_real, key="m8_f_ini_def")
             fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=max_fecha_real, key="m8_f_fin_def")
-            pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_perfecta") # Fix typo
+            pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_perfecta")
             
             mostrar_horas = False
             calcular_rend_prom = False
