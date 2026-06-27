@@ -25,7 +25,7 @@ def a_numero_limpio(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 🛡️ TRADUCTOR DE FECHAS PESADO (Solución a la ceguera histórica)
+# 🛡️ TRADUCTOR DE FECHAS PESADO 
 def procesar_fecha_pesada(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip()
@@ -37,12 +37,10 @@ def procesar_fecha_pesada(val):
     try: return pd.to_datetime(s, errors='coerce')
     except: return pd.NaT
 
-# 💥 TRADUCTOR MÉTRICO LATINO
 def fmt_latino(val, decimales=1):
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
-# 🧠 BUSCADOR DE DOSIS PARA FERTILIZANTES
 def obtener_dosis_fertilizante(df_mezclas, fert_name):
     try:
         for col_idx in range(len(df_mezclas.columns) - 1):
@@ -53,7 +51,7 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
     except: pass
     return 0.5 
 
-# 🧠 CEREBRO QUÍMICO COMPLETO (Dinámico basado en la imagen DD_Mesclas)
+# 🧠 CEREBRO QUÍMICO COMPLETO 
 def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
     partes = coctel_u.split()
@@ -76,10 +74,13 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
             dosis_fert = obtener_dosis_fertilizante(df_mezclas, nombre_fert)
             dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
     
+    # Inyecciones fijas basadas en su captura de pantalla
     if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
     if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
-        dict_prods["ACONDICIONADOR SV"] = 0.02
-    
+        dict_prods["ACONDICIONADOR SV"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+    if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: 
+        dict_prods["IMBIOSIL"] = 1.5
+
     return dict_prods
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
@@ -128,36 +129,34 @@ def ejecutar(purificar_lote, extraer_numero):
                         archivo_sap.seek(0)
                         df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='latin1')
 
-                def purificar_columna(col_name):
-                    return str(col_name).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
-                
-                cols_limpias = [purificar_columna(c) for c in df_sap.columns]
-                
-                # 💥 EL BLINDAJE CONTRA EL CÓDIGO DUPLICADO ESTÁ AQUÍ 💥
-                idx_cod = next((i for i, c in enumerate(cols_limpias) if 'MATERIAL' in c or 'COD' in c or 'ITEM' in c), None)
-                # Obligamos a que la columna de descripción sea DIFERENTE a la del código
-                idx_prod = next((i for i, c in enumerate(cols_limpias) if ('TEXTO' in c or 'DESC' in c or 'PRODUCTO' in c or 'DENOMINACION' in c) and i != idx_cod), None)
-                
-                idx_pista = next((i for i, c in enumerate(cols_limpias) if 'ALMACEN' in c or 'PISTA' in c or 'LGORT' in c), None)
-                idx_saldo = next((i for i, c in enumerate(cols_limpias) if 'LIBRE' in c or 'SALDO' in c or 'UTILIZACION' in c or 'LABST' in c), None)
+                # 💥 ESCÁNER ROBUSTO SAP - BLINDADO CONTRA COLUMNAS DUPLICADAS 💥
+                col_cod = next((c for c in df_sap.columns if str(c).strip().upper() == 'MATERIAL'), None)
+                col_desc = next((c for c in df_sap.columns if str(c).strip().upper() == 'DESCRIPCIÓN DEL MATERIAL' or str(c).strip().upper() == 'TEXTO BREVE DE MATERIAL'), None)
+                col_pista = next((c for c in df_sap.columns if str(c).strip().upper() == 'ALMACÉN' or str(c).strip().upper() == 'ALMACEN'), None)
+                col_saldo = next((c for c in df_sap.columns if str(c).strip().upper() == 'LIBRE UTILIZACIÓN' or str(c).strip().upper() == 'LIBRE UTILIZACION'), None)
 
-                if idx_prod is None or idx_pista is None or idx_saldo is None:
-                    st.error(f"❌ Error de Radar: No se pudieron mapear las columnas críticas en SAP. Columnas detectadas: {list(df_sap.columns)}")
+                # Fallbacks agresivos y excluyentes si los nombres exactos no están
+                if not col_cod: col_cod = next((c for c in df_sap.columns if 'MATERIAL' in str(c).upper() or 'COD' in str(c).upper() or 'ITEM' in str(c).upper()), None)
+                if not col_desc: col_desc = next((c for c in df_sap.columns if ('DESC' in str(c).upper() or 'TEXTO' in str(c).upper() or 'PRODUCTO' in str(c).upper()) and c != col_cod), None)
+                
+                # Freno de seguridad: Si por alguna razón agarró la misma, forzamos a que busque la siguiente
+                if col_cod == col_desc:
+                    for c in df_sap.columns:
+                        if c != col_cod and ('DESC' in str(c).upper() or 'TEXTO' in str(c).upper()):
+                            col_desc = c
+                            break
+
+                if not col_pista: col_pista = next((c for c in df_sap.columns if 'ALMACEN' in str(c).upper() or 'LGORT' in str(c).upper() or 'PISTA' in str(c).upper()), None)
+                if not col_saldo: col_saldo = next((c for c in df_sap.columns if 'LIBRE' in str(c).upper() or 'UTILIZACION' in str(c).upper() or 'SALDO' in str(c).upper() or 'LABST' in str(c).upper()), None)
+
+                if not col_cod or not col_desc or not col_pista or not col_saldo:
+                    st.error(f"❌ Error de Radar: No se pudieron mapear las columnas en SAP. Columnas detectadas: {list(df_sap.columns)}")
                     return
                 
-                c_prod = df_sap.columns[idx_prod]
-                c_pista = df_sap.columns[idx_pista]
-                c_saldo = df_sap.columns[idx_saldo]
-                c_cod = df_sap.columns[idx_cod] if idx_cod is not None else None
-
-                # Fusión de Código y Nombre asegurada
-                if c_cod is not None and c_prod is not None:
-                    df_sap['PRODUCTO_RADAR'] = df_sap[c_cod].astype(str).str.split('.').str[0].str.strip() + " | " + df_sap[c_prod].astype(str).str.upper().str.strip()
-                else:
-                    df_sap['PRODUCTO_RADAR'] = df_sap[c_prod].astype(str).str.upper().str.strip()
-
-                df_sap['SALDO_FISICO'] = df_sap[c_saldo].apply(a_numero_limpio)
-                df_sap['PISTA_SAP'] = df_sap[c_pista].astype(str).str.upper().str.strip()
+                # Fusión Atómica Asegurada
+                df_sap['PRODUCTO_RADAR'] = df_sap[col_cod].astype(str).str.split('.').str[0].str.strip() + " | " + df_sap[col_desc].astype(str).str.upper().str.strip()
+                df_sap['SALDO_FISICO'] = df_sap[col_saldo].apply(a_numero_limpio)
+                df_sap['PISTA_SAP'] = df_sap[col_pista].astype(str).str.upper().str.strip()
                 
                 df_sap_agrupado = df_sap.groupby(['PISTA_SAP', 'PRODUCTO_RADAR'])['SALDO_FISICO'].sum().reset_index()
                 df_sap_agrupado = df_sap_agrupado[df_sap_agrupado['SALDO_FISICO'] > 0]
@@ -267,6 +266,7 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 st.markdown("---")
                 
+                # 💥 TESTIGO VISUAL DE VERIFICACIÓN 💥
                 if ha_total_detectada > 0:
                     st.success(f"✅ Memoria Histórica Recuperada: El radar encontró y promedió operaciones sobre **{fmt_latino(ha_total_detectada)} Hectáreas** de fumigación en el mes de {meses_dict[mes_proyeccion]} durante los años analizados.")
                 else:
@@ -277,7 +277,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True])
+                    df_oraculo = df_oraculo.sort_values(by=["ESTADO", "📍 PISTA", "⏳ AUTONOMÍA"])
                     
                     criticos = len(df_oraculo[df_oraculo['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
                     alertas = len(df_oraculo[df_oraculo['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
