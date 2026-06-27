@@ -26,7 +26,7 @@ def obtener_cliente_gspread_m8():
 def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
-    # --- FUNCIONES DE FALLBACK LOCALES (Por si las externas fallan) ---
+    # --- FUNCIONES DE FALLBACK LOCALES ---
     def extraer_numero(val):
         if pd.isna(val) or str(val).strip() == "": return 0.0
         try:
@@ -54,25 +54,19 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             datos_brutos = boveda.worksheet("TABLA 1").get_all_values()
             
-        # =================================================================
-        # 🪤 TRAMPA DE DIAGNÓSTICO INTERNA
-        # =================================================================
         if not datos_brutos:
             st.error("🚨 ALERTA ROJA: Conexión establecida pero la pestaña 'TABLA 1' está totalmente vacía.")
             return
         elif len(datos_brutos) <= 5:
             st.warning(f"⚠️ La 'TABLA 1' existe pero solo tiene {len(datos_brutos)} filas. Se necesitan más de 5 filas.")
             return
-        # =================================================================
             
         if len(datos_brutos) > 5:
             columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
             
-            # Recortamos a partir de la fila 6 (índice 5) y limitamos a 24 columnas exactas
             filas_limpias = [r + [""]*(24 - len(r)) for r in datos_brutos[5:]]
             df_rep = pd.DataFrame([r[:24] for r in filas_limpias], columns=columnas)
             
-            # Aplicamos limpieza de datos blindada
             df_rep['HA_NETAS'] = df_rep['HA_NETAS'].apply(extraer_numero)
             df_rep['H_PROPORCIONAL'] = df_rep['H_PROPORCIONAL'].apply(extraer_numero)
             df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
@@ -103,11 +97,16 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             años_disp = sorted(df_rep['AÑO'].unique().tolist(), reverse=True)
             
             año_sel = c2.selectbox("📅 Año Fiscal", años_disp if años_disp else [str(datetime.now().year)])
-            pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp)
+            pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistes_disp)
             
             mostrar_horas = False
+            # 💥 EL NUEVO INTERRUPTOR TÁCTICO 💥
+            calcular_rend_prom = False
+            
             if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
-                mostrar_horas = st.checkbox("⏱️ Mostrar también el Rendimiento (Horas de Vuelo)")
+                cc1, cc2 = st.columns(2)
+                mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas de Vuelo")
+                calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rendimiento Promedio (Ha/Hr)", value=True)
 
             df_filt = df_rep[df_rep['AÑO'] == año_sel]
             if pista_sel != "TODAS":
@@ -135,24 +134,33 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         sum_hr = datos_pista['REND_HR'].sum()
                         sum_ha = datos_pista['AREA_FUMIG'].sum()
                         
+                        # Subtotal Pista
                         fila_sub = {'NIVEL': f"➖ {pista}", 'MES': ''}
-                        if mostrar_horas: fila_sub['REND (hr)'] = sum_hr
+                        if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
                         fila_sub['ÁREA FUMIG (ha)'] = sum_ha
+                        if calcular_rend_prom:
+                            fila_sub['REND. PROMEDIO (Ha/Hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
                         tabla_final.append(fila_sub)
                         
+                        # Detalles por Mes
                         for _, row in datos_pista.iterrows():
                             mes_limpio = row['MES'].split('-')[1] if '-' in row['MES'] else row['MES']
                             fila_mes = {'NIVEL': '', 'MES': mes_limpio}
-                            if mostrar_horas: fila_mes['REND (hr)'] = row['REND_HR']
+                            if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                             fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
+                            if calcular_rend_prom:
+                                fila_mes['REND. PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
                             tabla_final.append(fila_mes)
                             
                         total_hr_gral += sum_hr
                         total_ha_gral += sum_ha
                         
+                    # Total General
                     fila_tot = {'NIVEL': 'TOTAL GENERAL', 'MES': ''}
-                    if mostrar_horas: fila_tot['REND (hr)'] = total_hr_gral
+                    if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                     fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
+                    if calcular_rend_prom:
+                        fila_tot['REND. PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                     tabla_final.append(fila_tot)
                     
                     df_visual = pd.DataFrame(tabla_final)
@@ -163,7 +171,8 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         return [''] * len(row)
                     
                     formato_columnas = {'ÁREA FUMIG (ha)': "{:.2f}"}
-                    if mostrar_horas: formato_columnas['REND (hr)'] = "{:.2f}"
+                    if mostrar_horas or calcular_rend_prom: formato_columnas['REND (hr)'] = "{:.2f}"
+                    if calcular_rend_prom: formato_columnas['REND. PROMEDIO (Ha/Hr)'] = "{:.2f}"
                     
                     st.dataframe(
                         df_visual.style.apply(estilizar_filas, axis=1).format(formato_columnas),
@@ -230,26 +239,6 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     max_row = worksheet.max_row
                     max_col = worksheet.max_column
 
-                    if "Gerencial" in vista_seleccionada:
-                        rango_total_ha = []
-                        col_ha_letra = "C" if not mostrar_horas else "D"
-                        col_ha_idx = 3 if not mostrar_horas else 4
-                        
-                        for i in range(2, max_row + 1):
-                            nivel = str(worksheet.cell(row=i, column=1).value or "").strip()
-                            if "➖" in nivel:
-                                inicio = i + 1
-                                fin = i + 1
-                                for j in range(i + 1, max_row + 1):
-                                    val_j = str(worksheet.cell(row=j, column=1).value or "").strip()
-                                    if val_j == "" or val_j == "None": fin = j
-                                    else: break
-                                worksheet.cell(row=i, column=col_ha_idx).value = f"=SUM({col_ha_letra}{inicio}:{col_ha_letra}{fin})"
-                                rango_total_ha.append(f"{col_ha_letra}{i}")
-                            elif "TOTAL GENERAL" in nivel:
-                                if rango_total_ha:
-                                    worksheet.cell(row=i, column=col_ha_idx).value = f"=SUM({','.join(rango_total_ha)})"
-
                     for row in worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
                         for cell in row:
                             cell.border = borde_pro
@@ -282,6 +271,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         worksheet.cell(row=1, column=28).value = "Ha"
                         meses_para_grafico = [m for m in df_visual['MES'] if str(m).strip() not in ["", "None"]]
                         row_g = 2
+                        col_ha_letra = "C" if not mostrar_horas and not calcular_rend_prom else ("D" if mostrar_horas ^ calcular_rend_prom else "D")
                         for m in meses_para_grafico:
                             worksheet.cell(row=row_g, column=27).value = m
                             fila_origen = 2
