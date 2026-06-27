@@ -80,27 +80,35 @@ def ejecutar(purificar_lote, extraer_numero):
                         archivo_sap.seek(0)
                         df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='latin1')
 
-                # 💥 ESCÁNER ROBUSTO DE COLUMNAS SAP
+                # 💥 ESCÁNER ROBUSTO DUAL (Código + Nombre)
                 def purificar_columna(col_name):
                     return str(col_name).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                 
                 cols_limpias = [purificar_columna(c) for c in df_sap.columns]
                 
-                idx_prod = next((i for i, c in enumerate(cols_limpias) if 'DESC' in c or 'PRODUCTO' in c or 'TEXTO' in c or 'MATERIAL' in c), None)
-                idx_pista = next((i for i, c in enumerate(cols_limpias) if 'ALMACEN' in c or 'PISTA' in c or 'LGORT' in c), None)
-                idx_saldo = next((i for i, c in enumerate(cols_limpias) if 'LIBRE' in c or 'SALDO' in c or 'UTILIZACION' in c or 'LABST' in c), None)
+                c_cod, c_desc, c_pista, c_saldo = None, None, None, None
+                for i, c in enumerate(cols_limpias):
+                    if ('ALMACEN' in c or 'PISTA' in c or 'LGORT' in c) and not c_pista: c_pista = df_sap.columns[i]
+                    elif ('LIBRE' in c or 'SALDO' in c or 'UTILIZACION' in c or 'LABST' in c) and not c_saldo: c_saldo = df_sap.columns[i]
+                    elif ('DESC' in c or 'TEXTO' in c or 'PRODUCTO' in c) and not c_desc: c_desc = df_sap.columns[i]
+                    elif ('MATERIAL' in c or 'COD' in c or 'ITEM' in c) and not c_cod: c_cod = df_sap.columns[i]
 
-                if idx_prod is None or idx_pista is None or idx_saldo is None:
+                if not c_saldo or not c_pista or (not c_desc and not c_cod):
                     st.error(f"❌ Error de Radar: No se pudieron mapear las columnas críticas en SAP. (Encontradas: {list(df_sap.columns)})")
                     return
                 
-                c_prod = df_sap.columns[idx_prod]
-                c_pista = df_sap.columns[idx_pista]
-                c_saldo = df_sap.columns[idx_saldo]
+                # FUSIÓN ATÓMICA: "CÓDIGO | NOMBRE"
+                if c_cod and c_desc and c_cod != c_desc:
+                    df_sap['PRODUCTO_RADAR'] = df_sap[c_cod].astype(str).str.split('.').str[0].str.strip() + " | " + df_sap[c_desc].astype(str).str.upper().str.strip()
+                elif c_desc:
+                    df_sap['PRODUCTO_RADAR'] = df_sap[c_desc].astype(str).str.upper().str.strip()
+                else:
+                    df_sap['PRODUCTO_RADAR'] = df_sap[c_cod].astype(str).str.split('.').str[0].str.strip()
 
                 df_sap['SALDO_FISICO'] = df_sap[c_saldo].apply(a_numero_limpio)
                 df_sap['PISTA_SAP'] = df_sap[c_pista].astype(str).str.upper().str.strip()
-                df_sap_agrupado = df_sap.groupby(['PISTA_SAP', c_prod])['SALDO_FISICO'].sum().reset_index()
+                
+                df_sap_agrupado = df_sap.groupby(['PISTA_SAP', 'PRODUCTO_RADAR'])['SALDO_FISICO'].sum().reset_index()
                 df_sap_agrupado = df_sap_agrupado[df_sap_agrupado['SALDO_FISICO'] > 0]
 
                 # Aplicar Filtro de Pista si no es "TODAS"
@@ -164,11 +172,11 @@ def ejecutar(purificar_lote, extraer_numero):
                             if prod_quimico not in ["NAN", "", "NONE"] and dosis > 0:
                                 consumo_esperado_pista[pista_op][prod_quimico] = consumo_esperado_pista[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
 
-                # --- E. CRUCE ALGORÍTMICO PISTA vs PISTA (CON EXPOSICIÓN TOTAL DE DATOS) ---
+                # --- E. CRUCE ALGORÍTMICO PISTA vs PISTA ---
                 resultados = []
                 for _, row_s in df_sap_agrupado.iterrows():
                     pista_sap = row_s['PISTA_SAP']
-                    producto_sap = str(row_s[c_prod]).upper().strip()
+                    producto_sap = str(row_s['PRODUCTO_RADAR']).upper().strip() # <--- AHORA USA LA FUSIÓN
                     saldo = row_s['SALDO_FISICO']
 
                     consumo_mes_proyectado = 0.0
@@ -176,6 +184,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     
                     if pista_clave:
                         for p_receta, vol_mes in consumo_esperado_pista[pista_clave].items():
+                            # El producto_sap ahora tiene "101658 | MANCOZEB", así que p_receta ("MANCOZEB") hará match
                             if p_receta in producto_sap or producto_sap in p_receta:
                                 consumo_mes_proyectado += vol_mes
 
@@ -192,7 +201,7 @@ def ejecutar(purificar_lote, extraer_numero):
 
                     resultados.append({
                         "📍 PISTA": pista_sap,
-                        "🧪 PRODUCTO": producto_sap,
+                        "🧪 CÓDIGO | PRODUCTO": producto_sap,
                         "📦 SALDO (SAP)": saldo,
                         "📈 PROYECCIÓN MES (L/Kg)": round(consumo_mes_proyectado, 1),
                         "⏳ AUTONOMÍA": round(dias_autonomia, 0),
@@ -204,7 +213,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.markdown("---")
                 st.markdown(f"### 🎯 Tablero Táctico: Proyección para {meses_dict[mes_proyeccion]}")
                 
-                # 💥 TRANSPARENCIA TOTAL: Mostrar todo con métricas claras
                 df_oraculo = df_oraculo.sort_values(by=["ESTADO", "📍 PISTA", "⏳ AUTONOMÍA"])
                 
                 criticos = len(df_oraculo[df_oraculo['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
