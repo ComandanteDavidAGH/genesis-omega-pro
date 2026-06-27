@@ -48,7 +48,7 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
                 val = pd.to_numeric(df_mezclas[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
     except: pass
-    return None # Si no lo encuentra, retorna None para usar el salvavidas
+    return None 
 
 # 🧠 CEREBRO QUÍMICO CALIBRADO
 def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico):
@@ -197,6 +197,10 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['MES'] = df_t1['FECHA_DT'].dt.month
                 df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
                 
+                # 💥 CÁLCULO ESTADÍSTICO CORRECTO (Total de años de la historia de la empresa)
+                total_anios_boveda = df_t1['AÑO'].nunique()
+                if total_anios_boveda == 0: total_anios_boveda = 1
+
                 df_hist_mes = df_t1[df_t1['MES'] == mes_proyeccion].copy()
                 
                 consumo_esperado_pista = {} 
@@ -207,12 +211,10 @@ def ejecutar(purificar_lote, extraer_numero):
                     df_hist_mes['PISTA_OPERATIVA'] = df_hist_mes[col_pista_t1].astype(str).str.upper().str.strip()
                     ha_total_detectada = df_hist_mes['HA_CALCULO'].sum()
 
-                    # 💥 CÁLCULO ESTADÍSTICO CORRECTO (Dividir por todos los años del historial)
-                    num_anios_historial = df_hist_mes['AÑO'].nunique()
-                    if num_anios_historial == 0: num_anios_historial = 1
-
                     ha_total_por_coctel = df_hist_mes.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
-                    ha_total_por_coctel['HA_PROMEDIO'] = ha_total_por_coctel['HA_CALCULO'] / num_anios_historial
+                    
+                    # Se divide la sumatoria total del mes entre los años absolutos de la empresa
+                    ha_total_por_coctel['HA_PROMEDIO'] = ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda
 
                     # EXPLOSIÓN QUÍMICA CON CEREBRO CALIBRADO
                     for _, row_c in ha_total_por_coctel.iterrows():
@@ -273,7 +275,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.markdown("---")
                 
                 if ha_total_detectada > 0:
-                    st.success(f"✅ Memoria Histórica Recuperada: El radar evaluó {num_anios_historial} años de historia y promedió un volumen de **{fmt_latino(ha_total_detectada / num_anios_historial)} Ha/Año** para el mes de {meses_dict[mes_proyeccion]}.")
+                    st.success(f"✅ Memoria Histórica Recuperada: El radar evaluó {total_anios_boveda} años de historia y promedió un volumen de **{fmt_latino(ha_total_detectada / total_anios_boveda)} Ha/Año** para el mes de {meses_dict[mes_proyeccion]}.")
                 else:
                     st.warning(f"⚠️ El radar no encontró hectáreas operadas en el mes de {meses_dict[mes_proyeccion]} en su base de datos histórica.")
 
@@ -282,8 +284,16 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ORDENAMIENTO ALFABÉTICO ESTRICTO 💥
-                    df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True])
+                    # 💥 ALGORITMO TRIAGE: ORDENAMIENTO POR PRIORIDAD + ALFABÉTICO 💥
+                    def get_sort_weight(estado_str):
+                        if "CRÍTICO" in estado_str: return 1
+                        if "ALERTA" in estado_str: return 2
+                        if "Sin Consumo" in estado_str: return 4
+                        return 3
+
+                    df_oraculo['SORT_WEIGHT'] = df_oraculo['ESTADO'].apply(get_sort_weight)
+                    df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "SORT_WEIGHT", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True, True])
+                    df_oraculo = df_oraculo.drop(columns=['SORT_WEIGHT'])
                     
                     criticos = len(df_oraculo[df_oraculo['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
                     alertas = len(df_oraculo[df_oraculo['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
