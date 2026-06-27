@@ -42,13 +42,28 @@ def fmt_latino(val, decimales=1):
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
-# 🧠 CEREBRO QUÍMICO COMPLETO (Añade Bases y Aditivos)
-def extraer_receta_completa(coctel_sel, df_mezclas):
+# 🧠 BUSCADOR DE DOSIS PARA FERTILIZANTES
+def obtener_dosis_fertilizante(df_mezclas, fert_name):
+    """Escanea la tabla para encontrar la dosis predeterminada de un fertilizante si no está en la base principal"""
+    try:
+        for col_idx in range(len(df_mezclas.columns) - 1):
+            mask = df_mezclas.iloc[:, col_idx].astype(str).str.strip().str.upper() == fert_name
+            if mask.any():
+                val = pd.to_numeric(df_mezclas[mask].iloc[0, col_idx+1], errors='coerce')
+                if pd.notna(val) and val > 0: return float(val)
+    except: pass
+    return 0.5 # Dosis de respaldo genérica
+
+# 🧠 CEREBRO QUÍMICO COMPLETO (Dinámico basado en la imagen DD_Mesclas)
+def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
     partes = coctel_u.split()
     base_coctel = partes[0] if len(partes) > 0 else ""
+    aditivos = partes[1:] if len(partes) > 1 else []
     
     dict_prods = {}
+    
+    # 1. Extraer la base del cóctel (Columnas A, B, C)
     if not df_mezclas.empty:
         col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
         rb = df_mezclas[col_0_limpia == base_coctel]
@@ -57,18 +72,18 @@ def extraer_receta_completa(coctel_sel, df_mezclas):
             d = a_numero_limpio(r.iloc[2])
             if d > 0 and p not in ['NAN', 'NONE', '']: dict_prods[p] = d
 
-    # INYECCIÓN OBLIGATORIA DE ADITIVOS ESTRUCTURALES
-    if "ZN" in coctel_u: dict_prods["ZINTRAC"] = 0.5
-    if "BT" in coctel_u: dict_prods["BANATREL"] = 1.0
-    if "NM" in coctel_u: dict_prods["NATURAMIN"] = 0.5
+    # 2. Inyección Dinámica de Fertilizantes según Siglas (Columnas M y N)
+    for aditivo in aditivos:
+        if aditivo in dict_fertilizantes_dinamico:
+            nombre_fert = dict_fertilizantes_dinamico[aditivo]
+            dosis_fert = obtener_dosis_fertilizante(df_mezclas, nombre_fert)
+            dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
     
-    if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE"] = 0.2
+    # 3. Validadores Estructurales (En caso de que la receta base no los traiga)
+    if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
     if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
-        dict_prods["ACONDICIONADOR"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+        dict_prods["ACONDICIONADOR SV"] = 0.02
     
-    if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: 
-        dict_prods["IMBIOSIL"] = 1.5
-
     return dict_prods
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
@@ -155,6 +170,15 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1 = pd.DataFrame(boveda.worksheet("TABLA 1").get_all_values()[5:], columns=[str(c).upper().strip() for c in boveda.worksheet("TABLA 1").get_all_values()[4]])
                 df_mezclas = pd.DataFrame(boveda.worksheet("DD_Mesclas").get_all_values()[1:], columns=[str(c).upper().strip() for c in boveda.worksheet("DD_Mesclas").get_all_values()[0]])
 
+                # CONSTRUCCIÓN DEL DICCIONARIO DINÁMICO DE FERTILIZANTES (Lectura de Columnas M y N)
+                dict_fert = {}
+                if len(df_mezclas.columns) > 13:
+                    for _, row in df_mezclas.iterrows():
+                        f_n = str(row.iloc[12]).strip().upper() # Columna M
+                        f_s = str(row.iloc[13]).strip().upper() # Columna N
+                        if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
+                            dict_fert[f_s] = f_n
+
                 col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
                 col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
                 col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
@@ -179,7 +203,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     ha_por_anio = df_hist_mes.groupby(['AÑO', 'PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
                     ha_promedio_hist = ha_por_anio.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].mean().reset_index()
 
-                    # EXPLOSIÓN QUÍMICA TOTAL
+                    # EXPLOSIÓN QUÍMICA TOTAL (Conectado al Cerebro Dinámico)
                     for _, row_c in ha_promedio_hist.iterrows():
                         pista_op = row_c['PISTA_OPERATIVA']
                         coctel_completo = str(row_c[col_coctel]).upper().strip()
@@ -188,14 +212,14 @@ def ejecutar(purificar_lote, extraer_numero):
                         if pista_op not in consumo_esperado_pista:
                             consumo_esperado_pista[pista_op] = {}
 
-                        receta_dict = extraer_receta_completa(coctel_completo, df_mezclas)
+                        receta_dict = extraer_receta_completa(coctel_completo, df_mezclas, dict_fert)
                         for prod_quimico, dosis in receta_dict.items():
                             consumo_esperado_pista[pista_op][prod_quimico] = consumo_esperado_pista[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
 
                 # 💥 DICCIONARIO TRADUCTOR (SAP -> TABLA 1) 💥
                 traductor_pistas = {
                     "PLUC": "FUMIGARAY",
-                    "PORI": "AEROPENORT",
+                    "PORI": "AEROPENOR",
                     "LUCI": "GENESYS",
                     "TEHO": "AVIL",
                     "PDIV": "ASA"
@@ -204,16 +228,14 @@ def ejecutar(purificar_lote, extraer_numero):
                 # --- E. CRUCE ALGORÍTMICO Y ORDENAMIENTO ---
                 resultados = []
                 for _, row_s in df_sap_agrupado.iterrows():
-                    pista_sap = row_s['PISTA_SAP'] # Ej: "PLUC"
+                    pista_sap = row_s['PISTA_SAP']
                     producto_sap_completo = str(row_s['PRODUCTO_RADAR']).upper().strip()
                     saldo = row_s['SALDO_FISICO']
 
                     consumo_mes_proyectado = 0.0
                     
-                    # 💥 TRADUCCIÓN: Convertimos "PLUC" a "FUMIGARAY"
                     pista_t1_esperada = traductor_pistas.get(pista_sap, pista_sap)
 
-                    # Buscamos en el diccionario de consumo (que usa nombres de TABLA 1)
                     pista_clave = next((k for k in consumo_esperado_pista.keys() if pista_t1_esperada in k or k in pista_t1_esperada), None)
                     
                     if pista_clave:
@@ -258,7 +280,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ORDENAMIENTO ALFABÉTICO 💥
+                    # 💥 ORDENAMIENTO ALFABÉTICO (CORREGIDO Y GARANTIZADO) 💥
                     df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True])
                     
                     criticos = len(df_oraculo[df_oraculo['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
