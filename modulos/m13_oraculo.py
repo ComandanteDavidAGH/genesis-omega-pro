@@ -84,18 +84,27 @@ def ejecutar(purificar_lote, extraer_numero):
             df_mezclas = pd.DataFrame(mezclas_data[1:], columns=[str(c).upper().strip() for c in mezclas_data[0]])
 
             # Filtrar TABLA 1 a últimos 30 días
-            df_t1['FECHA_DT'] = pd.to_datetime(df_t1['FECHA'], dayfirst=True, errors='coerce')
+            col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
+            df_t1['FECHA_DT'] = pd.to_datetime(df_t1[col_fecha], dayfirst=True, errors='coerce')
             hace_30_dias = datetime.now() - timedelta(days=30)
             df_t1_reciente = df_t1[df_t1['FECHA_DT'] >= hace_30_dias].copy()
 
-            df_t1_reciente['HA_NETAS'] = df_t1_reciente['AREA_FUMIG.'].apply(a_numero_limpio)
-            ha_por_coctel = df_t1_reciente.groupby('COCTEL')['HA_NETAS'].sum().reset_index()
+            # 💥 BUSCADOR DE COLUMNAS INTELIGENTE (Solución al KeyError)
+            col_ha = next((c for c in df_t1_reciente.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
+            col_coctel = next((c for c in df_t1_reciente.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
+
+            if not col_ha or not col_coctel:
+                st.error(f"🚨 No se encontraron las columnas de Hectáreas o Cóctel en TABLA 1. Columnas detectadas: {list(df_t1_reciente.columns)}")
+                return
+
+            df_t1_reciente['HA_CALCULO'] = df_t1_reciente[col_ha].apply(a_numero_limpio)
+            ha_por_coctel = df_t1_reciente.groupby(col_coctel)['HA_CALCULO'].sum().reset_index()
 
             # Explotar Recetas
             consumo_30d = {}
             for _, row_c in ha_por_coctel.iterrows():
-                coctel_nombre = str(row_c['COCTEL']).upper().strip().split(" ")[0] # Base del cóctel
-                ha_aplicadas = row_c['HA_NETAS']
+                coctel_nombre = str(row_c[col_coctel]).upper().strip().split(" ")[0] # Base del cóctel
+                ha_aplicadas = row_c['HA_CALCULO']
                 
                 receta = df_mezclas[df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip() == coctel_nombre]
                 for _, r_mez in receta.iterrows():
@@ -143,7 +152,7 @@ def ejecutar(purificar_lote, extraer_numero):
             st.markdown("### 🎯 Tablero de Autonomía de Hangares")
             
             if df_oraculo.empty:
-                st.success("No se detectaron movimientos recientes que amenacen los inventarios ingresados.")
+                st.success("✅ No se detectaron movimientos recientes de vuelo que amenacen los inventarios ingresados. O bien no hubo vuelos en los últimos 30 días.")
             else:
                 criticos = len(df_oraculo[df_oraculo['DÍAS DE AUTONOMÍA'] <= 7])
                 alertas = len(df_oraculo[(df_oraculo['DÍAS DE AUTONOMÍA'] > 7) & (df_oraculo['DÍAS DE AUTONOMÍA'] <= 15)])
@@ -157,14 +166,17 @@ def ejecutar(purificar_lote, extraer_numero):
                     if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold;'] * len(row)
                     return [''] * len(row)
 
-                st.dataframe(
-                    df_oraculo.style.apply(pintar_oraculo, axis=1).format({
-                        "SALDO ACTUAL (L/Kg)": "{:,.1f}",
-                        "CONSUMO DIARIO (L/Kg)": "{:,.1f}",
-                        "DÍAS DE AUTONOMÍA": "{:,.0f} Días"
-                    }), 
-                    use_container_width=True, hide_index=True
-                )
+                # Traductor Latino para tabla
+                def fmt_latino_tbl(val):
+                    try: return f"{float(val):,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    except: return str(val)
+
+                df_vista = df_oraculo.copy()
+                df_vista['SALDO ACTUAL (L/Kg)'] = df_vista['SALDO ACTUAL (L/Kg)'].apply(fmt_latino_tbl)
+                df_vista['CONSUMO DIARIO (L/Kg)'] = df_vista['CONSUMO DIARIO (L/Kg)'].apply(fmt_latino_tbl)
+                df_vista['DÍAS DE AUTONOMÍA'] = df_vista['DÍAS DE AUTONOMÍA'].apply(lambda x: f"{x:,.0f} Días")
+
+                st.dataframe(df_vista.style.apply(pintar_oraculo, axis=1), use_container_width=True, hide_index=True)
                 
         except Exception as e:
-            st.error(f"Falla en los cálculos predictivos: {e}")
+            st.error(f"🚨 Falla en los cálculos predictivos: {e}")
