@@ -38,6 +38,7 @@ def ejecutar(purificar_lote, extraer_numero):
     .alerta-roja { background-color: #ffe6e6; color: #cc0000; padding: 15px; border-left: 8px solid #cc0000; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
     .alerta-amarilla { background-color: #fff3cd; color: #856404; padding: 15px; border-left: 8px solid #ffc107; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
     .alerta-verde { background-color: #d4edda; color: #155724; padding: 15px; border-left: 8px solid #28a745; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,16 +47,20 @@ def ejecutar(purificar_lote, extraer_numero):
 
     # 1. CARGA DEL INVENTARIO ACTUAL
     st.markdown("### 📥 1. Radar de Existencias Actuales (SAP)")
-    
     archivo_sap = st.file_uploader("Cargue la Sábana SAP actualizada (.xlsx o .csv)", type=['xlsx', 'csv'], key="sap_oraculo")
     
-    # 2. SELECTOR EPIDEMIOLÓGICO (MES OBJETIVO) - AHORA MÁS CORTO
+    # 2. SELECTOR EPIDEMIOLÓGICO (MES OBJETIVO Y PISTA)
     st.markdown("### 📅 2. Parámetros de Predicción")
-    col_mes, col_vacia1, col_vacia2 = st.columns([1.5, 1, 1.5]) # Esto hace que el selector sea corto
+    col_mes, col_pista, col_vacia = st.columns([1.5, 1.5, 1])
     
     meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
     mes_actual = datetime.now().month
+    
     mes_proyeccion = col_mes.selectbox("Mes a Proyectar (Ciclo Histórico):", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
+    
+    # Lista estandarizada de pistas conocidas
+    lista_pistas = ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2"]
+    pista_objetivo = col_pista.selectbox("📍 Filtrar por Pista Operativa:", lista_pistas)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -75,7 +80,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         archivo_sap.seek(0)
                         df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='latin1')
 
-                # 💥 ESCÁNER ROBUSTO DE COLUMNAS SAP (Igual al M0 y M7)
+                # 💥 ESCÁNER ROBUSTO DE COLUMNAS SAP
                 def purificar_columna(col_name):
                     return str(col_name).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                 
@@ -98,6 +103,14 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_sap_agrupado = df_sap.groupby(['PISTA_SAP', c_prod])['SALDO_FISICO'].sum().reset_index()
                 df_sap_agrupado = df_sap_agrupado[df_sap_agrupado['SALDO_FISICO'] > 0]
 
+                # Aplicar Filtro de Pista si no es "TODAS"
+                if pista_objetivo != "TODAS":
+                    df_sap_agrupado = df_sap_agrupado[df_sap_agrupado['PISTA_SAP'].str.contains(pista_objetivo, na=False)]
+
+                if df_sap_agrupado.empty:
+                    st.warning(f"⚠️ No hay inventario disponible en SAP para la pista {pista_objetivo}.")
+                    return
+
                 # --- B. LECTURA DE HISTÓRICO (TABLA 1) Y RECETAS ---
                 gc = inicializar_cliente_gspread()
                 boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -108,7 +121,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 mezclas_data = boveda.worksheet("DD_Mesclas").get_all_values()
                 df_mezclas = pd.DataFrame(mezclas_data[1:], columns=[str(c).upper().strip() for c in mezclas_data[0]])
 
-                # Buscador Inteligente de Columnas en T1
                 col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
                 col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
                 col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
@@ -126,48 +138,40 @@ def ejecutar(purificar_lote, extraer_numero):
                 
                 df_hist_mes = df_t1[df_t1['MES'] == mes_proyeccion].copy()
                 
-                if df_hist_mes.empty:
-                    st.warning(f"⚠️ No hay registros históricos en TABLA 1 para el mes de {meses_dict[mes_proyeccion]}.")
-                    return
-
-                df_hist_mes['HA_CALCULO'] = df_hist_mes[col_ha].apply(a_numero_limpio)
-                df_hist_mes['PISTA_OPERATIVA'] = df_hist_mes[col_pista_t1].astype(str).str.upper().str.strip()
-
                 # --- C. CÁLCULO DE PROMEDIO HISTÓRICO ANUAL POR PISTA Y CÓCTEL ---
-                # Sumamos el área por Año, Pista y Cóctel
-                ha_por_anio = df_hist_mes.groupby(['AÑO', 'PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
-                # Promediamos entre los años disponibles
-                ha_promedio_hist = ha_por_anio.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].mean().reset_index()
-
-                # --- D. EXPLOSIÓN QUÍMICA (Traducción de Cócteles a Insumos) ---
-                consumo_esperado_pista = {} # Estructura: { PISTA: { INSUMO: VOLUMEN } }
+                consumo_esperado_pista = {} # { PISTA: { INSUMO: VOLUMEN } }
                 
-                for _, row_c in ha_promedio_hist.iterrows():
-                    pista_op = row_c['PISTA_OPERATIVA']
-                    coctel_nombre = str(row_c[col_coctel]).upper().strip().split(" ")[0] # Base
-                    ha_aplicadas = row_c['HA_CALCULO']
-                    
-                    if pista_op not in consumo_esperado_pista:
-                        consumo_esperado_pista[pista_op] = {}
+                if not df_hist_mes.empty:
+                    df_hist_mes['HA_CALCULO'] = df_hist_mes[col_ha].apply(a_numero_limpio)
+                    df_hist_mes['PISTA_OPERATIVA'] = df_hist_mes[col_pista_t1].astype(str).str.upper().str.strip()
 
-                    receta = df_mezclas[df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip() == coctel_nombre]
-                    for _, r_mez in receta.iterrows():
-                        prod_quimico = str(r_mez.iloc[1]).upper().strip()
-                        dosis = a_numero_limpio(r_mez.iloc[2])
-                        if prod_quimico not in ["NAN", "", "NONE"] and dosis > 0:
-                            consumo_esperado_pista[pista_op][prod_quimico] = consumo_esperado_pista[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
+                    ha_por_anio = df_hist_mes.groupby(['AÑO', 'PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
+                    ha_promedio_hist = ha_por_anio.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].mean().reset_index()
 
-                # --- E. CRUCE ALGORÍTMICO PISTA vs PISTA ---
+                    # --- D. EXPLOSIÓN QUÍMICA ---
+                    for _, row_c in ha_promedio_hist.iterrows():
+                        pista_op = row_c['PISTA_OPERATIVA']
+                        coctel_nombre = str(row_c[col_coctel]).upper().strip().split(" ")[0]
+                        ha_aplicadas = row_c['HA_CALCULO']
+                        
+                        if pista_op not in consumo_esperado_pista:
+                            consumo_esperado_pista[pista_op] = {}
+
+                        receta = df_mezclas[df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip() == coctel_nombre]
+                        for _, r_mez in receta.iterrows():
+                            prod_quimico = str(r_mez.iloc[1]).upper().strip()
+                            dosis = a_numero_limpio(r_mez.iloc[2])
+                            if prod_quimico not in ["NAN", "", "NONE"] and dosis > 0:
+                                consumo_esperado_pista[pista_op][prod_quimico] = consumo_esperado_pista[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
+
+                # --- E. CRUCE ALGORÍTMICO PISTA vs PISTA (CON EXPOSICIÓN TOTAL DE DATOS) ---
                 resultados = []
                 for _, row_s in df_sap_agrupado.iterrows():
                     pista_sap = row_s['PISTA_SAP']
                     producto_sap = str(row_s[c_prod]).upper().strip()
                     saldo = row_s['SALDO_FISICO']
 
-                    # Buscar consumo esperado para ESTA pista específica
                     consumo_mes_proyectado = 0.0
-                    
-                    # Flexibilizar la búsqueda de pista (ej. 'LUCI' in 'LUCITANIA')
                     pista_clave = next((k for k in consumo_esperado_pista.keys() if pista_sap in k or k in pista_sap), None)
                     
                     if pista_clave:
@@ -176,50 +180,54 @@ def ejecutar(purificar_lote, extraer_numero):
                                 consumo_mes_proyectado += vol_mes
 
                     consumo_diario = consumo_mes_proyectado / 30 if consumo_mes_proyectado > 0 else 0
-                    dias_autonomia = saldo / consumo_diario if consumo_diario > 0 else 999
-
-                    if consumo_diario > 0: # Ignorar repuestos o insumos muertos que no vuelan
+                    
+                    if consumo_diario > 0:
+                        dias_autonomia = saldo / consumo_diario
                         if dias_autonomia <= 7: estado = "🚨 CRÍTICO (< 7 Días)"
                         elif dias_autonomia <= 21: estado = "⚠️ ALERTA (8-21 Días)"
                         else: estado = "✅ ÓPTIMO (> 21 Días)"
+                    else:
+                        dias_autonomia = 9999
+                        estado = "✅ ÓPTIMO (Sin Consumo Histórico)"
 
-                        resultados.append({
-                            "📍 PISTA": pista_sap,
-                            "🧪 PRODUCTO": producto_sap,
-                            "📦 SALDO (SAP)": saldo,
-                            "📈 CONSUMO PROYECTADO MES (L/Kg)": round(consumo_mes_proyectado, 1),
-                            "⏳ AUTONOMÍA ESTIMADA": round(dias_autonomia, 0),
-                            "ESTADO": estado
-                        })
+                    resultados.append({
+                        "📍 PISTA": pista_sap,
+                        "🧪 PRODUCTO": producto_sap,
+                        "📦 SALDO (SAP)": saldo,
+                        "📈 PROYECCIÓN MES (L/Kg)": round(consumo_mes_proyectado, 1),
+                        "⏳ AUTONOMÍA": round(dias_autonomia, 0),
+                        "ESTADO": estado
+                    })
 
                 df_oraculo = pd.DataFrame(resultados)
 
                 st.markdown("---")
                 st.markdown(f"### 🎯 Tablero Táctico: Proyección para {meses_dict[mes_proyeccion]}")
                 
-                if df_oraculo.empty:
-                    st.success(f"✅ Los inventarios de SAP están blindados. El comportamiento histórico de {meses_dict[mes_proyeccion]} no representa amenaza de ruptura para ningún hangar.")
-                else:
-                    df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "⏳ AUTONOMÍA ESTIMADA"])
-                    
-                    criticos = len(df_oraculo[df_oraculo['⏳ AUTONOMÍA ESTIMADA'] <= 7])
-                    alertas = len(df_oraculo[(df_oraculo['⏳ AUTONOMÍA ESTIMADA'] > 7) & (df_oraculo['⏳ AUTONOMÍA ESTIMADA'] <= 21)])
-                    
-                    c_k1, c_k2, c_k3 = st.columns(3)
-                    c_k1.markdown(f"<div class='alerta-roja'>🚨 RUPTURA INMINENTE<br><p style='margin:0; font-size: 14px;'>Impacto a &lt; 7 Días</p><h2 style='margin:0;'>{criticos} Insumos</h2></div>", unsafe_allow_html=True)
-                    c_k2.markdown(f"<div class='alerta-amarilla'>⚠️ ALERTA LOGÍSTICA<br><p style='margin:0; font-size: 14px;'>Pedir entre 8 y 21 Días</p><h2 style='margin:0;'>{alertas} Insumos</h2></div>", unsafe_allow_html=True)
-                    
-                    def pintar_oraculo(row):
-                        if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold; border-bottom:1px solid white;'] * len(row)
-                        if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold; border-bottom:1px solid white;'] * len(row)
-                        return [''] * len(row)
+                # 💥 TRANSPARENCIA TOTAL: Mostrar todo con métricas claras
+                df_oraculo = df_oraculo.sort_values(by=["ESTADO", "📍 PISTA", "⏳ AUTONOMÍA"])
+                
+                criticos = len(df_oraculo[df_oraculo['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
+                alertas = len(df_oraculo[df_oraculo['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
+                optimos = len(df_oraculo) - (criticos + alertas)
+                
+                c_k1, c_k2, c_k3 = st.columns(3)
+                c_k1.markdown(f"<div class='alerta-roja'>🚨 RUPTURA INMINENTE<br><p style='margin:0; font-size: 14px;'>Impacto a &lt; 7 Días</p><h2 style='margin:0;'>{criticos} Insumos</h2></div>", unsafe_allow_html=True)
+                c_k2.markdown(f"<div class='alerta-amarilla'>⚠️ ALERTA LOGÍSTICA<br><p style='margin:0; font-size: 14px;'>Pedir entre 8 y 21 Días</p><h2 style='margin:0;'>{alertas} Insumos</h2></div>", unsafe_allow_html=True)
+                c_k3.markdown(f"<div class='alerta-verde'>✅ INVENTARIO SANO<br><p style='margin:0; font-size: 14px;'>Autonomía &gt; 21 Días</p><h2 style='margin:0;'>{optimos} Insumos</h2></div>", unsafe_allow_html=True)
+                
+                def pintar_oraculo(row):
+                    if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold; border-bottom:1px solid white;'] * len(row)
+                    if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold; border-bottom:1px solid white;'] * len(row)
+                    return [''] * len(row)
 
-                    df_vista = df_oraculo.copy()
-                    df_vista['📦 SALDO (SAP)'] = df_vista['📦 SALDO (SAP)'].apply(lambda x: fmt_latino(x, 1))
-                    df_vista['📈 CONSUMO PROYECTADO MES (L/Kg)'] = df_vista['📈 CONSUMO PROYECTADO MES (L/Kg)'].apply(lambda x: fmt_latino(x, 1))
-                    df_vista['⏳ AUTONOMÍA ESTIMADA'] = df_vista['⏳ AUTONOMÍA ESTIMADA'].apply(lambda x: f"{x:,.0f} Días")
+                df_vista = df_oraculo.copy()
+                df_vista['📦 SALDO (SAP)'] = df_vista['📦 SALDO (SAP)'].apply(lambda x: fmt_latino(x, 1))
+                df_vista['📈 PROYECCIÓN MES (L/Kg)'] = df_vista['📈 PROYECCIÓN MES (L/Kg)'].apply(lambda x: fmt_latino(x, 1))
+                df_vista['⏳ AUTONOMÍA'] = df_vista['⏳ AUTONOMÍA'].apply(lambda x: "∞ (Sin Consumo Histórico)" if x >= 9999 else f"{x:,.0f} Días")
 
-                    st.dataframe(df_vista.style.apply(pintar_oraculo, axis=1), use_container_width=True, hide_index=True)
+                st.markdown("#### 📋 Detalle de Explosión de Materiales")
+                st.dataframe(df_vista.style.apply(pintar_oraculo, axis=1), use_container_width=True, hide_index=True)
                     
             except Exception as e:
                 st.error(f"🚨 Falla en los cálculos predictivos o estructura de datos: {e}")
