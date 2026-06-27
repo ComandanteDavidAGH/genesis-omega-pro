@@ -33,9 +33,11 @@ USUARIOS_CREDENTIALS = {
     }
 }
 
+# 💥 BLINDAJE DE MEMORIA: Se añaden las anclas de estado
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
 if 'usuario_rol' not in st.session_state: st.session_state['usuario_rol'] = None
 if 'usuario_nombre' not in st.session_state: st.session_state['usuario_nombre'] = None
+if 'modulo_actual' not in st.session_state: st.session_state['modulo_actual'] = "🏠 Centro de Mando"
 
 try: 
     import matplotlib
@@ -61,7 +63,6 @@ except: pass
 # --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO ---
 st.markdown("""
 <style>
-/* 🛡️ TU CÓDIGO ORIGINAL RECUPERADO (Mantiene la hamburguesa viva y mata al gato) */
 [data-testid="stToolbarActions"] { display: none !important; }
 .stAppDeployButton { display: none !important; }
 .viewerBadge_container { display: none !important; visibility: hidden !important; opacity: 0 !important; }
@@ -69,23 +70,19 @@ div[class^="viewerBadge"] { display: none !important; }
 footer { display: none !important; visibility: hidden !important; }
 #MainMenu { visibility: visible !important; display: block !important; }
 
-/* 🎨 ESTILOS BASE AGROAÉREOS */
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* CONTROL DE INPUTS EN BARRA LATERAL (Ojo de contraseña visible) */
 [data-testid="stSidebar"] input { color: #0d1b2a !important; background-color: #ffffff !important; }
 [data-testid="stSidebar"] button svg { fill: #0d1b2a !important; color: #0d1b2a !important; }
 
-/* 🛑 BOTÓN ROJO TÁCTICO EXCLUSIVO PARA "CERRAR SESIÓN" (Secondary) */
 [data-testid="stSidebar"] button[kind="secondary"] {
     background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
 }
 [data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
 [data-testid="stSidebar"] button[kind="secondary"] p { color: #ffffff !important; }
 
-/* 🟡 BOTÓN PRIMARIO INTACTO (Cargar Cócteles) */
 button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
 
 .titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
@@ -96,15 +93,14 @@ th { background-color: #f0f2f6 !important; color: black !important; }
 div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important; }
 </style>
 """, unsafe_allow_html=True)
+
 # --- 3. 🔐 CONTROL DE ACCESO CENTRALIZADO (LOGIN) ---
 if not st.session_state['autenticado']:
-    # Ocultar barra lateral en el login
     st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     c_log1, c_log2, c_log3 = st.columns([1, 1.2, 1])
     with c_log2:
-        # 🪤 Trampa Antifallos Escudo
         if os.path.exists("escudo.png"):
             try: st.image("escudo.png", use_container_width=True)
             except: st.markdown("<h1 style='text-align: center; color: #D97706; font-size: 5rem;'>🛡️</h1>", unsafe_allow_html=True)
@@ -124,7 +120,7 @@ if not st.session_state['autenticado']:
                     st.rerun()
                 else: 
                     st.error("🚨 Credenciales incorrectas.")
-    st.stop() # Bloquea el resto del código hasta que se inicie sesión
+    st.stop() 
 
 # --- 4. CONEXIÓN SATELITAL GLOBAL ---
 @st.cache_resource(show_spinner=False)
@@ -143,7 +139,6 @@ def descargar_matriz_rapida(url, pestaña):
 
 # --- 5. MENÚ MAESTRO TÁCTICO ---
 with st.sidebar:
-    # 🎯 Maniobra para Centrar Milimétricamente el Escudo
     col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
     with col_img2:
         try: 
@@ -155,12 +150,12 @@ with st.sidebar:
     st.markdown("---")
     
     if st.session_state['usuario_rol'] == "ADMIN":
-        # Botón primario (Mantiene estilo dorado)
         if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True): 
             st.cache_data.clear()
             st.rerun()
             
-        menu = st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
+        # 💥 BLINDAJE DE MEMORIA: Se asigna el selector a la variable 'key' para que no se borre
+        st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
             "🛠️ 1. Mantenimiento Plantilla SAP", 
             "📥 2. Carga Facturación", 
@@ -174,18 +169,21 @@ with st.sidebar:
             "📊 10. Inteligencia de Costos (BI)",
             "📜 11. Manual de Gobierno Técnico",
             "🚁 12. Simulador Financiero Libre"
-        ])
+        ], key="modulo_actual")
     else: 
-        menu = "📈 9. Dashboard Táctico"
+        st.session_state['modulo_actual'] = "📈 9. Dashboard Táctico"
         st.info("🛰️ Modo Consulta Gerencial Activado.")
         
     st.markdown("---")
-    # Botón Secundario (El CSS lo vuelve Rojo Alerta)
     if st.button("🔒 CERRAR SESIÓN", use_container_width=True):
         st.session_state['autenticado'], st.session_state['usuario_rol'], st.session_state['usuario_nombre'] = False, None, None
+        st.session_state['modulo_actual'] = "🏠 Centro de Mando"
         st.rerun()
 
 # --- 6. DELEGACIÓN A ESCUADRONES ---
+# 💥 BLINDAJE DE MEMORIA: Se lee directamente desde la sesión guardada
+menu = st.session_state['modulo_actual']
+
 if menu == "🏠 Centro de Mando": m0.renderizar()
 elif menu == "🛠️ 1. Mantenimiento Plantilla SAP": m1.ejecutar(extraer_numero)
 elif menu == "📥 2. Carga Facturación": m2.ejecutar(extraer_numero)
