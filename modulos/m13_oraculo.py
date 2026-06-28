@@ -74,7 +74,6 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
             nombre_fert = dict_fertilizantes_dinamico[aditivo]
             dosis_fert = obtener_dosis_fertilizante(df_mezclas, nombre_fert)
             
-            # Salvavidas calibrado a la realidad agronómica
             if dosis_fert is None:
                 if "NATURAMIN" in nombre_fert: dosis_fert = 0.2
                 elif "ZINTRAC" in nombre_fert: dosis_fert = 0.5
@@ -97,6 +96,10 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("""
     <style>
     .titulo-oraculo { color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }
+    .alerta-roja { background-color: #ffe6e6; color: #cc0000; padding: 15px; border-left: 8px solid #cc0000; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+    .alerta-amarilla { background-color: #fff3cd; color: #856404; padding: 15px; border-left: 8px solid #ffc107; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+    .alerta-verde { background-color: #d4edda; color: #155724; padding: 15px; border-left: 8px solid #28a745; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -107,14 +110,19 @@ def ejecutar(purificar_lote, extraer_numero):
     archivo_sap = st.file_uploader("Cargue la Sábana SAP actualizada (.xlsx o .csv)", type=['xlsx', 'csv'], key="sap_oraculo")
     
     st.markdown("### 📅 2. Parámetros de Predicción")
-    col_mes, col_pista, col_vacia = st.columns([1.5, 1.5, 1])
+    # 💥 INYECCIÓN DEL TERCER SELECTOR (Lupa Histórica) 💥
+    col_mes, col_pista, col_profundidad = st.columns([1.2, 1.2, 1.5])
     
     meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
     mes_actual = datetime.now().month
-    mes_proyeccion = col_mes.selectbox("Mes a Proyectar (Ciclo Histórico):", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
+    mes_proyeccion = col_mes.selectbox("Mes a Proyectar:", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
     
     lista_pistas = ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2"]
-    pista_objetivo = col_pista.selectbox("📍 Filtrar por Pista Operativa (SAP):", lista_pistas)
+    pista_objetivo = col_pista.selectbox("📍 Base Operativa:", lista_pistas)
+
+    # El Selector que resuelve el crecimiento reciente
+    opciones_profundidad = ["Último Año (Tendencia Reciente)", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"]
+    profundidad_sel = col_profundidad.selectbox("🔍 Profundidad del Histórico:", opciones_profundidad)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -123,7 +131,7 @@ def ejecutar(purificar_lote, extraer_numero):
         return
 
     if st.button("🚀 EJECUTAR PREDICCIÓN ESTACIONAL", type="primary", use_container_width=True):
-        with st.spinner(f"Sincronizando lenguajes (SAP vs Operaciones) y analizando años anteriores..."):
+        with st.spinner(f"Sincronizando lenguajes y analizando comportamiento agronómico..."):
             try:
                 # --- A. LECTURA DE SAP ---
                 if archivo_sap.name.lower().endswith('.xlsx') or archivo_sap.name.lower().endswith('.xls'):
@@ -187,17 +195,25 @@ def ejecutar(purificar_lote, extraer_numero):
                 col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
                 col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
 
-                # RECUPERACIÓN DE FECHAS PESADA
                 df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
                 df_t1 = df_t1.dropna(subset=['FECHA_DT'])
                 df_t1['MES'] = df_t1['FECHA_DT'].dt.month
                 df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
                 
-                total_anios_boveda = df_t1['AÑO'].nunique()
-                if total_anios_boveda == 0: total_anios_boveda = 1
-
+                # 💥 APLICAR LA LUPA DE PROFUNDIDAD HISTÓRICA 💥
+                año_actual_operacion = datetime.now().year
+                if profundidad_sel == "Último Año (Tendencia Reciente)":
+                    df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 1)]
+                elif profundidad_sel == "Últimos 2 Años":
+                    df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 2)]
+                elif profundidad_sel == "Últimos 3 Años":
+                    df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 3)]
+                
                 df_hist_mes = df_t1[df_t1['MES'] == mes_proyeccion].copy()
                 
+                total_anios_boveda = df_hist_mes['AÑO'].nunique()
+                if total_anios_boveda == 0: total_anios_boveda = 1
+
                 consumo_esperado_pista = {} 
                 ha_total_detectada = 0.0
 
@@ -267,24 +283,21 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.markdown("---")
                 
                 if ha_total_detectada > 0:
-                    st.success(f"✅ Memoria Histórica Recuperada: El radar evaluó {total_anios_boveda} años de historia y promedió un volumen de **{fmt_latino(ha_total_detectada / total_anios_boveda)} Ha/Año** para el mes de {meses_dict[mes_proyeccion]}.")
+                    st.success(f"✅ Memoria Histórica Recuperada: El radar se ajustó a **[{profundidad_sel}]**, evaluó {total_anios_boveda} años válidos y promedió un volumen de **{fmt_latino(ha_total_detectada / total_anios_boveda)} Ha/Año** para el mes de {meses_dict[mes_proyeccion]}.")
                 else:
-                    st.warning(f"⚠️ El radar no encontró hectáreas operadas en el mes de {meses_dict[mes_proyeccion]} en su base de datos histórica.")
+                    st.warning(f"⚠️ El radar no encontró hectáreas operadas en el mes de {meses_dict[mes_proyeccion]} dentro de la profundidad histórica seleccionada.")
 
                 st.markdown(f"### 🎯 Tablero Táctico: Proyección para {meses_dict[mes_proyeccion]}")
                 
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ALGORITMO TRIAGE CORREGIDO (Solo 3 Niveles Reales) 💥
                     def get_sort_weight(estado_str):
                         if "CRÍTICO" in estado_str: return 1
                         if "ALERTA" in estado_str: return 2
-                        return 3 # Agrupa a todos los "Verdes" (Tanto > 21 Días como los Sin Consumo) para que se ordenen juntos de la A a la Z
+                        return 3
 
                     df_oraculo['SORT_WEIGHT'] = df_oraculo['ESTADO'].apply(get_sort_weight)
-                    
-                    # Ordena primero por pista, luego por prioridad (Rojo, Amarillo, Verde), y luego ESTRICTAMENTE ALFABÉTICO por código/producto
                     df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "SORT_WEIGHT", "🧪 CÓDIGO | PRODUCTO"], ascending=[True, True, True])
                     df_oraculo = df_oraculo.drop(columns=['SORT_WEIGHT'])
                     
