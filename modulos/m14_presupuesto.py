@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from datetime import datetime, timedelta
 import re
-from oauth2client.service_account import ServiceAccountCredentials
+import io # NUEVO: Necesario para exportar a Excel
 
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
 def inicializar_cliente_gspread():
@@ -104,13 +104,12 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
     return dict_prods
 
-# 💥 SUPER-CACHÉ MAESTRO (Reduce el tiempo de 30s a 0.5s) 💥
-@st.cache_data(show_spinner=False, ttl=600) # Se actualiza cada 10 minutos
+# 💥 SUPER-CACHÉ MAESTRO (Optimizando llamadas a la API) 💥
+@st.cache_data(show_spinner=False, ttl=1800) # Se extendió el caché a 30 minutos
 def descargar_todas_las_bases():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     
-    # 1. Bóveda Operativa
     boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
     t1_vals = boveda.worksheet("TABLA 1").get_all_values()
     mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
@@ -120,7 +119,6 @@ def descargar_todas_las_bases():
     df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
     df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
     
-    # 2. Bóveda de Precios Históricos
     try:
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         precios_consolidados = []
@@ -148,7 +146,8 @@ def descargar_todas_las_bases():
                         str_prod = str(row[col_prod]).strip().upper()
                         if anio_str.isdigit() and str_prod:
                             col_inicio = max(col_anio, col_prod) + 1
-                            vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != "" and parsear_precio(v) > 0]
+                            vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != ""]
+                            vals = [v for v in vals if v > 0]
                             prom = sum(vals)/len(vals) if vals else 0.0
                             if prom > 0:
                                 precios_consolidados.append({'AÑO': int(anio_str), 'PRODUCTO': str_prod, 'PRECIO': prom})
@@ -179,7 +178,7 @@ def ejecutar(purificar_lote, extraer_numero):
     <style>
     .titulo-presupuesto { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    .kpi-presupuesto { background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+    .kpi-presupuesto { background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px;}
     .kpi-titulo { color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }
     .kpi-valor { font-size: 32px; font-weight: 900; margin: 0; }
     </style>
@@ -197,8 +196,6 @@ def ejecutar(purificar_lote, extraer_numero):
     
     mes_sel = fila1_col1.selectbox("📅 Mes a Proyectar:", opciones_mes)
     pista_sel = fila1_col2.selectbox("📍 Base Operativa:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
-    
-    # 💥 NUEVO SELECTOR: Año Destino (Para calcular la inflación real) 💥
     anio_actual = datetime.now().year
     anio_presupuesto = fila1_col3.selectbox("🎯 Año a Presupuestar:", [2026, 2027, 2028, 2029, 2030], index=1)
     
@@ -210,9 +207,8 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Descargando historial y calculando estructura de costos..."):
+        with st.spinner("Procesando matriz financiera..."):
             try:
-                # La carga ahora es instantánea gracias al super-caché
                 df_t1, df_mezclas, df_cfg, df_precios_master = descargar_todas_las_bases()
                 
                 if df_t1.empty:
@@ -241,6 +237,8 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
                 df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
 
+                año_base = 2026 
+
                 if profundidad_sel == "Último Año": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 1)]
                 elif profundidad_sel == "Últimos 2 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 2)]
                 elif profundidad_sel == "Últimos 3 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 3)]
@@ -268,7 +266,7 @@ def ejecutar(purificar_lote, extraer_numero):
 
                     for _, row_c in ha_total_por_coctel.iterrows():
                         coctel_completo = str(row_c[col_coctel]).upper().strip()
-                        ha_proyectada = row_c['HA_PROYECTADA']
+                        ha_proyectada = row_c['HA_proyectada'] if 'HA_proyectada' in row_c else row_c['HA_PROYECTADA']
 
                         receta_dict = extraer_receta_completa(coctel_completo, df_mezclas, dict_fert)
                         for prod_quimico, dosis in receta_dict.items():
@@ -287,26 +285,30 @@ def ejecutar(purificar_lote, extraer_numero):
                         anio_origen = ""
                         p_clean = re.sub(r'[^\w]', '', producto.upper().strip())
                         
-                        # 1. Búsqueda Histórica Completa en la Base de Precios
                         if not df_precios_master.empty:
-                            mask_match = df_precios_master['PROD_CLEAN'].apply(lambda x: p_clean in x or x in p_clean)
-                            matches = df_precios_master[mask_match]
+                            df_2026 = df_precios_master[df_precios_master['AÑO'] == año_base]
+                            mask_26 = df_2026['PROD_CLEAN'].apply(lambda x: p_clean in x or x in p_clean)
+                            matches_26 = df_2026[mask_26]
+                            if not matches_26.empty:
+                                precio_hist_base = matches_26.iloc[0]['PRECIO']
+                                anios_pasados = max(0, anio_presupuesto - año_base)
+                                precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
+                                anio_origen = f"Base {año_base} (+{inflacion_sel}% x {anios_pasados}a)"
+                        
+                        if precio_unitario_final == 0.0 and not df_precios_master.empty:
+                            df_hist = df_precios_master[df_precios_master['AÑO'] < año_base]
+                            mask_hist = df_hist['PROD_CLEAN'].apply(lambda x: p_clean in x or x in p_clean)
+                            matches_hist = df_hist[mask_hist]
                             
-                            if not matches.empty:
-                                best_match = matches.loc[matches['AÑO'].idxmax()]
+                            if not matches_hist.empty:
+                                best_match = matches_hist.loc[matches_hist['AÑO'].idxmax()]
                                 anio_hist = int(best_match['AÑO'])
                                 precio_hist_base = best_match['PRECIO']
                                 
-                                # 💥 CÁLCULO DE INFLACIÓN CON AÑO OBJETIVO 💥
                                 anios_pasados = max(0, anio_presupuesto - anio_hist)
                                 precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
-                                
-                                if anios_pasados == 0:
-                                    anio_origen = f"Base {anio_hist} (Sin Inflación)"
-                                else:
-                                    anio_origen = f"Base {anio_hist} (+{anios_pasados} años al {inflacion_sel}%)"
+                                anio_origen = f"Rescatado {anio_hist} (+{inflacion_sel}% x {anios_pasados}a)"
 
-                        # 2. Respaldo: Config local si la bóveda falla
                         if precio_unitario_final == 0.0:
                             precio_bk = dict_precios_backup.get(producto, 0.0)
                             if precio_bk < 1000:
@@ -320,10 +322,9 @@ def ejecutar(purificar_lote, extraer_numero):
                                 precio_hist_base = precio_bk
                                 
                             if precio_hist_base >= 1000:
-                                # Le aplicamos la inflación respecto al año actual
                                 anios_pasados = max(0, anio_presupuesto - anio_actual)
                                 precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
-                                anio_origen = f"Configuración (+{anios_pasados} años al {inflacion_sel}%)"
+                                anio_origen = f"Conf. Local (+{inflacion_sel}% x {anios_pasados}a)"
 
                         if precio_unitario_final == 0.0:
                             anio_origen = "⚠️ Falta Precio"
@@ -355,9 +356,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.markdown("### 📋 Desglose Financiero por Insumo")
-                    
                     df_presupuesto = df_presupuesto.sort_values(by="🧪 INSUMO QUÍMICO", ascending=True)
                     df_vista = df_presupuesto.copy()
                     
@@ -369,9 +367,18 @@ def ejecutar(purificar_lote, extraer_numero):
                     df_vista['📈 PRECIO AJUSTADO'] = df_vista['📈 PRECIO AJUSTADO'].apply(formatear_precio)
                     df_vista['💰 PRESUPUESTO TOTAL'] = df_vista['💰 PRESUPUESTO TOTAL'].apply(lambda x: f"$ {fmt_latino(x, 0)}" if x > 0 else "$ 0")
 
-                    # 💥 RENDERIZADO ALINEADO 💥
+                    # Alineación forzada en el motor Styler de Pandas
+                    st.markdown("### 📋 Desglose Financiero por Insumo")
+                    
+                    def color_origen(val):
+                        if "(+" in str(val): return 'color: #d4af37;'
+                        if "⚠️" in str(val): return 'color: #cc0000; font-weight: bold;'
+                        return 'color: #155724;'
+
+                    styled_df = df_vista.style.map(color_origen, subset=['🔎 ORIGEN']).set_properties(**{'text-align': 'left'})
+                    
                     st.dataframe(
-                        df_vista, 
+                        styled_df, 
                         use_container_width=True, 
                         hide_index=True,
                         column_config={
@@ -379,9 +386,42 @@ def ejecutar(purificar_lote, extraer_numero):
                             "📦 VOLUMEN ESTIMADO": st.column_config.TextColumn("VOLUMEN", width="small"),
                             "💵 PRECIO BASE": st.column_config.TextColumn("PRECIO BASE", width="small"),
                             "📈 PRECIO AJUSTADO": st.column_config.TextColumn("PRECIO AJUSTADO", width="small"),
-                            "🔎 ORIGEN": st.column_config.TextColumn("ORIGEN", width="medium"),
+                            "🔎 ORIGEN": st.column_config.TextColumn("ORIGEN DEL DATO", width="medium"),
                             "💰 PRESUPUESTO TOTAL": st.column_config.TextColumn("PRESUPUESTO TOTAL", width="medium")
                         }
                     )
+
+                    # 💥 BOTONES DE EXPORTACIÓN (EXCEL / CSV) 💥
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    col_down1, col_down2, col_down_vacia = st.columns([1, 1, 2])
+                    
+                    # Generador de Excel
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        df_vista.to_excel(writer, sheet_name='Presupuesto', index=False)
+                        # Auto-ajuste de columnas básico en Excel
+                        worksheet = writer.sheets['Presupuesto']
+                        for i, col in enumerate(df_vista.columns):
+                            column_len = max(df_vista[col].astype(str).map(len).max(), len(col)) + 2
+                            worksheet.set_column(i, i, column_len)
+
+                    col_down1.download_button(
+                        label="📊 Exportar a Excel (Recomendado para PDF)",
+                        data=buffer.getvalue(),
+                        file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.xlsx",
+                        mime="application/vnd.ms-excel",
+                        use_container_width=True
+                    )
+
+                    # Generador de CSV (Backup)
+                    csv_data = df_vista.to_csv(index=False).encode('utf-8')
+                    col_down2.download_button(
+                        label="📄 Exportar a CSV",
+                        data=csv_data,
+                        file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                    
             except Exception as e:
                 st.error(f"🚨 Falla en los cálculos financieros: {e}")
