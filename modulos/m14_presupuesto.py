@@ -84,7 +84,7 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
     return dict_prods
 
-# 🧠 BUSCADOR DE PRECIOS
+# 🧠 BUSCADOR DE PRECIOS ACTUALES
 def extraer_precios_maestros(df_cfg):
     precios = {}
     if df_cfg.empty: return precios
@@ -100,6 +100,36 @@ def extraer_precios_maestros(df_cfg):
         if p and p not in ["NAN", "NONE", ""]: precios[p] = c
     return precios
 
+# 🧠 RASTREADOR DE HISTÓRICO DE PRECIOS (NUEVO MOTOR)
+def cargar_historico_precios(gc):
+    try:
+        url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+        sh_precios = gc.open_by_url(url_precios)
+        precios_consolidados = []
+        for ws in sh_precios.worksheets():
+            datos_hoja = ws.get_all_values()
+            if not datos_hoja: continue
+            idx_header, col_anio, col_prod = -1, -1, -1
+            for i in range(min(10, len(datos_hoja))):
+                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
+            
+            if idx_header != -1:
+                for row in datos_hoja[idx_header+1:]:
+                    if len(row) > max(col_anio, col_prod):
+                        anio_str = str(row[col_anio]).strip()
+                        str_prod = str(row[col_prod]).strip().upper()
+                        if anio_str.isdigit() and str_prod:
+                            col_inicio = max(col_anio, col_prod) + 1
+                            vals = [a_numero_limpio(v) for v in row[col_inicio:] if str(v).strip() != "" and a_numero_limpio(v) > 0]
+                            prom = sum(vals)/len(vals) if vals else 0.0
+                            if prom > 0:
+                                precios_consolidados.append({'AÑO': int(anio_str), 'PRODUCTO': str_prod, 'PRECIO': prom})
+        return pd.DataFrame(precios_consolidados)
+    except Exception as e:
+        return pd.DataFrame()
+
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
     st.markdown("""
@@ -113,24 +143,25 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-presupuesto'>💰 Módulo 14: Pronóstico Financiero</h1>", unsafe_allow_html=True)
-    st.write("Proyección estratégica del flujo de efectivo para compra de insumos, basado en promedios históricos y costos actuales.")
+    st.write("Proyección estratégica del flujo de efectivo con rastreo de precios históricos y ajuste de inflación.")
 
     # --- CONTROLES DE MANDO ---
     st.markdown("### ⚙️ Parámetros del Presupuesto")
-    col1, col2, col3, col4 = st.columns([1.5, 1, 1.2, 1.2])
+    col1, col2, col3, col4, col5 = st.columns([1.5, 1, 1.2, 1, 1.2])
     
     meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
     opciones_mes = ["📊 AÑO COMPLETO (TODOS)"] + list(meses_dict.values())
     
-    mes_sel = col1.selectbox("📅 Período a Presupuestar:", opciones_mes)
-    pista_sel = col2.selectbox("📍 Base Operativa:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
-    profundidad_sel = col3.selectbox("🔍 Histórico Base:", ["Último Año", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"])
-    crecimiento_sel = col4.number_input("📈 Crecimiento Operativo (%)", min_value=-50, max_value=200, value=0, step=5, help="Simula un aumento/disminución de hectáreas para el próximo periodo.")
+    mes_sel = col1.selectbox("📅 Período:", opciones_mes)
+    pista_sel = col2.selectbox("📍 Base:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
+    profundidad_sel = col3.selectbox("🔍 Histórico:", ["Último Año", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"])
+    crecimiento_sel = col4.number_input("📈 Ha Crecimiento (%)", min_value=-50, max_value=200, value=0, step=5)
+    inflacion_sel = col5.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=6.0, step=1.0, help="Porcentaje a sumar por cada año que el producto lleve sin comprarse.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Descargando historial de recetas y calculando estructura de costos..."):
+        with st.spinner("Sincronizando bóvedas de consumo y rastreando histórico de precios..."):
             try:
                 gc = inicializar_cliente_gspread()
                 boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -140,6 +171,9 @@ def ejecutar(purificar_lote, extraer_numero):
                 
                 cfg_data = boveda.worksheet("Configuración").get_all_values()
                 df_cfg = pd.DataFrame(cfg_data[1:], columns=[str(c).upper().strip() for c in cfg_data[0]])
+
+                # Descargar base de precios históricos
+                df_precios_hist = cargar_historico_precios(gc)
 
                 dict_fert = {}
                 if len(df_mezclas.columns) > 13:
@@ -161,13 +195,11 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
                 df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
 
-                # Filtro de Profundidad Histórica
                 año_actual_operacion = datetime.now().year
                 if profundidad_sel == "Último Año": df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 1)]
                 elif profundidad_sel == "Últimos 2 Años": df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 2)]
                 elif profundidad_sel == "Últimos 3 Años": df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 3)]
 
-                # Filtro de Mes
                 if mes_sel != "📊 AÑO COMPLETO (TODOS)":
                     mes_num = next(k for k, v in meses_dict.items() if v == mes_sel)
                     df_t1 = df_t1[df_t1['MES'] == mes_num]
@@ -175,7 +207,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 total_anios_boveda = df_t1['AÑO'].nunique()
                 if total_anios_boveda == 0: total_anios_boveda = 1
 
-                # Filtro de Pista
                 traductor_pistas = {"PLUC": "FUMIGARAY", "PORI": "AEROPENOR", "LUCI": "GENESYS", "TEHO": "AVIL", "PDIV": "ASA"}
                 if pista_sel != "TODAS":
                     pista_t1_esperada = traductor_pistas.get(pista_sel, pista_sel)
@@ -186,9 +217,7 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 if not df_t1.empty:
                     ha_total_detectada = df_t1['HA_CALCULO'].sum()
-                    
                     ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
-                    # Promedio histórico base + Acelerador de Crecimiento
                     factor_crecimiento = 1 + (crecimiento_sel / 100.0)
                     ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_crecimiento
 
@@ -200,22 +229,45 @@ def ejecutar(purificar_lote, extraer_numero):
                         for prod_quimico, dosis in receta_dict.items():
                             consumo_esperado[prod_quimico] = consumo_esperado.get(prod_quimico, 0) + (dosis * ha_proyectada)
 
-                # --- EXTRACCIÓN DE PRECIOS ---
-                dict_precios = extraer_precios_maestros(df_cfg)
+                # --- EXTRACCIÓN Y CRUCE INTELIGENTE DE PRECIOS ---
+                dict_precios_actuales = extraer_precios_maestros(df_cfg)
                 
                 resultados = []
                 gran_total_presupuesto = 0.0
 
                 for producto, volumen in consumo_esperado.items():
                     if volumen > 0:
-                        # Buscar precio (Búsqueda difusa si no es exacto)
-                        precio_unitario = dict_precios.get(producto, 0.0)
+                        precio_unitario = dict_precios_actuales.get(producto, 0.0)
+                        anio_origen = "Configuración Actual"
+                        p_clean = producto.replace(" ", "")
+                        
+                        # 1. Búsqueda difusa en Configuración Actual
                         if precio_unitario == 0.0:
-                            p_clean = producto.replace(" ", "")
-                            for p_bd, val_bd in dict_precios.items():
+                            for p_bd, val_bd in dict_precios_actuales.items():
                                 if p_clean in p_bd.replace(" ", "") or p_bd.replace(" ", "") in p_clean:
                                     precio_unitario = val_bd; break
-                                    
+                        
+                        # 2. Búsqueda en Bóveda Histórica con ajuste inflacionario
+                        if precio_unitario == 0.0 and not df_precios_hist.empty:
+                            df_precios_hist['PROD_CLEAN'] = df_precios_hist['PRODUCTO'].str.replace(" ", "")
+                            mask = df_precios_hist['PROD_CLEAN'].str.contains(p_clean, regex=False, na=False) | \
+                                   pd.Series([p_clean in str(p) for p in df_precios_hist['PROD_CLEAN']])
+                            matches = df_precios_hist[mask]
+                            
+                            if not matches.empty:
+                                # Extraemos el año más reciente registrado para ese producto
+                                best_match = matches.loc[matches['AÑO'].idxmax()]
+                                anio_hist = int(best_match['AÑO'])
+                                precio_hist = best_match['PRECIO']
+                                
+                                # Cálculo del factor inflacionario compuesto
+                                anios_pasados = max(0, año_actual_operacion - anio_hist)
+                                precio_unitario = precio_hist * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
+                                anio_origen = f"Rescatado {anio_hist} (+{anios_pasados} años al {inflacion_sel}%)"
+
+                        if precio_unitario == 0.0:
+                            anio_origen = "⚠️ Falta Precio"
+
                         presupuesto_prod = volumen * precio_unitario
                         gran_total_presupuesto += presupuesto_prod
                         
@@ -223,6 +275,7 @@ def ejecutar(purificar_lote, extraer_numero):
                             "🧪 INSUMO QUÍMICO": producto,
                             "📦 VOLUMEN ESTIMADO (L/Kg)": volumen,
                             "💵 COSTO UNITARIO ($)": precio_unitario,
+                            "🔎 ORIGEN PRECIO": anio_origen,
                             "💰 PRESUPUESTO ASIGNADO ($)": presupuesto_prod
                         })
 
@@ -230,7 +283,6 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 st.markdown("---")
                 
-                # --- RENDERIZADO DEL KPI GERENCIAL ---
                 if df_presupuesto.empty:
                     st.warning("⚠️ No hay suficientes datos históricos para proyectar este escenario.")
                 else:
@@ -238,18 +290,22 @@ def ejecutar(purificar_lote, extraer_numero):
                     <div class='kpi-presupuesto'>
                         <div class='kpi-titulo'>FLUJO DE EFECTIVO PROYECTADO ({mes_sel})</div>
                         <p class='kpi-valor'>$ {fmt_latino(gran_total_presupuesto, 0)} <span style='font-size: 16px; font-weight: normal;'>COP</span></p>
-                        <p style='margin: 0; margin-top: 10px; color: #a0aec0; font-size: 12px;'>Calculado sobre {fmt_latino(ha_total_detectada/total_anios_boveda * (1 + crecimiento_sel/100))} Hectáreas proyectadas. Factor de ajuste: {crecimiento_sel}%</p>
+                        <p style='margin: 0; margin-top: 10px; color: #a0aec0; font-size: 12px;'>Calculado sobre {fmt_latino(ha_total_detectada/total_anios_boveda * (1 + crecimiento_sel/100))} Hectáreas proyectadas. Factor Crecimiento: {crecimiento_sel}% | Inflación de ajuste: {inflacion_sel}%</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    st.markdown("<br>### 📋 Desglose Financiero por Insumo (Ley de Pareto)", unsafe_allow_html=True)
+                    st.markdown("<br>### 📋 Desglose Financiero por Insumo", unsafe_allow_html=True)
                     
-                    # Ordenar por el que más dinero consume (Pareto)
-                    df_presupuesto = df_presupuesto.sort_values(by="💰 PRESUPUESTO ASIGNADO ($)", ascending=False)
+                    # 💥 ORDENAMIENTO ESTRICTO ALFABÉTICO (SOLICITADO) 💥
+                    df_presupuesto = df_presupuesto.sort_values(by="🧪 INSUMO QUÍMICO", ascending=True)
                     
                     df_vista = df_presupuesto.copy()
                     df_vista['📦 VOLUMEN ESTIMADO (L/Kg)'] = df_vista['📦 VOLUMEN ESTIMADO (L/Kg)'].apply(lambda x: fmt_latino(x, 1))
-                    df_vista['💵 COSTO UNITARIO ($)'] = df_vista['💵 COSTO UNITARIO ($)'].apply(lambda x: f"$ {fmt_latino(x, 0)}" if x > 0 else "⚠️ Faltan Datos")
+                    
+                    def formatear_precio(x):
+                        return f"$ {fmt_latino(x, 0)}" if x > 0 else "⚠️ Falta Dato"
+
+                    df_vista['💵 COSTO UNITARIO ($)'] = df_vista['💵 COSTO UNITARIO ($)'].apply(formatear_precio)
                     df_vista['💰 PRESUPUESTO ASIGNADO ($)'] = df_vista['💰 PRESUPUESTO ASIGNADO ($)'].apply(lambda x: f"$ {fmt_latino(x, 0)}" if x > 0 else "$ 0")
 
                     st.dataframe(
@@ -257,9 +313,10 @@ def ejecutar(purificar_lote, extraer_numero):
                         use_container_width=True, 
                         hide_index=True,
                         column_config={
-                            "🧪 INSUMO QUÍMICO": st.column_config.TextColumn("INSUMO QUÍMICO", width="large"),
-                            "📦 VOLUMEN ESTIMADO (L/Kg)": st.column_config.TextColumn("VOLUMEN REQUERIDO", width="medium"),
-                            "💵 COSTO UNITARIO ($)": st.column_config.TextColumn("COSTO UNITARIO", width="medium"),
+                            "🧪 INSUMO QUÍMICO": st.column_config.TextColumn("INSUMO QUÍMICO", width="medium"),
+                            "📦 VOLUMEN ESTIMADO (L/Kg)": st.column_config.TextColumn("VOLUMEN REQUERIDO", width="small"),
+                            "💵 COSTO UNITARIO ($)": st.column_config.TextColumn("COSTO UNITARIO", width="small"),
+                            "🔎 ORIGEN PRECIO": st.column_config.TextColumn("ORIGEN DEL DATO", width="medium"),
                             "💰 PRESUPUESTO ASIGNADO ($)": st.column_config.TextColumn("PRESUPUESTO TOTAL", width="medium")
                         }
                     )
