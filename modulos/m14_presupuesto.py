@@ -100,7 +100,7 @@ def extraer_precios_maestros(df_cfg):
         if p and p not in ["NAN", "NONE", ""]: precios[p] = c
     return precios
 
-# 🧠 RASTREADOR DE HISTÓRICO DE PRECIOS (NUEVO MOTOR)
+# 🧠 RASTREADOR DE HISTÓRICO DE PRECIOS (CON FILTRO "POR LITRO" Y BÚSQUEDA BIDIRECCIONAL)
 def cargar_historico_precios(gc):
     try:
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
@@ -109,14 +109,27 @@ def cargar_historico_precios(gc):
         for ws in sh_precios.worksheets():
             datos_hoja = ws.get_all_values()
             if not datos_hoja: continue
-            idx_header, col_anio, col_prod = -1, -1, -1
+            
+            idx_header, col_anio, col_prod, col_precio_tipo = -1, -1, -1, -1
+            
+            # Buscar cabeceras
             for i in range(min(10, len(datos_hoja))):
                 fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                 if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
+                    idx_header = i
+                    col_anio = fila_upper.index('AÑO')
+                    col_prod = fila_upper.index('PRODUCTO')
+                    # Detectar si hay columna PRECIO (Para filtrar Dosis-Ha)
+                    col_precio_tipo = next((idx for idx, val in enumerate(fila_upper) if 'PRECIO' in val), -1)
+                    break
             
             if idx_header != -1:
                 for row in datos_hoja[idx_header+1:]:
+                    # 💥 FILTRO ANTI-DOSIS: Ignorar la fila si dice DOSIS
+                    if col_precio_tipo != -1 and len(row) > col_precio_tipo:
+                        if "DOSIS" in str(row[col_precio_tipo]).upper():
+                            continue
+                            
                     if len(row) > max(col_anio, col_prod):
                         anio_str = str(row[col_anio]).strip()
                         str_prod = str(row[col_prod]).strip().upper()
@@ -156,7 +169,7 @@ def ejecutar(purificar_lote, extraer_numero):
     pista_sel = col2.selectbox("📍 Base:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
     profundidad_sel = col3.selectbox("🔍 Histórico:", ["Último Año", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"])
     crecimiento_sel = col4.number_input("📈 Ha Crecimiento (%)", min_value=-50, max_value=200, value=0, step=5)
-    inflacion_sel = col5.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=6.0, step=1.0, help="Porcentaje a sumar por cada año que el producto lleve sin comprarse.")
+    inflacion_sel = col5.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=6.0, step=1.0)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -241,26 +254,26 @@ def ejecutar(purificar_lote, extraer_numero):
                         anio_origen = "Configuración Actual"
                         p_clean = producto.replace(" ", "")
                         
-                        # 1. Búsqueda difusa en Configuración Actual
+                        # 1. Búsqueda difusa en Configuración Actual (Bidireccional)
                         if precio_unitario == 0.0:
                             for p_bd, val_bd in dict_precios_actuales.items():
-                                if p_clean in p_bd.replace(" ", "") or p_bd.replace(" ", "") in p_clean:
+                                p_bd_clean = p_bd.replace(" ", "")
+                                if p_clean in p_bd_clean or p_bd_clean in p_clean:
                                     precio_unitario = val_bd; break
                         
                         # 2. Búsqueda en Bóveda Histórica con ajuste inflacionario
                         if precio_unitario == 0.0 and not df_precios_hist.empty:
                             df_precios_hist['PROD_CLEAN'] = df_precios_hist['PRODUCTO'].str.replace(" ", "")
-                            mask = df_precios_hist['PROD_CLEAN'].str.contains(p_clean, regex=False, na=False) | \
-                                   pd.Series([p_clean in str(p) for p in df_precios_hist['PROD_CLEAN']])
+                            
+                            # 💥 FIX DE LA LUPA: BÚSQUEDA BIDIRECCIONAL 💥
+                            mask = df_precios_hist['PROD_CLEAN'].apply(lambda x: x in p_clean or p_clean in x)
                             matches = df_precios_hist[mask]
                             
                             if not matches.empty:
-                                # Extraemos el año más reciente registrado para ese producto
                                 best_match = matches.loc[matches['AÑO'].idxmax()]
                                 anio_hist = int(best_match['AÑO'])
                                 precio_hist = best_match['PRECIO']
                                 
-                                # Cálculo del factor inflacionario compuesto
                                 anios_pasados = max(0, año_actual_operacion - anio_hist)
                                 precio_unitario = precio_hist * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
                                 anio_origen = f"Rescatado {anio_hist} (+{anios_pasados} años al {inflacion_sel}%)"
@@ -296,7 +309,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     
                     st.markdown("<br>### 📋 Desglose Financiero por Insumo", unsafe_allow_html=True)
                     
-                    # 💥 ORDENAMIENTO ESTRICTO ALFABÉTICO (SOLICITADO) 💥
+                    # 💥 ORDENAMIENTO ESTRICTO ALFABÉTICO 💥
                     df_presupuesto = df_presupuesto.sort_values(by="🧪 INSUMO QUÍMICO", ascending=True)
                     
                     df_vista = df_presupuesto.copy()
