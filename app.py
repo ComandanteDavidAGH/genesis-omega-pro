@@ -25,6 +25,7 @@ import modulos.m10_bi_tarifas as m10
 import modulos.m11_manual_tecnico as m11 
 import modulos.m12_simulador_agro as m12
 import modulos.m13_oraculo as m13 # <-- AGREGUE ESTA LÍNEA
+import modulos.m14_presupuesto as m14
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
@@ -170,7 +171,8 @@ with st.sidebar:
             "📊 10. Inteligencia de Costos (BI)",
             "📜 11. Manual de Gobierno Técnico",
             "🚁 12. Simulador Financiero Libre",
-            "🔮 13. El Oráculo (Inventarios)" # <-- AGREGUE ESTA LÍNEA
+            "🔮 13. El Oráculo (Inventarios)",
+            "💰 14. Pronóstico Financiero"
         ], key="modulo_actual")
     else: 
         st.session_state['modulo_actual'] = "📈 9. Dashboard Táctico"
@@ -199,4 +201,5 @@ elif menu == "📈 9. Dashboard Táctico": m9.ejecutar(descargar_matriz_rapida, 
 elif menu == "📊 10. Inteligencia de Costos (BI)": m10.ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero)
 elif menu == "📜 11. Manual de Gobierno Técnico": m11.ejecutar() 
 elif menu == "🚁 12. Simulador Financiero Libre": m12.ejecutar(procesar_fecha_pesada, extraer_numero)
-elif menu == "🔮 13. El Oráculo (Inventarios)": m13.ejecutar(purificar_lote, extraer_numero) # <-- AGREGUE ESTA LÍNEA
+elif menu == "🔮 13. El Oráculo (Inventarios)": m13.ejecutar(purificar_lote, extraer_numero)
+elif menu == "💰 14. Pronóstico Financiero": m14.ejecutar(purificar_lote, extraer_numero)
