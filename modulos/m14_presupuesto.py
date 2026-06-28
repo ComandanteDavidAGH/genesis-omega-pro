@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from datetime import datetime, timedelta
 import re
-import io # NUEVO: Necesario para exportar a Excel
+import io
 
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
 def inicializar_cliente_gspread():
@@ -104,8 +104,8 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
     return dict_prods
 
-# 💥 SUPER-CACHÉ MAESTRO (Optimizando llamadas a la API) 💥
-@st.cache_data(show_spinner=False, ttl=1800) # Se extendió el caché a 30 minutos
+# 💥 SUPER-CACHÉ MAESTRO 💥
+@st.cache_data(show_spinner=False, ttl=1800) 
 def descargar_todas_las_bases():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -196,6 +196,7 @@ def ejecutar(purificar_lote, extraer_numero):
     
     mes_sel = fila1_col1.selectbox("📅 Mes a Proyectar:", opciones_mes)
     pista_sel = fila1_col2.selectbox("📍 Base Operativa:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
+    
     anio_actual = datetime.now().year
     anio_presupuesto = fila1_col3.selectbox("🎯 Año a Presupuestar:", [2026, 2027, 2028, 2029, 2030], index=1)
     
@@ -207,7 +208,7 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Procesando matriz financiera..."):
+        with st.spinner("Conectando con la Bóveda de Datos..."):
             try:
                 df_t1, df_mezclas, df_cfg, df_precios_master = descargar_todas_las_bases()
                 
@@ -367,11 +368,10 @@ def ejecutar(purificar_lote, extraer_numero):
                     df_vista['📈 PRECIO AJUSTADO'] = df_vista['📈 PRECIO AJUSTADO'].apply(formatear_precio)
                     df_vista['💰 PRESUPUESTO TOTAL'] = df_vista['💰 PRESUPUESTO TOTAL'].apply(lambda x: f"$ {fmt_latino(x, 0)}" if x > 0 else "$ 0")
 
-                    # Alineación forzada en el motor Styler de Pandas
                     st.markdown("### 📋 Desglose Financiero por Insumo")
                     
                     def color_origen(val):
-                        if "(+" in str(val): return 'color: #d4af37;'
+                        if "(+" in str(val) and "x 0a" not in str(val): return 'color: #d4af37;'
                         if "⚠️" in str(val): return 'color: #cc0000; font-weight: bold;'
                         return 'color: #155724;'
 
@@ -391,29 +391,26 @@ def ejecutar(purificar_lote, extraer_numero):
                         }
                     )
 
-                    # 💥 BOTONES DE EXPORTACIÓN (EXCEL / CSV) 💥
+                    # 💥 BOTONES DE EXPORTACIÓN BLINDADOS CONTRA FALLOS 💥
                     st.markdown("<br>", unsafe_allow_html=True)
                     col_down1, col_down2, col_down_vacia = st.columns([1, 1, 2])
                     
-                    # Generador de Excel
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                        df_vista.to_excel(writer, sheet_name='Presupuesto', index=False)
-                        # Auto-ajuste de columnas básico en Excel
-                        worksheet = writer.sheets['Presupuesto']
-                        for i, col in enumerate(df_vista.columns):
-                            column_len = max(df_vista[col].astype(str).map(len).max(), len(col)) + 2
-                            worksheet.set_column(i, i, column_len)
+                    try:
+                        buffer = io.BytesIO()
+                        # Se remueve el engine='xlsxwriter' para prevenir fallos en servidores que no lo tengan
+                        with pd.ExcelWriter(buffer) as writer:
+                            df_vista.to_excel(writer, sheet_name='Presupuesto', index=False)
+                        
+                        col_down1.download_button(
+                            label="📊 Exportar a Excel (Recomendado para PDF)",
+                            data=buffer.getvalue(),
+                            file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    except Exception as e:
+                        col_down1.error("⚠️ Para exportar a Excel instale 'openpyxl' en su entorno.")
 
-                    col_down1.download_button(
-                        label="📊 Exportar a Excel (Recomendado para PDF)",
-                        data=buffer.getvalue(),
-                        file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.xlsx",
-                        mime="application/vnd.ms-excel",
-                        use_container_width=True
-                    )
-
-                    # Generador de CSV (Backup)
                     csv_data = df_vista.to_csv(index=False).encode('utf-8')
                     col_down2.download_button(
                         label="📄 Exportar a CSV",
