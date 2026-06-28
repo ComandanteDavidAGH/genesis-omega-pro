@@ -50,7 +50,7 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
     except: pass
     return None 
 
-# 🧠 CEREBRO QUÍMICO CALIBRADO
+# 🧠 CEREBRO QUÍMICO CALIBRADO (SIN INYECCIÓN FANTASMA DE ADITIVOS)
 def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
     partes = coctel_u.split()
@@ -59,6 +59,7 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
     
     dict_prods = {}
     
+    # 1. Base del Cóctel (Lectura Estricta)
     if not df_mezclas.empty:
         col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
         rb = df_mezclas[col_0_limpia == base_coctel]
@@ -67,22 +68,24 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
             d = a_numero_limpio(r.iloc[2])
             if d > 0 and p not in ['NAN', 'NONE', '']: dict_prods[p] = d
 
+    # 2. Inyección Dinámica de Fertilizantes (Solo los que pida la Sigla)
     for aditivo in aditivos:
         if aditivo in dict_fertilizantes_dinamico:
             nombre_fert = dict_fertilizantes_dinamico[aditivo]
             dosis_fert = obtener_dosis_fertilizante(df_mezclas, nombre_fert)
             
-            if dosis_fert is None:
-                if "NATURAMIN" in nombre_fert: dosis_fert = 0.2
-                elif "ZINTRAC" in nombre_fert: dosis_fert = 0.5
-                elif "BANATREL" in nombre_fert: dosis_fert = 0.5
-                else: dosis_fert = 0.5
-                
-            dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
+            # Solo inyecta el producto SI encuentra una dosis válida en la matriz
+            if dosis_fert is not None:
+                dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
+            elif aditivo == "NM": dict_prods["NATURAMIN WSP"] = 0.2
+            elif aditivo == "ZN": dict_prods["ZINTRAC X LITRO SV"] = 0.5
+            elif aditivo == "BT": dict_prods["BANATREL SC"] = 0.5
     
-    if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
-    if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
+    # 3. Aditivos Universales Estrictos
+    if "SV" in coctel_u or "ACONDICIONADOR" in coctel_u:
         dict_prods["ACONDICIONADOR SV"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+        dict_prods["ADHERENTE SV"] = 0.13
+        
     if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: 
         dict_prods["IMBIOSIL O"] = 1.5
 
@@ -107,14 +110,18 @@ def ejecutar(purificar_lote, extraer_numero):
     archivo_sap = st.file_uploader("Cargue la Sábana SAP actualizada (.xlsx o .csv)", type=['xlsx', 'csv'], key="sap_oraculo")
     
     st.markdown("### 📅 2. Parámetros de Predicción")
-    col_mes, col_pista, col_vacia = st.columns([1.5, 1.5, 1])
+    col_mes, col_pista, col_profundidad = st.columns([1.2, 1.2, 1.5])
     
     meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
     mes_actual = datetime.now().month
-    mes_proyeccion = col_mes.selectbox("Mes a Proyectar (Ciclo Histórico):", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
+    mes_proyeccion = col_mes.selectbox("Mes a Proyectar:", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
     
-    lista_pistas = ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2"]
-    pista_objetivo = col_pista.selectbox("📍 Filtrar por Pista Operativa (SAP):", lista_pistas)
+    # 💥 LISTA PURGADA (Se eliminaron Z-1 y Z-2) 💥
+    lista_pistas = ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+    pista_objetivo = col_pista.selectbox("📍 Base Operativa (SAP):", lista_pistas)
+
+    opciones_profundidad = ["Último Año (Tendencia Reciente)", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"]
+    profundidad_sel = col_profundidad.selectbox("🔍 Profundidad del Histórico:", opciones_profundidad)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -123,7 +130,7 @@ def ejecutar(purificar_lote, extraer_numero):
         return
 
     if st.button("🚀 EJECUTAR PREDICCIÓN ESTACIONAL", type="primary", use_container_width=True):
-        with st.spinner(f"Activando Motor Híbrido (Mezcla Histórica + Escala de Hectáreas Actuales)..."):
+        with st.spinner(f"Sincronizando lenguajes y analizando comportamiento agronómico..."):
             try:
                 # --- A. LECTURA DE SAP ---
                 if archivo_sap.name.lower().endswith('.xlsx') or archivo_sap.name.lower().endswith('.xls'):
@@ -194,29 +201,30 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
                 df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
 
-                # 💥 PASO 1: Calcular Hectáreas Actuales (Escala del último trimestre) 💥
+                año_actual_operacion = datetime.now().year
+                if profundidad_sel == "Último Año (Tendencia Reciente)":
+                    df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 1)]
+                elif profundidad_sel == "Últimos 2 Años":
+                    df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 2)]
+                elif profundidad_sel == "Últimos 3 Años":
+                    df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 3)]
+                
                 max_date = df_t1['FECHA_DT'].max()
                 fecha_limite = max_date - timedelta(days=90)
                 df_reciente = df_t1[df_t1['FECHA_DT'] >= fecha_limite]
                 
                 ha_mensual_actual_pista = {}
                 if not df_reciente.empty:
-                    # Promedio mensual de las hectáreas fumigadas en los últimos 3 meses
                     ha_mensual_actual_pista = (df_reciente.groupby('PISTA_OPERATIVA')['HA_CALCULO'].sum() / 3.0).to_dict()
 
-                # 💥 PASO 2: Calcular Perfil Químico Histórico del Mes 💥
                 df_hist_mes = df_t1[df_t1['MES'] == mes_proyeccion].copy()
-                
                 consumo_esperado_pista = {} 
                 ha_total_detectada = 0.0
 
                 if not df_hist_mes.empty:
                     ha_total_detectada = df_hist_mes['HA_CALCULO'].sum()
-                    
-                    # Total hectáreas fumigadas históricamente en ese mes por pista
                     ha_hist_total_pista = df_hist_mes.groupby('PISTA_OPERATIVA')['HA_CALCULO'].sum().to_dict()
 
-                    # Volumen total histórico de químicos
                     volumen_hist_total = {}
                     for _, row_c in df_hist_mes.iterrows():
                         pista_op = row_c['PISTA_OPERATIVA']
@@ -230,7 +238,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         for prod_quimico, dosis in receta_dict.items():
                             volumen_hist_total[pista_op][prod_quimico] = volumen_hist_total[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
 
-                    # 💥 PASO 3: Fusión Híbrida (Perfil Histórico X Escala Actual) 💥
+                    # Fusión Híbrida
                     for pista_op, prods in volumen_hist_total.items():
                         ha_historicas_mes = ha_hist_total_pista.get(pista_op, 0)
                         ha_actuales_mes = ha_mensual_actual_pista.get(pista_op, ha_historicas_mes / df_hist_mes['AÑO'].nunique())
@@ -241,14 +249,11 @@ def ejecutar(purificar_lote, extraer_numero):
                         for prod, vol_hist in prods.items():
                             if ha_historicas_mes > 0:
                                 dosis_promedio_blended = vol_hist / ha_historicas_mes
-                                # Se proyecta multiplicando la dosis histórica por la escala de hectáreas actual
                                 consumo_esperado_pista[pista_op][prod] = dosis_promedio_blended * ha_actuales_mes
                             else:
                                 consumo_esperado_pista[pista_op][prod] = 0.0
 
-                traductor_pistas = {
-                    "PLUC": "FUMIGARAY", "PORI": "AEROPENOR", "LUCI": "GENESYS", "TEHO": "AVIL", "PDIV": "ASA"
-                }
+                traductor_pistas = {"PLUC": "FUMIGARAY", "PORI": "AEROPENOR", "LUCI": "GENESYS", "TEHO": "AVIL", "PDIV": "ASA"}
 
                 resultados = []
                 for _, row_s in df_sap_agrupado.iterrows():
@@ -294,22 +299,20 @@ def ejecutar(purificar_lote, extraer_numero):
                 if ha_total_detectada > 0:
                     st.success(f"✅ Motor Híbrido Activado: El sistema analizó el patrón químico histórico de {meses_dict[mes_proyeccion]} y lo ajustó automáticamente al crecimiento en hectáreas de los últimos 90 días.")
                 else:
-                    st.warning(f"⚠️ El radar no encontró hectáreas operadas en el mes de {meses_dict[mes_proyeccion]} en la base histórica.")
+                    st.warning(f"⚠️ El radar no encontró hectáreas operadas en el mes de {meses_dict[mes_proyeccion]} dentro de la base histórica seleccionada.")
 
                 st.markdown(f"### 🎯 Tablero Táctico: Proyección para {meses_dict[mes_proyeccion]}")
                 
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ORDENAMIENTO PERFECTO (Triage + Nombre Real del Producto) 💥
+                    # 💥 ORDENAMIENTO ALFABÉTICO PERFECTO 💥
                     def get_sort_weight(estado_str):
                         if "CRÍTICO" in estado_str: return 1
                         if "ALERTA" in estado_str: return 2
                         return 3
 
                     df_oraculo['SORT_WEIGHT'] = df_oraculo['ESTADO'].apply(get_sort_weight)
-                    
-                    # Extraer solo el nombre de las letras para ordenar de la A a la Z ignorando el código numérico
                     df_oraculo['SOLO_NOMBRE'] = df_oraculo['🧪 CÓDIGO | PRODUCTO'].apply(lambda x: x.split('|')[1].strip() if '|' in x else x)
                     
                     df_oraculo = df_oraculo.sort_values(by=["📍 PISTA", "SORT_WEIGHT", "SOLO_NOMBRE"], ascending=[True, True, True])
@@ -354,7 +357,20 @@ def ejecutar(purificar_lote, extraer_numero):
                     df_vista['📈 PROYECCIÓN MES (L/Kg)'] = df_vista['📈 PROYECCIÓN MES (L/Kg)'].apply(lambda x: fmt_latino(x, 1))
                     df_vista['⏳ AUTONOMÍA'] = df_vista['⏳ AUTONOMÍA'].apply(lambda x: "∞ (Sin Consumo Histórico)" if x >= 9999 else f"{x:,.0f} Días")
 
-                    st.dataframe(df_vista.style.apply(pintar_oraculo, axis=1), use_container_width=True, hide_index=True)
+                    # 💥 REDERIZADO NATIVO PARA ALINEACIÓN PERFECTA DE COLUMNAS 💥
+                    st.dataframe(
+                        df_vista.style.apply(pintar_oraculo, axis=1), 
+                        use_container_width=True, 
+                        hide_index=True,
+                        column_config={
+                            "📍 PISTA": st.column_config.TextColumn("PISTA", width="small"),
+                            "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("PRODUCTO", width="large"),
+                            "📦 SALDO (SAP)": st.column_config.TextColumn("SALDO (SAP)", width="medium"),
+                            "📈 PROYECCIÓN MES (L/Kg)": st.column_config.TextColumn("PROYECCIÓN MES", width="medium"),
+                            "⏳ AUTONOMÍA": st.column_config.TextColumn("AUTONOMÍA", width="medium"),
+                            "ESTADO": st.column_config.TextColumn("ESTADO", width="medium")
+                        }
+                    )
                     
             except Exception as e:
                 st.error(f"🚨 Falla en los cálculos predictivos o estructura de datos: {e}")
