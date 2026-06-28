@@ -104,8 +104,8 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
     return dict_prods
 
-# 💥 SUPER-CACHÉ MAESTRO 💥
-@st.cache_data(show_spinner=False, ttl=1800) 
+# 💥 MEMORIA CACHÉ EXTENDIDA A 2 HORAS (7200 Segundos) 💥
+@st.cache_data(show_spinner=False, ttl=7200) 
 def descargar_todas_las_bases():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -208,7 +208,7 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Conectando con la Bóveda de Datos..."):
+        with st.spinner("Descargando bases de datos de Google (Este paso demora 20s la primera vez, luego será instantáneo)..."):
             try:
                 df_t1, df_mezclas, df_cfg, df_precios_master = descargar_todas_las_bases()
                 
@@ -391,25 +391,23 @@ def ejecutar(purificar_lote, extraer_numero):
                         }
                     )
 
-                    # 💥 BOTONES DE EXPORTACIÓN BLINDADOS CONTRA FALLOS 💥
                     st.markdown("<br>", unsafe_allow_html=True)
                     col_down1, col_down2, col_down_vacia = st.columns([1, 1, 2])
                     
                     try:
                         buffer = io.BytesIO()
-                        # Se remueve el engine='xlsxwriter' para prevenir fallos en servidores que no lo tengan
                         with pd.ExcelWriter(buffer) as writer:
                             df_vista.to_excel(writer, sheet_name='Presupuesto', index=False)
                         
                         col_down1.download_button(
-                            label="📊 Exportar a Excel (Recomendado para PDF)",
+                            label="📊 Exportar a Excel (Recomendado)",
                             data=buffer.getvalue(),
                             file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True
                         )
-                    except Exception as e:
-                        col_down1.error("⚠️ Para exportar a Excel instale 'openpyxl' en su entorno.")
+                    except:
+                        col_down1.error("⚠️ Instale 'openpyxl' para exportar a Excel.")
 
                     csv_data = df_vista.to_csv(index=False).encode('utf-8')
                     col_down2.download_button(
