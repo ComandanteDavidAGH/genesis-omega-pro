@@ -60,29 +60,32 @@ def fmt_latino(val, decimales=1):
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
-# 💥 NUEVO EXTRACTOR DE RECETAS EN MILISEGUNDOS (SIN PANDAS) 💥
+# 💥 PURIFICADOR DE ADITIVOS (Elimina "O", "ONM", etc) 💥
 def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fertilizantes_dinamico):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
     partes = coctel_u.split()
     base_coctel = partes[0] if len(partes) > 0 else ""
     aditivos = partes[1:] if len(partes) > 1 else []
     
-    # 1. Traer base (Velocidad O(1))
     dict_prods = dict_bases.get(base_coctel, {}).copy()
 
-    # 2. Inyectar aditivos
     for aditivo in aditivos:
-        nombre_fert = dict_fertilizantes_dinamico.get(aditivo, aditivo)
-        dosis_fert = dict_aditivos_dosis.get(nombre_fert)
+        nombre_fert = dict_fertilizantes_dinamico.get(aditivo)
         
-        if dosis_fert is None:
-            if "NATURAMIN" in nombre_fert: dosis_fert = 0.2
-            elif "ZINTRAC" in nombre_fert: dosis_fert = 0.5
-            elif "BANATREL" in nombre_fert: dosis_fert = 0.5
-            else: dosis_fert = 0.5
-        dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
+        if nombre_fert:
+            # Si lo encontró exactamente, trae su dosis o asume 0.5
+            dosis_fert = dict_aditivos_dosis.get(nombre_fert, 0.5)
+            dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
+        else:
+            # Si el aditivo es un error de digitación ("ONM", "OZN", "O")
+            if "NM" in aditivo:
+                dict_prods["NATURAMIN WSP"] = dict_prods.get("NATURAMIN WSP", 0.0) + 0.2
+            elif "ZN" in aditivo:
+                dict_prods["ZINTRAC X LITRO SV"] = dict_prods.get("ZINTRAC X LITRO SV", 0.0) + 0.5
+            elif "BT" in aditivo:
+                dict_prods["BANATREL SC"] = dict_prods.get("BANATREL SC", 0.0) + 0.5
+            # Si no hace match con las siglas salvavidas, SE IGNORA TOTALMENTE. No más químicos fantasma.
     
-    # 3. Aditivos Universales
     if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
     if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
         dict_prods["ACONDICIONADOR SV"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
@@ -91,13 +94,11 @@ def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fert
 
     return dict_prods
 
-# 💥 SUPER-CACHÉ ESTRUCTURAL (PROCESA TODO ANTES DEL BOTÓN) 💥
 @st.cache_data(show_spinner=False, ttl=7200) 
 def descargar_y_masticar_bases():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame(), {}, {}, {}, pd.DataFrame(), pd.DataFrame()
     
-    # --- 1. LECTURA MAESTRA ---
     boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
     t1_vals = boveda.worksheet("TABLA 1").get_all_values()
     mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
@@ -107,7 +108,6 @@ def descargar_y_masticar_bases():
     df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
     df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
     
-    # --- 2. PRE-PROCESAMIENTO DE HISTÓRICO DE VUELOS ---
     col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
     col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
     col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
@@ -122,7 +122,6 @@ def descargar_y_masticar_bases():
         df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
         df_t1['COCTEL_NOM'] = df_t1[col_coctel].astype(str).str.upper().str.strip()
     
-    # --- 3. CONVERSIÓN DE MEZCLAS A DICCIONARIOS ULTRARRÁPIDOS ---
     dict_bases = {}
     dict_aditivos_dosis = {}
     dict_fert = {}
@@ -153,7 +152,6 @@ def descargar_y_masticar_bases():
                 if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
                     dict_fert[f_s] = f_n
 
-    # --- 4. EXTRACCIÓN DE PRECIOS HISTÓRICOS ---
     df_precios_master = pd.DataFrame()
     try:
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
@@ -189,7 +187,7 @@ def descargar_y_masticar_bases():
                                 precios_consolidados.append({
                                     'AÑO': int(anio_str), 
                                     'PRODUCTO': str_prod, 
-                                    'PROD_CLEAN': re.sub(r'[^\w]', '', str_prod), # Limpio desde el origen
+                                    'PROD_CLEAN': re.sub(r'[^\w]', '', str_prod), 
                                     'PRECIO': prom
                                 })
         df_precios_master = pd.DataFrame(precios_consolidados)
@@ -248,7 +246,6 @@ def ejecutar(purificar_lote, extraer_numero):
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
         with st.spinner("Compilando matriz a velocidad de memoria nativa..."):
             try:
-                # 💥 1. RECUPERACIÓN NATIVA INSTANTÁNEA 💥
                 df_t1_base, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master = descargar_y_masticar_bases()
                 
                 if df_t1_base.empty:
@@ -259,7 +256,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 dict_precios_backup = extraer_precios_maestros(df_cfg)
                 año_base = 2026 
 
-                # 💥 2. FILTRADO RÁPIDO DE PANDAS 💥
                 if profundidad_sel == "Último Año": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 1)]
                 elif profundidad_sel == "Últimos 2 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 2)]
                 elif profundidad_sel == "Últimos 3 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 3)]
@@ -285,7 +281,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     factor_crecimiento = 1 + (crecimiento_sel / 100.0)
                     ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_crecimiento
 
-                    # 💥 3. LECTURA DE DICCIONARIOS EN MILISEGUNDOS (Sin lentitud) 💥
                     for _, row_c in ha_total_por_coctel.iterrows():
                         coctel_completo = str(row_c['COCTEL_NOM'])
                         ha_proyectada = row_c['HA_PROYECTADA']
@@ -294,7 +289,6 @@ def ejecutar(purificar_lote, extraer_numero):
                         for prod_quimico, dosis in receta_dict.items():
                             consumo_esperado[prod_quimico] = consumo_esperado.get(prod_quimico, 0) + (dosis * ha_proyectada)
 
-                # 💥 4. CRUCE DE PRECIOS ULTRA-RÁPIDO (Cruce en Memoria) 💥
                 resultados = []
                 gran_total_presupuesto = 0.0
                 precios_records = df_precios_master.to_dict('records') if not df_precios_master.empty else []
@@ -306,7 +300,6 @@ def ejecutar(purificar_lote, extraer_numero):
                         anio_origen = ""
                         p_clean = re.sub(r'[^\w]', '', producto.upper().strip())
                         
-                        # Prioridad Alfa: Base 2026 (Lista plana Python, O(N))
                         for r_db in precios_records:
                             if r_db['AÑO'] == año_base:
                                 if p_clean in r_db['PROD_CLEAN'] or r_db['PROD_CLEAN'] in p_clean:
@@ -316,7 +309,6 @@ def ejecutar(purificar_lote, extraer_numero):
                                     anio_origen = f"Base {año_base} (+{inflacion_sel}% x {anios_pasados}a)"
                                     break
                         
-                        # Prioridad Beta: Histórico + Inflación
                         if precio_unitario_final == 0.0 and precios_records:
                             matches_hist = []
                             for r_db in precios_records:
@@ -333,7 +325,6 @@ def ejecutar(purificar_lote, extraer_numero):
                                 precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
                                 anio_origen = f"Rescatado {anio_hist} (+{inflacion_sel}% x {anios_pasados}a)"
 
-                        # Respaldo: Config local
                         if precio_unitario_final == 0.0:
                             precio_bk = dict_precios_backup.get(producto, 0.0)
                             if precio_bk < 1000:
