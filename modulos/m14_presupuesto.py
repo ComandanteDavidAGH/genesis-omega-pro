@@ -104,12 +104,13 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
     return dict_prods
 
-# 💥 MEMORIA CACHÉ EXTENDIDA A 2 HORAS (7200 Segundos) 💥
+# 💥 SUPER-CACHÉ CON PREPROCESAMIENTO PESADO INCLUIDO 💥
 @st.cache_data(show_spinner=False, ttl=7200) 
-def descargar_todas_las_bases():
+def descargar_y_preprocesar_bases():
     gc = inicializar_cliente_gspread()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), None
     
+    # 1. Bóveda Operativa
     boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
     t1_vals = boveda.worksheet("TABLA 1").get_all_values()
     mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
@@ -119,6 +120,22 @@ def descargar_todas_las_bases():
     df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
     df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
     
+    # 2. PROCESAMIENTO PESADO DENTRO DEL CACHÉ (AQUÍ ESTÁ LA SOLUCIÓN A LOS 15 SEGUNDOS)
+    col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
+    col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
+    col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
+    col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
+
+    if col_fecha and col_ha and col_pista_t1 and col_coctel:
+        df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
+        df_t1 = df_t1.dropna(subset=['FECHA_DT'])
+        df_t1['MES'] = df_t1['FECHA_DT'].dt.month
+        df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
+        df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
+        df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
+        df_t1['COCTEL_NOM'] = df_t1[col_coctel].astype(str).str.upper().str.strip()
+
+    # 3. Bóveda de Precios Históricos
     try:
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         precios_consolidados = []
@@ -152,10 +169,15 @@ def descargar_todas_las_bases():
                             if prom > 0:
                                 precios_consolidados.append({'AÑO': int(anio_str), 'PRODUCTO': str_prod, 'PRECIO': prom})
         df_precios_master = pd.DataFrame(precios_consolidados)
+        
+        # Limpieza pesada de precios al caché
+        if not df_precios_master.empty:
+            df_precios_master['PROD_CLEAN'] = df_precios_master['PRODUCTO'].astype(str).str.upper().apply(lambda x: re.sub(r'[^\w]', '', x))
+
     except:
         df_precios_master = pd.DataFrame()
         
-    return df_t1, df_mezclas, df_cfg, df_precios_master
+    return df_t1, df_mezclas, df_cfg, df_precios_master, col_coctel
 
 def extraer_precios_maestros(df_cfg):
     precios = {}
@@ -196,7 +218,6 @@ def ejecutar(purificar_lote, extraer_numero):
     
     mes_sel = fila1_col1.selectbox("📅 Mes a Proyectar:", opciones_mes)
     pista_sel = fila1_col2.selectbox("📍 Base Operativa:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
-    
     anio_actual = datetime.now().year
     anio_presupuesto = fila1_col3.selectbox("🎯 Año a Presupuestar:", [2026, 2027, 2028, 2029, 2030], index=1)
     
@@ -208,13 +229,16 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Descargando bases de datos de Google (Este paso demora 20s la primera vez, luego será instantáneo)..."):
+        with st.spinner("Desplegando proyección de la memoria caché..."):
             try:
-                df_t1, df_mezclas, df_cfg, df_precios_master = descargar_todas_las_bases()
+                # La carga ahora trae los datos ya pre-procesados, ahorrando 15-20 segundos de cálculos.
+                df_t1_base, df_mezclas, df_cfg, df_precios_master, col_coctel = descargar_y_preprocesar_bases()
                 
-                if df_t1.empty:
+                if df_t1_base.empty:
                     st.error("🚨 No se pudo establecer conexión con las Bóvedas de Datos.")
                     return
+
+                df_t1 = df_t1_base.copy() # Trabajamos con una copia para no alterar el caché
 
                 dict_precios_backup = extraer_precios_maestros(df_cfg)
 
@@ -225,18 +249,6 @@ def ejecutar(purificar_lote, extraer_numero):
                         f_s = str(row.iloc[13]).strip().upper() 
                         if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
                             dict_fert[f_s] = f_n
-
-                col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
-                col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
-                col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
-                col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
-
-                df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
-                df_t1 = df_t1.dropna(subset=['FECHA_DT'])
-                df_t1['MES'] = df_t1['FECHA_DT'].dt.month
-                df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
-                df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
-                df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
 
                 año_base = 2026 
 
@@ -261,13 +273,13 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 if not df_t1.empty:
                     ha_total_detectada = df_t1['HA_CALCULO'].sum()
-                    ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', col_coctel])['HA_CALCULO'].sum().reset_index()
+                    ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
                     factor_crecimiento = 1 + (crecimiento_sel / 100.0)
                     ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_crecimiento
 
                     for _, row_c in ha_total_por_coctel.iterrows():
-                        coctel_completo = str(row_c[col_coctel]).upper().strip()
-                        ha_proyectada = row_c['HA_proyectada'] if 'HA_proyectada' in row_c else row_c['HA_PROYECTADA']
+                        coctel_completo = str(row_c['COCTEL_NOM']).upper().strip()
+                        ha_proyectada = row_c['HA_PROYECTADA']
 
                         receta_dict = extraer_receta_completa(coctel_completo, df_mezclas, dict_fert)
                         for prod_quimico, dosis in receta_dict.items():
@@ -275,9 +287,6 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 resultados = []
                 gran_total_presupuesto = 0.0
-
-                if not df_precios_master.empty:
-                    df_precios_master['PROD_CLEAN'] = df_precios_master['PRODUCTO'].astype(str).str.upper().apply(lambda x: re.sub(r'[^\w]', '', x))
 
                 for producto, volumen in consumo_esperado.items():
                     if volumen > 0:
