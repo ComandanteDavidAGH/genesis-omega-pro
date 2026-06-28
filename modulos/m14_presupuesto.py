@@ -25,7 +25,7 @@ def a_numero_limpio(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 PARSEADOR FINANCIERO LATINO 💥
+# 💥 PARSEADOR FINANCIERO LATINO COP 💥
 def parsear_precio(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -108,7 +108,7 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
     return dict_prods
 
-# 🧠 BUSCADOR DE PRECIOS ACTUALES
+# 🧠 BACKUP RAT LOGÍSTICO: Solo por si falta en toda la sábana de precios
 def extraer_precios_maestros(df_cfg):
     precios = {}
     if df_cfg.empty: return precios
@@ -124,8 +124,8 @@ def extraer_precios_maestros(df_cfg):
         if p and p not in ["NAN", "NONE", ""]: precios[p] = c
     return precios
 
-# 🧠 RASTREADOR DE HISTÓRICO DE PRECIOS
-def cargar_historico_precios(gc):
+# 🧠 RECOLECTOR MAESTRO DE PRECIOS (DATOS E HISTORICOS)
+def cargar_base_precios_completa(gc):
     try:
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
@@ -135,7 +135,6 @@ def cargar_historico_precios(gc):
             if not datos_hoja: continue
             
             idx_header, col_anio, col_prod, col_precio_tipo = -1, -1, -1, -1
-            
             for i in range(min(10, len(datos_hoja))):
                 fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                 if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
@@ -156,12 +155,13 @@ def cargar_historico_precios(gc):
                         str_prod = str(row[col_prod]).strip().upper()
                         if anio_str.isdigit() and str_prod:
                             col_inicio = max(col_anio, col_prod) + 1
-                            vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != "" and parsear_precio(v) > 0]
+                            vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != ""]
+                            vals = [v for v in vals if v > 0]
                             prom = sum(vals)/len(vals) if vals else 0.0
                             if prom > 0:
                                 precios_consolidados.append({'AÑO': int(anio_str), 'PRODUCTO': str_prod, 'PRECIO': prom})
         return pd.DataFrame(precios_consolidados)
-    except Exception as e:
+    except:
         return pd.DataFrame()
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
@@ -195,7 +195,7 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Desplegando escudo financiero y rastreando precios históricos..."):
+        with st.spinner("Ejecutando Triage de Precios: Buscando en Año 2026..."):
             try:
                 gc = inicializar_cliente_gspread()
                 boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -206,7 +206,9 @@ def ejecutar(purificar_lote, extraer_numero):
                 cfg_data = boveda.worksheet("Configuración").get_all_values()
                 df_cfg = pd.DataFrame(cfg_data[1:], columns=[str(c).upper().strip() for c in cfg_data[0]])
 
-                df_precios_hist = cargar_historico_precios(gc)
+                # Descargar base de datos maestra de precios
+                df_precios_master = cargar_base_precios_completa(gc)
+                dict_precios_backup = extraer_precios_maestros(df_cfg)
 
                 dict_fert = {}
                 if len(df_mezclas.columns) > 13:
@@ -228,7 +230,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
                 df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
 
-                año_actual_operacion = datetime.now().year
+                año_actual_operacion = 2026 # Forzado por calendario operativo
                 if profundidad_sel == "Último Año": df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 1)]
                 elif profundidad_sel == "Últimos 2 Años": df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 2)]
                 elif profundidad_sel == "Últimos 3 Años": df_t1 = df_t1[df_t1['AÑO'] >= (año_actual_operacion - 3)]
@@ -256,49 +258,61 @@ def ejecutar(purificar_lote, extraer_numero):
 
                     for _, row_c in ha_total_por_coctel.iterrows():
                         coctel_completo = str(row_c[col_coctel]).upper().strip()
-                        ha_proyectada = row_c['HA_PROYECTADA']
+                        ha_proyectada = row_c['HA_proyectada'] if 'HA_proyectada' in row_c else row_c['HA_PROYECTADA']
 
                         receta_dict = extraer_receta_completa(coctel_completo, df_mezclas, dict_fert)
                         for prod_quimico, dosis in receta_dict.items():
                             consumo_esperado[prod_quimico] = consumo_esperado.get(prod_quimico, 0) + (dosis * ha_proyectada)
 
-                dict_precios_actuales = extraer_precios_maestros(df_cfg)
-                
                 resultados = []
                 gran_total_presupuesto = 0.0
 
                 for producto, volumen in consumo_esperado.items():
                     if volumen > 0:
-                        precio_unitario = dict_precios_actuales.get(producto, 0.0)
-                        anio_origen = "Configuración Actual"
-                        p_clean = producto.replace(" ", "")
+                        precio_unitario = 0.0
+                        anio_origen = ""
+                        p_clean = re.sub(r'[^\w]', '', producto.upper().strip())
                         
-                        if precio_unitario == 0.0:
-                            for p_bd, val_bd in dict_precios_actuales.items():
-                                p_bd_clean = p_bd.replace(" ", "")
-                                if p_clean in p_bd_clean or p_bd_clean in p_clean:
-                                    precio_unitario = val_bd; break
+                        # 💥 1. CRITERIO DE PRIORIDAD ALFA: BUSCAR PRIMERO EN AÑO 2026 (Pestaña Datos) 💥
+                        if not df_precios_master.empty:
+                            df_2026 = df_precios_master[df_precios_master['AÑO'] == 2026]
+                            for _, r_db in df_2026.iterrows():
+                                db_clean = re.sub(r'[^\w]', '', str(r_db['PRODUCTO']).upper().strip())
+                                if p_clean in db_clean or db_clean in p_clean:
+                                    precio_unitario = r_db['PRECIO']
+                                    anio_origen = "Base 2026 (Actual)"
+                                    break
                         
-                        # 💥 FILTRO ANTI-BASURA 💥
-                        # Si el precio extraído de "Configuración" es ridículamente bajo (ej. $9 COP), 
-                        # lo convertimos en 0 para forzar la búsqueda en el Histórico de Precios.
-                        if precio_unitario < 1000:
-                            precio_unitario = 0.0
-                        
-                        # 2. Búsqueda en Bóveda Histórica
-                        if precio_unitario == 0.0 and not df_precios_hist.empty:
-                            df_precios_hist['PROD_CLEAN'] = df_precios_hist['PRODUCTO'].str.replace(" ", "")
-                            mask = df_precios_hist['PROD_CLEAN'].apply(lambda x: x in p_clean or p_clean in x)
-                            matches = df_precios_hist[mask]
+                        # 💥 2. CRITERIO DE PRIORIDAD BETA: SI NO ESTÁ, PASAR AL HISTÓRICO 💥
+                        if precio_unitario == 0.0 and not df_precios_master.empty:
+                            df_hist = df_precios_master[df_precios_master['AÑO'] < 2026]
+                            matches_hist = []
+                            for _, r_db in df_hist.iterrows():
+                                db_clean = re.sub(r'[^\w]', '', str(r_db['PRODUCTO']).upper().strip())
+                                if p_clean in db_clean or db_clean in p_clean:
+                                    matches_hist.append(r_db)
                             
-                            if not matches.empty:
-                                best_match = matches.loc[matches['AÑO'].idxmax()]
+                            if matches_hist:
+                                best_match = max(matches_hist, key=lambda x: x['AÑO'])
                                 anio_hist = int(best_match['AÑO'])
                                 precio_hist = best_match['PRECIO']
                                 
-                                anios_pasados = max(0, año_actual_operacion - anio_hist)
+                                anios_pasados = max(0, 2026 - anio_hist)
                                 precio_unitario = precio_hist * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
                                 anio_origen = f"Rescatado {anio_hist} (+{anios_pasados} años al {inflacion_sel}%)"
+
+                        # 3. ÚLTIMO RECURSO SEGURIDAD: Configuración Local (Solo si es un valor lógico válido)
+                        if precio_unitario == 0.0:
+                            precio_bk = dict_precios_backup.get(producto, 0.0)
+                            if precio_bk < 1000:
+                                for p_bk, val_bk in dict_precios_backup.items():
+                                    bk_clean = re.sub(r'[^\w]', '', p_bk.upper().strip())
+                                    if p_clean in bk_clean or bk_clean in p_clean:
+                                        if val_bk >= 1000: precio_unitario = val_bk; break
+                            else:
+                                precio_unitario = precio_bk
+                            if precio_unitario >= 1000:
+                                anio_origen = "Configuración Local"
 
                         if precio_unitario == 0.0:
                             anio_origen = "⚠️ Falta Precio"
@@ -331,6 +345,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     
                     st.markdown("<br>### 📋 Desglose Financiero por Insumo", unsafe_allow_html=True)
                     
+                    # Ordenamiento Estricto Alfabético
                     df_presupuesto = df_presupuesto.sort_values(by="🧪 INSUMO QUÍMICO", ascending=True)
                     
                     df_vista = df_presupuesto.copy()
