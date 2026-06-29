@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import re
 import requests
 import folium
+import uuid
 
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
 def inicializar_cliente_gspread():
@@ -35,6 +36,13 @@ def procesar_fecha_pesada(val):
         except: pass
     try: return pd.to_datetime(s, errors='coerce')
     except: return pd.NaT
+
+# 💥 NORMALIZADOR DE NOMBRES (Para que los KML hagan match perfecto) 💥
+def limpiar_nombre(texto):
+    # Quita espacios, guiones, puntos y palabras como "FINCA" o "KML"
+    txt = re.sub(r'[^\w]', '', str(texto).upper())
+    txt = txt.replace("FINCA", "").replace("KML", "")
+    return txt
 
 def extraer_poligonos_kml(kml_bytes):
     try:
@@ -112,8 +120,28 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Mapa de Calor Agronómico</h1>", unsafe_allow_html=True)
     st.write("Análisis de ciclos biológicos por FINCA sobre terreno satelital y lluvia trimestral.")
 
+    # --- 💥 GESTOR DE CARGA CON BOTÓN DE LIMPIEZA 💥 ---
     st.markdown("### 📂 1. Inyección de Polígonos de Precisión")
-    archivos_kml = st.file_uploader("Arrastre aquí los archivos .kml de sus fincas (Ej: ANGELES.kml)", type=['kml'], accept_multiple_files=True)
+    
+    if "kml_uploader_key" not in st.session_state:
+        st.session_state.kml_uploader_key = str(uuid.uuid4())
+
+    col_up, col_btn = st.columns([4, 1])
+    
+    with col_up:
+        archivos_kml = st.file_uploader(
+            "Arrastre aquí los archivos .kml de sus fincas", 
+            type=['kml'], 
+            accept_multiple_files=True, 
+            key=st.session_state.kml_uploader_key
+        )
+        
+    with col_btn:
+        st.write("") # Espaciador
+        st.write("") # Espaciador
+        if st.button("🗑️ Limpiar KMLs", use_container_width=True):
+            st.session_state.kml_uploader_key = str(uuid.uuid4())
+            st.rerun()
 
     coor_estimadas = {
         "ORIHUECA": [10.7483, -74.1542], "FLORIDA": [10.7650, -74.1320], "TUCURINCA": [10.5842, -74.1489],
@@ -209,13 +237,21 @@ def ejecutar(purificar_lote, extraer_numero):
                 <b>Lluvia Mensual:</b> {f_info["LLUVIA 30D (mm)"]:.1f} mm
                 """
                 
-                kml_clave = next((k for k in dict_poligonos_kml.keys() if k in finca_nom or finca_nom in k), None)
+                # 💥 RECONOCIMIENTO DIFUSO DE KML 💥
+                f_norm = limpiar_nombre(finca_nom)
+                kml_clave = None
+                
+                for k in dict_poligonos_kml.keys():
+                    k_norm = limpiar_nombre(k)
+                    # Si el nombre limpio coincide parcial o totalmente y tiene sentido (>3 letras)
+                    if (k_norm in f_norm or f_norm in k_norm) and len(k_norm) > 3:
+                        kml_clave = k
+                        break
                 
                 if kml_clave:
                     lats_finca = []
                     lons_finca = []
                     
-                    # Dibujar todos los sub-lotes
                     for poligono in dict_poligonos_kml[kml_clave]:
                         folium.Polygon(
                             locations=poligono,
@@ -231,12 +267,10 @@ def ejecutar(purificar_lote, extraer_numero):
                         lats_finca.extend([p[0] for p in poligono])
                         lons_finca.extend([p[1] for p in poligono])
                         
-                    # 💥 CENTROIDE PERFECTO (Bounding Box) UNA SOLA VEZ POR FINCA 💥
                     if lats_finca and lons_finca:
                         centro_lat = (min(lats_finca) + max(lats_finca)) / 2
                         centro_lon = (min(lons_finca) + max(lons_finca)) / 2
                         
-                        # Letras BLANCAS con SOMBRA NEGRA PROFUNDA para que destaquen en el satélite
                         html_label = f"""
                         <div style="
                             font-size: 11px; 
@@ -256,7 +290,6 @@ def ejecutar(purificar_lote, extraer_numero):
                         ).add_to(mapa_magdalena)
 
                 else:
-                    # Contingencia sin KML
                     if sector_nom not in sectores_dibujados:
                         folium.CircleMarker(
                             location=f_info["COOR"],
