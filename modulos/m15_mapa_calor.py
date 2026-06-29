@@ -37,17 +37,17 @@ def procesar_fecha_pesada(val):
     try: return pd.to_datetime(s, errors='coerce')
     except: return pd.NaT
 
-# 💥 NORMALIZADOR DE NOMBRES (Para que los KML hagan match perfecto) 💥
 def limpiar_nombre(texto):
-    # Quita espacios, guiones, puntos y palabras como "FINCA" o "KML"
     txt = re.sub(r'[^\w]', '', str(texto).upper())
     txt = txt.replace("FINCA", "").replace("KML", "")
     return txt
 
+# 💥 ESCUDO KML (Insensible a Mayúsculas/Minúsculas) 💥
 def extraer_poligonos_kml(kml_bytes):
     try:
         texto = kml_bytes.decode("utf-8", errors="ignore")
-        bloques = re.findall(r'<coordinates>(.*?)</coordinates>', texto, re.DOTALL)
+        # Se agrega re.IGNORECASE para evitar ceguera por sintaxis XML
+        bloques = re.findall(r'<coordinates>(.*?)</coordinates>', texto, re.IGNORECASE | re.DOTALL)
         poligonos_finca = []
         for bloque in bloques:
             coordenadas_crudas = bloque.strip().split()
@@ -98,12 +98,16 @@ def cargar_historico_t1():
     
     col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
     col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
+    
+    # 💥 RETORNO ESTRICTO A LA COLUMNA SECTOR 💥
     col_sector = next((c for c in df_t1.columns if 'SECTOR' in c), 'SECTOR')
     col_finca = next((c for c in df_t1.columns if 'FINCA' in c), 'FINCA')
     
     df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
     df_t1 = df_t1.dropna(subset=['FECHA_DT'])
     df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
+    
+    # Asignamos estrictamente el Sector
     df_t1['SECTOR_NOM'] = df_t1[col_sector].astype(str).str.upper().str.strip()
     df_t1['FINCA_NOM'] = df_t1[col_finca].astype(str).str.upper().str.strip()
     return df_t1
@@ -120,14 +124,12 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Mapa de Calor Agronómico</h1>", unsafe_allow_html=True)
     st.write("Análisis de ciclos biológicos por FINCA sobre terreno satelital y lluvia trimestral.")
 
-    # --- 💥 GESTOR DE CARGA CON BOTÓN DE LIMPIEZA 💥 ---
     st.markdown("### 📂 1. Inyección de Polígonos de Precisión")
     
     if "kml_uploader_key" not in st.session_state:
         st.session_state.kml_uploader_key = str(uuid.uuid4())
 
     col_up, col_btn = st.columns([4, 1])
-    
     with col_up:
         archivos_kml = st.file_uploader(
             "Arrastre aquí los archivos .kml de sus fincas", 
@@ -135,10 +137,9 @@ def ejecutar(purificar_lote, extraer_numero):
             accept_multiple_files=True, 
             key=st.session_state.kml_uploader_key
         )
-        
     with col_btn:
-        st.write("") # Espaciador
-        st.write("") # Espaciador
+        st.write("") 
+        st.write("") 
         if st.button("🗑️ Limpiar KMLs", use_container_width=True):
             st.session_state.kml_uploader_key = str(uuid.uuid4())
             st.rerun()
@@ -147,7 +148,7 @@ def ejecutar(purificar_lote, extraer_numero):
         "ORIHUECA": [10.7483, -74.1542], "FLORIDA": [10.7650, -74.1320], "TUCURINCA": [10.5842, -74.1489],
         "PALOMAR": [10.7210, -74.1150], "LA CEIBA": [10.7350, -74.1620], "CAÑO MOCHO": [10.7820, -74.1850],
         "PALOMINO": [11.2442, -73.5623], "BURITACA": [11.2420, -73.7650], "GUACAMAYAL": [10.7292, -74.1594],
-        "SEVILLA": [10.7667, -74.1500], "RIO FRIO": [10.9000, -74.1667]
+        "SEVILLA": [10.7667, -74.1500], "RIO FRIO": [10.9000, -74.1667], "FUNDACION": [10.5208, -74.1833]
     }
 
     if st.button("🛰️ ENCENDER RADAR METEOROLÓGICO Y EPIDEMIOLÓGICO", type="primary", use_container_width=True):
@@ -174,7 +175,10 @@ def ejecutar(purificar_lote, extraer_numero):
                 
                 df_finca = df_t1[df_t1['FINCA_NOM'] == finca].sort_values(by='FECHA_DT')
                 fechas_vuelos = df_finca['FECHA_DT'].unique()
-                sector_asociado = df_finca['SECTOR_NOM'].iloc[-1]
+                
+                # Búsqueda estricta del SECTOR (Moda de la columna SECTOR)
+                sectores_frecuentes = df_finca['SECTOR_NOM'].value_counts()
+                sector_asociado = sectores_frecuentes.index[0] if not sectores_frecuentes.empty else "DESCONOCIDO"
                 
                 if len(fechas_vuelos) >= 2:
                     ultimo_vuelo = pd.to_datetime(fechas_vuelos[-1])
@@ -213,16 +217,16 @@ def ejecutar(purificar_lote, extraer_numero):
                     "COLOR": color_hex
                 })
 
-            # --- 🗺️ MAPA SATELITAL (ESRI WORLD IMAGERY) ---
             mapa_magdalena = folium.Map(
                 location=[10.7483, -74.1542], 
-                zoom_start=11, 
+                zoom_start=10, 
                 tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                 attr='Esri World Imagery'
             )
             st.markdown("### 🛰️ Mapa Georeferenciado en Vivo (Satelital)")
             
             sectores_dibujados = []
+            kmls_usados = set() # 💥 Rastreador para saber qué KMLs ya se dibujaron 💥
 
             for f_info in analisis_fincas:
                 finca_nom = f_info["FINCA"]
@@ -237,15 +241,14 @@ def ejecutar(purificar_lote, extraer_numero):
                 <b>Lluvia Mensual:</b> {f_info["LLUVIA 30D (mm)"]:.1f} mm
                 """
                 
-                # 💥 RECONOCIMIENTO DIFUSO DE KML 💥
                 f_norm = limpiar_nombre(finca_nom)
                 kml_clave = None
                 
                 for k in dict_poligonos_kml.keys():
                     k_norm = limpiar_nombre(k)
-                    # Si el nombre limpio coincide parcial o totalmente y tiene sentido (>3 letras)
                     if (k_norm in f_norm or f_norm in k_norm) and len(k_norm) > 3:
                         kml_clave = k
+                        kmls_usados.add(k) # Lo marcamos como usado
                         break
                 
                 if kml_clave:
@@ -313,6 +316,41 @@ def ejecutar(purificar_lote, extraer_numero):
                         ).add_to(mapa_magdalena)
                         
                         sectores_dibujados.append(sector_nom)
+
+            # 💥 FASE 3: OPERACIÓN "FINCAS EN RESERVA" (Dibuja los KML sin historial) 💥
+            for kml_clave, poligonos in dict_poligonos_kml.items():
+                if kml_clave not in kmls_usados:
+                    lats_finca = []
+                    lons_finca = []
+                    color_gris = "#A0A0A0" # Gris neutro para fincas sin vuelos
+                    
+                    for poligono in poligonos:
+                        folium.Polygon(
+                            locations=poligono,
+                            color=color_gris,
+                            weight=2,
+                            fill=True,
+                            fill_color=color_gris,
+                            fill_opacity=0.4,
+                            tooltip=f"Finca: {kml_clave} | Sin historial reciente",
+                            popup=folium.Popup(f"<b>{kml_clave}</b><br>No se encontraron vuelos recientes en la base de datos.", max_width=300)
+                        ).add_to(mapa_magdalena)
+                        
+                        lats_finca.extend([p[0] for p in poligono])
+                        lons_finca.extend([p[1] for p in poligono])
+                        
+                    if lats_finca and lons_finca:
+                        centro_lat = (min(lats_finca) + max(lats_finca)) / 2
+                        centro_lon = (min(lons_finca) + max(lons_finca)) / 2
+                        html_label = f"""
+                        <div style="font-size: 10px; font-weight: 700; color: #CCCCCC; text-shadow: 1px 1px 2px #000; text-align: center; transform: translate(-50%, -50%);">
+                            {kml_clave} (Inactiva)
+                        </div>
+                        """
+                        folium.Marker(
+                            location=[centro_lat, centro_lon],
+                            icon=folium.DivIcon(html=html_label)
+                        ).add_to(mapa_magdalena)
 
             st.components.v1.html(mapa_magdalena._repr_html_(), height=650)
 
