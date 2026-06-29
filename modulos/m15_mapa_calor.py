@@ -36,11 +36,9 @@ def procesar_fecha_pesada(val):
     try: return pd.to_datetime(s, errors='coerce')
     except: return pd.NaT
 
-# 💥 NUEVO EXTRACTOR KML AVANZADO (Soporta formatos Google Earth y 3D) 💥
 def extraer_poligonos_kml(kml_bytes):
     try:
         texto = kml_bytes.decode("utf-8", errors="ignore")
-        # Busca todos los bloques de coordenadas en el KML
         bloques = re.findall(r'<coordinates>(.*?)</coordinates>', texto, re.DOTALL)
         poligonos_finca = []
         for bloque in bloques:
@@ -52,38 +50,38 @@ def extraer_poligonos_kml(kml_bytes):
                     try:
                         lon = float(partes[0].strip())
                         lat = float(partes[1].strip())
-                        puntos.append([lat, lon]) # Folium exige formato [Latitud, Longitud]
+                        puntos.append([lat, lon]) 
                     except: pass
-            if len(puntos) >= 3: # Un polígono válido tiene al menos 3 puntos
+            if len(puntos) >= 3: 
                 poligonos_finca.append(puntos)
         return poligonos_finca
     except: return []
 
-# 🛰️ CONEXIÓN SATELITAL (Lluvia Anual + Lluvia Reciente)
+# 🛰️ CONEXIÓN SATELITAL RECALIBRADA (Límite 90 Días para evadir bloqueo)
 @st.cache_data(show_spinner=False, ttl=3600)
 def consultar_clima_satelital(lat, lon):
     try:
-        hoy = datetime.now().date()
-        inicio_ano = f"{hoy.year}-01-01"
-        hace_30_dias = (hoy - timedelta(days=30)).strftime('%Y-%m-%d')
-        
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={inicio_ano}&end_date={hoy.strftime('%Y-%m-%d')}&daily=rain_sum&timezone=America/Bogota"
+        # Se solicitan past_days=90 (límite de la API gratuita) y usamos precipitation_sum
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&past_days=90&daily=precipitation_sum&timezone=America/Bogota"
         res = requests.get(url, timeout=10).json()
         
-        if "daily" in res and "rain_sum" in res["daily"]:
+        if "daily" in res and "precipitation_sum" in res["daily"]:
             df_clima = pd.DataFrame({
-                'fecha': res['daily']['time'],
-                'lluvia': res['daily']['rain_sum']
+                'fecha': pd.to_datetime(res['daily']['time']),
+                'lluvia': [x if x is not None else 0.0 for x in res['daily']['precipitation_sum']]
             })
-            df_clima['lluvia'] = df_clima['lluvia'].fillna(0)
             
-            # Acumulado de todo el año
-            lluvia_anual = df_clima['lluvia'].sum()
-            # Acumulado de presión reciente
-            lluvia_30d = df_clima[df_clima['fecha'] >= hace_30_dias]['lluvia'].sum()
+            hoy = pd.to_datetime(datetime.now().date())
+            hace_30_dias = hoy - pd.Timedelta(days=30)
             
-            return lluvia_anual, lluvia_30d
-    except: pass
+            # Filtramos para no contar el forecast futuro, solo el pasado
+            lluvia_90d = df_clima[df_clima['fecha'] <= hoy]['lluvia'].sum()
+            lluvia_30d = df_clima[(df_clima['fecha'] <= hoy) & (df_clima['fecha'] >= hace_30_dias)]['lluvia'].sum()
+            
+            return lluvia_90d, lluvia_30d
+    except Exception as e: 
+        print(f"Error clima: {e}")
+        pass
     return 0.0, 0.0
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -129,7 +127,7 @@ def ejecutar(purificar_lote, extraer_numero):
     }
 
     if st.button("🛰️ ENCENDER RADAR METEOROLÓGICO Y EPIDEMIOLÓGICO", type="primary", use_container_width=True):
-        with st.spinner("Decodificando satélites y mapeando fronteras de fincas..."):
+        with st.spinner("Decodificando satélites e imprimiendo nombres en el terreno..."):
             
             df_t1 = cargar_historico_t1()
             if df_t1.empty:
@@ -173,7 +171,9 @@ def ejecutar(purificar_lote, extraer_numero):
                     color_hex = "#27AE60"
 
                 gps = coor_estimadas.get(sector_asociado, [10.7483, -74.1542])
-                lluvia_anual, lluvia_30d = consultar_clima_satelital(gps[0], gps[1])
+                
+                # OBTENER CLIMA REAL (90 Días y 30 Días)
+                lluvia_90d, lluvia_30d = consultar_clima_satelital(gps[0], gps[1])
                 
                 alerta_epidemia = "BAJA"
                 if lluvia_30d > 45.0: 
@@ -184,18 +184,17 @@ def ejecutar(purificar_lote, extraer_numero):
                     "SECTOR": sector_asociado,
                     "ÚLTIMO RETORNO": f"{dias_ciclo} Días",
                     "ESTADO": estado,
-                    "LLUVIA AÑO (mm)": lluvia_anual,
+                    "LLUVIA 90D (mm)": lluvia_90d,
                     "LLUVIA 30D (mm)": lluvia_30d,
                     "PRESIÓN HONGO": alerta_epidemia,
                     "COOR": gps,
                     "COLOR": color_hex
                 })
 
-            # --- 🗺️ CONSTRUCCIÓN DEL MAPA TÁCTICO ---
+            # --- 🗺️ CONSTRUCCIÓN DEL MAPA TÁCTICO CON NOMBRES ---
             mapa_magdalena = folium.Map(location=[10.7483, -74.1542], zoom_start=10, tiles="OpenStreetMap")
             st.markdown("### 🛰️ Mapa Georeferenciado en Vivo")
             
-            # Dibujaremos círculos genéricos POR SECTOR, y Polígonos reales POR FINCA
             sectores_dibujados = []
 
             for f_info in analisis_fincas:
@@ -207,16 +206,15 @@ def ejecutar(purificar_lote, extraer_numero):
                 <b>Finca:</b> {finca_nom} ({sector_nom})<br>
                 <b>Retorno:</b> {f_info["ÚLTIMO RETORNO"]}<br>
                 <b>Estado:</b> {f_info["ESTADO"]}<br>
-                <b>Lluvia Año:</b> {f_info["LLUVIA AÑO (mm)"]:.1f} mm<br>
-                <b>Lluvia Reciente:</b> {f_info["LLUVIA 30D (mm)"]:.1f} mm
+                <b>Lluvia Trimestre:</b> {f_info["LLUVIA 90D (mm)"]:.1f} mm<br>
+                <b>Lluvia Mensual:</b> {f_info["LLUVIA 30D (mm)"]:.1f} mm
                 """
                 
-                # 💥 CRUCE INTELIGENTE DE KML CON LA FINCA 💥
                 kml_clave = next((k for k in dict_poligonos_kml.keys() if k in finca_nom or finca_nom in k), None)
                 
                 if kml_clave:
-                    # Si subió el KML, dibuja las hectáreas reales iluminadas con el color de la enfermedad
                     for poligono in dict_poligonos_kml[kml_clave]:
+                        # 1. Dibujar el polígono de la finca
                         folium.Polygon(
                             locations=poligono,
                             color=color_nodo,
@@ -224,10 +222,36 @@ def ejecutar(purificar_lote, extraer_numero):
                             fill=True,
                             fill_color=color_nodo,
                             fill_opacity=0.6,
+                            tooltip=f"Finca: {finca_nom} | Estado: {f_info['ESTADO']}",
                             popup=folium.Popup(popup_text, max_width=300)
                         ).add_to(mapa_magdalena)
+                        
+                        # 2. 💥 CENTROIDE: Escribir el nombre de forma permanente en el mapa 💥
+                        try:
+                            lats = [p[0] for p in poligono]
+                            lons = [p[1] for p in poligono]
+                            centro_lat = sum(lats) / len(lats)
+                            centro_lon = sum(lons) / len(lons)
+                            
+                            html_label = f"""
+                            <div style="
+                                font-size: 11px; 
+                                font-weight: 900; 
+                                color: black; 
+                                text-shadow: 2px 2px 4px white, -2px -2px 4px white, 2px -2px 4px white, -2px 2px 4px white;
+                                white-space: nowrap;
+                            ">
+                                {finca_nom}
+                            </div>
+                            """
+                            folium.Marker(
+                                location=[centro_lat, centro_lon],
+                                icon=folium.DivIcon(html=html_label, icon_anchor=(20, 10))
+                            ).add_to(mapa_magdalena)
+                        except: pass
+
                 else:
-                    # Si no hay KML para esta finca, ponemos un marcador general en el sector
+                    # Sin KML: Dibujar un punto y su etiqueta
                     if sector_nom not in sectores_dibujados:
                         folium.CircleMarker(
                             location=f_info["COOR"],
@@ -236,8 +260,20 @@ def ejecutar(purificar_lote, extraer_numero):
                             fill=True,
                             fill_color=color_nodo,
                             fill_opacity=0.8,
-                            popup=folium.Popup(f"Sector: {sector_nom} (Sin KML)", max_width=300)
+                            tooltip=f"Sector: {sector_nom}",
+                            popup=folium.Popup(f"Sector: {sector_nom} (Suba KML para detalle)", max_width=300)
                         ).add_to(mapa_magdalena)
+                        
+                        html_label = f"""
+                        <div style="font-size: 12px; font-weight: bold; color: black; text-shadow: 1px 1px 2px white;">
+                            {sector_nom}
+                        </div>
+                        """
+                        folium.Marker(
+                            location=[f_info["COOR"][0] + 0.01, f_info["COOR"][1]],
+                            icon=folium.DivIcon(html=html_label)
+                        ).add_to(mapa_magdalena)
+                        
                         sectores_dibujados.append(sector_nom)
 
             st.components.v1.html(mapa_magdalena._repr_html_(), height=600)
@@ -248,7 +284,8 @@ def ejecutar(purificar_lote, extraer_numero):
             df_resumen = pd.DataFrame(analisis_fincas).drop(columns=['COOR', 'COLOR'])
             df_resumen = df_resumen.sort_values(by=['ESTADO', 'LLUVIA 30D (mm)'], ascending=[True, False])
             
-            df_resumen['LLUVIA AÑO (mm)'] = df_resumen['LLUVIA AÑO (mm)'].apply(lambda x: f"{x:.1f} mm")
+            # Formato de la tabla (Cambiado de Lluvia Año a Lluvia 90D)
+            df_resumen['LLUVIA 90D (mm)'] = df_resumen['LLUVIA 90D (mm)'].apply(lambda x: f"{x:.1f} mm")
             df_resumen['LLUVIA 30D (mm)'] = df_resumen['LLUVIA 30D (mm)'].apply(lambda x: f"{x:.1f} mm")
 
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)
