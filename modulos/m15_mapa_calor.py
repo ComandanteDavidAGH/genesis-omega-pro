@@ -3,12 +3,10 @@ import pandas as pd
 import gspread
 from datetime import datetime, timedelta
 import re
-import io
-import json
-import folium # Viene integrado o es sumamente ligero
-import requests # Para conectarse al satélite del clima
+import requests
+import folium
 
-# --- 🔌 CONEXIÓN Y REUTILIZACIÓN DE CACHÉ DE M14 ---
+# --- 🔌 CONEXIÓN Y UTILIDADES ---
 def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
@@ -38,38 +36,55 @@ def procesar_fecha_pesada(val):
     try: return pd.to_datetime(s, errors='coerce')
     except: return pd.NaT
 
-# 🧠 EXTRACTOR DE COORDENADAS KML CON ESCUDO DE NAMESPACES
-def extraer_poligono_kml(kml_bytes):
+# 💥 NUEVO EXTRACTOR KML AVANZADO (Soporta formatos Google Earth y 3D) 💥
+def extraer_poligonos_kml(kml_bytes):
     try:
-        texto = kml_bytes.decode("utf-8")
-        # Localiza la etiqueta de coordenadas usando expresiones regulares para evitar fallos de XML
-        match = re.search(r'<coordinates>(.*?)</coordinates>', texto, re.DOTALL)
-        if match:
-            coor_str = match.group(1).strip()
+        texto = kml_bytes.decode("utf-8", errors="ignore")
+        # Busca todos los bloques de coordenadas en el KML
+        bloques = re.findall(r'<coordinates>(.*?)</coordinates>', texto, re.DOTALL)
+        poligonos_finca = []
+        for bloque in bloques:
+            coordenadas_crudas = bloque.strip().split()
             puntos = []
-            for item in coor_str.split():
-                partes = item.split(',')
+            for coord in coordenadas_crudas:
+                partes = coord.split(',')
                 if len(partes) >= 2:
-                    lon = float(partes[0])
-                    lat = float(partes[1])
-                    puntos.append([lat, lon]) # Folium exige [Lat, Lon]
-            return puntos
-    except: pass
-    return None
+                    try:
+                        lon = float(partes[0].strip())
+                        lat = float(partes[1].strip())
+                        puntos.append([lat, lon]) # Folium exige formato [Latitud, Longitud]
+                    except: pass
+            if len(puntos) >= 3: # Un polígono válido tiene al menos 3 puntos
+                poligonos_finca.append(puntos)
+        return poligonos_finca
+    except: return []
 
-# 🛰️ CONEXIÓN SATELITAL METEOROLÓGICA (Open-Meteo Satellites)
-def consultar_lluvia_satelital(lat, lon):
+# 🛰️ CONEXIÓN SATELITAL (Lluvia Anual + Lluvia Reciente)
+@st.cache_data(show_spinner=False, ttl=3600)
+def consultar_clima_satelital(lat, lon):
     try:
-        # Consulta el histórico de precipitaciones de los últimos 28 días
         hoy = datetime.now().date()
-        hace_28_dias = hoy - timedelta(days=28)
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={hace_28_dias}&end_date={hoy}&daily=rain_sum&timezone=America/Bogota"
-        res = requests.get(url, timeout=5).json()
+        inicio_ano = f"{hoy.year}-01-01"
+        hace_30_dias = (hoy - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&start_date={inicio_ano}&end_date={hoy.strftime('%Y-%m-%d')}&daily=rain_sum&timezone=America/Bogota"
+        res = requests.get(url, timeout=10).json()
+        
         if "daily" in res and "rain_sum" in res["daily"]:
-            lluvias = [float(x) for x in res["daily"]["rain_sum"] if x is not None]
-            return sum(lluvias)
+            df_clima = pd.DataFrame({
+                'fecha': res['daily']['time'],
+                'lluvia': res['daily']['rain_sum']
+            })
+            df_clima['lluvia'] = df_clima['lluvia'].fillna(0)
+            
+            # Acumulado de todo el año
+            lluvia_anual = df_clima['lluvia'].sum()
+            # Acumulado de presión reciente
+            lluvia_30d = df_clima[df_clima['fecha'] >= hace_30_dias]['lluvia'].sum()
+            
+            return lluvia_anual, lluvia_30d
     except: pass
-    return 0.0
+    return 0.0, 0.0
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_historico_t1():
@@ -82,11 +97,13 @@ def cargar_historico_t1():
     col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
     col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
     col_sector = next((c for c in df_t1.columns if 'SECTOR' in c), 'SECTOR')
+    col_finca = next((c for c in df_t1.columns if 'FINCA' in c), 'FINCA')
     
     df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
     df_t1 = df_t1.dropna(subset=['FECHA_DT'])
     df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
     df_t1['SECTOR_NOM'] = df_t1[col_sector].astype(str).str.upper().str.strip()
+    df_t1['FINCA_NOM'] = df_t1[col_finca].astype(str).str.upper().str.strip()
     return df_t1
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
@@ -94,138 +111,144 @@ def ejecutar(purificar_lote, extraer_numero):
     st.markdown("""
     <style>
     .titulo-agronomo { color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }
-    .card-meteo { background-color: #f8f9fa; border-left: 5px solid #2980b9; padding: 12px; border-radius: 5px; margin-bottom: 10px; }
+    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Radar Epidemiológico y Satelital</h1>", unsafe_allow_html=True)
-    st.write("Análisis de ciclos de retorno por Sector cruzado con acumulados de lluvia satelital (Ventana de Alerta 21-29 días).")
+    st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Mapa de Calor Agronómico</h1>", unsafe_allow_html=True)
+    st.write("Análisis de ciclos biológicos por FINCA y evaluación de lluvias satelitales.")
 
-    # --- 📥 CARGADOR TÁCTICO DE KML ---
-    st.markdown("### 📂 1. Inyección de Polígonos de Precisión (Opcional)")
-    archivos_kml = st.file_uploader("Arrastre aquí los archivos .kml de sus fincas o sectores para dibujar la topografía real", type=['kml'], accept_multiple_files=True)
+    st.markdown("### 📂 1. Inyección de Polígonos de Precisión")
+    archivos_kml = st.file_uploader("Arrastre aquí los archivos .kml de sus fincas (Ej: ANGELES.kml)", type=['kml'], accept_multiple_files=True)
 
-    # Coordenadas maestras estimadas del Magdalena (Zona Bananera) por si no hay KML
     coor_estimadas = {
         "ORIHUECA": [10.7483, -74.1542], "FLORIDA": [10.7650, -74.1320], "TUCURINCA": [10.5842, -74.1489],
         "PALOMAR": [10.7210, -74.1150], "LA CEIBA": [10.7350, -74.1620], "CAÑO MOCHO": [10.7820, -74.1850],
-        "PALOMINO": [11.2442, -73.5623], "BURITACA": [11.2420, -73.7650], "GUACAMAYAL": [10.7292, -74.1594]
+        "PALOMINO": [11.2442, -73.5623], "BURITACA": [11.2420, -73.7650], "GUACAMAYAL": [10.7292, -74.1594],
+        "SEVILLA": [10.7667, -74.1500], "RIO FRIO": [10.9000, -74.1667]
     }
 
     if st.button("🛰️ ENCENDER RADAR METEOROLÓGICO Y EPIDEMIOLÓGICO", type="primary", use_container_width=True):
-        with st.spinner("Analizando ciclos biológicos y conectando con satélites del clima..."):
+        with st.spinner("Decodificando satélites y mapeando fronteras de fincas..."):
             
             df_t1 = cargar_historico_t1()
             if df_t1.empty:
-                st.error("No se pudo conectar a la base de datos de vuelos.")
+                st.error("No se pudo conectar a la base de datos operativa.")
                 return
 
-            # Procesar KMLs cargados
             dict_poligonos_kml = {}
             if archivos_kml:
                 for f_kml in archivos_kml:
-                    nombre_finca = f_kml.name.upper().replace(".KML", "").strip()
-                    poligono = extraer_poligono_kml(f_kml.read())
-                    if poligono:
-                        dict_poligonos_kml[nombre_finca] = poligono
+                    nombre_finca_kml = f_kml.name.upper().replace(".KML", "").strip()
+                    poligonos = extraer_poligonos_kml(f_kml.read())
+                    if poligonos:
+                        dict_poligonos_kml[nombre_finca_kml] = poligonos
 
-            # --- 🕵️‍♂️ CÁLCULO DE CICLOS DE RETORNO REALES ---
-            sectores_unicos = df_t1['SECTOR_NOM'].unique()
-            analisis_sectores = []
-
-            for sector in sectores_unicos:
-                if not sector or sector in ["NAN", "NONE", ""]: continue
+            fincas_unicas = df_t1['FINCA_NOM'].unique()
+            analisis_fincas = []
+            
+            # --- 🕵️‍♂️ CÁLCULO DE CICLOS Y CLIMA POR FINCA ---
+            for finca in fincas_unicas:
+                if not finca or finca in ["NAN", "NONE", ""]: continue
                 
-                df_sec = df_t1[df_t1['SECTOR_NOM'] == sector].sort_values(by='FECHA_DT')
-                fechas_vuelos = df_sec['FECHA_DT'].unique()
+                df_finca = df_t1[df_t1['FINCA_NOM'] == finca].sort_values(by='FECHA_DT')
+                fechas_vuelos = df_finca['FECHA_DT'].unique()
+                sector_asociado = df_finca['SECTOR_NOM'].iloc[-1]
                 
-                # Calcular días del último ciclo cerrado
                 if len(fechas_vuelos) >= 2:
                     ultimo_vuelo = pd.to_datetime(fechas_vuelos[-1])
                     vuelo_anterior = pd.to_datetime(fechas_vuelos[-2])
                     dias_ciclo = (ultimo_vuelo - vuelo_anterior).days
                 else:
-                    dias_ciclo = 30 # Por defecto si es nuevo
+                    dias_ciclo = 30 
                 
-                # Regla de Oro del Comandante
                 if dias_ciclo <= 12:
-                    estado = "🚨 CRÍTICO (Presión Alta)"
-                    color_hex = "#cc0000" # Rojo
+                    estado = "🚨 CRÍTICO"
+                    color_hex = "#cc0000"
                 elif dias_ciclo <= 20:
-                    estado = "🟠 MODERADO (Alerta)"
-                    color_hex = "#ff9900" # Naranja
+                    estado = "🟠 MODERADO"
+                    color_hex = "#ff9900"
                 else:
-                    estado = "🟢 CONTROLADO (Óptimo)"
-                    color_hex = "#27AE60" # Verde
+                    estado = "🟢 CONTROLADO"
+                    color_hex = "#27AE60"
 
-                # Obtener coordenadas para el satélite
-                gps = coor_estimadas.get(sector, [10.7483, -74.1542]) # Default Orihueca si es desconocido
+                gps = coor_estimadas.get(sector_asociado, [10.7483, -74.1542])
+                lluvia_anual, lluvia_30d = consultar_clima_satelital(gps[0], gps[1])
                 
-                # Llamada al satélite meteorológico
-                lluvia_acumulada = consultar_lluvia_satelital(gps[0], gps[1])
-                
-                # Ventana Predictiva del hongo (21-29 días después de lluvias)
-                alerta_epidemia = "Baja"
-                if lluvia_acumulada > 45.0: # Si llovieron más de 45mm en el mes
-                    alerta_epidemia = "⚡ ALTA (Hongo en incubación: Ventana 21 días activa)"
+                alerta_epidemia = "BAJA"
+                if lluvia_30d > 45.0: 
+                    alerta_epidemia = "⚡ ALTA (Peligro Inminente)"
 
-                analisis_sectores.append({
-                    "SECTOR": sector,
+                analisis_fincas.append({
+                    "FINCA": finca,
+                    "SECTOR": sector_asociado,
                     "ÚLTIMO RETORNO": f"{dias_ciclo} Días",
-                    "ESTADO BIOLÓGICO": estado,
-                    "LLUVIA 28 DÍAS (SATÉLITE)": f"{lluvia_acumulada:.1f} mm",
-                    "ALERTA EPIDEMIOLÓGICA 21D": alerta_epidemia,
+                    "ESTADO": estado,
+                    "LLUVIA AÑO (mm)": lluvia_anual,
+                    "LLUVIA 30D (mm)": lluvia_30d,
+                    "PRESIÓN HONGO": alerta_epidemia,
                     "COOR": gps,
                     "COLOR": color_hex
                 })
 
             # --- 🗺️ CONSTRUCCIÓN DEL MAPA TÁCTICO ---
-            # Centro del mapa en la Zona Bananera del Magdalena
             mapa_magdalena = folium.Map(location=[10.7483, -74.1542], zoom_start=10, tiles="OpenStreetMap")
-
-            st.markdown("### 🛰️ Radar Visual en Vivo (Magdalena)")
+            st.markdown("### 🛰️ Mapa Georeferenciado en Vivo")
             
-            for s_info in analisis_sectores:
-                nom_sec = s_info["SECTOR"]
-                coor_node = s_info["COOR"]
-                color_nodo = s_info["COLOR"]
+            # Dibujaremos círculos genéricos POR SECTOR, y Polígonos reales POR FINCA
+            sectores_dibujados = []
+
+            for f_info in analisis_fincas:
+                finca_nom = f_info["FINCA"]
+                sector_nom = f_info["SECTOR"]
+                color_nodo = f_info["COLOR"]
                 
                 popup_text = f"""
-                <b>Sector:</b> {nom_sec}<br>
-                <b>Retorno:</b> {s_info["ÚLTIMO RETORNO"]}<br>
-                <b>Estado:</b> {s_info["ESTADO BIOLÓGICO"]}<br>
-                <b>Agua Satélite:</b> {s_info["LLUVIA 28 DÍAS (SATÉLITE)"]}<br>
-                <b>Presión Sigatoka:</b> {s_info["ALERTA EPIDEMIOLÓGICA 21D"]}
+                <b>Finca:</b> {finca_nom} ({sector_nom})<br>
+                <b>Retorno:</b> {f_info["ÚLTIMO RETORNO"]}<br>
+                <b>Estado:</b> {f_info["ESTADO"]}<br>
+                <b>Lluvia Año:</b> {f_info["LLUVIA AÑO (mm)"]:.1f} mm<br>
+                <b>Lluvia Reciente:</b> {f_info["LLUVIA 30D (mm)"]:.1f} mm
                 """
                 
-                # 💥 SI EL USUARIO SUBIÓ EL KML, DIBUJA EL POLÍGONO FINCA A FINCA 💥
-                kml_clave = next((k for k in dict_poligonos_kml.keys() if k in nom_sec or nom_sec in k), None)
+                # 💥 CRUCE INTELIGENTE DE KML CON LA FINCA 💥
+                kml_clave = next((k for k in dict_poligonos_kml.keys() if k in finca_nom or finca_nom in k), None)
+                
                 if kml_clave:
-                    folium.Polygon(
-                        locations=dict_poligonos_kml[kml_clave],
-                        color=color_nodo,
-                        fill=True,
-                        fill_color=color_nodo,
-                        fill_opacity=0.4,
-                        popup=folium.Popup(popup_text, max_width=300)
-                    ).add_to(mapa_magdalena)
+                    # Si subió el KML, dibuja las hectáreas reales iluminadas con el color de la enfermedad
+                    for poligono in dict_poligonos_kml[kml_clave]:
+                        folium.Polygon(
+                            locations=poligono,
+                            color=color_nodo,
+                            weight=2,
+                            fill=True,
+                            fill_color=color_nodo,
+                            fill_opacity=0.6,
+                            popup=folium.Popup(popup_text, max_width=300)
+                        ).add_to(mapa_magdalena)
                 else:
-                    # Contingencia: Dibuja un domo de calor circular sobre el sector
-                    folium.CircleMarker(
-                        location=coor_node,
-                        radius=20,
-                        color=color_nodo,
-                        fill=True,
-                        fill_color=color_nodo,
-                        fill_opacity=0.6,
-                        popup=folium.Popup(popup_text, max_width=300)
-                    ).add_to(mapa_magdalena)
+                    # Si no hay KML para esta finca, ponemos un marcador general en el sector
+                    if sector_nom not in sectores_dibujados:
+                        folium.CircleMarker(
+                            location=f_info["COOR"],
+                            radius=15,
+                            color=color_nodo,
+                            fill=True,
+                            fill_color=color_nodo,
+                            fill_opacity=0.8,
+                            popup=folium.Popup(f"Sector: {sector_nom} (Sin KML)", max_width=300)
+                        ).add_to(mapa_magdalena)
+                        sectores_dibujados.append(sector_nom)
 
-            # Renderizado del mapa sin librerías externas usando el truco HTML
-            st.components.v1.html(mapa_magdalena._repr_html_(), height=500)
+            st.components.v1.html(mapa_magdalena._repr_html_(), height=600)
 
-            # --- 📋 TABLERO INFORMATIVO DE ALERTAS PREDICTIVAS ---
-            st.markdown("<br>### 📋 Reporte de Alertas Tempranas (Efecto Lluvia + 21 Días)", unsafe_allow_html=True)
-            df_resumen = pd.DataFrame(analisis_sectores).drop(columns=['COOR', 'COLOR'])
+            # --- 📋 TABLERO DE ALERTAS ---
+            st.markdown("<br>### 📋 Reporte Epidemiológico y Satelital por Finca", unsafe_allow_html=True)
             
+            df_resumen = pd.DataFrame(analisis_fincas).drop(columns=['COOR', 'COLOR'])
+            df_resumen = df_resumen.sort_values(by=['ESTADO', 'LLUVIA 30D (mm)'], ascending=[True, False])
+            
+            df_resumen['LLUVIA AÑO (mm)'] = df_resumen['LLUVIA AÑO (mm)'].apply(lambda x: f"{x:.1f} mm")
+            df_resumen['LLUVIA 30D (mm)'] = df_resumen['LLUVIA 30D (mm)'].apply(lambda x: f"{x:.1f} mm")
+
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)
