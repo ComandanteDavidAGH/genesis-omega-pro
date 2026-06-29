@@ -57,11 +57,10 @@ def extraer_poligonos_kml(kml_bytes):
         return poligonos_finca
     except: return []
 
-# 🛰️ CONEXIÓN SATELITAL RECALIBRADA (Límite 90 Días para evadir bloqueo)
+# 🛰️ CONEXIÓN SATELITAL CLIMÁTICA
 @st.cache_data(show_spinner=False, ttl=3600)
 def consultar_clima_satelital(lat, lon):
     try:
-        # Se solicitan past_days=90 (límite de la API gratuita) y usamos precipitation_sum
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&past_days=90&daily=precipitation_sum&timezone=America/Bogota"
         res = requests.get(url, timeout=10).json()
         
@@ -74,14 +73,11 @@ def consultar_clima_satelital(lat, lon):
             hoy = pd.to_datetime(datetime.now().date())
             hace_30_dias = hoy - pd.Timedelta(days=30)
             
-            # Filtramos para no contar el forecast futuro, solo el pasado
             lluvia_90d = df_clima[df_clima['fecha'] <= hoy]['lluvia'].sum()
             lluvia_30d = df_clima[(df_clima['fecha'] <= hoy) & (df_clima['fecha'] >= hace_30_dias)]['lluvia'].sum()
             
             return lluvia_90d, lluvia_30d
-    except Exception as e: 
-        print(f"Error clima: {e}")
-        pass
+    except Exception as e: pass
     return 0.0, 0.0
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -114,7 +110,7 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Mapa de Calor Agronómico</h1>", unsafe_allow_html=True)
-    st.write("Análisis de ciclos biológicos por FINCA y evaluación de lluvias satelitales.")
+    st.write("Análisis de ciclos biológicos por FINCA sobre terreno satelital y lluvia trimestral.")
 
     st.markdown("### 📂 1. Inyección de Polígonos de Precisión")
     archivos_kml = st.file_uploader("Arrastre aquí los archivos .kml de sus fincas (Ej: ANGELES.kml)", type=['kml'], accept_multiple_files=True)
@@ -145,7 +141,6 @@ def ejecutar(purificar_lote, extraer_numero):
             fincas_unicas = df_t1['FINCA_NOM'].unique()
             analisis_fincas = []
             
-            # --- 🕵️‍♂️ CÁLCULO DE CICLOS Y CLIMA POR FINCA ---
             for finca in fincas_unicas:
                 if not finca or finca in ["NAN", "NONE", ""]: continue
                 
@@ -172,7 +167,6 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 gps = coor_estimadas.get(sector_asociado, [10.7483, -74.1542])
                 
-                # OBTENER CLIMA REAL (90 Días y 30 Días)
                 lluvia_90d, lluvia_30d = consultar_clima_satelital(gps[0], gps[1])
                 
                 alerta_epidemia = "BAJA"
@@ -191,9 +185,14 @@ def ejecutar(purificar_lote, extraer_numero):
                     "COLOR": color_hex
                 })
 
-            # --- 🗺️ CONSTRUCCIÓN DEL MAPA TÁCTICO CON NOMBRES ---
-            mapa_magdalena = folium.Map(location=[10.7483, -74.1542], zoom_start=10, tiles="OpenStreetMap")
-            st.markdown("### 🛰️ Mapa Georeferenciado en Vivo")
+            # --- 🗺️ MAPA SATELITAL (ESRI WORLD IMAGERY) ---
+            mapa_magdalena = folium.Map(
+                location=[10.7483, -74.1542], 
+                zoom_start=11, 
+                tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                attr='Esri World Imagery'
+            )
+            st.markdown("### 🛰️ Mapa Georeferenciado en Vivo (Satelital)")
             
             sectores_dibujados = []
 
@@ -213,8 +212,11 @@ def ejecutar(purificar_lote, extraer_numero):
                 kml_clave = next((k for k in dict_poligonos_kml.keys() if k in finca_nom or finca_nom in k), None)
                 
                 if kml_clave:
+                    lats_finca = []
+                    lons_finca = []
+                    
+                    # Dibujar todos los sub-lotes
                     for poligono in dict_poligonos_kml[kml_clave]:
-                        # 1. Dibujar el polígono de la finca
                         folium.Polygon(
                             locations=poligono,
                             color=color_nodo,
@@ -226,32 +228,35 @@ def ejecutar(purificar_lote, extraer_numero):
                             popup=folium.Popup(popup_text, max_width=300)
                         ).add_to(mapa_magdalena)
                         
-                        # 2. 💥 CENTROIDE: Escribir el nombre de forma permanente en el mapa 💥
-                        try:
-                            lats = [p[0] for p in poligono]
-                            lons = [p[1] for p in poligono]
-                            centro_lat = sum(lats) / len(lats)
-                            centro_lon = sum(lons) / len(lons)
-                            
-                            html_label = f"""
-                            <div style="
-                                font-size: 11px; 
-                                font-weight: 900; 
-                                color: black; 
-                                text-shadow: 2px 2px 4px white, -2px -2px 4px white, 2px -2px 4px white, -2px 2px 4px white;
-                                white-space: nowrap;
-                            ">
-                                {finca_nom}
-                            </div>
-                            """
-                            folium.Marker(
-                                location=[centro_lat, centro_lon],
-                                icon=folium.DivIcon(html=html_label, icon_anchor=(20, 10))
-                            ).add_to(mapa_magdalena)
-                        except: pass
+                        lats_finca.extend([p[0] for p in poligono])
+                        lons_finca.extend([p[1] for p in poligono])
+                        
+                    # 💥 CENTROIDE PERFECTO (Bounding Box) UNA SOLA VEZ POR FINCA 💥
+                    if lats_finca and lons_finca:
+                        centro_lat = (min(lats_finca) + max(lats_finca)) / 2
+                        centro_lon = (min(lons_finca) + max(lons_finca)) / 2
+                        
+                        # Letras BLANCAS con SOMBRA NEGRA PROFUNDA para que destaquen en el satélite
+                        html_label = f"""
+                        <div style="
+                            font-size: 11px; 
+                            font-weight: 900; 
+                            color: #FFFFFF; 
+                            text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000, 0px 0px 5px #000;
+                            white-space: nowrap;
+                            text-align: center;
+                            transform: translate(-50%, -50%);
+                        ">
+                            {finca_nom}
+                        </div>
+                        """
+                        folium.Marker(
+                            location=[centro_lat, centro_lon],
+                            icon=folium.DivIcon(html=html_label)
+                        ).add_to(mapa_magdalena)
 
                 else:
-                    # Sin KML: Dibujar un punto y su etiqueta
+                    # Contingencia sin KML
                     if sector_nom not in sectores_dibujados:
                         folium.CircleMarker(
                             location=f_info["COOR"],
@@ -265,7 +270,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         ).add_to(mapa_magdalena)
                         
                         html_label = f"""
-                        <div style="font-size: 12px; font-weight: bold; color: black; text-shadow: 1px 1px 2px white;">
+                        <div style="font-size: 12px; font-weight: 900; color: #FFFFFF; text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000;">
                             {sector_nom}
                         </div>
                         """
@@ -276,7 +281,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         
                         sectores_dibujados.append(sector_nom)
 
-            st.components.v1.html(mapa_magdalena._repr_html_(), height=600)
+            st.components.v1.html(mapa_magdalena._repr_html_(), height=650)
 
             # --- 📋 TABLERO DE ALERTAS ---
             st.markdown("<br>### 📋 Reporte Epidemiológico y Satelital por Finca", unsafe_allow_html=True)
@@ -284,7 +289,6 @@ def ejecutar(purificar_lote, extraer_numero):
             df_resumen = pd.DataFrame(analisis_fincas).drop(columns=['COOR', 'COLOR'])
             df_resumen = df_resumen.sort_values(by=['ESTADO', 'LLUVIA 30D (mm)'], ascending=[True, False])
             
-            # Formato de la tabla (Cambiado de Lluvia Año a Lluvia 90D)
             df_resumen['LLUVIA 90D (mm)'] = df_resumen['LLUVIA 90D (mm)'].apply(lambda x: f"{x:.1f} mm")
             df_resumen['LLUVIA 30D (mm)'] = df_resumen['LLUVIA 30D (mm)'].apply(lambda x: f"{x:.1f} mm")
 
