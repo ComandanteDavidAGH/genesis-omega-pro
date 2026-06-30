@@ -21,10 +21,10 @@ def obtener_cliente_gspread_m8():
         return None
 
 # =================================================================
-# 🚁 MOTOR PRINCIPAL DEL RADAR DE HECTÁREAS
+# 🚁 MOTOR PRINCIPAL DEL RADAR DE HECTÁREAS Y RENDIMIENTO (EVOLUCIONADO)
 # =================================================================
 def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
-    st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Radar de Hectáreas y Rendimiento por Avión</h1>", unsafe_allow_html=True)
     
     # --- FUNCIONES DE FALLBACK LOCALES ---
     def extraer_numero(val):
@@ -78,41 +78,37 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             df_rep['H_PROPORCIONAL'] = df_rep['H_PROPORCIONAL'].apply(extraer_numero)
             df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
             df_rep['PISTA'] = df_rep['PISTA'].astype(str).str.strip().str.upper()
+            df_rep['HK'] = df_rep['HK'].astype(str).str.strip().str.upper() # 💥 Matrícula limpia de fábrica
             
             df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
-            
-            # 🗓️ Sincronización Temporal Automática en RAM
             df_rep['FECHA_DT'] = df_rep['FECHA'].apply(procesar_fecha_pesada)
             df_rep = df_rep.dropna(subset=['FECHA_DT'])
             
-            # Límites geográficos y temporales reales
             pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
             min_fecha_real = df_rep['FECHA_DT'].min().date() if not df_rep.empty else datetime.now().date()
             max_fecha_real = df_rep['FECHA_DT'].max().date() if not df_rep.empty else datetime.now().date()
             
-            # --- 🎛️ PANEL DE CONTROL EVOLUCIONADO (CUATRO COLUMNAS) ---
+            # --- 🎛️ PANEL DE CONTROL (CUATRO COLUMNAS) ---
             st.markdown("### 🎛️ Centro de Comando y Filtros")
             c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1])
             
             vista_seleccionada = c1.radio(
                 "👁️ Seleccione la Vista del Radar:", 
-                ["📊 Resumen Gerencial (Hectáreas)", "📅 Mapa Semanal (Detalle)"], 
+                ["📊 Resumen Gerencial (Por Avión)", "📅 Mapa Semanal (Detalle)"], 
                 horizontal=True
             )
             
-            # 💥 NUEVOS SELECTORES DE RANGO DE FECHAS DINÁMICOS 💥
             fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=min_fecha_real, key="m8_f_ini_def")
             fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=max_fecha_real, key="m8_f_fin_def")
             pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_perfecta")
             
             mostrar_horas = False
             calcular_rend_prom = False
-            if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
+            if vista_seleccionada == "📊 Resumen Gerencial (Por Avión)":
                 cc1, cc2 = st.columns(2)
                 mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas de Vuelo")
                 calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rendimiento Promedio (Ha/Hr)", value=True)
 
-            # Filtrado Quirúrgico Temporal y Geográfico
             df_filt = df_rep[(df_rep['FECHA_DT'].dt.date >= fecha_sel_ini) & (df_rep['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
             if pista_sel != "TODAS":
                 df_filt = df_filt[df_filt['PISTA'] == pista_sel]
@@ -122,15 +118,15 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             else:
                 meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
                 df_filt['MES'] = df_filt['FECHA_DT'].dt.month.map(meses_nom)
-                df_filt['AÑO'] = df_filt['FECHA_DT'].dt.year.astype(str)
                 
                 st.markdown("---")
                 rango_txt = f"{fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}"
                 
-                if vista_seleccionada == "📊 Resumen Gerencial (Hectáreas)":
-                    st.markdown(f"#### 📑 Consolidado Gerencial ({rango_txt})")
+                if vista_seleccionada == "📊 Resumen Gerencial (Por Avión)":
+                    st.markdown(f"#### 📑 Consolidado por Base y Avión ({rango_txt})")
                     
-                    df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
+                    # 💥 NUEVA AGRUPACIÓN INTEGRANDO EL AVION (HK)
+                    df_gerencia = df_filt.groupby(['PISTA', 'HK', 'MES']).agg(
                         REND_HR=('H_PROPORCIONAL', 'sum'),
                         AREA_FUMIG=('HA_NETAS', 'sum')
                     ).reset_index()
@@ -140,33 +136,46 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     total_ha_gral = 0
                     
                     for pista in sorted(df_gerencia['PISTA'].unique()):
-                        datos_pista = df_gerencia[df_gerencia['PISTA'] == pista].sort_values(by='MES')
-                        sum_hr = datos_pista['REND_HR'].sum()
-                        sum_ha = datos_pista['AREA_FUMIG'].sum()
+                        df_pista = df_gerencia[df_gerencia['PISTA'] == pista]
+                        sum_hr_pista = df_pista['REND_HR'].sum()
+                        sum_ha_pista = df_pista['AREA_FUMIG'].sum()
                         
-                        # Subtotal Pista
-                        fila_sub = {'NIVEL': f"➖ {pista}", 'MES': ''}
-                        if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
-                        fila_sub['ÁREA FUMIG (ha)'] = sum_ha
+                        # 📍 Fila de Subtotal Base / Pista
+                        fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': 'CONSOLIDADO', 'MES': ''}
+                        if mostrar_horas or calcular_rend_prom: fila_pista['REND (hr)'] = sum_hr_pista
+                        fila_pista['ÁREA FUMIG (ha)'] = sum_ha_pista
                         if calcular_rend_prom:
-                            fila_sub['REND. PROMEDIO (Ha/Hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
-                        tabla_final.append(fila_sub)
+                            fila_pista['REND. PROMEDIO (Ha/Hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
+                        tabla_final.append(fila_pista)
                         
-                        # Detalles por Mes
-                        for _, row in datos_pista.iterrows():
-                            mes_limpio = row['MES'].split('-')[1] if '-' in row['MES'] else row['MES']
-                            fila_mes = {'NIVEL': '', 'MES': mes_limpio}
-                            if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
-                            fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
-                            if calcular_rend_prom:
-                                fila_mes['REND. PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
-                            tabla_final.append(fila_mes)
+                        # ✈️ Iterar por Aviones dentro de esa Base
+                        for hk in sorted(df_pista['HK'].unique()):
+                            datos_hk = df_pista[df_pista['HK'] == hk].sort_values(by='MES')
+                            sum_hr_hk = datos_hk['REND_HR'].sum()
+                            sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
                             
-                        total_hr_gral += sum_hr
-                        total_ha_gral += sum_ha
+                            fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"✈️ AVION: {hk}", 'MES': 'Total Año'}
+                            if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
+                            fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
+                            if calcular_rend_prom:
+                                fila_hk['REND. PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
+                            tabla_final.append(fila_hk)
+                            
+                            # 📅 Detalles por Mes de ese Avión específico
+                            for _, row in datos_hk.iterrows():
+                                mes_limpio = row['MES'].split('-')[1] if '-' in row['MES'] else row['MES']
+                                fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'MES': mes_limpio}
+                                if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
+                                fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
+                                if calcular_rend_prom:
+                                    fila_mes['REND. PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                                tabla_final.append(fila_mes)
+                                
+                        total_hr_gral += sum_hr_pista
+                        total_ha_gral += sum_ha_pista
                         
-                    # Total General
-                    fila_tot = {'NIVEL': 'TOTAL GENERAL', 'MES': ''}
+                    # 🏅 Fila Final de Mando
+                    fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'MES': ''}
                     if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                     fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
                     if calcular_rend_prom:
@@ -175,12 +184,16 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     
                     df_visual = pd.DataFrame(tabla_final)
                     
+                    # 🎨 Estilizador de Celdas Avanzado para Estructura Multi-Nivel
                     def estilizar_filas(row):
-                        if "➖" in row['NIVEL'] or "TOTAL" in row['NIVEL']:
-                            return ['background-color: #e2e6ea; font-weight: bold;'] * len(row)
+                        if "BASE:" in str(row['NIVEL']):
+                            return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
+                        elif "TOTAL GENERAL" in str(row['NIVEL']):
+                            return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
+                        elif "✈️" in str(row['AVIÓN (HK)']):
+                            return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
                         return [''] * len(row)
                     
-                    # Aplicamos el formato latino exacto a las columnas del resumen gerencial
                     formato_columnas = {'ÁREA FUMIG (ha)': fmt_latino}
                     if mostrar_horas or calcular_rend_prom: formato_columnas['REND (hr)'] = fmt_latino
                     if calcular_rend_prom: formato_columnas['REND. PROMEDIO (Ha/Hr)'] = fmt_latino
@@ -192,6 +205,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     )
 
                 else:
+                    # --- VISTA SEMANAL ---
                     matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
                     matriz = matriz.sort_index()
                     cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
@@ -201,10 +215,8 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     matriz['TOTAL MES'] = matriz.sum(axis=1)
                     matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
                     
-                    # ✈️ EMOJI DE AVIÓN REEMPLAZANDO AL TRACTOR
                     st.markdown(f"#### 🛩️ Rendimiento Semana a Semana: **{pista_sel}** ({rango_txt})")
                     
-                    # Aplicamos el traductor métrico a TODO el dataframe semanal
                     if HAS_MATPLOTLIB:
                         st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
                     else:
@@ -213,7 +225,6 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     st.markdown("---")
                     df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
                     if not df_grafico.empty:
-                        # Pre-formateamos la etiqueta para Plotly
                         df_grafico['TEXTO_LATINO'] = df_grafico['TOTAL MES'].apply(fmt_latino)
                         
                         fig = px.bar(
@@ -225,12 +236,15 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes", separators=",.")
                         st.plotly_chart(fig, use_container_width=True)
 
+                # =================================================================
+                # 💾 FÁBRICA DE EXCEL: OPENPYXL ADAPTADO AL PARÁMETRO AVION
+                # =================================================================
                 st.markdown("---")
                 buffer_rep = io.BytesIO()
                 with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
-                    nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
+                    nombre_hoja = 'Resumen_Gerencial' if "Por Avión" in vista_seleccionada else 'Reporte_Semanal'
                     
-                    if "Gerencial" in vista_seleccionada:
+                    if "Por Avión" in vista_seleccionada:
                         df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
                     else:
                         matriz.to_excel(writer, sheet_name=nombre_hoja)
@@ -250,8 +264,9 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     navy_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                     white_font = Font(color="FFFFFF", bold=True, size=11)
                     months_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
-                    sub_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-                    total_fill = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
+                    pista_fill = PatternFill(start_color="D1ECF1", end_color="D1ECF1", fill_type="solid") # Celeste
+                    sub_fill = PatternFill(start_color="E2E6EA", end_color="E2E6EA", fill_type="solid") # Gris
+                    total_fill = PatternFill(start_color="C3E6CB", end_color="C3E6CB", fill_type="solid") # Verde
 
                     max_row = worksheet.max_row
                     max_col = worksheet.max_column
@@ -267,46 +282,59 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                             else:
                                 cell.alignment = Alignment(vertical='center', indent=1)
                                 
-                            if "Gerencial" in vista_seleccionada and cell.row > 1:
+                            if "Por Avión" in vista_seleccionada and cell.row > 1:
                                 nivel_v = str(worksheet.cell(row=cell.row, column=1).value or "").strip()
-                                if "➖" in nivel_v:
-                                    cell.fill = sub_fill; cell.font = Font(bold=True)
+                                avion_v = str(worksheet.cell(row=cell.row, column=2).value or "").strip()
+                                if "BASE:" in nivel_v:
+                                    cell.fill = pista_fill; cell.font = Font(bold=True, color="0C5460")
                                 elif "TOTAL GENERAL" in nivel_v:
-                                    cell.fill = total_fill; cell.font = Font(bold=True, color="FFFFFF")
+                                    cell.fill = total_fill; cell.font = Font(bold=True, color="155724")
+                                elif "✈️" in avion_v:
+                                    cell.fill = sub_fill; cell.font = Font(bold=True)
                                 elif nivel_v == "" or nivel_v == "None":
                                     cell.fill = months_fill
 
                     chart = BarChart()
                     chart.type = "col"; chart.style = 10
                     chart.title = "Rendimiento Operativo (Ha)"; chart.y_axis.title = "Hectáreas"
-                    chart.legend = None
-                    chart.dataLabels = DataLabelList(); chart.dataLabels.showVal = True
-                    chart.height = 14; chart.width = 24
                     
-                    if "Gerencial" in vista_seleccionada:
-                        worksheet.cell(row=1, column=27).value = "Mes"
-                        worksheet.cell(row=1, column=28).value = "Ha"
-                        meses_para_grafico = [m for m in df_visual['MES'] if str(m).strip() not in ["", "None"]]
-                        row_g = 2
-                        col_ha_letra = "C" if (not mostrar_horas and not calcular_rend_prom) else "D"
-                        for m in meses_para_grafico:
-                            worksheet.cell(row=row_g, column=27).value = m
-                            fila_origen = 2
-                            for r_b in range(2, max_row):
-                                if str(worksheet.cell(row=r_b, column=2).value) == m:
-                                    fila_origen = r_b; break
-                            worksheet.cell(row=row_g, column=28).value = f"={col_ha_letra}{fila_origen}"
-                            row_g += 1
+                    if "Por Avión" in vista_seleccionada:
+                        # Buscamos dinámicamente la columna de Hectáreas para no romper el gráfico
+                        idx_ha = df_visual.columns.get_loc('ÁREA FUMIG (ha)') + 1
+                        col_ha_letra = get_column_letter(idx_ha)
                         
-                        data = Reference(worksheet, min_col=28, min_row=1, max_row=row_g-1)
-                        cats = Reference(worksheet, min_col=27, min_row=2, max_row=row_g-1)
+                        # Escribimos datos limpios para el gráfico en columnas ocultas a la derecha
+                        worksheet.cell(row=1, column=max_col + 2).value = "Mes-Avión"
+                        worksheet.cell(row=1, column=max_col + 3).value = "Ha"
+                        row_g = 2
+                        
+                        for r_b in range(2, max_row + 1):
+                            n_v = str(worksheet.cell(row=r_b, column=1).value or "")
+                            a_v = str(worksheet.cell(row=r_b, column=2).value or "")
+                            m_v = str(worksheet.cell(row=r_b, column=3).value or "")
+                            
+                            # Solo graficamos las filas de meses detalle para evitar duplicar subtotales
+                            if n_v == "" and a_v == "" and m_v != "Total Año" and m_v != "":
+                                # Buscamos el avión de este bloque hacia arriba
+                                av_encontrado = "Desconocido"
+                                for r_back in range(r_b, 1, -1):
+                                    if "✈️" in str(worksheet.cell(row=r_back, column=2).value):
+                                        av_encontrado = str(worksheet.cell(row=r_back, column=2).value).replace("✈️ AVION:", "").strip()
+                                        break
+                                worksheet.cell(row=row_g, column=max_col + 2).value = f"{m_v} ({av_encontrado})"
+                                worksheet.cell(row=row_g, column=max_col + 3).value = f"={col_ha_letra}{r_b}"
+                                row_g += 1
+                        
+                        data = Reference(worksheet, min_col=max_col + 3, min_row=1, max_row=row_g-1)
+                        cats = Reference(worksheet, min_col=max_col + 2, min_row=2, max_row=row_g-1)
                         chart.add_data(data, titles_from_data=True)
                         chart.set_categories(cats)
                         
+                        # Ocultar los textos de la matriz de datos del gráfico pintándolos de blanco
                         for r_inv in range(1, row_g):
-                            worksheet.cell(row=r_inv, column=27).font = Font(color="FFFFFF")
-                            worksheet.cell(row=r_inv, column=28).font = Font(color="FFFFFF")
-                        
+                            worksheet.cell(row=r_inv, column=max_col + 2).font = Font(color="FFFFFF")
+                            worksheet.cell(row=r_inv, column=max_col + 3).font = Font(color="FFFFFF")
+                            
                         worksheet.add_chart(chart, "H2")
                     else:
                         data = Reference(worksheet, min_col=max_col, min_row=1, max_row=max_row-1)
@@ -316,14 +344,14 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         worksheet.add_chart(chart, f"{get_column_letter(max_col + 2)}2")
                     
                     for col_idx in range(1, max_col + 1):
-                        worksheet.column_dimensions[get_column_letter(col_idx)].width = 22
+                        worksheet.column_dimensions[get_column_letter(col_idx)].width = 24
                     worksheet.freeze_panes = "A2"
 
                 rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
                 st.download_button(
                     label="💾 DESCARGAR REPORTE GERENCIAL TOP",
                     data=buffer_rep.getvalue(),
-                    file_name=f"Reporte_Rendimiento_{rango_label}.xlsx",
+                    file_name=f"Reporte_Rendimiento_Avion_{rango_label}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )                       
