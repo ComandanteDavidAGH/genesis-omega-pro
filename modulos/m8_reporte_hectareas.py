@@ -76,12 +76,16 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
             df_rep['PISTA'] = df_rep['PISTA'].astype(str).str.strip().str.upper()
             df_rep['HK'] = df_rep['HK'].astype(str).str.strip().str.upper()
+            df_rep['MODELO'] = df_rep['MODELO'].astype(str).str.strip().str.upper() # Capturamos el modelo
             
-            # Anclaje de Base Maestra (Para evitar errores de pista por digitación)
+            # Anclaje de Base Maestra y Diccionario de Modelos
             mask_hk = df_rep['HK'] != ""
+            mapa_modelo = {}
             if not df_rep[mask_hk].empty:
                 mapa_flota = df_rep[mask_hk].groupby('HK')['PISTA'].agg(lambda x: x.value_counts().index[0] if not x.empty else "").to_dict()
                 df_rep.loc[mask_hk, 'PISTA'] = df_rep.loc[mask_hk, 'HK'].map(mapa_flota).fillna(df_rep.loc[mask_hk, 'PISTA'])
+                # Guardamos el modelo de cada HK para saber si es Dron o Avión
+                mapa_modelo = df_rep[mask_hk].groupby('HK')['MODELO'].first().to_dict()
             
             df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
             df_rep['FECHA_DT'] = df_rep['FECHA'].apply(procesar_fecha_pesada)
@@ -107,14 +111,14 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
             
             mostrar_horas = False
             calcular_rend_prom = False
-            agrupar_avion = False # 💥 EL INTERRUPTOR 💥
+            agrupar_avion = False 
 
             if vista_seleccionada == "📊 Resumen Gerencial":
                 st.markdown("##### ⚙️ Ajustes de Visualización")
                 cc1, cc2, cc3 = st.columns(3)
                 mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas de Vuelo", value=True)
                 calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. Promedio (Ha/Hr)", value=True)
-                agrupar_avion = cc3.toggle("✈️ Desglosar por Avión (HK)", value=False) # El interruptor solicitado
+                agrupar_avion = cc3.toggle("✈️ / 🚁 Desglosar por Flota (HK)", value=False)
 
             df_filt = df_rep[(df_rep['FECHA_DT'].dt.date >= fecha_sel_ini) & (df_rep['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
             if pista_sel != "TODAS":
@@ -130,14 +134,13 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                 rango_txt = f"{fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}"
                 
                 if vista_seleccionada == "📊 Resumen Gerencial":
-                    st.markdown(f"#### 📑 Consolidado {'por Avión' if agrupar_avion else 'General'} ({rango_txt})")
+                    st.markdown(f"#### 📑 Consolidado {'por Flota' if agrupar_avion else 'General'} ({rango_txt})")
                     
                     tabla_final = []
                     total_hr_gral = 0
                     total_ha_gral = 0
 
                     if agrupar_avion:
-                        # 💥 VISTA DESGLOSADA POR AVIÓN (CON INTERRUPTOR ENCENDIDO) 💥
                         df_gerencia = df_filt.groupby(['PISTA', 'HK', 'MES']).agg(
                             REND_HR=('H_PROPORCIONAL', 'sum'),
                             AREA_FUMIG=('HA_NETAS', 'sum')
@@ -159,7 +162,13 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                                 sum_hr_hk = datos_hk['REND_HR'].sum()
                                 sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
                                 
-                                fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"✈️ AVION: {hk}", 'MES': 'Total Avión'}
+                                # 💥 IDENTIFICADOR DE DRON VS AVIÓN 💥
+                                modelo_actual = str(mapa_modelo.get(hk, "")).upper()
+                                es_dron = "DRON" in modelo_actual or "DR" in hk
+                                emoji_aero = "🚁" if es_dron else "✈️"
+                                tipo_texto = "DRON" if es_dron else "AVION"
+                                
+                                fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji_aero} {tipo_texto}: {hk}", 'MES': 'Total Flota'}
                                 if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                                 fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
                                 if calcular_rend_prom: fila_hk['REND. PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
@@ -183,7 +192,6 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                         tabla_final.append(fila_tot)
                         
                     else:
-                        # 💥 VISTA CLÁSICA (CON INTERRUPTOR APAGADO) 💥
                         df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
                             REND_HR=('H_PROPORCIONAL', 'sum'),
                             AREA_FUMIG=('HA_NETAS', 'sum')
@@ -222,7 +230,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                     def estilizar_filas(row):
                         if "BASE:" in str(row['NIVEL']): return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
                         elif "TOTAL GENERAL" in str(row['NIVEL']): return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
-                        elif 'AVIÓN (HK)' in row and "✈️" in str(row['AVIÓN (HK)']): return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
+                        elif 'AVIÓN (HK)' in row and ("✈️" in str(row['AVIÓN (HK)']) or "🚁" in str(row['AVIÓN (HK)'])): return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
                         return [''] * len(row)
                     
                     formato_columnas = {'ÁREA FUMIG (ha)': fmt_latino}
@@ -316,7 +324,7 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                                 
                                 if agrupar_avion:
                                     avion_v = str(worksheet.cell(row=cell.row, column=2).value or "").strip()
-                                    if "✈️" in avion_v: cell.fill = sub_fill; cell.font = Font(bold=True)
+                                    if "✈️" in avion_v or "🚁" in avion_v: cell.fill = sub_fill; cell.font = Font(bold=True)
 
                     chart = BarChart()
                     chart.type = "col"; chart.style = 10
@@ -339,11 +347,12 @@ def ejecutar(descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fec
                             if agrupar_avion:
                                 a_v = str(worksheet.cell(row=r_b, column=2).value or "")
                                 m_v = str(worksheet.cell(row=r_b, column=3).value or "")
-                                if n_v == "" and a_v == "" and m_v not in ["Total Avión", "TOTAL BASE", ""]:
+                                if n_v == "" and a_v == "" and m_v not in ["Total Avión", "Total Flota", "TOTAL BASE", ""]:
                                     av_encontrado = "Desc"
                                     for r_back in range(r_b, 1, -1):
-                                        if "✈️" in str(worksheet.cell(row=r_back, column=2).value):
-                                            av_encontrado = str(worksheet.cell(row=r_back, column=2).value).replace("✈️ AVION:", "").strip()
+                                        val_back = str(worksheet.cell(row=r_back, column=2).value)
+                                        if "✈️" in val_back or "🚁" in val_back:
+                                            av_encontrado = val_back.replace("✈️ AVION:", "").replace("🚁 DRON:", "").strip()
                                             break
                                     worksheet.cell(row=row_g, column=col_lbl_chart).value = f"{m_v} ({av_encontrado})"
                                     worksheet.cell(row=row_g, column=col_val_chart).value = f"={col_ha_letra}{r_b}"
