@@ -38,6 +38,25 @@ def obtener_cliente_gspread_viejo():
     except:
         return None
 
+# 💥 NUEVO TRADUCTOR DE PRECIOS LATINOS 💥
+def parsear_precio_colombia(val):
+    v = str(val).strip()
+    if not v or v == '-': return None
+    # Elimina símbolos extraños
+    v = re.sub(r'[^\d\.,\-]', '', v)
+    if not v: return None
+    try:
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): # Ejemplo: 5.123,42
+                v = v.replace('.', '').replace(',', '.')
+            else: # Ejemplo: 5,123.42
+                v = v.replace(',', '')
+        elif ',' in v: # Ejemplo: 5123,42
+            v = v.replace(',', '.')
+        return float(v)
+    except:
+        return None
+
 @st.cache_data(show_spinner=False)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     gc_nuevo = obtener_cliente_gspread_unificado()
@@ -106,7 +125,7 @@ def cargar_boveda_recetas_y_precios():
     except Exception as e:
         st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
 
-    # MOTOR 2: BOVEDA DE PRECIOS AISLADA (Si falla, no tumba las recetas)
+    # MOTOR 2: BOVEDA DE PRECIOS AISLADA (Con Inteligencia Matemática)
     try:
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
@@ -125,11 +144,24 @@ def cargar_boveda_recetas_y_precios():
                         anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
                         if anio_str and str_prod:
                             col_inicio = max(col_anio, col_prod) + 1
-                            vals = [float(str(v).strip().replace(',', '.')) for v in row[col_inicio:] if str(v).strip().replace(',', '.').replace('-','').replace('.','').isdigit()]
+                            vals = []
+                            for v in row[col_inicio:]:
+                                val_num = parsear_precio_colombia(v)
+                                if val_num is not None and val_num > 0:
+                                    vals.append(val_num)
+                            
                             prom = sum(vals)/len(vals) if vals else 0.0
-                            precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRECIO_PROM': prom})
+                            prod_limpio = re.sub(r'\s+', ' ', str_prod).strip()
+                            precios_consolidados.append({
+                                'AÑO': anio_str, 
+                                'PRODUCTO': prod_limpio, 
+                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""), # 💥 Para evitar que los espacios rompan el match
+                                'PRECIO_PROM': prom
+                            })
         df_precios = pd.DataFrame(precios_consolidados)
-    except: pass
+    except Exception as e: 
+        print(f"Error en bóveda de precios: {e}")
+        pass
 
     return df_mezclas, df_conf, df_dicc, df_precios, df_t2
 
@@ -446,10 +478,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         insumos_a = max(0, (costo_tot_a / area_a if area_a > 0 else 0) - vuelo_a)
         insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
         
-        # 💥 REPARACIÓN CRÍTICA DE VARIABLES 💥
         categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
         
-        # 🧪 Traductor monetario latino exclusivo para las barras apiladas
         def fmt_cop_vertical(val):
             try:
                 return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -510,7 +540,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.")
             st.plotly_chart(fig_glob, use_container_width=True)
         
-        # --- DESGLOSE OPERATIVO DE CÓCTELES ---
         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
         col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
         
@@ -557,9 +586,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 if prods_receta:
                     matriz_mol = []
+                    # 💥 MATCHER DE PRECIOS OPTIMIZADO 💥
                     def obtener_precio_promedio(producto, anio_obj):
                         if not df_precios.empty:
-                            match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO'] == producto)]
+                            # Limpiamos los espacios del producto de la receta para compararlo de forma estricta
+                            prod_c = str(producto).upper().replace(" ", "")
+                            match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO_CLEAN'] == prod_c)]
                             if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0: return match_df['PRECIO_PROM'].mean()
                         return 0.0
 
@@ -589,14 +621,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
         
-        # --- 📅 1. PANEL DE CONTROL TRIPARTITO (FECHAS Y PISTA) ---
         c_inv1, c_inv2, c_inv3 = st.columns(3)
         fecha_hace_un_mes = datetime.now().date() - pd.Timedelta(days=30)
         
         inv_fecha_inicio = c_inv1.date_input("📅 Fecha Inicial (Inventario):", value=fecha_hace_un_mes, key="inv_f_ini_pista")
         inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_pista")
         
-        # 🛰️ RADAR DE PISTAS: Detectamos dinámicamente la columna de pistas en la base maestra
         col_pista_inv = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         if col_pista_inv:
             pistas_inv_disp = ["TODAS"] + sorted(super_base_bi[col_pista_inv].dropna().astype(str).str.upper().unique().tolist())
@@ -605,15 +635,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         pista_inv_sel = c_inv3.selectbox("📍 Filtrar por Base / Pista:", pistas_inv_disp, key="pista_inv_sel_key")
         
-        # --- 🚜 2. FILTRADO INTEGRAL EN RAM (FINCA + FECHAS + PISTA) ---
+        # 💥 2. FILTRADO INDEPENDIENTE EN RAM (SE ELIMINÓ EL FILTRO DE FINCA) 💥
         df_inventario = super_base_bi.copy()
-        if finca_sel != "TODAS": 
-            df_inventario = df_inventario[df_inventario['FINCA_MAESTRA'] == finca_sel]
-            
-        # Aplicamos filtro de fechas
+        
         df_inventario = df_inventario[(df_inventario['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_inventario['FECHA_DT'].dt.date <= inv_fecha_fin)]
         
-        # Aplicamos filtro de pista si no se seleccionó "TODAS"
         if col_pista_inv and pista_inv_sel != "TODAS":
             df_inventario = df_inventario[df_inventario[col_pista_inv].astype(str).str.upper().str.strip() == pista_inv_sel.strip()]
             
@@ -643,7 +669,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             ha_aplicadas = fila['AREA_NUM']
                             if ha_aplicadas <= 0 or nombre_coctel in ["NAN", ""]: continue
 
-                            dict_temp = extraer_receta_de_sigla_bi(nombre_coctel, finca_sel, df_m, df_d, df_t2_b)
+                            dict_temp = extraer_receta_de_sigla_bi(nombre_coctel, "TODAS", df_m, df_d, df_t2_b)
                             for p, d in dict_temp.items():
                                 consumo_log[p] = consumo_log.get(p, 0) + (d * ha_aplicadas)
 
@@ -654,7 +680,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                             df_log = pd.DataFrame(list(consumo_log.items()), columns=["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"])
                             
-                            # 💥 TRADUCTOR MÉTRICO LATINO (Garantiza puntos para miles y coma para decimales)
                             def formatear_numero_latino(val):
                                 try:
                                     s = "{:,.1f}".format(float(val))
@@ -663,7 +688,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                     return str(val)
 
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                # Tabla ordenada alfabéticamente de la A a la Z
                                 df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
                                 df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_vista["📦 VOLUMEN ESTIMADO (L/Kg)"].apply(formatear_numero_latino)
                                 
@@ -671,29 +695,24 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 with c1: 
                                     st.dataframe(df_vista, use_container_width=True, hide_index=True)
                                 with c2:
-                                    # Gráfica de barras - Mantiene el Top 15 ordenado por volumen de mayor a menor
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15).copy()
-                                    
-                                    # 💥 SOLUCIÓN DE ORO: Pre-formateamos en Python para obligar a Plotly a pintar el texto sin fallas
                                     df_grafica['ETIQUETA_LATINA'] = df_grafica["📦 VOLUMEN ESTIMADO (L/Kg)"].apply(formatear_numero_latino)
                                     
                                     fig = px.bar(
                                         df_grafica, 
                                         y="🧪 PRODUCTO", 
                                         x="📦 VOLUMEN ESTIMADO (L/Kg)", 
-                                        text="ETIQUETA_LATINA", # <-- Pasamos la columna formateada
+                                        text="ETIQUETA_LATINA", 
                                         orientation='h', 
                                         color="📦 VOLUMEN ESTIMADO (L/Kg)", 
                                         color_continuous_scale="GnBu", 
                                         title=f"Top 15 Insumos - Pista: {pista_inv_sel}"
                                     )
                                     
-                                    # Ampliamos el margen derecho (r=100) para que entren holgadamente los números grandes
                                     fig.update_traces(textposition='outside', textfont_size=11)
                                     fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100), separators=",.")
                                     st.plotly_chart(fig, use_container_width=True)
                             else:
-                                # Vista de impacto para un único insumo seleccionado
                                 vol_especifico = consumo_log[insumo_filtrado]
                                 vol_formateado = formatear_numero_latino(vol_especifico)
                                 st.markdown(f"""
@@ -708,7 +727,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except Exception as e:
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else:
-            st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Finca/Fechas/Pista).")
+            st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Fechas/Pista).")
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
