@@ -155,7 +155,7 @@ def cargar_boveda_recetas_y_precios():
                             precios_consolidados.append({
                                 'AÑO': anio_str, 
                                 'PRODUCTO': prod_limpio, 
-                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""), # 💥 Para evitar que los espacios rompan el match
+                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""),
                                 'PRECIO_PROM': prom
                             })
         df_precios = pd.DataFrame(precios_consolidados)
@@ -260,7 +260,6 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
 
     for p in list(dict_prods.keys()):
         if "ACONDICIONADOR" in p:
-            # EL NM NO ALTERA EL ACONDICIONADOR.
             if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]): dict_prods[p] = 0.06
         elif "IMBIOSIL" in p.replace(" ", ""):
             if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: dict_prods[p] = 1.5
@@ -570,6 +569,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
             st.dataframe(df_vista, use_container_width=True, hide_index=True)
             
+            # 💥 NUEVO BOTÓN DE EXPORTACIÓN NIVEL 1 💥
+            csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📄 Exportar Variación de Cócteles (CSV)", data=csv_n1, file_name="Variacion_Cocteles.csv", mime="text/csv", key="btn_down_n1")
+            
             # =====================================================================
             # 🔬 NIVEL 2: CACHÉ ABSOLUTA DE BÓVEDA DE RECETAS
             # =====================================================================
@@ -586,10 +589,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 if prods_receta:
                     matriz_mol = []
-                    # 💥 MATCHER DE PRECIOS OPTIMIZADO 💥
                     def obtener_precio_promedio(producto, anio_obj):
                         if not df_precios.empty:
-                            # Limpiamos los espacios del producto de la receta para compararlo de forma estricta
                             prod_c = str(producto).upper().replace(" ", "")
                             match_df = df_precios[(df_precios['AÑO'] == str(anio_obj)) & (df_precios['PRODUCTO_CLEAN'] == prod_c)]
                             if not match_df.empty and match_df['PRECIO_PROM'].mean() > 0: return match_df['PRECIO_PROM'].mean()
@@ -609,6 +610,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     df_vista_mol_print[f"Costo/Ha ({año_comp})"] = df_vista_mol_print[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
                     df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].map("$ {:,.0f}".format)
                     st.dataframe(df_vista_mol_print, use_container_width=True, hide_index=True)
+                    
+                    # 💥 NUEVO BOTÓN DE EXPORTACIÓN NIVEL 2 💥
+                    csv_n2 = df_vista_mol_print.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="📄 Exportar Receta vs Año (CSV)", data=csv_n2, file_name=f"Comparativo_{coctel_sel}.csv", mime="text/csv", key="btn_down_n2")
                     
                     c1, c2, c3 = st.columns(3)
                     c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
@@ -635,11 +640,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         pista_inv_sel = c_inv3.selectbox("📍 Filtrar por Base / Pista:", pistas_inv_disp, key="pista_inv_sel_key")
         
-        # 💥 2. FILTRADO INDEPENDIENTE EN RAM (SE ELIMINÓ EL FILTRO DE FINCA) 💥
         df_inventario = super_base_bi.copy()
-        
         df_inventario = df_inventario[(df_inventario['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_inventario['FECHA_DT'].dt.date <= inv_fecha_fin)]
-        
         if col_pista_inv and pista_inv_sel != "TODAS":
             df_inventario = df_inventario[df_inventario[col_pista_inv].astype(str).str.upper().str.strip() == pista_inv_sel.strip()]
             
@@ -694,6 +696,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 c1, c2 = st.columns([1, 1.2])
                                 with c1: 
                                     st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                                    # 💥 NUEVO BOTÓN DE EXPORTACIÓN NIVEL 3 💥
+                                    csv_n3 = df_log.to_csv(index=False).encode('utf-8')
+                                    st.download_button(label="📊 Exportar Consumo Volumétrico (CSV)", data=csv_n3, file_name=f"Consumo_Volumetrico_{pista_inv_sel}.csv", mime="text/csv", key="btn_down_n3")
                                 with c2:
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15).copy()
                                     df_grafica['ETIQUETA_LATINA'] = df_grafica["📦 VOLUMEN ESTIMADO (L/Kg)"].apply(formatear_numero_latino)
@@ -708,7 +713,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                         color_continuous_scale="GnBu", 
                                         title=f"Top 15 Insumos - Pista: {pista_inv_sel}"
                                     )
-                                    
                                     fig.update_traces(textposition='outside', textfont_size=11)
                                     fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100), separators=",.")
                                     st.plotly_chart(fig, use_container_width=True)
@@ -728,6 +732,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else:
             st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Fechas/Pista).")
+            
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
@@ -800,6 +805,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             df_vista = df_resultados.copy()
                             for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_vista[col] = df_vista[col].map("$ {:,.0f}".format)
                             st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                            
+                        # 💥 NUEVO BOTÓN EXPORTADOR EXCEL MAESTRO SIMULADOR 💥
+                        buffer_sim = io.BytesIO()
+                        with pd.ExcelWriter(buffer_sim, engine='openpyxl') as writer:
+                            df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
+                            df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.download_button(
+                            label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL)",
+                            data=buffer_sim.getvalue(),
+                            file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
 
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
