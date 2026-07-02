@@ -38,20 +38,18 @@ def obtener_cliente_gspread_viejo():
     except:
         return None
 
-# 💥 NUEVO TRADUCTOR DE PRECIOS LATINOS 💥
 def parsear_precio_colombia(val):
     v = str(val).strip()
     if not v or v == '-': return None
-    # Elimina símbolos extraños
     v = re.sub(r'[^\d\.,\-]', '', v)
     if not v: return None
     try:
         if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): # Ejemplo: 5.123,42
+            if v.rfind(',') > v.rfind('.'): 
                 v = v.replace('.', '').replace(',', '.')
-            else: # Ejemplo: 5,123.42
+            else:
                 v = v.replace(',', '')
-        elif ',' in v: # Ejemplo: 5123,42
+        elif ',' in v: 
             v = v.replace(',', '.')
         return float(v)
     except:
@@ -103,10 +101,8 @@ def cargar_boveda_recetas_y_precios():
     
     df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-    # MOTOR 1: BOVEDA PRINCIPAL AISLADA
     try:
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        
         try:
             data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
             if data_mez:
@@ -116,16 +112,13 @@ def cargar_boveda_recetas_y_precios():
 
         try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         except: pass
-        
         try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
         except: pass
-
         try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
         except: pass
     except Exception as e:
         st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
 
-    # MOTOR 2: BOVEDA DE PRECIOS AISLADA (Con Inteligencia Matemática)
     try:
         url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
         sh_precios = gc.open_by_url(url_precios)
@@ -159,13 +152,10 @@ def cargar_boveda_recetas_y_precios():
                                 'PRECIO_PROM': prom
                             })
         df_precios = pd.DataFrame(precios_consolidados)
-    except Exception as e: 
-        print(f"Error en bóveda de precios: {e}")
-        pass
+    except Exception as e: pass
 
     return df_mezclas, df_conf, df_dicc, df_precios, df_t2
 
-# --- AUXILIARES GLOBALES ---
 def limpiar_encabezados(df):
     df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
     df = df.loc[:, ~df.columns.duplicated(keep='first')]
@@ -216,9 +206,6 @@ def limpiar_dinero(val):
         return num
     except: return 0.0
 
-# =================================================================
-# 🔑 CEREBRO QUÍMICO HÍBRIDO (Lectura de Excel + Reglas Dinámicas)
-# =================================================================
 def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_u = str(coctel_sel).upper().strip()
     coctel_norm = coctel_u.replace("+", " ").replace("-", " ")
@@ -569,7 +556,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
             st.dataframe(df_vista, use_container_width=True, hide_index=True)
             
-            # 💥 NUEVO BOTÓN DE EXPORTACIÓN NIVEL 1 💥
             csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
             st.download_button(label="📄 Exportar Variación de Cócteles (CSV)", data=csv_n1, file_name="Variacion_Cocteles.csv", mime="text/csv", key="btn_down_n1")
             
@@ -611,7 +597,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].map("$ {:,.0f}".format)
                     st.dataframe(df_vista_mol_print, use_container_width=True, hide_index=True)
                     
-                    # 💥 NUEVO BOTÓN DE EXPORTACIÓN NIVEL 2 💥
                     csv_n2 = df_vista_mol_print.to_csv(index=False).encode('utf-8')
                     st.download_button(label="📄 Exportar Receta vs Año (CSV)", data=csv_n2, file_name=f"Comparativo_{coctel_sel}.csv", mime="text/csv", key="btn_down_n2")
                     
@@ -696,7 +681,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 c1, c2 = st.columns([1, 1.2])
                                 with c1: 
                                     st.dataframe(df_vista, use_container_width=True, hide_index=True)
-                                    # 💥 NUEVO BOTÓN DE EXPORTACIÓN NIVEL 3 💥
                                     csv_n3 = df_log.to_csv(index=False).encode('utf-8')
                                     st.download_button(label="📊 Exportar Consumo Volumétrico (CSV)", data=csv_n3, file_name=f"Consumo_Volumetrico_{pista_inv_sel}.csv", mime="text/csv", key="btn_down_n3")
                                 with c2:
@@ -806,11 +790,46 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_vista[col] = df_vista[col].map("$ {:,.0f}".format)
                             st.dataframe(df_vista, use_container_width=True, hide_index=True)
                             
-                        # 💥 NUEVO BOTÓN EXPORTADOR EXCEL MAESTRO SIMULADOR 💥
+                        # --- 🎨 INYECCIÓN DE ESTILO EJECUTIVO (OPENPYXL) ---
                         buffer_sim = io.BytesIO()
                         with pd.ExcelWriter(buffer_sim, engine='openpyxl') as writer:
                             df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
                             df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
+                            
+                            workbook = writer.book
+                            borde_fino = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
+                            fondo_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                            fuente_header = Font(color="FFFFFF", bold=True, size=11)
+                            
+                            for sheet_name in ['Resumen_Semanal', 'Detalle_OS']:
+                                ws = writer.sheets[sheet_name]
+                                ws.sheet_view.showGridLines = False
+                                max_row = ws.max_row
+                                max_col = ws.max_column
+                                
+                                for col_idx in range(1, max_col + 1):
+                                    letra = openpyxl.utils.get_column_letter(col_idx)
+                                    ws.column_dimensions[letra].width = 20
+                                
+                                for row in ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
+                                    for cell in row:
+                                        cell.border = borde_fino
+                                        if cell.row == 1:
+                                            cell.fill = fondo_header
+                                            cell.font = fuente_header
+                                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                                        else:
+                                            cell.alignment = Alignment(vertical='center')
+                                            col_name = str(ws.cell(row=1, column=cell.column).value).upper()
+                                            if isinstance(cell.value, (int, float)):
+                                                if "TOTAL" in col_name or "DIFERENCIA" in col_name or "TARIFA" in col_name:
+                                                    cell.number_format = '"$" #,##0' 
+                                                elif "HECT" in col_name:
+                                                    cell.number_format = '#,##0.00' 
+                                                elif "SEMANA" in col_name:
+                                                    cell.number_format = '0' 
+                                                    cell.alignment = Alignment(horizontal='center', vertical='center')
+
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(
                             label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL)",
