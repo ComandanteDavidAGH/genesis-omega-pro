@@ -55,7 +55,8 @@ def parsear_precio_colombia(val):
     except:
         return None
 
-@st.cache_data(show_spinner=False)
+# 💥 SE AGREGÓ TTL=600 (Auto refresco cada 10 minutos) 💥
+@st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     gc_nuevo = obtener_cliente_gspread_unificado()
     
@@ -94,7 +95,8 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
 
     return df_vivos, df_historico
 
-@st.cache_data(show_spinner=False)
+# 💥 SE AGREGÓ TTL=600 (Auto refresco cada 10 minutos) 💥
+@st.cache_data(show_spinner=False, ttl=600)
 def cargar_boveda_recetas_y_precios():
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -303,7 +305,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
+    # 💥 BOTÓN DE SINCRONIZACIÓN DE LA NUBE EN LA CABECERA 💥
+    c_tit, c_sync = st.columns([4, 1])
+    with c_tit:
+        st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
+    with c_sync:
+        st.write("")
+        if st.button("🔄 Sincronizar Nube", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
     try:
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
@@ -790,7 +800,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_vista[col] = df_vista[col].map("$ {:,.0f}".format)
                             st.dataframe(df_vista, use_container_width=True, hide_index=True)
                             
-                        # --- 🎨 INYECCIÓN DE ESTILO EJECUTIVO (OPENPYXL) ---
                         buffer_sim = io.BytesIO()
                         with pd.ExcelWriter(buffer_sim, engine='openpyxl') as writer:
                             df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
