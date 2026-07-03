@@ -1073,13 +1073,25 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
 
             # --- LIQUIDACIÓN FINAL ---
-            def sap_round(n): return math.floor(n + 0.5)
+            from decimal import Decimal, ROUND_HALF_UP
+
+            # Función de redondeo maestro (Clon del motor SAP)
+            def sap_round(n): 
+                # 1. Limpiamos la "basura" flotante oculta de Python
+                n_limpio = round(float(n), 4)
+                # 2. Aplicamos redondeo financiero estricto (mitades siempre hacia arriba)
+                return int(Decimal(str(n_limpio)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+            # Recalculamos la mezcla aplicando el redondeo línea por línea, igual que SAP
+            costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round).sum()
+
             unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
             
             unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
             
             subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
             subtotal_vuelo_finca = sap_round(unitario_vuelo * ha_dosis_final)
+            
             gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
             costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
