@@ -81,15 +81,19 @@ def preprocesar_flota_gspread():
         dict_drones = {"DRONE DATAROT": 84428, "DRONE NORTE": 75518, "DRONE AVIL": 71280, "DRONE GENESYS": 71280}
         return dict_aviones, dict_drones
 
+# 💥 REFINAMIENTO DEL EXTRACTOR: AHORA BUSCA EN TODAS LAS COLUMNAS A FONDO 💥
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
     try:
         for col_idx in range(len(df_hoja.columns) - 1):
-            mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
+            col_data = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper()
+            mask = col_data == nombre_prod
+            if not mask.any() and len(nombre_prod) >= 4:
+                mask = col_data.str.contains(nombre_prod, regex=False)
             if mask.any():
                 val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
     except: pass
-    return 0.5 
+    return 0.0 
 
 @st.cache_data(show_spinner=False)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
@@ -144,7 +148,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
                         is_fert = True
                         break
-                
                 if not is_fert:
                     puntaje -= 100
 
@@ -158,7 +161,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
-    # AGREGAR FERTILIZANTES EXTRAÍDOS DE SAP
+    # AGREGAR FERTILIZANTES EXTRAÍDOS DE SAP (Diccionario Clásico)
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
@@ -362,8 +365,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 coctel_u = coctel_sim.upper().strip()
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
-                sigla_sim = partes[1] if len(partes) > 1 else ""
-
+                
                 receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
                 prods_f = []
                 for idx, row in receta_c.iterrows():
@@ -373,32 +375,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
                 
-                fert_encontrado_obj = None
+                # RADAR PROFUNDO PARA FERTILIZANTES SIMULADOS
                 sigla_f = partes[1] if len(partes) > 1 else ""
+                fert_encontrado_obj = None
                 
-                # 💥 RADAR PROFUNDO PARA FERTILIZANTES Y ADITIVOS EXTRA (SICO, OPUS, ETC) 💥
                 if sigla_f:
-                    # 1. Busca en Diccionario de Siglas primero (comportamiento normal)
                     try:
-                        for idx, row in df_recetas.iterrows():
-                            if len(row) > 13:
-                                f_n = str(row.iloc[12]).strip().upper()
-                                f_s = str(row.iloc[13]).strip().upper()
-                                if f_s == sigla_f and f_n not in ["NAN", "FERTILIZANTES", ""]:
-                                    fert_encontrado_obj = f_n
-                                    break
+                        for col_idx in range(len(df_recetas.columns) - 1):
+                            match_directo = df_recetas[df_recetas.iloc[:, col_idx].astype(str).str.upper().str.strip() == sigla_f]
+                            if not match_directo.empty:
+                                fert_encontrado_obj = sigla_f
+                                break
                     except: pass
-                    
-                    # 2. 🛡️ REGLA ORO INTACTA: Búsqueda directa en DD_Mesclas (Para SICO, etc)
-                    if not fert_encontrado_obj:
-                        try:
-                            # Escanea todos los encabezados de DD_Mesclas
-                            for col_idx in range(len(df_recetas.columns) - 1):
-                                match_directo = df_recetas[df_recetas.iloc[:, col_idx].astype(str).str.upper().str.strip() == sigla_f]
-                                if not match_directo.empty:
-                                    fert_encontrado_obj = sigla_f
-                                    break
-                        except: pass
                 
                 if not fert_encontrado_obj:
                     if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): fert_encontrado_obj = "ZINTRAC X LITRO SV"
@@ -426,7 +414,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 for item in prods_f:
                     p, d = item["PRODUCTO"], item["DOSIS"]
-                    
                     mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
                     if not mask.any() and "NEMATICIDA" in p:
                         mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
@@ -852,31 +839,53 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
             
-            # 💥 INYECCIÓN DE RADAR PROFUNDO PARA EXTRAER DOSIS DEL FERTILIZANTE CORRECTAMENTE 💥
-            fert_detectado = None
+            # ===================================================================================
+            # 💥 1. PROCESAR SIGLA ESCRITA POR EL PILOTO (Ej: si digitó SCMN63 SICO)
+            # ===================================================================================
             if sigla_coctel:
-                # Intenta buscar en DICCIONARIO_SIGLAS (vía dict_fertilizantes)
+                fert_detectado = None
                 for f_n, f_s in dict_fertilizantes.items():
                     if f_s == sigla_coctel: 
                         fert_detectado = f_n; break
-                
-                # Si NO lo encuentra en el diccionario de siglas, lo busca directamente en DD_Mesclas (Para SICO)
+                        
                 if not fert_detectado:
                     for col_idx in range(len(df_mez.columns) - 1):
-                        match_directo = df_mez[df_mez.iloc[:, col_idx].astype(str).str.upper().str.strip() == sigla_coctel]
-                        if not match_directo.empty:
-                            fert_detectado = sigla_coctel
-                            break
-                        
-            if not fert_detectado:
-                if "ZN" in sigla_coctel: fert_detectado = "ZINTRAC X LITRO SV"
-                elif "BT" in sigla_coctel: fert_detectado = "BANATREL SC"
-                elif "NM" in sigla_coctel: fert_detectado = "NATURAMIN WSP"
-            
-            if fert_detectado:
-                dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
-                dosis_oficiales_coctel[fert_detectado.replace(" ", "")] = dosis_real
-                if sigla_coctel not in coctel_ganador: coctel_ganador += f" {sigla_coctel}"
+                        if (df_mez.iloc[:, col_idx].astype(str).str.upper().str.strip() == sigla_coctel).any():
+                            fert_detectado = sigla_coctel; break
+                            
+                if not fert_detectado:
+                    if "ZN" in sigla_coctel: fert_detectado = "ZINTRAC X LITRO SV"
+                    elif "BT" in sigla_coctel: fert_detectado = "BANATREL SC"
+                    elif "NM" in sigla_coctel: fert_detectado = "NATURAMIN WSP"
+                
+                if fert_detectado:
+                    d_extra = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
+                    dosis_oficiales_coctel[fert_detectado.replace(" ", "")] = d_extra if d_extra > 0 else 0.5
+                    if sigla_coctel not in coctel_ganador: coctel_ganador += f" {sigla_coctel}"
+
+            # ===================================================================================
+            # 💥 2. RADAR PROFUNDO: INYECTAR PRODUCTOS QUE SAP TRAJO PERO LA RECETA BASE NO TIENE 💥
+            # ===================================================================================
+            for k_sap in sap_dict_pista.keys():
+                en_receta = False
+                for p_receta in dosis_oficiales_coctel.keys():
+                    if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
+                        en_receta = True; break
+                
+                if not en_receta:
+                    # Lo buscamos directo en las columnas de DD_Mesclas (SICO, OPUS, etc.)
+                    d_extra = obtener_dosis_exacta_fertilizante(df_mez, k_sap)
+                    if d_extra > 0:
+                        dosis_oficiales_coctel[k_sap] = d_extra
+                        if k_sap not in coctel_ganador: coctel_ganador += f" + {k_sap}"
+                    else:
+                        # Si no, buscamos en el DICCIONARIO_SIGLAS
+                        for f_n, f_s in dict_fertilizantes.items():
+                            if f_n == k_sap or (len(k_sap) >= 4 and f_n in k_sap):
+                                d_extra2 = obtener_dosis_exacta_fertilizante(df_mez, f_n)
+                                dosis_oficiales_coctel[f_n] = d_extra2 if d_extra2 > 0 else 0.5
+                                if f_s not in coctel_ganador: coctel_ganador += f" + {f_s}"
+                                break
 
             st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
             
@@ -946,6 +955,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                 dosis_teorica = None
+                
+                # BUSCAMOS LA DOSIS TEORICA OFICIAL EXTRAÍDA POR EL RADAR PROFUNDO
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial; break
