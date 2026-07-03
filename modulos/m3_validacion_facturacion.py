@@ -746,7 +746,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
                 if ha_sugerida == 0.0: 
                     ha_sugerida = float(ha_dosis_detectada)
-                ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=f"had_{casilla_key}")
+                
+                widget_key = f"had_{casilla_key}"
+                
+                # 💥 SEGURO ANTI-LOCURA: Forzar actualización de la caja si SAP encontró un dato, ignorando la memoria caché
+                sap_val = st.session_state.get('ha_radar_sap', 0.0)
+                if sap_val > 0 and st.session_state.get(f"sync_{widget_key}") != sap_val:
+                    st.session_state[widget_key] = float(sap_val)
+                    st.session_state[f"sync_{widget_key}"] = sap_val
+
+                ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=widget_key)
             with r1c4:
                 multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
                 multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
