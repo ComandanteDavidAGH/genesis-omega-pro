@@ -101,7 +101,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
         puntaje = 0
         es_valido = True
         
-        # 1. VALIDACIÓN DEL LÍDER (Solo si la receta exige un líder con 'X')
+        # 1. VALIDACIÓN DEL LÍDER
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -110,13 +110,12 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_lider = True
                     break
             if not match_lider:
-                es_valido = False # Si pide líder y no está en SAP, se descarta el cóctel.
+                es_valido = False
         
         if not es_valido:
             continue
 
-        # 2. ANÁLISIS QUÍMICO RIGUROSO (SAP vs Receta)
-        # A. Revisar qué pide la receta vs qué hay en SAP
+        # 2. ANÁLISIS QUÍMICO RIGUROSO
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
@@ -127,12 +126,11 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     break
             
             if match_receta:
-                puntaje += 100  # +100 por cada producto que coincide
-                if dose_matched: puntaje += 20  # Bono por dosis exacta
+                puntaje += 100
+                if dose_matched: puntaje += 20
             else:
-                puntaje -= 100  # -100 si la receta exige un producto que SAP NO trajo
+                puntaje -= 100
 
-        # B. Revisar qué trajo SAP vs qué pide la receta (Penalizar productos invasores)
         for k_sap in sap_dict_pista.keys():
             sap_en_receta = False
             for p_receta in receta.keys():
@@ -141,7 +139,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     break
             
             if not sap_en_receta:
-                # Si el producto extra de SAP es un fertilizante, no penalizamos al cóctel base
                 is_fert = False
                 for f_name in dict_fertilizantes.keys():
                     if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
@@ -149,20 +146,19 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                         break
                 
                 if not is_fert:
-                    puntaje -= 100  # -100 si SAP trajo un producto invasor (como BANADAK) que la receta no pide
+                    puntaje -= 100
 
-        # 3. EL PILOTO YA NO ES DIOS (Bono de desempate en lugar de dominio absoluto)
+        # 3. BONO DESEMPATE PILOTO
         if iter_id == coctel_piloto_base: 
             puntaje += 50
 
-        # 4. CORONAR AL GANADOR
+        # 4. CORONAR GANADOR
         if puntaje > max_p:
             max_p = puntaje
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
-    # ---------------------------------------------------------
-    # AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
+    # AGREGAR FERTILIZANTES EXTRAÍDOS DE SAP
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
@@ -173,6 +169,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
+
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
@@ -378,7 +375,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 fert_encontrado_obj = None
                 sigla_f = partes[1] if len(partes) > 1 else ""
+                
+                # 💥 RADAR PROFUNDO PARA FERTILIZANTES Y ADITIVOS EXTRA (SICO, OPUS, ETC) 💥
                 if sigla_f:
+                    # 1. Busca en Diccionario de Siglas primero (comportamiento normal)
                     try:
                         for idx, row in df_recetas.iterrows():
                             if len(row) > 13:
@@ -388,6 +388,17 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     fert_encontrado_obj = f_n
                                     break
                     except: pass
+                    
+                    # 2. 🛡️ REGLA ORO INTACTA: Búsqueda directa en DD_Mesclas (Para SICO, etc)
+                    if not fert_encontrado_obj:
+                        try:
+                            # Escanea todos los encabezados de DD_Mesclas
+                            for col_idx in range(len(df_recetas.columns) - 1):
+                                match_directo = df_recetas[df_recetas.iloc[:, col_idx].astype(str).str.upper().str.strip() == sigla_f]
+                                if not match_directo.empty:
+                                    fert_encontrado_obj = sigla_f
+                                    break
+                        except: pass
                 
                 if not fert_encontrado_obj:
                     if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): fert_encontrado_obj = "ZINTRAC X LITRO SV"
@@ -395,7 +406,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): fert_encontrado_obj = "NATURAMIN WSP"
                 
                 if fert_encontrado_obj:
-                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_mez, fert_encontrado_obj)
+                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
                     prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
 
                 for item in prods_f:
@@ -456,11 +467,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.info("💡 Por favor, cargue los tres archivos fuente en el Módulo 2 y procese antes de validar.")
         st.stop()
 
-    # ===========================================================================
-    # 📡 ⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO (Sincronización robusta de TABLA 2)
-    # ===========================================================================
-    
-    # 💥 PURGA TÁCTICA: Obligamos al sistema a olvidar precios viejos y buscar los nuevos
     if 'purga_precios' not in st.session_state:
         if 'df_config_base' in st.session_state: del st.session_state['df_config_base']
         st.session_state['purga_precios'] = True
@@ -527,9 +533,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c0, c1, c2 = st.columns([1, 2, 2])
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
         
-        # ===========================================================================
-        # 🔒 CERROJO INQUEBRANTABLE: OBLIGATORIEDAD ABSOLUTA DE LA TABLA 2
-        # ===========================================================================
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         
         if not df_t2.empty:
@@ -556,7 +559,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
 
-        # --- EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
         mult_material = 1.112
         tarifa_serv_tec_base = 1337.0
         mult_avion_base = 1.112
@@ -582,9 +584,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
-        # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO 
-        # =======================================================
         dias_ciclo_calc = 0
         try:
             f_obj_alpha = re.sub(r'[^A-Z0-9]', '', finca_limpia)
@@ -853,11 +852,21 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
             
+            # 💥 INYECCIÓN DE RADAR PROFUNDO PARA EXTRAER DOSIS DEL FERTILIZANTE CORRECTAMENTE 💥
             fert_detectado = None
             if sigla_coctel:
+                # Intenta buscar en DICCIONARIO_SIGLAS (vía dict_fertilizantes)
                 for f_n, f_s in dict_fertilizantes.items():
                     if f_s == sigla_coctel: 
                         fert_detectado = f_n; break
+                
+                # Si NO lo encuentra en el diccionario de siglas, lo busca directamente en DD_Mesclas (Para SICO)
+                if not fert_detectado:
+                    for col_idx in range(len(df_mez.columns) - 1):
+                        match_directo = df_mez[df_mez.iloc[:, col_idx].astype(str).str.upper().str.strip() == sigla_coctel]
+                        if not match_directo.empty:
+                            fert_detectado = sigla_coctel
+                            break
                         
             if not fert_detectado:
                 if "ZN" in sigla_coctel: fert_detectado = "ZINTRAC X LITRO SV"
@@ -916,9 +925,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
                             if idx_saldo != -1: saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
 
-                # =====================================================================
-                # 🔒 PROTOCOLO DE BLINDAJE: FORZAR PRECIO DE BÓVEDA MAESTRA (V12)
-                # =====================================================================
                 try:
                     if not df_cfg.empty:
                         c_p_i, c_c_i = 8, 9
@@ -928,17 +934,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
                                 break
                         
-                        # Escanear matriz en busca del producto
                         mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
                         if not mask_cfg.any(): mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
                         
                         if mask_cfg.any():
                             precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
                             if precio_maestro > 0:
-                                costo_unit = float(precio_maestro) # 💥 REESCRIBE Y ANULA EL PRECIO FLOTANTE DE SAP
+                                costo_unit = float(precio_maestro)
                 except Exception as e:
                     pass
-                # =====================================================================
 
                 total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                 dosis_teorica = None
