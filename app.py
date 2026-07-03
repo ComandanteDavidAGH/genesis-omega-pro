@@ -27,7 +27,7 @@ import modulos.m12_simulador_agro as m12
 import modulos.m13_oraculo as m13
 import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
-import modulos.modulo_gerencia as m16 # <--- 💥 AQUÍ AGREGAMOS LA CONEXIÓN AL NUEVO MÓDULO
+import modulos.m16_gerencia as m16
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
