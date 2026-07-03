@@ -1,0 +1,195 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import gspread
+import re
+from oauth2client.service_account import ServiceAccountCredentials
+
+# =================================================================
+# 🔌 CONEXIÓN Y EXTRACCIÓN DE DATOS (Aislado para Gerencia)
+# =================================================================
+
+def obtener_cliente_gspread_unificado():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
+
+def limpiar_dinero(val):
+    try:
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v: return 0.0
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.\-]', '', v)
+        if v.count('.') > 1:
+            partes = v.rsplit('.', 1)
+            v = partes[0].replace('.', '') + '.' + partes[1]
+        num = float(v) if v else 0.0
+        if 5 < num < 2000: num = num * 1000
+        return num
+    except: return 0.0
+
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_datos_gerenciales():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
+    
+    try:
+        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        datos_brutos = boveda_act.worksheet("TABLA 1").get_all_values()
+        
+        if len(datos_brutos) > 5:
+            columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"]
+            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos[5:]]
+            df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+            
+            # Limpieza básica
+            df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
+            df = df[~df['FINCA'].isin(['', 'NAN', 'NONE'])]
+            
+            # Clasificación de Tecnología (Radar de Dron vs Avión)
+            def clasificar_tec(row):
+                texto_busqueda = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))} {str(row.get('PISTA',''))}".upper()
+                if 'DRON' in texto_busqueda or 'DR5' in texto_busqueda:
+                    return 'DRONE'
+                return 'AVIÓN'
+            
+            df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
+            df['COSTO_FINAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero)
+            
+            # Filtrar solo registros con costo válido
+            df = df[df['COSTO_FINAL_HA'] > 0]
+            
+            return df
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"🚨 Error al conectar con la bóveda: {e}")
+        return pd.DataFrame()
+
+# =================================================================
+# 👑 RENDERIZADO VISUAL: PANEL GERENCIAL
+# =================================================================
+
+st.set_page_config(page_title="Dashboard Gerencial", layout="wide")
+
+st.markdown("""
+<style>
+    .titulo-gerencia { color: #1a365d; font-family: 'Arial Black'; border-bottom: 4px solid #d4af37; padding-bottom: 10px; margin-bottom: 20px;}
+    .kpi-card { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 20px; border-radius: 10px; color: white; box-shadow: 0px 4px 15px rgba(0,0,0,0.2); text-align: center;}
+    .kpi-title { font-size: 14px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .kpi-value { font-size: 28px; font-family: 'Arial Black'; margin: 10px 0 0 0; }
+    div[data-testid="stDataFrame"] { border: 2px solid #e0e0e0; border-radius: 8px; box-shadow: 0px 4px 10px rgba(0,0,0,0.05); }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("<h1 class='titulo-gerencia'>📊 Inteligencia Financiera: Drone vs Avión</h1>", unsafe_allow_html=True)
+
+with st.spinner("Extrayendo métricas financieras de la Bóveda..."):
+    df_base = cargar_datos_gerenciales()
+
+if df_base.empty:
+    st.warning("⚠️ No hay suficientes datos financieros procesados en la TABLA 1 para generar el comparativo.")
+    st.stop()
+
+# --- CÁLCULO DE KPIs GLOBALES ---
+costo_promedio_dron = df_base[df_base['TECNOLOGIA'] == 'DRONE']['COSTO_FINAL_HA'].mean()
+costo_promedio_avion = df_base[df_base['TECNOLOGIA'] == 'AVIÓN']['COSTO_FINAL_HA'].mean()
+
+# Evitar errores si falta alguna tecnología
+if pd.isna(costo_promedio_dron): costo_promedio_dron = 0
+if pd.isna(costo_promedio_avion): costo_promedio_avion = 0
+
+diferencia_global = costo_promedio_avion - costo_promedio_dron
+ahorro_pct_global = (diferencia_global / costo_promedio_avion * 100) if costo_promedio_avion > 0 else 0
+
+st.markdown("### 🎯 Visión Global (Promedios Históricos)")
+kpi1, kpi2, kpi3 = st.columns(3)
+
+with kpi1:
+    st.markdown(f"<div class='kpi-card'><p class='kpi-title'>🚁 Promedio Histórico Dron</p><p class='kpi-value'>$ {costo_promedio_dron:,.0f} <span style='font-size:16px; color:#a0aec0;'>/ Ha</span></p></div>", unsafe_allow_html=True)
+with kpi2:
+    st.markdown(f"<div class='kpi-card'><p class='kpi-title'>🛩️ Promedio Histórico Avión</p><p class='kpi-value'>$ {costo_promedio_avion:,.0f} <span style='font-size:16px; color:#a0aec0;'>/ Ha</span></p></div>", unsafe_allow_html=True)
+with kpi3:
+    color_diff = "#27ae60" if diferencia_global > 0 else "#e53e3e"
+    estado_texto = "Ahorro a favor del Dron" if diferencia_global > 0 else "Dron es más costoso"
+    st.markdown(f"<div class='kpi-card' style='border-left-color: {color_diff};'><p class='kpi-title'>⚖️ {estado_texto}</p><p class='kpi-value' style='color:{color_diff};'>$ {abs(diferencia_global):,.0f} <span style='font-size:16px;'>/ Ha ({ahorro_pct_global:+.1f}%)</span></p></div>", unsafe_allow_html=True)
+
+st.markdown("<br><hr>", unsafe_allow_html=True)
+
+# --- MATRIZ COMPARATIVA POR FINCA ---
+st.markdown("### 📋 Matriz Comparativa: Costo / Ha por Finca")
+st.info("Esta tabla agrupa las fincas que han recibido tratamientos con **ambas tecnologías**, calculando la eficiencia financiera en pesos colombianos.")
+
+# Crear tabla dinámica (Pivot)
+matriz_fincas = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_FINAL_HA', aggfunc='mean').reset_index()
+
+# Validar que existan ambas columnas
+if 'AVIÓN' not in matriz_fincas.columns: matriz_fincas['AVIÓN'] = np.nan
+if 'DRONE' not in matriz_fincas.columns: matriz_fincas['DRONE'] = np.nan
+
+# Filtrar solo fincas que tengan ambos datos para hacer una comparación real (Opcional, pero recomendado para Gerencia)
+matriz_comparativa = matriz_fincas.dropna(subset=['AVIÓN', 'DRONE']).copy()
+
+if not matriz_comparativa.empty:
+    # Cálculos de diferencia
+    matriz_comparativa['Ahorro con Dron ($)'] = matriz_comparativa['AVIÓN'] - matriz_comparativa['DRONE']
+    matriz_comparativa['Eficiencia (%)'] = (matriz_comparativa['Ahorro con Dron ($)'] / matriz_comparativa['AVIÓN']) * 100
+
+    # Formateo visual
+    df_visual = matriz_comparativa.copy()
+    df_visual['AVIÓN'] = df_visual['AVIÓN'].map("$ {:,.0f}".format).str.replace(",", ".")
+    df_visual['DRONE'] = df_visual['DRONE'].map("$ {:,.0f}".format).str.replace(",", ".")
+    df_visual['Ahorro con Dron ($)'] = df_visual['Ahorro con Dron ($)'].map("$ {:,.0f}".format).str.replace(",", ".")
+    df_visual['Eficiencia (%)'] = df_visual['Eficiencia (%)'].map("{:+.2f} %".format)
+
+    # Ordenar por el mayor ahorro
+    df_visual = df_visual.sort_values(by='Eficiencia (%)', ascending=False)
+
+    st.dataframe(df_visual, use_container_width=True, hide_index=True)
+    
+    # Botón de exportación
+    csv_gerencia = df_visual.to_csv(index=False).encode('utf-8')
+    st.download_button(label="📥 Exportar Matriz a Excel (CSV)", data=csv_gerencia, file_name="Reporte_Eficiencia_Gerencia.csv", mime="text/csv")
+
+    # --- ANÁLISIS GRÁFICO ---
+    st.markdown("<br>### 📈 Análisis Gráfico de Brechas", unsafe_allow_html=True)
+    
+    # Preparar datos para el gráfico
+    matriz_grafico = matriz_comparativa.sort_values(by='AVIÓN', ascending=False).head(15) # Top 15 fincas más costosas
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=matriz_grafico['FINCA'],
+        y=matriz_grafico['AVIÓN'],
+        name='Avión',
+        marker_color='#1a365d'
+    ))
+    fig.add_trace(go.Bar(
+        x=matriz_grafico['FINCA'],
+        y=matriz_grafico['DRONE'],
+        name='Dron',
+        marker_color='#d4af37'
+    ))
+
+    fig.update_layout(
+        title="Comparativo Costo/Ha (Avión vs Dron) - Top 15 Fincas",
+        xaxis_title="Finca",
+        yaxis_title="Costo Promedio ($ COP / Ha)",
+        barmode='group',
+        plot_bgcolor='rgba(0,0,0,0)',
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+else:
+    st.info("📌 En el historial actual no se detectan fincas que hayan sido fumigadas **tanto con Dron como con Avión** de manera simultánea para poder generar un comparativo cruzado.")
