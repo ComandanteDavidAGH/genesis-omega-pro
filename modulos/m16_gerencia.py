@@ -5,10 +5,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 import gspread
 import re
+import io
+from datetime import datetime, date
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 CONEXIÓN Y EXTRACCIÓN DE DATOS (Aislado para Gerencia)
+# 🔌 CONEXIÓN Y EXTRACCIÓN DE DATOS
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -37,6 +39,13 @@ def limpiar_dinero(val):
         return num
     except: return 0.0
 
+def procesar_fecha_gerencia(val):
+    try:
+        if isinstance(val, datetime): return val.date()
+        s = str(val).strip()
+        return datetime.strptime(s, "%d/%m/%Y").date()
+    except: return None
+
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_datos_gerenciales():
     gc = obtener_cliente_gspread_unificado()
@@ -47,203 +56,121 @@ def cargar_datos_gerenciales():
         datos_brutos = boveda_act.worksheet("TABLA 1").get_all_values()
         
         if len(datos_brutos) > 5:
-            # La columna 'COSTO_HA' corresponde a la Columna T (COSTO AVIÓN $/ha)
             columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"]
             filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos[5:]]
             df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             
-            # Limpieza básica
             df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            df = df[~df['FINCA'].isin(['', 'NAN', 'NONE'])]
+            df['FECHA_DT'] = df['FECHA'].apply(procesar_fecha_gerencia)
             
-            # Clasificación de Tecnología
             def clasificar_tec(row):
-                texto_busqueda = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))} {str(row.get('PISTA',''))}".upper()
-                if 'DRON' in texto_busqueda or 'DR5' in texto_busqueda:
-                    return 'DRONE'
+                texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
+                if 'DRON' in texto or 'DR5' in texto: return 'DRONE'
                 return 'AVIÓN'
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
+            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero)
+            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_dinero)
             
-            # EXTRACCIÓN DE LAS DOS MÉTRICAS
-            df['COSTO_FINAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero) # Total
-            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_dinero) # Solo Vuelo (Columna T)
-            
-            df = df[df['COSTO_FINAL_HA'] > 0]
-            return df
+            return df.dropna(subset=['FECHA_DT'])
         return pd.DataFrame()
-    except Exception as e:
-        st.error(f"🚨 Error al conectar con la bóveda: {e}")
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL: PANEL GERENCIAL
+# 👑 RENDERIZADO VISUAL
 # =================================================================
 
 def ejecutar():
     st.header("", anchor="inicio_modulo")
 
-    st.markdown("""
-    <style>
-        .titulo-gerencia { color: #1a365d; font-family: 'Arial Black'; border-bottom: 4px solid #d4af37; padding-bottom: 10px; margin-bottom: 20px;}
-        .kpi-card { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 20px; border-radius: 10px; color: white; box-shadow: 0px 4px 15px rgba(0,0,0,0.2); text-align: center;}
-        .kpi-title { font-size: 14px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-        .kpi-value { font-size: 28px; font-family: 'Arial Black'; margin: 10px 0 0 0; }
-        div[data-testid="stDataFrame"] { border: 2px solid #e0e0e0; border-radius: 8px; box-shadow: 0px 4px 10px rgba(0,0,0,0.05); }
-        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-        .stTabs [data-baseweb="tab"] { background-color: #f0f2f6; border-radius: 5px 5px 0px 0px; padding: 10px 20px; font-weight: bold; }
-        .stTabs [aria-selected="true"] { background-color: #0d1b2a !important; color: white !important; border-bottom: 3px solid #d4af37 !important;}
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Comparativo Drone vs Avión (Rango de Fechas)</h1>", unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-gerencia'>📊 Inteligencia Financiera: Drone vs Avión</h1>", unsafe_allow_html=True)
+    # --- 🛰️ SELECTORES DE FECHA ---
+    with st.container(border=True):
+        c_f1, c_f2, c_f3 = st.columns([1, 1, 1])
+        fecha_inicio = c_f1.date_input("📅 Desde:", value=date(2024, 1, 1))
+        fecha_fin = c_f2.date_input("📅 Hasta:", value=datetime.now().date())
+        
+        if st.button("🔄 Actualizar Rango", use_container_width=True):
+            st.cache_data.clear()
 
-    with st.spinner("Extrayendo métricas financieras de la Bóveda..."):
-        df_base = cargar_datos_gerenciales()
-
-    if df_base.empty:
-        st.warning("⚠️ No hay suficientes datos financieros procesados en la TABLA 1 para generar el comparativo.")
+    df_raw = cargar_datos_gerenciales()
+    
+    if df_raw.empty:
+        st.warning("⚠️ No se detectan datos en la base.")
         return
 
-    # CREACIÓN DE LAS PESTAÑAS
-    tab_total, tab_vuelo = st.tabs(["💰 COSTO TOTAL OPERACIÓN ($/Ha)", "✈️ COSTO EXCLUSIVO DE VUELO ($/Ha)"])
+    # Filtrado por fecha
+    df_base = df_raw[(df_raw['FECHA_DT'] >= fecha_inicio) & (df_raw['FECHA_DT'] <= fecha_fin)].copy()
 
-    # ==========================================================
+    if df_base.empty:
+        st.error(f"❌ No hay datos entre el {fecha_inicio} y el {fecha_fin}")
+        return
+
+    # --- 🏗️ PREPARACIÓN DE PESTAÑAS ---
+    tab_total, tab_vuelo = st.tabs(["💰 ANALÍTICA COSTO TOTAL", "✈️ EFICIENCIA PURA VUELO (Columna T)"])
+
+    # --- FUNCIÓN PARA DESCARGAR EXCEL ---
+    def descargar_excel(df_comparativo, nombre_archivo):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_comparativo.to_excel(writer, index=False, sheet_name='Comparativo')
+        return output.getvalue()
+
+    # ==========================================
     # PESTAÑA 1: COSTO TOTAL
-    # ==========================================================
+    # ==========================================
     with tab_total:
-        costo_promedio_dron = df_base[df_base['TECNOLOGIA'] == 'DRONE']['COSTO_FINAL_HA'].mean()
-        costo_promedio_avion = df_base[df_base['TECNOLOGIA'] == 'AVIÓN']['COSTO_FINAL_HA'].mean()
-
-        if pd.isna(costo_promedio_dron): costo_promedio_dron = 0
-        if pd.isna(costo_promedio_avion): costo_promedio_avion = 0
-
-        diferencia_global = costo_promedio_avion - costo_promedio_dron
-        ahorro_pct_global = (diferencia_global / costo_promedio_avion * 100) if costo_promedio_avion > 0 else 0
-
-        st.markdown("### 🎯 Visión Global (Promedios Históricos - Total Operación)")
-        kpi1, kpi2, kpi3 = st.columns(3)
-
-        with kpi1:
-            st.markdown(f"<div class='kpi-card'><p class='kpi-title'>🚁 Promedio Histórico Dron</p><p class='kpi-value'>$ {costo_promedio_dron:,.0f} <span style='font-size:16px; color:#a0aec0;'>/ Ha</span></p></div>", unsafe_allow_html=True)
-        with kpi2:
-            st.markdown(f"<div class='kpi-card'><p class='kpi-title'>🛩️ Promedio Histórico Avión</p><p class='kpi-value'>$ {costo_promedio_avion:,.0f} <span style='font-size:16px; color:#a0aec0;'>/ Ha</span></p></div>", unsafe_allow_html=True)
-        with kpi3:
-            color_diff = "#27ae60" if diferencia_global > 0 else "#e53e3e"
-            estado_texto = "Ahorro a favor del Dron" if diferencia_global > 0 else "Dron es más costoso"
-            st.markdown(f"<div class='kpi-card' style='border-left-color: {color_diff};'><p class='kpi-title'>⚖️ {estado_texto}</p><p class='kpi-value' style='color:{color_diff};'>$ {abs(diferencia_global):,.0f} <span style='font-size:16px;'>/ Ha ({ahorro_pct_global:+.1f}%)</span></p></div>", unsafe_allow_html=True)
-
-        st.markdown("<br><hr>", unsafe_allow_html=True)
-
-        st.markdown("### 📋 Matriz Comparativa: Costo Total por Finca")
+        st.info("Incluye Químicos + Vuelo + Servicio Técnico")
+        matriz_t = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_TOTAL_HA', aggfunc='mean').reset_index()
+        if 'AVIÓN' not in matriz_t.columns: matriz_t['AVIÓN'] = np.nan
+        if 'DRONE' not in matriz_t.columns: matriz_t['DRONE'] = np.nan
         
-        matriz_fincas = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_FINAL_HA', aggfunc='mean').reset_index()
-
-        if 'AVIÓN' not in matriz_fincas.columns: matriz_fincas['AVIÓN'] = np.nan
-        if 'DRONE' not in matriz_fincas.columns: matriz_fincas['DRONE'] = np.nan
-
-        matriz_comparativa = matriz_fincas.dropna(subset=['AVIÓN', 'DRONE']).copy()
-
-        if not matriz_comparativa.empty:
-            matriz_comparativa['Ahorro con Dron ($)'] = matriz_comparativa['AVIÓN'] - matriz_comparativa['DRONE']
-            matriz_comparativa['Eficiencia (%)'] = (matriz_comparativa['Ahorro con Dron ($)'] / matriz_comparativa['AVIÓN']) * 100
-
-            df_visual = matriz_comparativa.copy()
-            df_visual['AVIÓN'] = df_visual['AVIÓN'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_visual['DRONE'] = df_visual['DRONE'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_visual['Ahorro con Dron ($)'] = df_visual['Ahorro con Dron ($)'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_visual['Eficiencia (%)'] = df_visual['Eficiencia (%)'].map("{:+.2f} %".format)
-
-            df_visual = df_visual.sort_values(by='Eficiencia (%)', ascending=False)
-
-            st.dataframe(df_visual, use_container_width=True, hide_index=True)
+        m_comp = matriz_t.dropna(subset=['AVIÓN', 'DRONE']).copy()
+        
+        if not m_comp.empty:
+            m_comp['Diferencia ($)'] = m_comp['AVIÓN'] - m_comp['DRONE']
+            m_comp['Eficiencia (%)'] = (m_comp['Diferencia ($)'] / m_comp['AVIÓN']) * 100
             
-            st.markdown("<br>### 📈 Análisis Gráfico de Brechas (Total Operación)", unsafe_allow_html=True)
-            
-            matriz_grafico = matriz_comparativa.sort_values(by='AVIÓN', ascending=False).head(15).copy()
-            matriz_grafico['FINCA_CORTA'] = matriz_grafico['FINCA'].apply(lambda x: x[:18] + '...' if len(x) > 18 else x)
-            
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=matriz_grafico['FINCA_CORTA'], y=matriz_grafico['AVIÓN'], name='Avión', marker_color='#1a365d'))
-            fig.add_trace(go.Bar(x=matriz_grafico['FINCA_CORTA'], y=matriz_grafico['DRONE'], name='Dron', marker_color='#d4af37'))
+            st.dataframe(m_comp.style.format({
+                'AVIÓN': '$ {:,.0f}', 'DRONE': '$ {:,.0f}', 
+                'Diferencia ($)': '$ {:,.0f}', 'Eficiencia (%)': '{:+.1f}%'
+            }), use_container_width=True, hide_index=True)
 
-            fig.update_layout(
-                title="Comparativo Costo TOTAL ($ COP / Ha) - Top 15 Fincas",
-                xaxis_title="Finca", yaxis_title="Costo Total Promedio",
-                barmode='group', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                xaxis=dict(tickangle=-45)
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Botón de Excel
+            excel_data = descargar_excel(m_comp, "Comparativo_Total.xlsx")
+            st.download_button(label="📥 Descargar Comparativo Total (Excel)", data=excel_data, file_name=f"Reporte_Total_{fecha_inicio}_al_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         else:
-            st.info("📌 En el historial actual no se detectan fincas que hayan sido fumigadas tanto con Dron como con Avión.")
+            st.warning("No hay fincas que tengan ambas tecnologías en este rango de fechas.")
 
-    # ==========================================================
-    # PESTAÑA 2: COSTO EXCLUSIVO DE VUELO
-    # ==========================================================
+    # ==========================================
+    # PESTAÑA 2: COSTO EXCLUSIVO VUELO
+    # ==========================================
     with tab_vuelo:
-        vuelo_promedio_dron = df_base[df_base['TECNOLOGIA'] == 'DRONE']['COSTO_VUELO_HA'].mean()
-        vuelo_promedio_avion = df_base[df_base['TECNOLOGIA'] == 'AVIÓN']['COSTO_VUELO_HA'].mean()
-
-        if pd.isna(vuelo_promedio_dron): vuelo_promedio_dron = 0
-        if pd.isna(vuelo_promedio_avion): vuelo_promedio_avion = 0
-
-        diff_vuelo = vuelo_promedio_avion - vuelo_promedio_dron
-        ahorro_pct_vuelo = (diff_vuelo / vuelo_promedio_avion * 100) if vuelo_promedio_avion > 0 else 0
-
-        st.markdown("### 🎯 Visión Global (Promedios Históricos - Tarifa de Vuelo)")
-        kv1, kv2, kv3 = st.columns(3)
-
-        with kv1:
-            st.markdown(f"<div class='kpi-card'><p class='kpi-title'>🚁 Tarifa Promedio Dron</p><p class='kpi-value'>$ {vuelo_promedio_dron:,.0f} <span style='font-size:16px; color:#a0aec0;'>/ Ha</span></p></div>", unsafe_allow_html=True)
-        with kv2:
-            st.markdown(f"<div class='kpi-card'><p class='kpi-title'>🛩️ Tarifa Promedio Avión</p><p class='kpi-value'>$ {vuelo_promedio_avion:,.0f} <span style='font-size:16px; color:#a0aec0;'>/ Ha</span></p></div>", unsafe_allow_html=True)
-        with kv3:
-            color_diff_v = "#27ae60" if diff_vuelo > 0 else "#e53e3e"
-            estado_texto_v = "Ahorro a favor del Dron" if diff_vuelo > 0 else "Dron es más costoso"
-            st.markdown(f"<div class='kpi-card' style='border-left-color: {color_diff_v};'><p class='kpi-title'>⚖️ {estado_texto_v}</p><p class='kpi-value' style='color:{color_diff_v};'>$ {abs(diff_vuelo):,.0f} <span style='font-size:16px;'>/ Ha ({ahorro_pct_vuelo:+.1f}%)</span></p></div>", unsafe_allow_html=True)
-
-        st.markdown("<br><hr>", unsafe_allow_html=True)
-
-        st.markdown("### 📋 Matriz Comparativa: Tarifa Exclusiva de Vuelo por Finca")
+        st.success("Analizando estrictamente la Columna T: COSTO AVIÓN ($/ha)")
+        matriz_v = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_VUELO_HA', aggfunc='mean').reset_index()
+        if 'AVIÓN' not in matriz_v.columns: matriz_v['AVIÓN'] = np.nan
+        if 'DRONE' not in matriz_v.columns: matriz_v['DRONE'] = np.nan
         
-        matriz_fincas_v = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_VUELO_HA', aggfunc='mean').reset_index()
-
-        if 'AVIÓN' not in matriz_fincas_v.columns: matriz_fincas_v['AVIÓN'] = np.nan
-        if 'DRONE' not in matriz_fincas_v.columns: matriz_fincas_v['DRONE'] = np.nan
-
-        matriz_comp_vuelo = matriz_fincas_v.dropna(subset=['AVIÓN', 'DRONE']).copy()
-
-        if not matriz_comp_vuelo.empty:
-            matriz_comp_vuelo['Ahorro con Dron ($)'] = matriz_comp_vuelo['AVIÓN'] - matriz_comp_vuelo['DRONE']
-            matriz_comp_vuelo['Eficiencia (%)'] = (matriz_comp_vuelo['Ahorro con Dron ($)'] / matriz_comp_vuelo['AVIÓN']) * 100
-
-            df_visual_v = matriz_comp_vuelo.copy()
-            df_visual_v['AVIÓN'] = df_visual_v['AVIÓN'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_visual_v['DRONE'] = df_visual_v['DRONE'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_visual_v['Ahorro con Dron ($)'] = df_visual_v['Ahorro con Dron ($)'].map("$ {:,.0f}".format).str.replace(",", ".")
-            df_visual_v['Eficiencia (%)'] = df_visual_v['Eficiencia (%)'].map("{:+.2f} %".format)
-
-            df_visual_v = df_visual_v.sort_values(by='Eficiencia (%)', ascending=False)
-
-            st.dataframe(df_visual_v, use_container_width=True, hide_index=True)
+        m_comp_v = matriz_v.dropna(subset=['AVIÓN', 'DRONE']).copy()
+        
+        if not m_comp_v.empty:
+            m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'] - m_comp_v['DRONE']
+            m_comp_v['Eficiencia (%)'] = (m_comp_v['Diferencia ($)'] / m_comp_v['AVIÓN']) * 100
             
-            st.markdown("<br>### 📈 Análisis Gráfico de Brechas (Solo Vuelo)", unsafe_allow_html=True)
-            
-            matriz_grafico_v = matriz_comp_vuelo.sort_values(by='AVIÓN', ascending=False).head(15).copy()
-            matriz_grafico_v['FINCA_CORTA'] = matriz_grafico_v['FINCA'].apply(lambda x: x[:18] + '...' if len(x) > 18 else x)
-            
-            fig_v = go.Figure()
-            fig_v.add_trace(go.Bar(x=matriz_grafico_v['FINCA_CORTA'], y=matriz_grafico_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
-            fig_v.add_trace(go.Bar(x=matriz_grafico_v['FINCA_CORTA'], y=matriz_grafico_v['DRONE'], name='Dron', marker_color='#d4af37'))
+            st.dataframe(m_comp_v.style.format({
+                'AVIÓN': '$ {:,.0f}', 'DRONE': '$ {:,.0f}', 
+                'Diferencia ($)': '$ {:,.0f}', 'Eficiencia (%)': '{:+.1f}%'
+            }), use_container_width=True, hide_index=True)
 
-            fig_v.update_layout(
-                title="Comparativo Tarifa VUELO ($ COP / Ha) - Top 15 Fincas",
-                xaxis_title="Finca", yaxis_title="Tarifa Vuelo Promedio",
-                barmode='group', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                xaxis=dict(tickangle=-45)
-            )
-            st.plotly_chart(fig_v, use_container_width=True)
-        else:
-            st.info("📌 En el historial actual no se detectan fincas que hayan sido fumigadas tanto con Dron como con Avión.")
+            # Botón de Excel
+            excel_data_v = descargar_excel(m_comp_v, "Comparativo_Vuelo.xlsx")
+            st.download_button(label="📥 Descargar Comparativo Vuelo (Excel)", data=excel_data_v, file_name=f"Reporte_Vuelo_{fecha_inicio}_al_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
+            # --- GRÁFICA ---
+            m_comp_v['FINCA_CORTA'] = m_comp_v['FINCA'].str[:15]
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
+            fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['DRONE'], name='Dron', marker_color='#d4af37'))
+            fig.update_layout(title="Brecha de Tarifa Vuelo (Avión vs Dron)", barmode='group', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
