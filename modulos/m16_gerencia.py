@@ -9,11 +9,8 @@ import io
 from datetime import datetime, date
 from oauth2client.service_account import ServiceAccountCredentials
 
-# 💥 IMPORTAMOS TU ARTILLERÍA NATIVA DE CONFIANZA
-from modulos.utilidades import extraer_numero, procesar_fecha_pesada
-
 # =================================================================
-# 🔌 CONEXIÓN Y EXTRACCIÓN DE DATOS
+# 🔌 CONEXIÓN Y MOTORES DE LIMPIEZA DE ALTA PRECISIÓN
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -25,6 +22,64 @@ def obtener_cliente_gspread_unificado():
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
     except:
+        return None
+
+def limpiar_dinero(val):
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).strip()
+    if not v or v == '-': return 0.0
+    v = re.sub(r'[^\d\.,\-]', '', v)
+    if not v: return 0.0
+    try:
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): 
+                v = v.replace('.', '').replace(',', '.')
+            else:
+                v = v.replace(',', '')
+        elif ',' in v: 
+            v = v.replace(',', '.')
+        
+        num = float(v) if v else 0.0
+        # 💥 PARCHE DE ESCALA FINANCIERO: Si Python lo lee como decimal entre 5 y 2500, lo escala a miles reales
+        if 5 < num < 2500: 
+            num = num * 1000
+        return num
+    except:
+        return 0.0
+
+def limpiar_area(val):
+    try:
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v: return 0.0
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.\-]', '', v)
+        if v.count('.') > 1:
+            partes = v.rsplit('.', 1)
+            v = partes[0].replace('.', '') + '.' + partes[1]
+        return float(v) if v else 0.0
+    except: return 0.0
+
+def procesar_fecha_gerencia(val):
+    try:
+        if isinstance(val, datetime): return val.date()
+        s = str(val).strip().lower()
+        # Limpieza de nombres de días si vienen en texto largo desde Excel
+        if ',' in s: s = s.split(',')[1].strip()
+        
+        meses = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
+        match = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
+        if match:
+            mes_str, dia_str, anio_str = match.groups()
+            if mes_str in meses: return date(int(anio_str), meses[mes_str], int(dia_str))
+            
+        match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+        if match2:
+            dia_str, mes_str, anio_str = match2.groups()
+            if mes_str in meses: return date(int(anio_str), meses[mes_str], int(dia_str))
+
+        return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce').date()
+    except: 
         return None
 
 @st.cache_data(show_spinner=False, ttl=600)
@@ -42,9 +97,7 @@ def cargar_datos_gerenciales():
             df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             
             df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            
-            # 💥 SEGURO 1: Usamos tu procesador robusto nativo para digerir los textos largos del Excel
-            df['FECHA_DT'] = df['FECHA'].apply(procesar_fecha_pesada)
+            df['FECHA_DT'] = df['FECHA'].apply(procesar_fecha_gerencia)
             
             def clasificar_tec(row):
                 texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
@@ -53,9 +106,9 @@ def cargar_datos_gerenciales():
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
             
-            # 💥 SEGURO 2: Usamos tu extractor de números nativo para exactitud milimétrica
-            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(extraer_numero)
-            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(extraer_numero)
+            # 💥 SEGURO CONTABLE: Inyección del motor limpiar_dinero para corregir las escalas automáticamente
+            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero)
+            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_dinero)
             
             return df.dropna(subset=['FECHA_DT'])
         return pd.DataFrame()
@@ -63,7 +116,7 @@ def cargar_datos_gerenciales():
         return pd.DataFrame()
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL
+# 👑 RENDERIZADO VISUAL CON FORMATO LATINO
 # =================================================================
 
 def ejecutar():
@@ -87,14 +140,12 @@ def ejecutar():
         st.warning("⚠️ No se detectan datos en la base maestra.")
         return
 
-    # 💥 SEGURO 3: Comparamos usando .dt.date para romper el bloqueo de la memoria de Streamlit
-    df_base = df_raw[(df_raw['FECHA_DT'].dt.date >= fecha_inicio) & (df_raw['FECHA_DT'].dt.date <= fecha_fin)].copy()
+    df_base = df_raw[(df_raw['FECHA_DT'] >= fecha_inicio) & (df_raw['FECHA_DT'] <= fecha_fin)].copy()
 
     if df_base.empty:
         st.error(f"❌ No se encontraron registros de vuelo entre el {fecha_inicio.strftime('%d/%m/%Y')} y el {fecha_fin.strftime('%d/%m/%Y')}")
         return
 
-    # --- 🏗️ PREPARACIÓN DE PESTAÑAS ---
     tab_total, tab_vuelo = st.tabs(["💰 ANALÍTICA COSTO TOTAL", "✈️ EFICIENCIA PURA VUELO (Columna T)"])
 
     def descargar_excel(df_comparativo):
@@ -102,6 +153,10 @@ def ejecutar():
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_comparativo.to_excel(writer, index=False, sheet_name='Comparativo')
         return output.getvalue()
+
+    def formatear_pesos(val):
+        if pd.isna(val) or val == 0: return "-"
+        return f"$ {val:,.0f}".replace(",", ".")
 
     # ==========================================
     # PESTAÑA 1: COSTO TOTAL
@@ -118,10 +173,13 @@ def ejecutar():
             m_comp['Diferencia ($)'] = m_comp['AVIÓN'] - m_comp['DRONE']
             m_comp['Eficiencia (%)'] = (m_comp['Diferencia ($)'] / m_comp['AVIÓN']) * 100
             
-            st.dataframe(m_comp.style.format({
-                'AVIÓN': '$ {:,.0f}', 'DRONE': '$ {:,.0f}', 
-                'Diferencia ($)': '$ {:,.0f}', 'Eficiencia (%)': '{:+.1f}%'
-            }), use_container_width=True, hide_index=True)
+            df_print_t = m_comp.copy()
+            df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
+            df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
+            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($を確認)'].apply(formatear_pesos) if 'Diferencia ($を確認)' in df_print_t else df_print_t['Diferencia ($)'].apply(formatear_pesos)
+            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'].map("{:+.1f}%".format)
+
+            st.dataframe(df_print_t, use_container_width=True, hide_index=True)
 
             excel_data = descargar_excel(m_comp)
             st.download_button(label="📥 Descargar Comparativo Total (Excel)", data=excel_data, file_name=f"Reporte_Total_{fecha_inicio}_al_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -129,7 +187,7 @@ def ejecutar():
             st.warning("📌 No hay fincas cruzadas que usaran ambas tecnologías en este rango de fechas.")
 
     # ==========================================
-    # PESTAÑA 2: COSTO EXCLUSIVO VUELO (Tu pestaña sagrada)
+    # PESTAÑA 2: COSTO EXCLUSIVO VUELO
     # ==========================================
     with tab_vuelo:
         st.success("🔬 Analizando estrictamente la Columna T: COSTO AVIÓN ($/ha) - Cero Insumos")
@@ -143,10 +201,13 @@ def ejecutar():
             m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'] - m_comp_v['DRONE']
             m_comp_v['Eficiencia (%)'] = (m_comp_v['Diferencia ($)'] / m_comp_v['AVIÓN']) * 100
             
-            st.dataframe(m_comp_v.style.format({
-                'AVIÓN': '$ {:,.0f}', 'DRONE': '$ {:,.0f}', 
-                'Diferencia ($)': '$ {:,.0f}', 'Eficiencia (%)': '{:+.1f}%'
-            }), use_container_width=True, hide_index=True)
+            df_print_v = m_comp_v.copy()
+            df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
+            df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
+            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
+            df_print_v['Eficiencia (%)'] = df_print_v['Eficiencia (%)'].map("{:+.1f}%".format)
+
+            st.dataframe(df_print_v, use_container_width=True, hide_index=True)
 
             excel_data_v = descargar_excel(m_comp_v)
             st.download_button(label="📥 Descargar Comparativo Vuelo (Excel)", data=excel_data_v, file_name=f"Reporte_Vuelo_{fecha_inicio}_al_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
