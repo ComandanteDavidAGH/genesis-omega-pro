@@ -27,7 +27,7 @@ import modulos.m12_simulador_agro as m12
 import modulos.m13_oraculo as m13 # <-- AGREGUE ESTA LÍNEA
 import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
-
+import modulo_gerencia # Asegúrate de que el nombre del archivo coincida (sin el .py)
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
