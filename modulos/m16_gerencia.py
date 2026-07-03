@@ -77,7 +77,6 @@ def cargar_datos_gerenciales():
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
-            # 💥 CREAMOS EL IDENTIFICADOR DEL EQUIPO (Ej: "DR51 - DATATROT")
             df['OPERADOR_DRON'] = df['HK'].astype(str).str.strip() + " - " + df['PISTA'].astype(str).str.strip()
             
             return df.dropna(subset=['FECHA_FILTRABLE'])
@@ -85,7 +84,7 @@ def cargar_datos_gerenciales():
     except: return pd.DataFrame()
 
 # =================================================================
-# ⚙️ MOTOR EXCEL PROFESIONAL (Con Nueva Columna de Operador)
+# ⚙️ MOTOR EXCEL PROFESIONAL (CON SEMAFORIZACIÓN)
 # =================================================================
 
 def generar_excel_maestro(df_total, df_vuelo):
@@ -99,16 +98,19 @@ def generar_excel_maestro(df_total, df_vuelo):
         header_font = Font(color="FFFFFF", bold=True)
         align_center = Alignment(horizontal='center', vertical='center')
         
+        # Colores para semaforización
+        font_rojo = Font(color="C00000", bold=True) # Rojo oscuro
+        font_verde = Font(color="00B050", bold=True) # Verde financiero
+        
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
             
-            # Ajuste perfecto para las 6 columnas
-            ws.column_dimensions['A'].width = 38  # FINCA
-            ws.column_dimensions['B'].width = 25  # EQUIPO DRON
-            ws.column_dimensions['C'].width = 18  # AVIÓN
-            ws.column_dimensions['D'].width = 18  # DRONE
-            ws.column_dimensions['E'].width = 20  # Diferencia
-            ws.column_dimensions['F'].width = 16  # Eficiencia
+            ws.column_dimensions['A'].width = 38
+            ws.column_dimensions['B'].width = 25
+            ws.column_dimensions['C'].width = 18
+            ws.column_dimensions['D'].width = 18
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 16
             
             for cell in ws[1]:
                 cell.fill = header_fill
@@ -118,8 +120,21 @@ def generar_excel_maestro(df_total, df_vuelo):
             for row in range(2, ws.max_row + 1):
                 ws[f'C{row}'].number_format = '"$"#,##0'
                 ws[f'D{row}'].number_format = '"$"#,##0'
-                ws[f'E{row}'].number_format = '"$"#,##0'
-                ws[f'F{row}'].number_format = '0.0%' 
+                
+                celda_dif = ws[f'E{row}']
+                celda_efi = ws[f'F{row}']
+                
+                celda_dif.number_format = '"$"#,##0'
+                celda_efi.number_format = '0.0%' 
+                
+                # 💥 SEMAFORIZACIÓN EN EXCEL
+                if isinstance(celda_dif.value, (int, float)):
+                    if celda_dif.value > 0:
+                        celda_dif.font = font_verde
+                        celda_efi.font = font_verde
+                    elif celda_dif.value < 0:
+                        celda_dif.font = font_rojo
+                        celda_efi.font = font_rojo
                 
     return output.getvalue()
 
@@ -151,18 +166,16 @@ def ejecutar():
         st.error(f"❌ No se encontraron registros de vuelo para el rango seleccionado.")
         return
 
-    # 💥 SEPARACIÓN ESTRATÉGICA PARA NO CRUZAR CABLES
     df_aviones = df_base[df_base['TECNOLOGIA'] == 'AVIÓN'].copy()
     df_drones = df_base[df_base['TECNOLOGIA'] == 'DRONE'].copy()
 
     # PREPARAR DATA: COSTO VUELO PURA
     df_vuelo_avion = df_aviones.groupby('FINCA')['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'AVIÓN'})
     df_vuelo_dron = df_drones.groupby(['FINCA', 'OPERADOR_DRON'])['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'DRONE'})
-    
     m_comp_v = pd.merge(df_vuelo_dron, df_vuelo_avion, on='FINCA', how='inner')
     
     if not m_comp_v.empty:
-        m_comp_v = m_comp_v[['FINCA', 'OPERADOR_DRON', 'AVIÓN', 'DRONE']] # Ordenar columnas
+        m_comp_v = m_comp_v[['FINCA', 'OPERADOR_DRON', 'AVIÓN', 'DRONE']]
         m_comp_v.rename(columns={'OPERADOR_DRON': 'EQUIPO DRON'}, inplace=True)
         m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'] - m_comp_v['DRONE']
         m_comp_v['Eficiencia (%)'] = m_comp_v['Diferencia ($)'] / m_comp_v['AVIÓN']
@@ -170,7 +183,6 @@ def ejecutar():
     # PREPARAR DATA: COSTO TOTAL
     df_total_avion = df_aviones.groupby('FINCA')['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'AVIÓN'})
     df_total_dron = df_drones.groupby(['FINCA', 'OPERADOR_DRON'])['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'DRONE'})
-    
     m_comp_t = pd.merge(df_total_dron, df_total_avion, on='FINCA', how='inner')
 
     if not m_comp_t.empty:
@@ -179,11 +191,10 @@ def ejecutar():
         m_comp_t['Diferencia ($)'] = m_comp_t['AVIÓN'] - m_comp_t['DRONE']
         m_comp_t['Eficiencia (%)'] = m_comp_t['Diferencia ($)'] / m_comp_t['AVIÓN'] 
 
-    # --- 💎 BOTÓN MAESTRO DE DESCARGA ---
     if not m_comp_t.empty and not m_comp_v.empty:
         excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
         st.download_button(
-            label="📥 DESCARGAR REPORTE GERENCIAL (EXCEL COMPLETO)", 
+            label="📥 DESCARGAR REPORTE GERENCIAL (EXCEL A COLOR)", 
             data=excel_data, 
             file_name=f"Reporte_Eficiencia_Detallado.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -195,7 +206,17 @@ def ejecutar():
 
     def formatear_pesos(val):
         if pd.isna(val) or val == 0: return "-"
+        # Se asegura de poner el negativo antes del símbolo del peso
+        if val < 0: return f"-$ {abs(val):,.0f}".replace(",", ".")
         return f"$ {val:,.0f}".replace(",", ".")
+
+    # 💥 MOTOR DE SEMAFORIZACIÓN PARA LA PANTALLA
+    def semaforo_financiero(val):
+        if isinstance(val, str):
+            if '-' in val and val != '-': return 'color: #e53e3e; font-weight: bold;' # Rojo
+            elif val == '-': return 'color: #718096;' # Gris
+            else: return 'color: #27ae60; font-weight: bold;' # Verde
+        return ''
 
     # ==========================================================
     # PESTAÑA: TARIFA VUELO
@@ -207,11 +228,11 @@ def ejecutar():
             df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
             df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
             df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
-            df_print_v['Eficiencia (%)'] = (df_print_v['Eficiencia (%)'] * 100).map("{:+.1f}%".format)
+            df_print_v['Eficiencia (%)'] = (df_print_v['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
 
-            st.dataframe(df_print_v, use_container_width=True, hide_index=True)
+            # Aplicamos los colores a la tabla
+            st.dataframe(df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
             
-            # Gráfica
             df_print_v['EJE_X'] = df_print_v['FINCA'].str[:12] + " (" + df_print_v['EQUIPO DRON'].str.split('-').str[0].str.strip() + ")"
             fig = go.Figure()
             fig.add_trace(go.Bar(x=df_print_v['EJE_X'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
@@ -231,8 +252,9 @@ def ejecutar():
             df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
             df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
             df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
-            df_print_t['Eficiencia (%)'] = (df_print_t['Eficiencia (%)'] * 100).map("{:+.1f}%".format)
+            df_print_t['Eficiencia (%)'] = (df_print_t['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
 
-            st.dataframe(df_print_t, use_container_width=True, hide_index=True)
+            # Aplicamos los colores a la tabla
+            st.dataframe(df_print_t.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
         else:
             st.warning("📌 No hay datos cruzados en el rango.")
