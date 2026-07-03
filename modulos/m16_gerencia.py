@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from modulos.utilidades import procesar_fecha_pesada
 
 # =================================================================
-# 🔌 CONEXIÓN Y MOTORES DE LIMPIEZA DE ALTA TRANSPARENCIA
+# 🔌 CONEXIÓN Y MOTORES DE LIMPIEZA FINANCIERA
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -43,7 +43,6 @@ def limpiar_tarifa_excel(val):
         return 0.0
 
 def normalizar_a_fecha_pura(val):
-    """Garantiza la conversión estricta a un objeto date puro para evitar fugas de memoria"""
     try:
         res_nativo = procesar_fecha_pesada(val)
         if isinstance(res_nativo, (datetime, pd.Timestamp)):
@@ -69,9 +68,6 @@ def cargar_datos_gerenciales():
             df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             
             df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            df['FECHA_RAW'] = df['FECHA']
-            
-            # 🔒 CANDADO 1: Conversión homogénea a fecha pura
             df['FECHA_FILTRABLE'] = df['FECHA'].apply(normalizar_a_fecha_pura)
             
             def clasificar_tec(row):
@@ -89,17 +85,17 @@ def cargar_datos_gerenciales():
         return pd.DataFrame()
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL CONTROLADO POR SELECTOR
+# 👑 RENDERIZADO VISUAL: COMPARATIVO GERENCIAL DIRECTO
 # =================================================================
 
 def ejecutar():
     st.header("", anchor="inicio_modulo")
 
-    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Inteligencia Comparativa Financiera</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Comparativo Financiero: Drone vs Avión</h1>", unsafe_allow_html=True)
 
-    # --- 🛰️ SELECTORES DE FECHA INTERACTIVOS (RESTAURADOS) ---
+    # --- 🛰️ FILTROS DE RANGO DE FECHAS ---
     with st.container(border=True):
-        st.markdown("#### 📅 Rango de Consulta Avanzada")
+        st.markdown("#### 📅 Rango de Consulta")
         c_f1, c_f2, c_f3 = st.columns([1, 1, 1])
         fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
         fecha_fin = c_f2.date_input("Hasta:", value=date(2026, 12, 31))
@@ -114,11 +110,11 @@ def ejecutar():
         st.warning("⚠️ No se detectan registros en la base maestra.")
         return
 
-    # 🔒 CANDADO 2: Filtrado directo y estricto utilizando objetos tipo date puros
+    # Filtrado estricto por el rango de fechas en pantalla
     df_base = df_raw[(df_raw['FECHA_FILTRABLE'] >= fecha_inicio) & (df_raw['FECHA_FILTRABLE'] <= fecha_fin)].copy()
 
     if df_base.empty:
-        st.error(f"❌ No se encontraron registros de vuelo para el rango seleccionado: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}")
+        st.error(f"❌ No se encontraron registros de vuelo para el rango seleccionado.")
         return
 
     tab_vuelo, tab_total = st.tabs(["✈️ TARIFA DE VUELO PURA (Columna T)", "💰 FACTURACIÓN TOTAL OPERACIÓN"])
@@ -134,49 +130,70 @@ def ejecutar():
         return f"$ {val:,.0f}".replace(",", ".")
 
     # ==========================================================
-    # PESTAÑA 1: TARIFA DE VUELO PURA (Tu sección sagrada)
+    # PESTAÑA 1: TARIFA DE VUELO PURA (Métrica Pura Sin Químicos)
     # ==========================================================
     with tab_vuelo:
-        st.success("🔬 Tarifas fijas del servicio extraídas directamente de la Columna T (Sin Químicos).")
+        st.success("🔬 Eficiencia en tarifas de servicio por Finca (Cero Insumos).")
         
-        # 🔒 CANDADO 3: Desglose por OS y Fecha para destruir cualquier promedio flotante
-        matriz_v = df_base.pivot_table(index=['FINCA', 'FECHA_RAW', 'OS'], columns='TECNOLOGIA', values='COSTO_VUELO_HA', aggfunc='first').reset_index()
+        # 💥 CLAVE GERENCIAL: Agrupamos estrictamente por FINCA y tomamos el valor máximo real (Evita promedios de decimales)
+        matriz_v = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_VUELO_HA', aggfunc='max').reset_index()
         
         if 'AVIÓN' not in matriz_v.columns: matriz_v['AVIÓN'] = np.nan
         if 'DRONE' not in matriz_v.columns: matriz_v['DRONE'] = np.nan
         
-        m_comp_v = matriz_v.copy()
-        m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'].fillna(0) - m_comp_v['DRONE'].fillna(0)
+        # Filtrar para mostrar solo las fincas que cruzaron ambas tecnologías en el periodo
+        m_comp_v = matriz_v.dropna(subset=['AVIÓN', 'DRONE']).copy()
         
-        df_print_v = m_comp_v.copy()
-        df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
-        df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
-        df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
+        if not m_comp_v.empty:
+            m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'] - m_comp_v['DRONE']
+            m_comp_v['Eficiencia (%)'] = (m_comp_v['Diferencia ($)'] / m_comp_v['AVIÓN']) * 100
+            
+            df_print_v = m_comp_v.copy()
+            df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
+            df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
+            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
+            df_print_v['Eficiencia (%)'] = df_print_v['Eficiencia (%)'].map("{:+.1f}%".format)
 
-        st.dataframe(df_print_v, use_container_width=True, hide_index=True)
+            st.dataframe(df_print_v, use_container_width=True, hide_index=True)
 
-        excel_data_v = descargar_excel(m_comp_v)
-        st.download_button(label="📥 Descargar Reporte Tarifas (Excel)", data=excel_data_v, file_name=f"Tarifas_Vuelo_{fecha_inicio}_a_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            excel_data_v = descargar_excel(m_comp_v)
+            st.download_button(label="📥 Descargar Reporte Tarifas (Excel)", data=excel_data_v, file_name="Comparativo_Tarifas_Vuelo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
+            # Gráfica ejecutiva compacta
+            m_comp_v['FINCA_CORTA'] = m_comp_v['FINCA'].str[:15]
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
+            fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['DRONE'], name='Dron', marker_color='#d4af37'))
+            fig.update_layout(title="Brecha Real de Tarifa Vuelo (Avión vs Dron)", barmode='group', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(tickangle=-45))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("📌 No hay fincas comparativas cruzadas (que usaran ambas tecnologías) en las fechas seleccionadas.")
 
     # ==========================================================
-    # PESTAÑA 2: FACTURACIÓN TOTAL
+    # PESTAÑA 2: FACTURACIÓN TOTAL (Insumos + Vuelo)
     # ==========================================================
     with tab_total:
-        st.info("📊 Consolidado completo por orden (Insumos + Aplicación)")
-        matriz_t = df_base.pivot_table(index=['FINCA', 'FECHA_RAW', 'OS'], columns='TECNOLOGIA', values='COSTO_TOTAL_HA', aggfunc='first').reset_index()
+        st.info("📊 Impacto macro en presupuesto por Finca (Consolidado Completo)")
+        matriz_t = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_TOTAL_HA', aggfunc='max').reset_index()
         
         if 'AVIÓN' not in matriz_t.columns: matriz_t['AVIÓN'] = np.nan
         if 'DRONE' not in matriz_t.columns: matriz_t['DRONE'] = np.nan
         
-        m_comp_t = matriz_t.copy()
-        m_comp_t['Diferencia ($)'] = m_comp_t['AVIÓN'].fillna(0) - m_comp_t['DRONE'].fillna(0)
+        m_comp_t = matriz_t.dropna(subset=['AVIÓN', 'DRONE']).copy()
         
-        df_print_t = m_comp_t.copy()
-        df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
-        df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
-        df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
+        if not m_comp_t.empty:
+            m_comp_t['Diferencia ($)'] = m_comp_t['AVIÓN'] - m_comp_t['DRONE']
+            m_comp_t['Eficiencia (%)'] = (m_comp_t['Diferencia ($)'] / m_comp_t['AVIÓN']) * 100
+            
+            df_print_t = m_comp_t.copy()
+            df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
+            df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
+            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
+            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'].map("{:+.1f}%".format)
 
-        st.dataframe(df_print_t, use_container_width=True, hide_index=True)
+            st.dataframe(df_print_t, use_container_width=True, hide_index=True)
 
-        excel_data = descargar_excel(m_comp_t)
-        st.download_button(label="📥 Descargar Reporte Total (Excel)", data=excel_data, file_name=f"Facturacion_Total_{fecha_inicio}_a_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            excel_data = descargar_excel(m_comp_t)
+            st.download_button(label="📥 Descargar Reporte Total (Excel)", data=excel_data, file_name="Comparativo_Facturacion_Total.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        else:
+            st.warning("📌 No hay fincas comparativas cruzadas en las fechas seleccionadas.")
