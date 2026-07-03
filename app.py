@@ -194,7 +194,6 @@ with st.sidebar:
         st.rerun()
 
 # --- 6. DELEGACIÓN A ESCUADRONES ---
-# 💥 BLINDAJE DE MEMORIA: Se lee directamente desde la sesión guardada
 menu = st.session_state['modulo_actual']
 
 if menu == "🏠 Centro de Mando": m0.renderizar()
@@ -213,4 +212,4 @@ elif menu == "🚁 12. Simulador Financiero Libre": m12.ejecutar(procesar_fecha_
 elif menu == "🔮 13. El Oráculo (Inventarios)": m13.ejecutar(purificar_lote, extraer_numero)
 elif menu == "💰 14. Pronóstico Financiero": m14.ejecutar(purificar_lote, extraer_numero)
 elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lote, extraer_numero)
-elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar() # <--- 💥 AQUÍ SE ENRUTA AL NUEVO MÓDULO
+elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar()
