@@ -1242,7 +1242,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         row_azul[16], row_azul[17], row_azul[18], row_azul[19], row_azul[20] = hk_f, tipo_mision_str, float(gran_total), round(tarifa_vuelo_neta_ha, 2), round(float(recargo_final), 2)
                         row_azul[21], row_azul[23], row_azul[28], row_azul[29], row_azul[32], row_azul[33] = float(gran_total), pista_manual, float(gran_total), round(total_pago_avion_neto, 2), tipo_productor, "GÉNESIS_V2_PRO"
                         
-                        fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), "", fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_mision_str, ""]
+                        # 💥 CORRECCIÓN DE TRANSPARENCIA: Forzamos la inyección del gran_total exacto en la columna E (índice 4)
+                        # Reemplazamos el espacio vacío "" por float(gran_total)
+                        fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), float(gran_total), fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_mision_str, ""]
                         
                         col_azul = hoja_maestra.col_values(1)
                         col_apoyo = hoja_apoyo.col_values(2)
