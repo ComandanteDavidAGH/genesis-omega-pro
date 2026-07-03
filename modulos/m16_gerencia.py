@@ -65,7 +65,7 @@ def cargar_datos_gerenciales():
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
             
-            # 💥 EXTRACCIÓN DE LAS DOS MÉTRICAS
+            # EXTRACCIÓN DE LAS DOS MÉTRICAS
             df['COSTO_FINAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero) # Total
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_dinero) # Solo Vuelo (Columna T)
             
@@ -77,7 +77,7 @@ def cargar_datos_gerenciales():
         return pd.DataFrame()
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL: PANEL GERENCIAL
+# 👑 RENDERIZADO VISUAL: PANEL GERENCIAL (AQUÍ EMPIEZA LA FUNCIÓN)
 # =================================================================
 
 def ejecutar():
@@ -105,11 +105,11 @@ def ejecutar():
         st.warning("⚠️ No hay suficientes datos financieros procesados en la TABLA 1 para generar el comparativo.")
         return
 
-    # 💥 CREACIÓN DE LAS PESTAÑAS
+    # CREACIÓN DE LAS PESTAÑAS
     tab_total, tab_vuelo = st.tabs(["💰 COSTO TOTAL OPERACIÓN ($/Ha)", "✈️ COSTO EXCLUSIVO DE VUELO ($/Ha)"])
 
     # ==========================================================
-    # PESTAÑA 1: COSTO TOTAL (Químicos + Vuelo + Servicio)
+    # PESTAÑA 1: COSTO TOTAL
     # ==========================================================
     with tab_total:
         costo_promedio_dron = df_base[df_base['TECNOLOGIA'] == 'DRONE']['COSTO_FINAL_HA'].mean()
@@ -180,10 +180,9 @@ def ejecutar():
 
 
     # ==========================================================
-    # PESTAÑA 2: COSTO EXCLUSIVO DE VUELO (Columna T)
+    # PESTAÑA 2: COSTO EXCLUSIVO DE VUELO
     # ==========================================================
     with tab_vuelo:
-        # Aquí usamos la métrica pura de Vuelo
         vuelo_promedio_dron = df_base[df_base['TECNOLOGIA'] == 'DRONE']['COSTO_VUELO_HA'].mean()
         vuelo_promedio_avion = df_base[df_base['TECNOLOGIA'] == 'AVIÓN']['COSTO_VUELO_HA'].mean()
 
