@@ -9,6 +9,9 @@ import io
 from datetime import datetime, date
 from oauth2client.service_account import ServiceAccountCredentials
 
+# 💥 CONEXIÓN A TU ARTILLERÍA NATIVA DE CONFIANZA
+from modulos.utilidades import procesar_fecha_pesada
+
 # =================================================================
 # 🔌 CONEXIÓN Y MOTORES DE LIMPIEZA DE ALTA PRECISIÓN
 # =================================================================
@@ -24,63 +27,21 @@ def obtener_cliente_gspread_unificado():
     except:
         return None
 
-def limpiar_dinero(val):
+def limpiar_tarifa_excel(val):
     if isinstance(val, (int, float)): return float(val)
-    v = str(val).strip()
-    if not v or v == '-': return 0.0
-    v = re.sub(r'[^\d\.,\-]', '', v)
-    if not v: return 0.0
+    v = str(val).strip().replace("$", "").replace(" ", "")
+    if not v or v in ['-', 'NAN', 'NONE']: return 0.0
     try:
-        if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): 
-                v = v.replace('.', '').replace(',', '.')
-            else:
-                v = v.replace(',', '')
-        elif ',' in v: 
-            v = v.replace(',', '.')
-        
-        num = float(v) if v else 0.0
-        # 💥 PARCHE DE ESCALA FINANCIERO: Si Python lo lee como decimal entre 5 y 2500, lo escala a miles reales
-        if 5 < num < 2500: 
-            num = num * 1000
-        return num
+        # Si el formato viene como "71.280", eliminamos el punto de miles para que Python lea 71280
+        if '.' in v and ',' not in v:
+            partes = v.split('.')
+            if len(partes) == 2 and len(partes[1]) == 3:
+                v = v.replace('.', '')
+        elif ',' in v:
+            v = v.replace('.', '').replace(',', '.')
+        return float(v)
     except:
         return 0.0
-
-def limpiar_area(val):
-    try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip()
-        if not v: return 0.0
-        v = v.replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1:
-            partes = v.rsplit('.', 1)
-            v = partes[0].replace('.', '') + '.' + partes[1]
-        return float(v) if v else 0.0
-    except: return 0.0
-
-def procesar_fecha_gerencia(val):
-    try:
-        if isinstance(val, datetime): return val.date()
-        s = str(val).strip().lower()
-        # Limpieza de nombres de días si vienen en texto largo desde Excel
-        if ',' in s: s = s.split(',')[1].strip()
-        
-        meses = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
-        match = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
-        if match:
-            mes_str, dia_str, anio_str = match.groups()
-            if mes_str in meses: return date(int(anio_str), meses[mes_str], int(dia_str))
-            
-        match2 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
-        if match2:
-            dia_str, mes_str, anio_str = match2.groups()
-            if mes_str in meses: return date(int(anio_str), meses[mes_str], int(dia_str))
-
-        return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce').date()
-    except: 
-        return None
 
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_datos_gerenciales():
@@ -97,61 +58,54 @@ def cargar_datos_gerenciales():
             df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             
             df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            df['FECHA_DT'] = df['FECHA'].apply(procesar_fecha_gerencia)
+            
+            # Sincronización perfecta con tus fechas reales del Excel
+            df['FECHA_RAW'] = df['FECHA'].apply(procesar_fecha_pesada)
+            df['FECHA_DT'] = pd.to_datetime(df['FECHA_RAW'], errors='coerce')
+            
+            # 🔒 CERROJO ABSOLUTO: Filtrado estricto en RAM solo para el año 2026
+            df = df[df['FECHA_DT'].dt.year == 2026]
             
             def clasificar_tec(row):
-                texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
+                texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))} {str(row.get('PISTA',''))}".upper()
                 if 'DRON' in texto or 'DR5' in texto: return 'DRONE'
                 return 'AVIÓN'
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
             
-            # 💥 SEGURO CONTABLE: Inyección del motor limpiar_dinero para corregir las escalas automáticamente
-            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero)
-            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_dinero)
+            # Limpieza financiera sin riesgo de escalas alteradas
+            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
+            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
-            return df.dropna(subset=['FECHA_DT'])
+            return df
         return pd.DataFrame()
     except: 
         return pd.DataFrame()
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL CON FORMATO LATINO
+# 👑 RENDERIZADO VISUAL
 # =================================================================
 
 def ejecutar():
     st.header("", anchor="inicio_modulo")
 
-    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Comparativo Drone vs Avión</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Inteligencia Comparativa (Periodo Fijo 2026)</h1>", unsafe_allow_html=True)
 
-    # --- 🛰️ SELECTORES DE FECHA ---
-    with st.container(border=True):
-        c_f1, c_f2, c_f3 = st.columns([1, 1, 1])
-        fecha_inicio = c_f1.date_input("📅 Desde:", value=date(2024, 1, 1))
-        fecha_fin = c_f2.date_input("📅 Hasta:", value=datetime.now().date())
-        
-        if st.button("🔄 Forzar Recarga de Nube", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-
-    df_raw = cargar_datos_gerenciales()
+    df_base = cargar_datos_gerenciales()
     
-    if df_raw.empty:
-        st.warning("⚠️ No se detectan datos en la base maestra.")
-        return
-
-    df_base = df_raw[(df_raw['FECHA_DT'] >= fecha_inicio) & (df_raw['FECHA_DT'] <= fecha_fin)].copy()
-
     if df_base.empty:
-        st.error(f"❌ No se encontraron registros de vuelo entre el {fecha_inicio.strftime('%d/%m/%Y')} y el {fecha_fin.strftime('%d/%m/%Y')}")
+        st.warning("⚠️ No se detectan operaciones registradas correspondientes al año 2026.")
         return
+
+    # Mensaje informativo ejecutivo para la junta
+    st.info("📅 **FILTRO ACTIVO:** Análisis financiero cerrado exclusivamente para el **Año Fiscal 2026**.")
 
     tab_total, tab_vuelo = st.tabs(["💰 ANALÍTICA COSTO TOTAL", "✈️ EFICIENCIA PURA VUELO (Columna T)"])
 
     def descargar_excel(df_comparativo):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_comparativo.to_excel(writer, index=False, sheet_name='Comparativo')
+            df_comparativo.to_excel(writer, index=False, sheet_name='Comparativo_2026')
         return output.getvalue()
 
     def formatear_pesos(val):
@@ -162,7 +116,7 @@ def ejecutar():
     # PESTAÑA 1: COSTO TOTAL
     # ==========================================
     with tab_total:
-        st.info("📊 Incluye: Químicos + Servicio de Vuelo + Margen de Distribución")
+        st.caption("Incluye: Químicos + Servicio de Vuelo + Margen de Distribución (Año 2026)")
         matriz_t = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_TOTAL_HA', aggfunc='mean').reset_index()
         if 'AVIÓN' not in matriz_t.columns: matriz_t['AVIÓN'] = np.nan
         if 'DRONE' not in matriz_t.columns: matriz_t['DRONE'] = np.nan
@@ -176,21 +130,21 @@ def ejecutar():
             df_print_t = m_comp.copy()
             df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
             df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
-            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($を確認)'].apply(formatear_pesos) if 'Diferencia ($を確認)' in df_print_t else df_print_t['Diferencia ($)'].apply(formatear_pesos)
+            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
             df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'].map("{:+.1f}%".format)
 
             st.dataframe(df_print_t, use_container_width=True, hide_index=True)
 
             excel_data = descargar_excel(m_comp)
-            st.download_button(label="📥 Descargar Comparativo Total (Excel)", data=excel_data, file_name=f"Reporte_Total_{fecha_inicio}_al_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button(label="📥 Descargar Reporte Total 2026 (Excel)", data=excel_data, file_name="Comparativo_Total_Fincas_2026.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         else:
-            st.warning("📌 No hay fincas cruzadas que usaran ambas tecnologías en este rango de fechas.")
+            st.warning("📌 No hay registros cruzados en 2026 para ambas tecnologías simultáneamente.")
 
     # ==========================================
-    # PESTAÑA 2: COSTO EXCLUSIVO VUELO
+    # PESTAÑA 2: COSTO EXCLUSIVO VUELO (Métrica Pura)
     # ==========================================
     with tab_vuelo:
-        st.success("🔬 Analizando estrictamente la Columna T: COSTO AVIÓN ($/ha) - Cero Insumos")
+        st.success("🔬 Métrica Pura de Aeronaves: Columna T (COSTO AVIÓN $/ha) sin insumos.")
         matriz_v = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_VUELO_HA', aggfunc='mean').reset_index()
         if 'AVIÓN' not in matriz_v.columns: matriz_v['AVIÓN'] = np.nan
         if 'DRONE' not in matriz_v.columns: matriz_v['DRONE'] = np.nan
@@ -210,18 +164,18 @@ def ejecutar():
             st.dataframe(df_print_v, use_container_width=True, hide_index=True)
 
             excel_data_v = descargar_excel(m_comp_v)
-            st.download_button(label="📥 Descargar Comparativo Vuelo (Excel)", data=excel_data_v, file_name=f"Reporte_Vuelo_{fecha_inicio}_al_{fecha_fin}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button(label="📥 Descargar Reporte Vuelo 2026 (Excel)", data=excel_data_v, file_name="Comparativo_Tarifas_Vuelo_2026.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             
             m_comp_v['FINCA_CORTA'] = m_comp_v['FINCA'].str[:15]
             fig = go.Figure()
             fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
             fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['DRONE'], name='Dron', marker_color='#d4af37'))
             fig.update_layout(
-                title="Brecha Real de Tarifa Vuelo (Avión vs Dron)", 
+                title="Brecha Real de Tarifa Vuelo 2026 (Avión vs Dron)", 
                 barmode='group', 
                 plot_bgcolor='rgba(0,0,0,0)',
                 xaxis=dict(tickangle=-45)
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("📌 No hay fincas cruzadas que usaran ambas tecnologías en este rango de fechas.")
+            st.warning("📌 No hay registros cruzados en 2026 para ambas tecnologías simultáneamente.")
