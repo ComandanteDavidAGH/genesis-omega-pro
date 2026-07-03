@@ -32,7 +32,6 @@ def limpiar_tarifa_excel(val):
     v = str(val).strip().replace("$", "").replace(" ", "")
     if not v or v in ['-', 'NAN', 'NONE']: return 0.0
     try:
-        # Si el formato viene como "71.280", eliminamos el punto de miles para que Python lea 71280
         if '.' in v and ',' not in v:
             partes = v.split('.')
             if len(partes) == 2 and len(partes[1]) == 3:
@@ -43,7 +42,7 @@ def limpiar_tarifa_excel(val):
     except:
         return 0.0
 
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner=False, ttl=120)
 def cargar_datos_gerenciales():
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame()
@@ -58,12 +57,10 @@ def cargar_datos_gerenciales():
             df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             
             df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            
-            # Sincronización perfecta con tus fechas reales del Excel
             df['FECHA_RAW'] = df['FECHA'].apply(procesar_fecha_pesada)
             df['FECHA_DT'] = pd.to_datetime(df['FECHA_RAW'], errors='coerce')
             
-            # 🔒 CERROJO ABSOLUTO: Filtrado estricto en RAM solo para el año 2026
+            # 🔒 FILTRO OPERATIVO TOTAL: Solo Año Fiscal 2026
             df = df[df['FECHA_DT'].dt.year == 2026]
             
             def clasificar_tec(row):
@@ -72,8 +69,6 @@ def cargar_datos_gerenciales():
                 return 'AVIÓN'
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
-            
-            # Limpieza financiera sin riesgo de escalas alteradas
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
@@ -89,18 +84,40 @@ def cargar_datos_gerenciales():
 def ejecutar():
     st.header("", anchor="inicio_modulo")
 
-    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Inteligencia Comparativa (Periodo Fijo 2026)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Panel de Eficiencia Gerencial (Año Fiscal 2026)</h1>", unsafe_allow_html=True)
 
-    df_base = cargar_datos_gerenciales()
+    # --- 🛰️ PANEL DE CONTROL DE AUDITORÍA Y ESTABILIZACIÓN ---
+    with st.container(border=True):
+        st.markdown("#### 🛠️ Herramientas de Estabilización de Datos")
+        c1, c2 = st.columns(2)
+        
+        # El interruptor que salvará la presentación frente a Gerencia
+        activar_parche = c1.toggle("⚡ Activar Corrección Automática de Flota (Ignorar errores del pasado)", value=True, help="Si está activo, el sistema aproximará las tarifas de Dron que fueron corrompidas en el Excel al valor fijo oficial más cercano (71.280, 75.518, 84.428).")
+        
+        if c2.button("🔄 Forzar Sincronización Total con la Nube", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    df_raw = cargar_datos_gerenciales()
     
-    if df_base.empty:
-        st.warning("⚠️ No se detectan operaciones registradas correspondientes al año 2026.")
+    if df_raw.empty:
+        st.warning("⚠️ No se detectan registros operativos para el año 2026 en la TABLA 1.")
         return
 
-    # Mensaje informativo ejecutivo para la junta
-    st.info("📅 **FILTRO ACTIVO:** Análisis financiero cerrado exclusivamente para el **Año Fiscal 2026**.")
+    df_base = df_raw.copy()
 
-    tab_total, tab_vuelo = st.tabs(["💰 ANALÍTICA COSTO TOTAL", "✈️ EFICIENCIA PURA VUELO (Columna T)"])
+    # 💥 APLICACIÓN DEL PARCHE ANTI-DECIMALES EN DRONES
+    if activar_parche:
+        def corregir_dron(row):
+            val = row['COSTO_VUELO_HA']
+            if row['TECNOLOGIA'] == 'DRONE' and val > 0:
+                oficiales = [71280, 75518, 84428]
+                return min(oficiales, key=lambda x: abs(x - val))
+            return val
+        df_base['COSTO_VUELO_HA'] = df_base.apply(corregir_dron, axis=1)
+
+    # --- 🏗️ CONSTRUCCIÓN DE LAS PESTAÑAS ---
+    tab_vuelo, tab_total, tab_auditoria = st.tabs(["✈️ EFICIENCIA PURA VUELO (Columna T)", "💰 ANALÍTICA COSTO TOTAL", "🔍 AUDITORÍA FILA POR FILA (Excel vs Sistema)"])
 
     def descargar_excel(df_comparativo):
         output = io.BytesIO()
@@ -113,38 +130,10 @@ def ejecutar():
         return f"$ {val:,.0f}".replace(",", ".")
 
     # ==========================================
-    # PESTAÑA 1: COSTO TOTAL
-    # ==========================================
-    with tab_total:
-        st.caption("Incluye: Químicos + Servicio de Vuelo + Margen de Distribución (Año 2026)")
-        matriz_t = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_TOTAL_HA', aggfunc='mean').reset_index()
-        if 'AVIÓN' not in matriz_t.columns: matriz_t['AVIÓN'] = np.nan
-        if 'DRONE' not in matriz_t.columns: matriz_t['DRONE'] = np.nan
-        
-        m_comp = matriz_t.dropna(subset=['AVIÓN', 'DRONE']).copy()
-        
-        if not m_comp.empty:
-            m_comp['Diferencia ($)'] = m_comp['AVIÓN'] - m_comp['DRONE']
-            m_comp['Eficiencia (%)'] = (m_comp['Diferencia ($)'] / m_comp['AVIÓN']) * 100
-            
-            df_print_t = m_comp.copy()
-            df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
-            df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
-            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
-            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'].map("{:+.1f}%".format)
-
-            st.dataframe(df_print_t, use_container_width=True, hide_index=True)
-
-            excel_data = descargar_excel(m_comp)
-            st.download_button(label="📥 Descargar Reporte Total 2026 (Excel)", data=excel_data, file_name="Comparativo_Total_Fincas_2026.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        else:
-            st.warning("📌 No hay registros cruzados en 2026 para ambas tecnologías simultáneamente.")
-
-    # ==========================================
-    # PESTAÑA 2: COSTO EXCLUSIVO VUELO (Métrica Pura)
+    # PESTAÑA 1: COSTO EXCLUSIVO VUELO (Métrica Pura)
     # ==========================================
     with tab_vuelo:
-        st.success("🔬 Métrica Pura de Aeronaves: Columna T (COSTO AVIÓN $/ha) sin insumos.")
+        st.success("🔬 Analizando estrictamente la Columna T: COSTO AVIÓN ($/ha) - Cero Insumos Químicos")
         matriz_v = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_VUELO_HA', aggfunc='mean').reset_index()
         if 'AVIÓN' not in matriz_v.columns: matriz_v['AVIÓN'] = np.nan
         if 'DRONE' not in matriz_v.columns: matriz_v['DRONE'] = np.nan
@@ -170,12 +159,53 @@ def ejecutar():
             fig = go.Figure()
             fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
             fig.add_trace(go.Bar(x=m_comp_v['FINCA_CORTA'], y=m_comp_v['DRONE'], name='Dron', marker_color='#d4af37'))
-            fig.update_layout(
-                title="Brecha Real de Tarifa Vuelo 2026 (Avión vs Dron)", 
-                barmode='group', 
-                plot_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(tickangle=-45)
-            )
+            fig.update_layout(title="Brecha Real de Tarifa Vuelo 2026 (Avión vs Dron)", barmode='group', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(tickangle=-45))
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("📌 No hay registros cruzados en 2026 para ambas tecnologías simultáneamente.")
+
+    # ==========================================
+    # PESTAÑA 2: COSTO TOTAL
+    # ==========================================
+    with tab_total:
+        st.info("📊 Incluye: Químicos + Servicio de Vuelo + Margen de Distribución (Año 2026)")
+        matriz_t = df_base.pivot_table(index='FINCA', columns='TECNOLOGIA', values='COSTO_TOTAL_HA', aggfunc='mean').reset_index()
+        if 'AVIÓN' not in matriz_t.columns: matriz_t['AVIÓN'] = np.nan
+        if 'DRONE' not in matriz_t.columns: matriz_t['DRONE'] = np.nan
+        
+        m_comp = matriz_t.dropna(subset=['AVIÓN', 'DRONE']).copy()
+        
+        if not m_comp.empty:
+            m_comp['Diferencia ($)'] = m_comp['AVIÓN'] - m_comp['DRONE']
+            m_comp['Eficiencia (%)'] = (m_comp['Diferencia ($)'] / m_comp['AVIÓN']) * 100
+            
+            df_print_t = m_comp.copy()
+            df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
+            df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
+            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
+            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'].map("{:+.1f}%".format)
+
+            st.dataframe(df_print_t, use_container_width=True, hide_index=True)
+
+            excel_data = descargar_excel(m_comp)
+            st.download_button(label="📥 Descargar Reporte Total 2026 (Excel)", data=excel_data, file_name="Comparativo_Total_Fincas_2026.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        else:
+            st.warning("📌 No hay registros cruzados en 2026 para ambas tecnologías simultáneamente.")
+
+    # ==========================================
+    # PESTAÑA 3: LA PRUEBA REINA (Auditoría Fila por Finca)
+    # ==========================================
+    with tab_auditoria:
+        st.markdown("#### 🔍 Historial de Registros Crudos en Google Sheets (2026)")
+        st.caption("Esta pestaña te muestra de forma transparente la información cruda tal y como está guardada en tu Excel. Aquí podrás ver cuáles órdenes específicas arrastran los valores alterados de las pruebas del pasado.")
+        
+        df_audit_print = pd.DataFrame({
+            "Nº OS": df_base["OS"],
+            "FECHA EXCEL": df_base["FECHA"],
+            "FINCA": df_base["FINCA"],
+            "TECNOLOGÍA": df_base["TECNOLOGIA"],
+            "EQUIPO": df_base["PILOTO"] + " / " + df_base["MODELO"],
+            "VALOR EN TU EXCEL (Columna T)": df_base["COSTO_HA"],
+            "PROCESADO": df_base["COSTO_VUELO_HA"].apply(formatear_pesos)
+        })
+        st.dataframe(df_audit_print, use_container_width=True, hide_index=True)
