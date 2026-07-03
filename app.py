@@ -24,10 +24,10 @@ import modulos.m9_dashboard_tactico as m9
 import modulos.m10_bi_tarifas as m10
 import modulos.m11_manual_tecnico as m11 
 import modulos.m12_simulador_agro as m12
-import modulos.m13_oraculo as m13 # <-- AGREGUE ESTA LÍNEA
+import modulos.m13_oraculo as m13
 import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
-import modulo_gerencia # Asegúrate de que el nombre del archivo coincida (sin el .py)
+import modulos.modulo_gerencia as m16 # <--- 💥 AQUÍ AGREGAMOS LA CONEXIÓN AL NUEVO MÓDULO
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
@@ -175,11 +175,17 @@ with st.sidebar:
             "🚁 12. Simulador Financiero Libre",
             "🔮 13. El Oráculo (Inventarios)",
             "💰 14. Pronóstico Financiero",
-            "🗺️ 15. Mapa de Calor Agronómico"
+            "🗺️ 15. Mapa de Calor Agronómico",
+            "💼 16. Comparativo Gerencial (Dron vs Avión)" # <--- 💥 NUEVA OPCIÓN AGREGADA
         ], key="modulo_actual")
     else: 
-        st.session_state['modulo_actual'] = "📈 9. Dashboard Táctico"
+        # 💥 ACTUALIZACIÓN GERENCIA: Ahora el rol VIEWER tiene opciones para elegir
         st.info("🛰️ Modo Consulta Gerencial Activado.")
+        st.radio("📊 SELECCIONE EL REPORTE:", [
+            "📈 9. Dashboard Táctico", 
+            "📊 10. Inteligencia de Costos (BI)",
+            "💼 16. Comparativo Gerencial (Dron vs Avión)"
+        ], key="modulo_actual")
         
     st.markdown("---")
     if st.button("🔒 CERRAR SESIÓN", use_container_width=True):
@@ -207,3 +213,4 @@ elif menu == "🚁 12. Simulador Financiero Libre": m12.ejecutar(procesar_fecha_
 elif menu == "🔮 13. El Oráculo (Inventarios)": m13.ejecutar(purificar_lote, extraer_numero)
 elif menu == "💰 14. Pronóstico Financiero": m14.ejecutar(purificar_lote, extraer_numero)
 elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lote, extraer_numero)
+elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar() # <--- 💥 AQUÍ SE ENRUTA AL NUEVO MÓDULO
