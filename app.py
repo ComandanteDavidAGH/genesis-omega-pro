@@ -28,6 +28,7 @@ import modulos.m13_oraculo as m13 # <-- AGREGUE ESTA LÍNEA
 import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
 
+
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
     "usernames": {
