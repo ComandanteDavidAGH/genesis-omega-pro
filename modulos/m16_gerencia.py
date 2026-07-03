@@ -1,82 +1,11 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import gspread
-import re
-from oauth2client.service_account import ServiceAccountCredentials
-
-# =================================================================
-# 🔌 CONEXIÓN Y EXTRACCIÓN DE DATOS (Aislado para Gerencia)
-# =================================================================
-
-def obtener_cliente_gspread_unificado():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return gspread.service_account(filename='credenciales.json')
-    except:
-        return None
-
-def limpiar_dinero(val):
-    try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip()
-        if not v: return 0.0
-        v = v.replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1:
-            partes = v.rsplit('.', 1)
-            v = partes[0].replace('.', '') + '.' + partes[1]
-        num = float(v) if v else 0.0
-        if 5 < num < 2000: num = num * 1000
-        return num
-    except: return 0.0
-
-@st.cache_data(show_spinner=False, ttl=600)
-def cargar_datos_gerenciales():
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame()
-    
-    try:
-        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        datos_brutos = boveda_act.worksheet("TABLA 1").get_all_values()
-        
-        if len(datos_brutos) > 5:
-            columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"]
-            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos[5:]]
-            df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
-            
-            # Limpieza básica
-            df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            df = df[~df['FINCA'].isin(['', 'NAN', 'NONE'])]
-            
-            # Clasificación de Tecnología
-            def clasificar_tec(row):
-                texto_busqueda = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))} {str(row.get('PISTA',''))}".upper()
-                if 'DRON' in texto_busqueda or 'DR5' in texto_busqueda:
-                    return 'DRONE'
-                return 'AVIÓN'
-            
-            df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
-            df['COSTO_FINAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_dinero)
-            
-            df = df[df['COSTO_FINAL_HA'] > 0]
-            return df
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"🚨 Error al conectar con la bóveda: {e}")
-        return pd.DataFrame()
-
 # =================================================================
 # 👑 RENDERIZADO VISUAL: PANEL GERENCIAL (Envuelto en ejecutar)
 # =================================================================
 
 def ejecutar():
+    # 💥 CORRECCIÓN: Agregamos el ancla de inicio para que no quede "pegado" al techo
+    st.header("", anchor="inicio_modulo")
+
     st.markdown("""
     <style>
         .titulo-gerencia { color: #1a365d; font-family: 'Arial Black'; border-bottom: 4px solid #d4af37; padding-bottom: 10px; margin-bottom: 20px;}
@@ -150,17 +79,20 @@ def ejecutar():
 
         st.markdown("<br>### 📈 Análisis Gráfico de Brechas", unsafe_allow_html=True)
         
-        matriz_grafico = matriz_comparativa.sort_values(by='AVIÓN', ascending=False).head(15) 
+        matriz_grafico = matriz_comparativa.sort_values(by='AVIÓN', ascending=False).head(15).copy()
+        
+        # 💥 CORRECCIÓN DE GRÁFICA: Acortamos nombres muy largos a 18 letras para no deformar la pantalla
+        matriz_grafico['FINCA_CORTA'] = matriz_grafico['FINCA'].apply(lambda x: x[:18] + '...' if len(x) > 18 else x)
         
         fig = go.Figure()
         fig.add_trace(go.Bar(
-            x=matriz_grafico['FINCA'],
+            x=matriz_grafico['FINCA_CORTA'], # Usamos los nombres cortos
             y=matriz_grafico['AVIÓN'],
             name='Avión',
             marker_color='#1a365d'
         ))
         fig.add_trace(go.Bar(
-            x=matriz_grafico['FINCA'],
+            x=matriz_grafico['FINCA_CORTA'], # Usamos los nombres cortos
             y=matriz_grafico['DRONE'],
             name='Dron',
             marker_color='#d4af37'
@@ -173,7 +105,8 @@ def ejecutar():
             barmode='group',
             plot_bgcolor='rgba(0,0,0,0)',
             hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            xaxis=dict(tickangle=-45) # 💥 Inclinamos los textos para que se vean organizados
         )
         
         st.plotly_chart(fig, use_container_width=True)
