@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import gspread
 import re
+import math
 from datetime import datetime
-# Importamos el llavero de permisos explícitos que funcionó en el Módulo 7
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
@@ -15,7 +15,6 @@ def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Usamos el mismo puente exacto del módulo de arqueos
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -29,7 +28,6 @@ def inicializar_cliente_gspread():
 # =================================================================
 
 def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
-    # Inyección de la línea estética VIP Corporativa de Génesis
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -64,7 +62,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
         placeholder="Pegue aquí el link del archivo origen..."
     )
 
-    # Inicialización del cliente gspread desde la memoria caché acelerada
     gc = inicializar_cliente_gspread()
     if gc is None:
         st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
@@ -109,7 +106,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                     recargos_encontrados = 0
                     recargos_ignorados = 0
                     
-                    # Listas estáticas de traducción optimizadas fuera del bucle de memoria
                     DIAS_SEMANA = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
                     MESES_ANIO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
@@ -142,7 +138,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                                     if not dict_nuevos[key]['pista'] and pista: 
                                         dict_nuevos[key]['pista'] = pista
                                 else:
-                                    # Formateo de fecha de alta fidelidad en español latino
                                     f_formato = f"{DIAS_SEMANA[f_operacion.weekday()]}, {MESES_ANIO[f_operacion.month-1]} {f_operacion.day}, {f_operacion.year}"
                                     dict_nuevos[key] = {
                                         'finca': finca, 'ha': ha, 'fec': f_formato,
@@ -171,12 +166,38 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
 
                     if dict_nuevos:
                         prox_fila = len(datos_dest) + 1 
-                        filas_nuevas = [[v['finca'], v['ha'], v['fec'], v['sur'], v['pista'], v['semana']] for v in dict_nuevos.values()]
                         
-                        # Volcado rápido por lote hacia la base destino
-                        ws_dest.update(range_name=f'B{prox_fila}', values=filas_nuevas, value_input_option='USER_ENTERED')
+                        # 💥 ESCUDO ANTI-ERROR 500: Purificación de NaNs e Infinitos
+                        def sanitizar_numero(val):
+                            if pd.isna(val): return 0.0
+                            if isinstance(val, (float, int)):
+                                if math.isnan(val) or math.isinf(val): return 0.0
+                            return float(val)
+
+                        filas_nuevas = []
+                        for v in dict_nuevos.values():
+                            filas_nuevas.append([
+                                str(v['finca']), 
+                                sanitizar_numero(v['ha']), 
+                                str(v['fec']), 
+                                sanitizar_numero(v['sur']), 
+                                str(v['pista']), 
+                                int(sanitizar_numero(v['semana']))
+                            ])
+                        
+                        # 💥 ESCUDO ANTI-LIMITES: Verificamos si la hoja tiene filas suficientes antes de escribir
+                        filas_necesarias = prox_fila + len(filas_nuevas)
+                        if filas_necesarias > ws_dest.row_count:
+                            ws_dest.add_rows(len(filas_nuevas) + 50) # Le damos un colchón de 50 filas extra
+                        
+                        # Definimos el rango exacto para que la API trabaje segura
+                        rango_destino = f'B{prox_fila}:G{prox_fila + len(filas_nuevas) - 1}'
+                        
+                        # Volcado blindado hacia la base destino
+                        ws_dest.update(values=filas_nuevas, range_name=rango_destino, value_input_option='USER_ENTERED')
+                        
                         st.success(f"🎯 ¡IMPACTO PERFECTO! Se inyectaron exitosamente {len(filas_nuevas)} registros nuevos empezando en la fila {prox_fila}.")
-                        st.balloons() # 🌟 ¡SISTEMA REPARADO AQUÍ!
+                        st.balloons()
                     else:
                         st.warning("⚠️ El escáner detectó recargos en el archivo origen, pero ninguno es posterior al radar de fecha de la base destino.")
 
