@@ -214,13 +214,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if df_filtrado.empty:
         st.warning("⚠️ El Escuadrón no registró operaciones con los filtros actuales.")
     else:
+        # --- DEFINICIÓN DE TÍTULO DINÁMICO ---
+        titulo_finca = f" ({finca_filtro})" if finca_filtro != "TODAS" else " (TODAS LAS FINCAS)"
+        
         g1, g2 = st.columns(2)
 
         # -----------------------------------------------------
         # GRÁFICO 1: ÁREA ASPERJADA
         # -----------------------------------------------------
         with g1:
-            st.markdown("<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
             df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
             df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
             df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
@@ -236,7 +239,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         # GRÁFICO 2: FACTURACIÓN vs LÍMITE
         # -----------------------------------------------------
         with g2:
-            st.markdown("<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
             df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
             df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
             
@@ -258,7 +261,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             go_fig = go.Figure()
             go_fig.add_trace(go.Bar(
                 x=df_costo['ETIQUETA_X'], y=df_costo['VALOR_FACTURAR'], name="Facturación/ha",
-                marker_color=VERDE_INTENSO, # Se alinea al verde de la paleta
+                marker_color=VERDE_INTENSO,
                 hovertext=df_costo['COCTEL'], 
                 customdata=df_costo['HOVER_FACT'],
                 hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> %{customdata}<extra></extra>'
@@ -280,8 +283,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         # GRÁFICO 3: RENDIMIENTO/HORA
         # -----------------------------------------------------
         with g3:
-            titulo_finca = f" {finca_filtro}" if finca_filtro != "TODAS" else ""
-            st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO/Hora FINCA{titulo_finca}</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO/Hora<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
             
             df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
             df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
@@ -300,10 +302,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig3, use_container_width=True)
             
         # -----------------------------------------------------
-        # GRÁFICO 4: FACTURACIÓN MENSUAL
+        # GRÁFICO 4: FACTURACIÓN MENSUAL (Gerencial M/K)
         # -----------------------------------------------------
         with g4:
-            st.markdown("<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL BASE</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL BASE<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
             df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
             df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
             df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
@@ -316,10 +318,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig4, use_container_width=True)
 
         # -----------------------------------------------------
-        # GRÁFICO 5: DOMINICALES (Con Grouping y Paleta Agro)
+        # GRÁFICO 5: DOMINICALES
         # -----------------------------------------------------
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown("<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES</h4>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
         
         df_dom = df_filtrado[df_filtrado['DOMINICAL_HA'] > 0].groupby(['AÑO', 'MES_NOMBRE', 'SEMANA'])['DOMINICAL_HA'].sum().reset_index()
         
@@ -330,7 +332,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             
             df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
             
-            # 💥 barmode='group' aplicado y colores verdes asignados
             fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', color_discrete_sequence=PALETA_YOY)
             fig5.update_traces(textposition='outside', textfont=dict(size=13, color='black', family="Arial Black"))
             fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
