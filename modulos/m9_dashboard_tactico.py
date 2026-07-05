@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import re
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN PROPIO (INTERCONEXIÓN DIRECTA EN RAM)
@@ -21,6 +22,30 @@ def inicializar_cliente_gspread_propio():
         return gspread.service_account(filename='credenciales.json')
     except:
         return None
+
+# 💥 PARCHE FINANCIERO OFICIAL (Recupera los miles en los dominicales)
+def limpiar_dinero(val):
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).strip()
+    if not v or v == '-': return 0.0
+    v = re.sub(r'[^\d\.,\-]', '', v)
+    if not v: return 0.0
+    try:
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): 
+                v = v.replace('.', '').replace(',', '.')
+            else:
+                v = v.replace(',', '')
+        elif ',' in v: 
+            v = v.replace(',', '.')
+        
+        num = float(v) if v else 0.0
+        # Multiplicador de escala si el sistema se come los ceros de los miles
+        if 0 < num < 2500: 
+            num = num * 1000
+        return num
+    except:
+        return 0.0
 
 @st.cache_data(show_spinner=False)
 def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
@@ -55,10 +80,13 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    # 💥 SOLUCIÓN AL $0: Volvemos al extractor original para TODAS las columnas de números y dinero
-    cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'DOMINICAL_HA']
+    # Extraemos áreas y facturación principal con el motor original seguro
+    cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
     for col in cols_numericas:
         df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+        
+    # 💥 Aplicamos el parche financiero SOLO a los dominicales
+    df['DOMINICAL_HA'] = df['DOMINICAL_HA'].apply(limpiar_dinero)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
@@ -79,19 +107,13 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
 # =================================================================
 
 def formato_latino(numero, decimales=0):
-    """ Convierte a Formato Colombia/Latino (Punto para miles, coma para decimales) """
     if pd.isna(numero) or numero == 0: return "0"
-    
-    if decimales == 0:
-        texto_us = f"{numero:,.0f}"
-    else:
-        texto_us = f"{numero:,.{decimales}f}"
-        
+    if decimales == 0: texto_us = f"{numero:,.0f}"
+    else: texto_us = f"{numero:,.{decimales}f}"
     texto_latino = texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
     return texto_latino
 
 def formato_gerencial_latino(numero):
-    """ Convierte números gigantes a formato $ 32,2 M o $ 150 K """
     if pd.isna(numero) or numero == 0: return "$ 0"
     if numero >= 1_000_000:
         val = numero / 1_000_000
@@ -109,14 +131,16 @@ def formato_gerencial_latino(numero):
 # =================================================================
 
 def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
-    VERDE_BANANO = '#548235'
-    DORADO = '#d4af37'
-    PALETA_YOY = [VERDE_BANANO, DORADO] 
+    # 🎨 NUEVA PALETA: VERDE INTENSO Y VERDE CLARO
+    VERDE_INTENSO = '#143521' # Año anterior
+    VERDE_CLARO = '#7ebc59'   # Año actual
+    DORADO = '#d4af37'        # Solo para alertas y bordes del HUD
     
-    # 💥 SOLUCIÓN HUD: Se restaura el fondo oscuro elegante (#0d1b2a)
+    PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
+    
     st.markdown(f"""
     <style>
-    .titulo-principal {{ color: {VERDE_BANANO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
+    .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
     .hud-comando {{ background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid {DORADO}; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }}
     .hud-comando-item {{ text-align: center; flex: 1; }}
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
@@ -193,19 +217,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         g1, g2 = st.columns(2)
 
         # -----------------------------------------------------
-        # GRÁFICO 1: ÁREA ASPERJADA (Salto de línea <br> en "ha")
+        # GRÁFICO 1: ÁREA ASPERJADA
         # -----------------------------------------------------
         with g1:
             st.markdown("<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES</h4>", unsafe_allow_html=True)
             df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
             df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
             df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
-            
-            # 💥 ETIQUETAS: Salto de línea para que "ha" quede abajo
             df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)}<br>ha")
             
             fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
-            
             fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
             fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
             fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
@@ -237,7 +258,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             go_fig = go.Figure()
             go_fig.add_trace(go.Bar(
                 x=df_costo['ETIQUETA_X'], y=df_costo['VALOR_FACTURAR'], name="Facturación/ha",
-                marker_color=VERDE_BANANO,
+                marker_color=VERDE_INTENSO, # Se alinea al verde de la paleta
                 hovertext=df_costo['COCTEL'], 
                 customdata=df_costo['HOVER_FACT'],
                 hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> %{customdata}<extra></extra>'
@@ -269,10 +290,9 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             df_rend = df_rend.sort_values(by=['HK', 'SEMANA'], ascending=[True, False])
             
             df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
-            
             altura_dinamica = max(400, len(df_rend) * 22)
             
-            fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='ETIQUETA', color_discrete_sequence=[VERDE_BANANO])
+            fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO])
             fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
             fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
             fig3.update_yaxes(type='category')
@@ -280,15 +300,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig3, use_container_width=True)
             
         # -----------------------------------------------------
-        # GRÁFICO 4: FACTURACIÓN MENSUAL (Gerencial M/K)
+        # GRÁFICO 4: FACTURACIÓN MENSUAL
         # -----------------------------------------------------
         with g4:
             st.markdown("<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL BASE</h4>", unsafe_allow_html=True)
             df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
             df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
             df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
-            
-            # 💥 SOLUCIÓN: Formato Gerencial M y K
             df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
             
             fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
@@ -298,7 +316,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig4, use_container_width=True)
 
         # -----------------------------------------------------
-        # GRÁFICO 5: DOMINICALES (Con Puntos para Miles y Coherencia de Color)
+        # GRÁFICO 5: DOMINICALES (Con Grouping y Paleta Agro)
         # -----------------------------------------------------
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES</h4>", unsafe_allow_html=True)
@@ -310,10 +328,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
             df_dom['EJE_X'] = "Sem " + df_dom['SEMANA'].astype(str).str.replace(".0", "", regex=False) + " (" + df_dom['MES_NOMBRE'] + ")"
             
-            # 💥 SOLUCIÓN: Formato latino explícito con Puntos para los miles
             df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
             
-            fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', text='ETIQUETA_DOM', color_discrete_sequence=PALETA_YOY)
+            # 💥 barmode='group' aplicado y colores verdes asignados
+            fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', color_discrete_sequence=PALETA_YOY)
             fig5.update_traces(textposition='outside', textfont=dict(size=13, color='black', family="Arial Black"))
             fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
             fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.2])
