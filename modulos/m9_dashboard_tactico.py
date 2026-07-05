@@ -12,7 +12,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread_propio():
-    """ Levanta una antena de conexión independiente de app.py """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
@@ -23,12 +22,26 @@ def inicializar_cliente_gspread_propio():
     except:
         return None
 
+def limpiar_tarifa_local(val):
+    """ Parche de alta fidelidad para evitar que $7.000 se lea como 7 """
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).strip().replace("$", "").replace(" ", "")
+    if not v or v in ['-', 'NAN', 'NONE']: return 0.0
+    try:
+        if '.' in v and ',' not in v:
+            partes = v.split('.')
+            if len(partes) == 2 and len(partes[1]) == 3:
+                v = v.replace('.', '')
+        elif ',' in v:
+            v = v.replace('.', '').replace(',', '.')
+        return float(v)
+    except:
+        return 0.0
+
 @st.cache_data(show_spinner=False)
 def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
-    """ Conecta de forma nativa a la central saltándose los tubos viejos de app.py """
     gc = inicializar_cliente_gspread_propio()
-    if not gc:
-        return pd.DataFrame()
+    if not gc: return pd.DataFrame()
         
     try:
         url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
@@ -38,10 +51,8 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     except Exception:
         return pd.DataFrame()
     
-    if not datos_brutos or len(datos_brutos) <= 2:
-        return pd.DataFrame()
+    if not datos_brutos or len(datos_brutos) <= 2: return pd.DataFrame()
         
-    # 🧠 DETECCIÓN DINÁMICA DE ENCABEZADOS (Evita saltos por filas en blanco)
     idx_headers = 4
     for i in range(min(8, len(datos_brutos))):
         row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
@@ -49,30 +60,29 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             idx_headers = i
             break
 
-    # Radiografía exacta de 30 columnas de tu SAP
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
     
     filas_datos = datos_brutos[idx_headers + 1:]
     lista_limpia = []
     
     for r in filas_datos:
-        # 🛡️ BLINDAJE: Rellena las filas cortas para que cuadren exacto con las 30 columnas
-        if len(r) < 30:
-            r = r + [""] * (30 - len(r))
+        if len(r) < 30: r = r + [""] * (30 - len(r))
         lista_limpia.append(r[:30])
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    # ⚙️ CONVERSIÓN SEGURA DE NÚMEROS
-    cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
-    for col in cols_numericas:
-        df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+    # Aplicamos el extractor de base para cantidades y el parche para dinero
+    df['AREA_FUMIG'] = df['AREA_FUMIG'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+    df['REND_HR'] = df['REND_HR'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+    
+    cols_dinero = ['COSTO_HA', 'DOMINICAL_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
+    for col in cols_dinero:
+        df[col] = df[col].apply(limpiar_tarifa_local)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
     
-    if df.empty:
-        return pd.DataFrame()
+    if df.empty: return pd.DataFrame()
     
     df['AÑO'] = df['FECHA_DT'].dt.year.astype(int)
     df['TRIMESTRE'] = df['FECHA_DT'].dt.quarter.astype(int)
@@ -80,7 +90,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     
     meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
     df['MES_NOMBRE'] = df['MES_NUM'].map(meses_dict)
-    df['MES_ORDEN'] = df['AÑO'].astype(str) + "-" + df['MES_NUM'].astype(str).str.zfill(2) + " (" + df['MES_NOMBRE'] + ")"
     
     return df[df['AREA_FUMIG'] > 0].reset_index(drop=True)
 
@@ -92,14 +101,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
-    
-    /* HUD de Mando Financiero Corporativo */
-    .hud-comando {
-        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
-        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
-        justify-content: space-between; align-items: center;
-    }
+    .hud-comando { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
     .hud-comando-item { text-align: center; flex: 1; }
     .hud-comando-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-comando-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
@@ -108,19 +110,17 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    # EXTRACCIÓN MAESTRA EN RAM CACHEADA (SE IGNORA LA FUNCIÓN DE APP.PY)
     df_dash = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1.")
         return
 
-    # --- 🎛️ FILTROS TÁCTICOS AVANZADOS ---
     st.markdown("### 🎛️ Filtros de Operación y Tiempo")
     
     t1, t2, t3 = st.columns(3)
     
-    años_disp = ["TODOS"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
+    años_disp = ["TODOS (Comparativa Anual)"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
     año_sel = t1.selectbox("📅 AÑO FISCAL", años_disp, index=0)
     
     trimestres = {"TODOS": 0, "Q1 (Ene-Mar)": 1, "Q2 (Abr-Jun)": 2, "Q3 (Jul-Sep)": 3, "Q4 (Oct-Dic)": 4}
@@ -140,12 +140,11 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     # 🎯 FILTRADO DINÁMICO EN RAM
     df_filtrado = df_dash.copy()
-    if año_sel != "TODOS": 
+    
+    if año_sel != "TODOS (Comparativa Anual)": 
         df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
-        
     if trimestres[trim_sel] != 0: 
         df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
-        
     if mes_sel != "TODOS":
         df_filtrado = df_filtrado[df_filtrado['MES_NOMBRE'] == mes_sel]
         
@@ -154,7 +153,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
     # --- 🏆 HUD DE TARJETAS DE MANDO (KPIs) ---
-    
     if not df_filtrado.empty:
         total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
     else:
@@ -188,25 +186,22 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         g1, g2 = st.columns(2)
 
         with g1:
-            st.markdown("<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES</h4>", unsafe_allow_html=True)
-            df_area_chart = df_filtrado.groupby('MES_ORDEN')['AREA_FUMIG'].sum().reset_index().sort_values(by='MES_ORDEN')
+            st.markdown("<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES (Comparativa)</h4>", unsafe_allow_html=True)
+            df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
+            df_area_chart = df_area_chart.sort_values(by=['MES_NUM', 'AÑO'])
             
-            fig1 = px.bar(df_area_chart, x='MES_ORDEN', y='AREA_FUMIG', text='AREA_FUMIG', color_discrete_sequence=['#548235'])
-            fig1.update_traces(texttemplate='%{text:.1f}', textposition='outside', textfont_size=13)
-            fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas", plot_bgcolor='rgba(0,0,0,0)', uniformtext_minsize=11)
+            fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO', barmode='group', text='AREA_FUMIG', color_continuous_scale=px.colors.sequential.Greens)
+            fig1.update_traces(texttemplate='%{text:.1f}', textposition='outside', textfont_size=11)
+            fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
             st.plotly_chart(fig1, use_container_width=True)
 
         with g2:
             st.markdown("<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO</h4>", unsafe_allow_html=True)
-            
-            df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({
-                'VALOR_FACTURAR': 'mean', 
-                'LIMITE': 'max'
-            }).reset_index()
+            df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
+            df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
             
             limite_real = df_filtrado[df_filtrado['LIMITE'] > 0]['LIMITE'].max()
             if pd.isna(limite_real) or limite_real == 0: limite_real = 200000 
-                
             df_costo['LIMITE'] = df_costo['LIMITE'].apply(lambda x: limite_real if x == 0 else x)
             
             def acortar_fecha(txt):
@@ -224,18 +219,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(size=11),
                 hovertext=df_costo['COCTEL'], hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> $ %{y:,.0f} COP<extra></extra>'
             ))
-            
             go_fig.add_trace(go.Scatter(
                 x=df_costo['ETIQUETA'], y=df_costo['LIMITE'], name="Límite Finca",
                 mode='lines+markers', line=dict(color='red', width=3), marker=dict(size=8),
                 hovertemplate='<b>Límite Fijo:</b> $ %{y:,.0f} COP<extra></extra>'
             ))
             
-            go_fig.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)', 
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                yaxis=dict(title="Valor ($ COP / Ha)", rangemode='tozero'), margin=dict(b=100)
-            )
+            go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / Ha)", rangemode='tozero'), margin=dict(b=100))
             go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
             st.plotly_chart(go_fig, use_container_width=True)
             
@@ -258,13 +248,32 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig3, use_container_width=True)
             
         with g4:
-            st.markdown("<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL CONSOLIDADA</h4>", unsafe_allow_html=True)
-            df_mes = df_filtrado.groupby('MES_ORDEN')['COSTO_TOTAL'].sum().reset_index().sort_values(by='MES_ORDEN')
+            st.markdown("<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL BASE</h4>", unsafe_allow_html=True)
+            df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
+            df_mes = df_mes.sort_values(by=['MES_NUM', 'AÑO'])
             
-            fig4 = px.bar(df_mes, x='MES_ORDEN', y='COSTO_TOTAL', text='COSTO_TOTAL', color_discrete_sequence=['#548235'])
-            fig4.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont_size=13)
-            fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)')
+            fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO', barmode='group', text='COSTO_TOTAL', color_continuous_scale=px.colors.sequential.Greens)
+            fig4.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont_size=11)
+            fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
             st.plotly_chart(fig4, use_container_width=True)
+
+        # 💥 NUEVA SECCIÓN EXCLUSIVA: RASTREO DE DOMINICALES POR SEMANA
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES (POR SEMANA)</h4>", unsafe_allow_html=True)
+        
+        df_dom = df_filtrado[df_filtrado['DOMINICAL_HA'] > 0].groupby(['AÑO', 'MES_NOMBRE', 'SEMANA'])['DOMINICAL_HA'].sum().reset_index()
+        
+        if not df_dom.empty:
+            df_dom = df_dom.sort_values(by=['AÑO', 'SEMANA'])
+            # Creamos una etiqueta limpia para el eje X
+            df_dom['EJE_X'] = "Sem " + df_dom['SEMANA'].astype(str).str.replace(".0", "", regex=False) + " (" + df_dom['MES_NOMBRE'] + " " + df_dom['AÑO'].astype(str) + ")"
+            
+            fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', text='DOMINICAL_HA', color_discrete_sequence=['#e53e3e'])
+            fig5.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont_size=14)
+            fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig5, use_container_width=True)
+        else:
+            st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
 
 if __name__ == "__main__":
     pass
