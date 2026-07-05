@@ -154,8 +154,14 @@ with st.sidebar:
     st.markdown("---")
     
     if st.session_state['usuario_rol'] == "ADMIN":
-        if st.button("🔄 Cargar Cócteles / Aviones", type="primary", use_container_width=True): 
-            st.cache_data.clear()
+        # 💥 BLINDAJE DE SINCRONIZACIÓN MAESTRA APLICADO AQUÍ 💥
+        if st.button("🔄 Cargar Cócteles / Refrescar BD", type="primary", use_container_width=True): 
+            with st.spinner("Purgando memoria caché y forzando sincronización..."):
+                time.sleep(0.5)
+                st.cache_data.clear()
+                st.cache_resource.clear()
+            st.success("✅ Base de datos refrescada.")
+            time.sleep(0.5)
             st.rerun()
             
         # 💥 BLINDAJE DE MEMORIA: Se asigna el selector a la variable 'key' para que no se borre
