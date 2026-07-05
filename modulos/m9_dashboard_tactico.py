@@ -23,7 +23,6 @@ def inicializar_cliente_gspread_propio():
     except:
         return None
 
-# 💥 PARCHE FINANCIERO OFICIAL 
 def limpiar_dinero(val):
     if isinstance(val, (int, float)): return float(val)
     v = str(val).strip()
@@ -83,7 +82,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     for col in cols_numericas:
         df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
-    # 💥 AHORA SÍ: Aplicamos la limpieza estricta a los dominicales
     df['DOMINICAL_HA'] = df['DOMINICAL_HA'].apply(limpiar_dinero)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
@@ -191,7 +189,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     <div class="hud-comando">
         <div class="hud-comando-item">
             <p class="hud-comando-title">Área Consolidada del Periodo</p>
-            <p class="hud-comando-value">🚜 {formato_latino(total_area, 2)} ha</p>
+            <p class="hud-comando-value">✈️ {formato_latino(total_area, 2)} ha</p>
         </div>
         <div class="hud-comando-item">
             <p class="hud-comando-title">Facturación Bruta Sincronizada</p>
@@ -216,7 +214,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         # GRÁFICO 1: ÁREA ASPERJADA
         # -----------------------------------------------------
         with g1:
-            st.markdown(f"<h4 style='text-align:center;'>🚜 ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align:center;'>✈️ ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
             df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
             df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
             df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
@@ -311,7 +309,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig4, use_container_width=True)
 
         # -----------------------------------------------------
-        # GRÁFICO 5: DOMINICALES (💥 REPARACIÓN TOTAL)
+        # GRÁFICO 5: DOMINICALES
         # -----------------------------------------------------
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown(f"<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
@@ -319,30 +317,25 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_dom = df_filtrado[df_filtrado['DOMINICAL_HA'] > 0].copy()
         
         if not df_dom.empty:
-            # 💥 Extracción segura del número de semana para ordenar de 1 en adelante
             df_dom['SEMANA_NUM'] = pd.to_numeric(df_dom['SEMANA'].astype(str).str.extract(r'(\d+)')[0], errors='coerce').fillna(0).astype(int)
             
             df_dom = df_dom.groupby(['AÑO', 'MES_NOMBRE', 'SEMANA_NUM'])['DOMINICAL_HA'].sum().reset_index()
             
-            # Ordenamos primero por año y luego por semana cronológica
             df_dom = df_dom.sort_values(by=['AÑO', 'SEMANA_NUM'])
             df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
             df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['MES_NOMBRE'] + ")"
             
             df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
             
-            # 💥 Definimos los años explícitamente para que los colores jamás se crucen
             fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', 
                           color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
             
-            # 💥 Bloqueo anti-encogimiento (cliponaxis=False) y fuente gigante (size=18)
             fig5.update_traces(
                 textposition='outside', 
                 textfont=dict(size=18, color='black', family="Arial Black"), 
                 cliponaxis=False
             )
             
-            # 💥 Eliminación de barras fantasma (bargroupgap=0.0)
             fig5.update_layout(
                 xaxis_title="Semana Operativa", 
                 yaxis_title="Total Recargos ($ COP)", 
@@ -351,7 +344,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 bargap=0.1,        
                 bargroupgap=0.0    
             )
-            fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) # Más margen arriba para los textos
+            fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
             st.plotly_chart(fig5, use_container_width=True)
         else:
             st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
