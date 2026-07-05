@@ -154,15 +154,12 @@ with st.sidebar:
     st.markdown("---")
     
     if st.session_state['usuario_rol'] == "ADMIN":
-        # 💥 BLINDAJE DE SINCRONIZACIÓN MAESTRA APLICADO AQUÍ 💥
-        if st.button("🔄 Cargar Cócteles / Refrescar BD", type="primary", use_container_width=True): 
-            with st.spinner("Purgando memoria caché y forzando sincronización..."):
-                time.sleep(0.5)
-                st.cache_data.clear()
-                st.cache_resource.clear()
-            st.success("✅ Base de datos refrescada.")
-            time.sleep(0.5)
-            st.rerun()
+        # 💥 BLINDAJE DE SINCRONIZACIÓN MAESTRA (EN SEGUNDO PLANO) 💥
+        def purgar_ram():
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            
+        st.button("🔄 Cargar Cócteles / Refrescar BD", type="primary", use_container_width=True, on_click=purgar_ram)
             
         # 💥 BLINDAJE DE MEMORIA: Se asigna el selector a la variable 'key' para que no se borre
         st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
@@ -182,10 +179,9 @@ with st.sidebar:
             "🔮 13. El Oráculo (Inventarios)",
             "💰 14. Pronóstico Financiero",
             "🗺️ 15. Mapa de Calor Agronómico",
-            "💼 16. Comparativo Gerencial (Dron vs Avión)" # <--- 💥 NUEVA OPCIÓN AGREGADA
+            "💼 16. Comparativo Gerencial (Dron vs Avión)"
         ], key="modulo_actual")
     else: 
-        # 💥 ACTUALIZACIÓN GERENCIA: Ahora el rol VIEWER tiene opciones para elegir
         st.info("🛰️ Modo Consulta Gerencial Activado.")
         st.radio("📊 SELECCIONE EL REPORTE:", [
             "📈 9. Dashboard Táctico", 
