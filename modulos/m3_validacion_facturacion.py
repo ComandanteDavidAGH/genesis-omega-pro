@@ -439,6 +439,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         fert_encontrado_obj = "BANATREL SC"
                     elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): 
                         fert_encontrado_obj = "NATURAMIN WSP"
+                    elif " QM" in coctel_texto_puro or coctel_texto_puro.endswith("QM"): 
+                        fert_encontrado_obj = "QUELAMIX"
                 
                 if fert_encontrado_obj:
                     dosis_exacta = obtener_dosis_exacta_fertilizante(df_mez, fert_encontrado_obj)
@@ -977,6 +979,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if "ZN" in sigla_coctel: fert_detectado = "ZINTRAC X LITRO SV"
                     elif "BT" in sigla_coctel: fert_detectado = "BANATREL SC"
                     elif "NM" in sigla_coctel: fert_detectado = "NATURAMIN WSP"
+                    elif "QM" in sigla_coctel: fert_detectado = "QUELAMIX"
                 
                 if fert_detectado:
                     dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
