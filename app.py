@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO (💥 REPARADO 💥) ---
+# --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO (💥 CAÑONAZO DEFINITIVO 💥) ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -95,22 +95,51 @@ button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !i
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 
-/* 💥 SOLUCIÓN DEFINITIVA A LAS CASILLAS TRANSPARENTES 💥 */
-div[data-baseweb="select"], 
-div[data-baseweb="input"], 
-div[data-baseweb="number"] { 
-    background-color: #ffffff !important; 
-    border: 2px solid #0d1b2a !important; 
-    border-radius: 6px !important; 
-    box-shadow: 0px 2px 5px rgba(0,0,0,0.1) !important;
+/* ========================================================================= */
+/* 💥💥💥 FORZADO BRUTAL DE BORDES EN TODOS LOS CAMPOS DE LA APP 💥💥💥 */
+/* ========================================================================= */
+
+/* 1. Atacamos las listas desplegables (Selectores) */
+[data-testid="stSelectbox"] > div > div > div {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 6px !important;
+    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
 }
 
-/* 💥 FORZAR TEXTO NEGRO Y NEGRITA DENTRO DE LAS CAJAS 💥 */
-div[data-baseweb="input"] input, 
-div[data-baseweb="select"] span { 
-    color: #000000 !important; 
-    font-weight: 900 !important; 
+/* 2. Atacamos las cajas de texto (Códigos, SAP) */
+[data-testid="stTextInput"] > div > div > div {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 6px !important;
+    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
 }
+
+/* 3. Atacamos los campos de números (Hectáreas, Tarifas) */
+[data-testid="stNumberInput"] > div > div > div {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 6px !important;
+    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* 4. Atacamos las fechas (Calendario) */
+[data-testid="stDateInput"] > div > div > div {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 6px !important;
+    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* 5. Forzamos el texto interno a Negro y Negrita en todo lado */
+[data-testid="stSelectbox"] span,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input {
+    color: #000000 !important;
+    font-weight: 900 !important;
+}
+/* ========================================================================= */
 </style>
 """, unsafe_allow_html=True)
 
