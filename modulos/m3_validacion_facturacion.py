@@ -342,6 +342,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.session_state.idx_prod = 3
             st.session_state.idx_tope = 0
 
+        # --- Asegurar memoria del ciclo ---
+        if 'dias_ciclo_sim_mem' not in st.session_state:
+            st.session_state.dias_ciclo_sim_mem = 14
+
         with st.container(border=True):
             st.markdown("#### 📝 Parámetros de la Operación")
             cs1, cs2, cs3, cs4 = st.columns(4)
@@ -360,6 +364,43 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if tope_k in p_t: 
                             st.session_state.idx_tope = i
                             break
+                            
+                # --- 🧠 INTELIGENCIA DE CICLOS PARA SIMULADOR M3 ---
+                dias_ciclo_calc_sim = 14
+                try:
+                    f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
+                    df_viva, df_hist = obtener_historial_completo_ciclos()
+                    fechas_enc = []
+                    
+                    def parse_fecha(val):
+                        s = str(val).strip().lower()
+                        if not s: return pd.NaT
+                        if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+                        try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+                        except: return pd.NaT
+
+                    for df_temp in [df_viva, df_hist]:
+                        if not df_temp.empty:
+                            col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+                            col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
+                            if col_f and col_d:
+                                mask = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x)).str.contains(f_obj_alpha[:8] if len(f_obj_alpha)>8 else f_obj_alpha, regex=False, na=False)
+                                for d_raw in df_temp[mask][col_d]:
+                                    f_val = parse_fecha(d_raw)
+                                    if pd.notna(f_val): fechas_enc.append(f_val)
+                    
+                    if fechas_enc:
+                        hoy = pd.to_datetime(datetime.now())
+                        validas = [f for f in fechas_enc if f <= hoy]
+                        if validas:
+                            ciclo = (hoy - max(validas)).days
+                            if 0 <= ciclo <= 365: dias_ciclo_calc_sim = ciclo
+                except:
+                    pass
+                
+                st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
+                # ----------------------------------------------------
+                
                 st.session_state.finca_anterior = finca_sim
                 st.rerun()
 
@@ -374,7 +415,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
             horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-            dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
+            
+            # 💥 Usamos la memoria calculada para inyectar el número exacto
+            dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=int(st.session_state.get('dias_ciclo_sim_mem', 14)), step=1)
             
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
