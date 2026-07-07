@@ -64,10 +64,9 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🎯 ARTILLERÍA VISUAL: LA BALA DE PLATA CSS (V4 - DEFINITIVA) 🎯 ---
+# --- 🎯 ARTILLERÍA VISUAL: CSS LIMPIO Y DEFINITIVO 🎯 ---
 st.markdown("""
 <style>
-/* --- Ocultar elementos innecesarios --- */
 [data-testid="stToolbarActions"] { display: none !important; }
 .stAppDeployButton { display: none !important; }
 .viewerBadge_container { display: none !important; visibility: hidden !important; opacity: 0 !important; }
@@ -75,75 +74,58 @@ div[class^="viewerBadge"] { display: none !important; }
 footer { display: none !important; visibility: hidden !important; }
 #MainMenu { visibility: visible !important; display: block !important; }
 
-/* --- Fondo y Sidebar --- */
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* --- Botones (Estilos corregidos para evitar el rojo no deseado) --- */
-/* Botones primarios (Acciones principales) */
-button[kind="primary"] { 
-    background-color: #0d1b2a !important; 
-    color: #d4af37 !important; 
-    border: 2px solid #d4af37 !important; 
+/* Botones Sidebar */
+[data-testid="stSidebar"] button[kind="secondary"] { background-color: transparent !important; border: 1px solid rgba(255,255,255,0.2) !important; border-radius: 8px !important; color: #ffffff !important; }
+[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: rgba(212, 175, 55, 0.2) !important; border-color: #d4af37 !important; }
+
+/* Botones Principales */
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; border-radius: 8px !important; }
+button[kind="primary"]:hover { background-color: #1a365d !important; color: white !important; }
+
+.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
+
+/* ========================================================================= */
+/* 💥 REPARACIÓN DE CASILLAS, NÚMEROS Y ZONA DE CARGA 💥 */
+/* ========================================================================= */
+
+/* 1. Arreglo de los inputs de texto, números, fechas y listas */
+div[data-testid="stTextInput"] > div > div,
+div[data-testid="stNumberInput"] > div > div,
+div[data-testid="stDateInput"] > div > div,
+div[data-testid="stSelectbox"] > div > div {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 6px !important;
+}
+
+/* 2. Forzar el color de las letras a negro para que se lean */
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stDateInput"] input,
+div[data-testid="stSelectbox"] span {
+    color: #0d1b2a !important;
+    font-weight: bold !important;
+}
+
+/* 3. Arreglo de la Zona de Carga (File Uploader) que se había borrado */
+div[data-testid="stFileUploader"] > section {
+    border: 2px dashed #0d1b2a !important;
+    background-color: #ffffff !important;
     border-radius: 8px !important;
 }
-button[kind="primary"]:hover {
-    background-color: #1a365d !important;
-    border-color: #d4af37 !important;
-    color: white !important;
-}
-
-/* Botones secundarios (Menú lateral y otros) */
-button[kind="secondary"] {
-    background-color: transparent !important; 
-    border: 1px solid rgba(255,255,255,0.2) !important; 
-    border-radius: 8px !important; 
-    color: #ffffff !important;
-}
-button[kind="secondary"]:hover { 
-    background-color: rgba(212, 175, 55, 0.2) !important; 
-    border-color: #d4af37 !important;
-}
-
-/* --- Títulos y Tarjetas --- */
-.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
-.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
-th { background-color: #f0f2f6 !important; color: black !important; }
-
-/* ========================================================================= */
-/* 💥 ATAQUE DIRECTO AL FRAMEWORK BASEWEB DE STREAMLIT (Cajas de texto) 💥 */
-/* ========================================================================= */
-
-/* Aplicar borde y fondo blanco a los contenedores internos de los inputs */
-div[data-baseweb="input"] > div,
-div[data-baseweb="select"] > div,
-div[data-baseweb="number"] > div {
-    background-color: #ffffff !important;
-    border: 2px solid #0d1b2a !important;
-    border-radius: 6px !important;
-    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
-}
-
-/* Forzar el color del texto y la negrita dentro de las cajas */
-input, 
-div[data-baseweb="select"] span {
+div[data-testid="stFileUploader"] > section * {
     color: #0d1b2a !important;
-    font-weight: 900 !important;
-    background-color: transparent !important; /* Para evitar parches de color */
 }
 
-/* Color del texto de ayuda (placeholder) */
-input::placeholder {
-    color: #888888 !important;
-    font-weight: 500 !important;
+/* 4. Tablas (Dataframes) */
+div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
+    border: 3px solid #0d1b2a !important; border-radius: 8px !important;
 }
-
-/* Estilo para las etiquetas (labels) de los inputs para que resalten más */
-label p {
-    color: #1a365d !important;
-    font-weight: 700 !important;
-}
+th { background-color: #f0f2f6 !important; color: black !important; }
 /* ========================================================================= */
 </style>
 """, unsafe_allow_html=True)
@@ -204,14 +186,12 @@ with st.sidebar:
     st.markdown("---")
     
     if st.session_state['usuario_rol'] == "ADMIN":
-        # 💥 BLINDAJE DE SINCRONIZACIÓN MAESTRA (EN SEGUNDO PLANO) 💥
         def purgar_ram():
             st.cache_data.clear()
             st.cache_resource.clear()
             
         st.button("🔄 Cargar Cócteles / Refrescar BD", type="primary", use_container_width=True, on_click=purgar_ram)
             
-        # 💥 BLINDAJE DE MEMORIA: Se asigna el selector a la variable 'key' para que no se borre
         st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
             "🛠️ 1. Mantenimiento Plantilla SAP", 
