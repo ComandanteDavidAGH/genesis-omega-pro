@@ -1302,7 +1302,33 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
                                     fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                     filas_memoria.append(fila_m)
+                        # ... (código anterior donde armas row_azul, fila_apoyo y filas_memoria) ...
                         
+                        # 💥 FILTRO ANTI-NAN (Limpieza para que JSON no se queje) 💥
+                        def limpiar_json(val):
+                            if pd.isna(val) or (isinstance(val, float) and math.isnan(val)):
+                                return ""
+                            return val
+
+                        row_azul = [limpiar_json(x) for x in row_azul]
+                        fila_apoyo = [limpiar_json(x) for x in fila_apoyo]
+                        filas_memoria = [[limpiar_json(x) for x in fila] for fila in filas_memoria]
+                        # ---------------------------------------------------------
+
+                        hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
+                        hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
+                        if filas_memoria: 
+                            hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
+ 
+                        st.balloons()
+                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul}.")
+                        st.toast(f"💾 Memoria Sincronizada con éxito.", icon="⚔️")
+                        
+                        if 'memoria_excel' in st.session_state: 
+                            del st.session_state['memoria_excel']
+                    except Exception as e_save: 
+                        st.error(f"🚨 Falla en el Guardado: {e_save}")
+                     
                         hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                         if filas_memoria: 
