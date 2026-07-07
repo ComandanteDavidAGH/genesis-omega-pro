@@ -626,12 +626,21 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if not match_t2.empty:
             tipo_productor = str(match_t2.iloc[0].iloc[5]).strip().upper()
             tipo_de_tope_finca = str(match_t2.iloc[0].iloc[6]).strip().upper()
+
+        # 💥 EL BLINDAJE PARA COOPERATIVAS HÍBRIDAS 💥
+        # Si el nombre de la finca contiene "COOP" o "EMPREBANCOOP", el sistema 
+        # ignora si la TABLA 2 dice "AFILIADO" y la obliga a usar la fila "COOPERATIVA"
+        if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia:
+            tipo_productor = "COOPERATIVA"
         
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
+                # Al forzarla como COOPERATIVA, aquí jalará tu 1.112 para químicos
                 mult_material = extraer_numero(match_cfg.iloc[0].iloc[3])
+                # Aquí jalará el 1510 para el servicio técnico
                 tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
+                # Aquí jalará el 1.164 para el vuelo
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
  
         # =======================================================
