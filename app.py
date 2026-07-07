@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🪝 ARTILLERÍA VISUAL: EL CEBO DE RASTREO 🪝 ---
+# --- 🎯 ARTILLERÍA VISUAL: DISEÑO CORPORATIVO APLICADO ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -79,31 +79,28 @@ footer { display: none !important; visibility: hidden !important; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
 /* ========================================================================= */
-/* 🚨🚨 CEBO ACTIVADO: ATAQUE BRUTAL A TODAS LAS ETIQUETAS DE ENTRADA 🚨🚨 */
+/* 🎯🎯 TIRO DE GRACIA: DISEÑO CORPORATIVO APLICADO A LAS CAJAS 🎯🎯 */
 /* ========================================================================= */
 
-input, 
-select, 
-textarea, 
+/* 1. Fondo blanco y borde azul oscuro para las cajas contenedoras */
 div[data-baseweb="input"], 
-div[data-baseweb="select"],
-div[data-testid="stTextInput"],
-div[data-testid="stSelectbox"] {
-    border: 3px solid red !important;
-    background-color: #e0f7fa !important; /* Azul clarito chillón */
-    border-radius: 5px !important;
+div[data-baseweb="select"] {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 6px !important;
+    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
 }
 
+/* 2. Color del texto placeholder (gris normal para que no parezca error) */
 input::placeholder {
-    color: red !important;
-    font-weight: bold !important;
+    color: #6c757d !important;
+    font-weight: normal !important;
 }
 
-.stTextInput input,
-.stSelectbox span,
-.stNumberInput input,
-.stDateInput input {
-    color: black !important;
+/* 3. Color del texto ingresado/seleccionado (negro/azul oscuro, negrita) */
+input, 
+div[data-baseweb="select"] span {
+    color: #0d1b2a !important;
     font-weight: 900 !important;
 }
 /* ========================================================================= */
