@@ -506,45 +506,56 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
  
     # ===========================================================================
-    # 📡⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO (Sincronización robusta de TABLA 2)
+    # 📡⚡ INYECTOR DE AUTO-SANACIÓN (Blindaje contra otros módulos)
     # ===========================================================================
     
-    # 💥 PURGA TÁCTICA PROFUNDA: Borramos TODO rastro de caché vieja (TABLA 2 y Precios)
-    if 'purga_total_v3' not in st.session_state:
-        if 'df_config_base' in st.session_state: 
-            del st.session_state['df_config_base']
-        if 'df_config' in st.session_state: 
-            del st.session_state['df_config']  # Esto obliga a descargar la TABLA 2 de nuevo
-        st.session_state['purga_total_v3'] = True
- 
-    if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
-        with st.spinner("📡 Descargando bases maestras de Fincas y Configuración actualizadas desde Google Drive..."):
-            gc_maestro = obtener_cliente_gspread_unificado()
-            if not gc_maestro:
-                st.error("❌ Error de Credenciales: No se pudo inicializar el enlace de Google Drive. Revise el secreto 'gcp_service_account' en Streamlit Cloud.")
+    def forzar_descarga_maestros():
+        gc_maestro = obtener_cliente_gspread_unificado()
+        if not gc_maestro: return None, None
+        try:
+            boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
+            df_t2_temp = pd.DataFrame()
+            if t2_data: 
+                idx_t2 = 0
+                for i in range(min(10, len(t2_data))):
+                    if "FINCA" in [str(x).upper().strip() for x in t2_data[i]]:
+                        idx_t2 = i
+                        break
+                cols_limpias = [str(c).strip() for c in t2_data[idx_t2]]
+                df_t2_temp = pd.DataFrame(t2_data[idx_t2+1:], columns=cols_limpias)
+                
+            cfg_data = boveda_m.worksheet("Configuración").get_all_values()
+            df_cfg_temp = pd.DataFrame(cfg_data[1:], columns=cfg_data[0]) if cfg_data else pd.DataFrame()
+            return df_t2_temp, df_cfg_temp
+        except Exception as e:
+            st.error(f"🚨 Falla en la red: {e}")
+            return None, None
+
+    # 1. Leemos lo que haya dejado la memoria actual
+    df_t2_cache = st.session_state.get('df_config', pd.DataFrame())
+    df_cfg_cache = st.session_state.get('df_config_base', pd.DataFrame())
+
+    # 2. ESCÁNER DE AUTO-SANACIÓN: Contamos las fincas reales que tiene la tabla
+    necesita_sanacion = False
+    if df_t2_cache.empty or df_cfg_cache.empty:
+        necesita_sanacion = True
+    else:
+        fincas_reales = df_t2_cache.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+        fincas_reales = [f for f in fincas_reales if f not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']]
+        if len(fincas_reales) < 5:
+            necesita_sanacion = True  # ¡Otro módulo nos cortó la tabla!
+
+    # 3. Si la tabla está incompleta, ejecutamos la curación en segundo plano
+    if necesita_sanacion:
+        with st.spinner("🔄 Detectada anomalía de memoria. Iniciando Auto-Sanación de BD..."):
+            df_t2_nueva, df_cfg_nueva = forzar_descarga_maestros()
+            if df_t2_nueva is not None:
+                st.session_state['df_config'] = df_t2_nueva
+                st.session_state['df_config_base'] = df_cfg_nueva
+                st.toast("✅ Base de Datos Sanada y Restaurada al 100%.", icon="🛠️")
             else:
-                try:
-                    boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-                    
-                    if 'df_config' not in st.session_state:
-                        t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
-                        if t2_data: 
-                            idx_t2 = 0
-                            for i in range(min(10, len(t2_data))):
-                                if "FINCA" in [str(x).upper().strip() for x in t2_data[i]]:
-                                    idx_t2 = i
-                                    break
-                            cols_limpias = [str(c).strip() for c in t2_data[idx_t2]]
-                            st.session_state['df_config'] = pd.DataFrame(t2_data[idx_t2+1:], columns=cols_limpias)
-                            
-                    if 'df_config_base' not in st.session_state:
-                        cfg_data = boveda_m.worksheet("Configuración").get_all_values()
-                        if cfg_data: 
-                            st.session_state['df_config_base'] = pd.DataFrame(cfg_data[1:], columns=cfg_data[0])
-                except Exception as e:
-                    st.error(f"🚨 Falla en la descarga de Google Drive: {e}")
-                    st.info("💡 **Nota de Seguridad de Redes:** Asegúrese de que el Google Sheet esté compartido con la dirección de correo electrónico de su Cuenta de Servicio de Google Cloud (el campo 'client_email' que se encuentra en la configuración de sus secretos). Copie ese correo y dele acceso de Editor o Lector en el Sheets.")
- 
+                st.error("🚨 No se pudo restaurar la base de datos.") 
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operations")
     
