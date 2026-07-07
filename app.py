@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO ---
+# --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO (💥 REPARADO 💥) ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -91,10 +91,26 @@ button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !i
 
 .titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
 .tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
-div[data-baseweb="input"] input, div[data-baseweb="select"] { color: black !important; background-color: white !important; font-weight: bold; }
+
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
-div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="number"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; box-shadow: 1px 1px 4px rgba(0,0,0,0.05) !important; }
+
+/* 💥 SOLUCIÓN DEFINITIVA A LAS CASILLAS TRANSPARENTES 💥 */
+div[data-baseweb="select"], 
+div[data-baseweb="input"], 
+div[data-baseweb="number"] { 
+    background-color: #ffffff !important; 
+    border: 2px solid #0d1b2a !important; 
+    border-radius: 6px !important; 
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.1) !important;
+}
+
+/* 💥 FORZAR TEXTO NEGRO Y NEGRITA DENTRO DE LAS CAJAS 💥 */
+div[data-baseweb="input"] input, 
+div[data-baseweb="select"] span { 
+    color: #000000 !important; 
+    font-weight: 900 !important; 
+}
 </style>
 """, unsafe_allow_html=True)
 
