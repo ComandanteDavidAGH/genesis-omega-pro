@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🎯 ARTILLERÍA VISUAL: CSS LIMPIO Y DEFINITIVO 🎯 ---
+# --- 🎯 ARTILLERÍA VISUAL: LA BALA DE PLATA CSS 🎯 ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -78,54 +78,49 @@ footer { display: none !important; visibility: hidden !important; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* Botones Sidebar */
-[data-testid="stSidebar"] button[kind="secondary"] { background-color: transparent !important; border: 1px solid rgba(255,255,255,0.2) !important; border-radius: 8px !important; color: #ffffff !important; }
-[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: rgba(212, 175, 55, 0.2) !important; border-color: #d4af37 !important; }
+[data-testid="stSidebar"] input { color: #0d1b2a !important; background-color: #ffffff !important; }
+[data-testid="stSidebar"] button svg { fill: #0d1b2a !important; color: #0d1b2a !important; }
 
-/* Botones Principales */
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; border-radius: 8px !important; }
-button[kind="primary"]:hover { background-color: #1a365d !important; color: white !important; }
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
+[data-testid="stSidebar"] button[kind="secondary"] p { color: #ffffff !important; }
+
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
 
 .titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
+.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
 
-/* ========================================================================= */
-/* 💥 REPARACIÓN DE CASILLAS, NÚMEROS Y ZONA DE CARGA 💥 */
-/* ========================================================================= */
-
-/* 1. Arreglo de los inputs de texto, números, fechas y listas */
-div[data-testid="stTextInput"] > div > div,
-div[data-testid="stNumberInput"] > div > div,
-div[data-testid="stDateInput"] > div > div,
-div[data-testid="stSelectbox"] > div > div {
-    border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 6px !important;
-}
-
-/* 2. Forzar el color de las letras a negro para que se lean */
-div[data-testid="stTextInput"] input,
-div[data-testid="stNumberInput"] input,
-div[data-testid="stDateInput"] input,
-div[data-testid="stSelectbox"] span {
-    color: #0d1b2a !important;
-    font-weight: bold !important;
-}
-
-/* 3. Arreglo de la Zona de Carga (File Uploader) que se había borrado */
-div[data-testid="stFileUploader"] > section {
-    border: 2px dashed #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 8px !important;
-}
-div[data-testid="stFileUploader"] > section * {
-    color: #0d1b2a !important;
-}
-
-/* 4. Tablas (Dataframes) */
-div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
-    border: 3px solid #0d1b2a !important; border-radius: 8px !important;
-}
 th { background-color: #f0f2f6 !important; color: black !important; }
+[data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
+
+/* ========================================================================= */
+/* 💥 BALA DE PLATA: USAMOS #root PARA DESTRUIR LA TRANSPARENCIA DE STREAMLIT 💥 */
+/* ========================================================================= */
+
+#root div[data-testid="stTextInput"] div[data-baseweb="input"],
+#root div[data-testid="stSelectbox"] div[data-baseweb="select"],
+#root div[data-testid="stNumberInput"] div[data-baseweb="input"],
+#root div[data-testid="stDateInput"] div[data-baseweb="input"] {
+    background-color: #ffffff !important;
+    border: 2px solid #0d1b2a !important;
+    border-radius: 6px !important;
+    box-shadow: 1px 1px 5px rgba(0,0,0,0.1) !important;
+}
+
+#root div[data-testid="stTextInput"] input,
+#root div[data-testid="stNumberInput"] input,
+#root div[data-testid="stDateInput"] input,
+#root div[data-testid="stSelectbox"] span {
+    color: #0d1b2a !important;
+    font-weight: 900 !important;
+}
+
+#root input::placeholder {
+    color: #888888 !important;
+    font-weight: 500 !important;
+}
 /* ========================================================================= */
 </style>
 """, unsafe_allow_html=True)
@@ -220,10 +215,15 @@ with st.sidebar:
         ], key="modulo_actual")
         
     st.markdown("---")
-    if st.button("🔒 CERRAR SESIÓN", use_container_width=True):
-        st.session_state['autenticado'], st.session_state['usuario_rol'], st.session_state['usuario_nombre'] = False, None, None
+    
+    # 💥 LA SOLUCIÓN AL ERROR: CALLBACK DE CERRAR SESIÓN 💥
+    def apagar_motores():
+        st.session_state['autenticado'] = False
+        st.session_state['usuario_rol'] = None
+        st.session_state['usuario_nombre'] = None
         st.session_state['modulo_actual'] = "🏠 Centro de Mando"
-        st.rerun()
+
+    st.button("🔒 CERRAR SESIÓN", use_container_width=True, on_click=apagar_motores)
 
 # --- 6. DELEGACIÓN A ESCUADRONES ---
 menu = st.session_state['modulo_actual']
