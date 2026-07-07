@@ -176,21 +176,41 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
-    # 💥 MAGIA CSS: Bordes oscuros para selectores, cajas de texto y fechas
+    # 💥 CAÑONAZO CSS: FORZANDO BORDES VISIBLES EN TODOS LOS CONTROLES
     st.markdown("""
     <style>
+    /* Marco de las tablas de datos */
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
         border: 3px solid #0d1b2a !important; border-radius: 8px !important;
         box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     
-    /* ESTILOS PARA CAJAS DE ENTRADA (HACE QUE NO SEAN TRANSPARENTES) */
-    div[data-baseweb="select"] > div, 
-    div[data-baseweb="input"] > div {
-        border: 2px solid #1a365d !important;
+    /* 💥 ATAQUE DIRECTO A LAS CAJAS DE TEXTO Y FECHAS */
+    .stTextInput [data-baseweb="input"],
+    .stNumberInput [data-baseweb="input"],
+    .stDateInput [data-baseweb="input"] {
+        border: 2px solid #0d1b2a !important; 
+        background-color: #ffffff !important; 
         border-radius: 6px !important;
-        background-color: #f8f9fa !important;
+        box-shadow: inset 0px 1px 4px rgba(0,0,0,0.1) !important;
+    }
+
+    /* 💥 ATAQUE DIRECTO A LOS MENÚS DESPLEGABLES (SELECTBOX) */
+    .stSelectbox [data-baseweb="select"] {
+        border: 2px solid #0d1b2a !important; 
+        background-color: #ffffff !important; 
+        border-radius: 6px !important;
+        box-shadow: inset 0px 1px 4px rgba(0,0,0,0.1) !important;
+    }
+
+    /* 💥 FORZANDO EL COLOR NEGRO DEL TEXTO POR DENTRO DE LAS CAJAS */
+    .stTextInput input,
+    .stNumberInput input,
+    .stDateInput input,
+    .stSelectbox [data-baseweb="select"] span {
+        color: #0d1b2a !important;
+        font-weight: bold !important;
     }
     </style>
     """, unsafe_allow_html=True)
