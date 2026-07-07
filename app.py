@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🎯 ARTILLERÍA VISUAL: LA BALA DE PLATA CSS 🎯 ---
+# --- 🎯 ARTILLERÍA VISUAL: EL CÓDIGO DEL CEBO CON COLORES CORPORATIVOS 🎯 ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -96,31 +96,37 @@ th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 
 /* ========================================================================= */
-/* 💥 BALA DE PLATA: USAMOS #root PARA DESTRUIR LA TRANSPARENCIA DE STREAMLIT 💥 */
+/* 💥 LA ARQUITECTURA DEL CEBO (QUE SÍ FUNCIONÓ) PERO EN AZUL Y BLANCO 💥 */
 /* ========================================================================= */
 
-#root div[data-testid="stTextInput"] div[data-baseweb="input"],
-#root div[data-testid="stSelectbox"] div[data-baseweb="select"],
-#root div[data-testid="stNumberInput"] div[data-baseweb="input"],
-#root div[data-testid="stDateInput"] div[data-baseweb="input"] {
-    background-color: #ffffff !important;
+/* Agrupa el título de la caja y el control dentro de un borde sólido */
+div[data-testid="stTextInput"],
+div[data-testid="stSelectbox"],
+div[data-testid="stNumberInput"],
+div[data-testid="stDateInput"] {
     border: 2px solid #0d1b2a !important;
-    border-radius: 6px !important;
-    box-shadow: 1px 1px 5px rgba(0,0,0,0.1) !important;
+    background-color: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 5px 10px !important; /* Respiro interno para que se vea elegante */
+    box-shadow: 0px 3px 6px rgba(0,0,0,0.1) !important;
 }
 
-#root div[data-testid="stTextInput"] input,
-#root div[data-testid="stNumberInput"] input,
-#root div[data-testid="stDateInput"] input,
-#root div[data-testid="stSelectbox"] span {
-    color: #0d1b2a !important;
+/* Borde interno suave para el recuadro donde se escribe directamente */
+div[data-baseweb="input"], 
+div[data-baseweb="select"] {
+    border: 1px solid #cccccc !important; 
+    background-color: #ffffff !important;
+}
+
+/* Color del texto interno SIEMPRE negro y fuerte para que destaque */
+.stTextInput input,
+.stSelectbox span,
+.stNumberInput input,
+.stDateInput input {
+    color: #000000 !important;
     font-weight: 900 !important;
 }
 
-#root input::placeholder {
-    color: #888888 !important;
-    font-weight: 500 !important;
-}
 /* ========================================================================= */
 </style>
 """, unsafe_allow_html=True)
