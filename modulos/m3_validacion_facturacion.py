@@ -176,6 +176,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
+    # 💥 MAGIA CSS: Bordes oscuros para selectores, cajas de texto y fechas
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {
@@ -183,6 +184,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    
+    /* ESTILOS PARA CAJAS DE ENTRADA (HACE QUE NO SEAN TRANSPARENTES) */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="input"] > div {
+        border: 2px solid #1a365d !important;
+        border-radius: 6px !important;
+        background-color: #f8f9fa !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -313,7 +322,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.session_state.idx_prod = 3
             st.session_state.idx_tope = 0
 
-        # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para los parámetros base
         with st.container(border=True):
             st.markdown("#### 📝 Parámetros de la Operación")
             cs1, cs2, cs3, cs4 = st.columns(4)
@@ -337,7 +345,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
 
-        # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para la configuración de la flota
         with st.container(border=True):
             st.markdown("#### ⚙️ Configuración de Flota")
             cs5, cs6, cs7, cs8 = st.columns(4)
@@ -474,17 +481,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # -----------------------------------------------------------------
-    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL (INTRACABLE E INTACTO)
+    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL
     # -----------------------------------------------------------------
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
         st.info("💡 Por favor, cargue los tres archivos fuente en el Módulo 2 y procese antes de validar.")
         st.stop()
 
-    # ===========================================================================
-    # 📡⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO
-    # ===========================================================================
-    
     if 'purga_precios' not in st.session_state:
         if 'df_config_base' in st.session_state: 
             del st.session_state['df_config_base']
@@ -517,7 +520,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 except Exception as e:
                     st.error(f"🚨 Falla en la descarga de Google Drive: {e}")
 
-    # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para el Módulo Operativo
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operaciones (SAP)")
     
@@ -722,7 +724,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         coctel_piloto_base = partes_coctel[0]
         sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
 
-        # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para los Parámetros de Análisis
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
@@ -783,7 +784,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
             val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
-            # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para el Hangar
             with st.container(border=True):
                 st.markdown("#### ✈️ Hangar de Despliegue")
                 costo_total_vuegos = 0.0
