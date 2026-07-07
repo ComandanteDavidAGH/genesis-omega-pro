@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🛡️ ARTILLERÍA VISUAL Y CSS BLINDADO (💥 CAÑONAZO DEFINITIVO 💥) ---
+# --- 🪝 ARTILLERÍA VISUAL: EL CEBO DE RASTREO 🪝 ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -78,65 +78,32 @@ footer { display: none !important; visibility: hidden !important; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-[data-testid="stSidebar"] input { color: #0d1b2a !important; background-color: #ffffff !important; }
-[data-testid="stSidebar"] button svg { fill: #0d1b2a !important; color: #0d1b2a !important; }
-
-[data-testid="stSidebar"] button[kind="secondary"] {
-    background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
-}
-[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
-[data-testid="stSidebar"] button[kind="secondary"] p { color: #ffffff !important; }
-
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
-
-.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
-.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
-
-th { background-color: #f0f2f6 !important; color: black !important; }
-[data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
-
 /* ========================================================================= */
-/* 💥💥💥 FORZADO BRUTAL DE BORDES EN TODOS LOS CAMPOS DE LA APP 💥💥💥 */
+/* 🚨🚨 CEBO ACTIVADO: ATAQUE BRUTAL A TODAS LAS ETIQUETAS DE ENTRADA 🚨🚨 */
 /* ========================================================================= */
 
-/* 1. Atacamos las listas desplegables (Selectores) */
-[data-testid="stSelectbox"] > div > div > div {
-    border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 6px !important;
-    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
+input, 
+select, 
+textarea, 
+div[data-baseweb="input"], 
+div[data-baseweb="select"],
+div[data-testid="stTextInput"],
+div[data-testid="stSelectbox"] {
+    border: 3px solid red !important;
+    background-color: #e0f7fa !important; /* Azul clarito chillón */
+    border-radius: 5px !important;
 }
 
-/* 2. Atacamos las cajas de texto (Códigos, SAP) */
-[data-testid="stTextInput"] > div > div > div {
-    border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 6px !important;
-    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
+input::placeholder {
+    color: red !important;
+    font-weight: bold !important;
 }
 
-/* 3. Atacamos los campos de números (Hectáreas, Tarifas) */
-[data-testid="stNumberInput"] > div > div > div {
-    border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 6px !important;
-    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
-}
-
-/* 4. Atacamos las fechas (Calendario) */
-[data-testid="stDateInput"] > div > div > div {
-    border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 6px !important;
-    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
-}
-
-/* 5. Forzamos el texto interno a Negro y Negrita en todo lado */
-[data-testid="stSelectbox"] span,
-[data-testid="stTextInput"] input,
-[data-testid="stNumberInput"] input,
-[data-testid="stDateInput"] input {
-    color: #000000 !important;
+.stTextInput input,
+.stSelectbox span,
+.stNumberInput input,
+.stDateInput input {
+    color: black !important;
     font-weight: 900 !important;
 }
 /* ========================================================================= */
