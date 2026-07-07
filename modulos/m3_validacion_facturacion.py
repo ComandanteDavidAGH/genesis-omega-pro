@@ -1239,6 +1239,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
  
                         ha_f = float(ha_dosis_final)
                         
+                        # 💥 PARCHE DE AUTOCOMPLETADO 💥
+                        # Si en la TABLA 2 la hectárea está vacía (NaN), usamos la hectárea del vuelo
+                        if pd.isna(ha_bruta_f) or str(ha_bruta_f).strip() == "":
+                            ha_bruta_f = ha_f
+                        
                         if total_ha_cobro_escuadron == 0:
                             h_total_v = 0.0
                         else:
