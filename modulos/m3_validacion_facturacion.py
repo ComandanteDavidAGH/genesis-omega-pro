@@ -102,7 +102,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
         puntaje = 0
         es_valido = True
         
-        # 1. VALIDACIÓN DEL LÍDER (Solo si la receta exige un líder con 'X')
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -111,13 +110,11 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_lider = True
                     break
             if not match_lider:
-                es_valido = False # Si pide líder y no está en SAP, se descarta.
+                es_valido = False 
         
         if not es_valido:
             continue
 
-        # 2. ANÁLISIS QUÍMICO RIGUROSO (SAP vs Receta)
-        # A. Revisar qué pide la receta vs qué hay en SAP
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
@@ -128,15 +125,14 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     break
             
             if match_receta:
-                puntaje += 100  # +100 por cada producto que coincide
+                puntaje += 100 
                 if dose_matched: 
-                    puntaje += 50  # 💥 CORRECCIÓN: Sube a 50 para que la Dosis Exacta sea la que mande.
+                    puntaje += 50 
                 else:
-                    puntaje -= 50  # 💥 CORRECCIÓN: Castigo si la dosis no cuadra (ej. receta pide 0, SAP trae 7).
+                    puntaje -= 50 
             else:
-                puntaje -= 100  # -100 si la receta exige un producto que SAP NO trajo
+                puntaje -= 100 
 
-        # B. Revisar qué trajo SAP vs qué pide la receta (Penalizar productos invasores)
         for k_sap in sap_dict_pista.keys():
             sap_en_receta = False
             for p_receta in receta.keys():
@@ -145,7 +141,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     break
             
             if not sap_en_receta:
-                # Si el producto extra de SAP es un fertilizante, no penalizamos al cóctel base
                 is_fert = False
                 for f_name in dict_fertilizantes.keys():
                     if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
@@ -153,20 +148,16 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                         break
                 
                 if not is_fert:
-                    puntaje -= 100  # -100 si SAP trajo un producto invasor
+                    puntaje -= 100 
 
-        # 3. EL PILOTO YA NO ES DIOS (Bono de desempate en lugar de dominio absoluto)
         if iter_id == coctel_piloto_base: 
-            puntaje += 10  # 💥 CORRECCIÓN: Reducido a 10. Solo desempata si dos recetas son idénticas, no altera dosis.
+            puntaje += 10 
 
-        # 4. CORONAR AL GANADOR
         if puntaje > max_p:
             max_p = puntaje
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
-    # ---------------------------------------------------------
-    # AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
@@ -322,40 +313,45 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.session_state.idx_prod = 3
             st.session_state.idx_tope = 0
 
-        st.markdown("#### 📝 Parámetros de la Operación")
-        cs1, cs2, cs3, cs4 = st.columns(4)
-        coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
-        ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
-        finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
-        
-        if finca_sim != st.session_state.finca_anterior:
-            datos = diccionario_fincas.get(finca_sim, {})
-            if datos.get("Productor") in lista_productores:
-                st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
-            st.session_state.idx_tope = 0
-            tope_k = datos.get("Tope_Key", "")
-            if tope_k:
-                for i, p_t in enumerate(pistas_con_tope):
-                    if tope_k in p_t: 
-                        st.session_state.idx_tope = i
-                        break
-            st.session_state.finca_anterior = finca_sim
-            st.rerun()
+        # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para los parámetros base
+        with st.container(border=True):
+            st.markdown("#### 📝 Parámetros de la Operación")
+            cs1, cs2, cs3, cs4 = st.columns(4)
+            coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
+            ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
+            finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+            
+            if finca_sim != st.session_state.finca_anterior:
+                datos = diccionario_fincas.get(finca_sim, {})
+                if datos.get("Productor") in lista_productores:
+                    st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
+                st.session_state.idx_tope = 0
+                tope_k = datos.get("Tope_Key", "")
+                if tope_k:
+                    for i, p_t in enumerate(pistas_con_tope):
+                        if tope_k in p_t: 
+                            st.session_state.idx_tope = i
+                            break
+                st.session_state.finca_anterior = finca_sim
+                st.rerun()
 
-        tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
-        
-        st.markdown("<br>", unsafe_allow_html=True) 
-        cs5, cs6, cs7, cs8 = st.columns(4)
-        
-        lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
-        vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
-        
-        pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
-        horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-        dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
-        recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
 
-        if st.button("🚀 Construir Matriz MEGAZORD"):
+        # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para la configuración de la flota
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Configuración de Flota")
+            cs5, cs6, cs7, cs8 = st.columns(4)
+            
+            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
+            vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
+            
+            pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
+            horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+            dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
+            
+            recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
+
+        if st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True):
             try:
                 if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
                 elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
@@ -486,20 +482,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # ===========================================================================
-    # 📡⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO (Sincronización robusta de TABLA 2)
+    # 📡⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO
     # ===========================================================================
     
-    # 💥 PURGA TÁCTICA: Obligamos al sistema a olvidar precios viejos y buscar los nuevos
     if 'purga_precios' not in st.session_state:
         if 'df_config_base' in st.session_state: 
             del st.session_state['df_config_base']
         st.session_state['purga_precios'] = True
 
     if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
-        with st.spinner("📡 Descargando bases maestras de Fincas y Configuración actualizadas desde Google Drive..."):
+        with st.spinner("📡 Descargando bases maestras de Fincas y Configuración..."):
             gc_maestro = obtener_cliente_gspread_unificado()
             if not gc_maestro:
-                st.error("❌ Error de Credenciales: No se pudo inicializar el enlace de Google Drive. Revise el secreto 'gcp_service_account' en Streamlit Cloud.")
+                st.error("❌ Error de Credenciales: No se pudo inicializar el enlace de Google Drive.")
             else:
                 try:
                     boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -521,10 +516,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             st.session_state['df_config_base'] = pd.DataFrame(cfg_data[1:], columns=cfg_data[0])
                 except Exception as e:
                     st.error(f"🚨 Falla en la descarga de Google Drive: {e}")
-                    st.info("💡 **Nota de Seguridad de Redes:** Asegúrese de que el Google Sheet esté compartido con la dirección de correo electrónico de su Cuenta de Servicio de Google Cloud (el campo 'client_email' que se encuentra en la configuración de sus secretos). Copie ese correo y dele acceso de Editor o Lector en el Sheets.")
 
+    # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para el Módulo Operativo
     with st.container(border=True):
-        st.markdown("### 📡 Panel de Operations")
+        st.markdown("### 📡 Panel de Operaciones (SAP)")
     
         c_vacio, c_radar = st.columns([2, 2])
         pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
@@ -558,16 +553,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         c0, c1, c2 = st.columns([1, 2, 2])
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", format="DD/MM/YYYY", key="fecha_vuelo_master")
         
-        # ===========================================================================
-        # 🔒 CERROJO INQUEBRANTABLE: OBLIGATORIEDAD ABSOLUTA DE LA TABLA 2
-        # ===========================================================================
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         
         if not df_t2.empty:
             lista_fincas_raw = df_t2.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
             lista_fincas = sorted([f for f in lista_fincas_raw if f not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
         else:
-            st.error("🚨 CRÍTICO: El sistema no detecta la 'TABLA 2' maestra en memoria. Bloqueo de seguridad activado para evitar desalineación de columnas en el reporte final. Verifique la conexión con Google Drive.")
+            st.error("🚨 CRÍTICO: El sistema no detecta la 'TABLA 2' maestra.")
             st.stop()
                 
         opciones_finca = ["---"] + lista_fincas
@@ -588,7 +580,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
 
-        # --- EXTRACCIÓN DE INTELIGENCIA DE COSTOS ---
         mult_material = 1.112
         tarifa_serv_tec_base = 1337.0
         mult_avion_base = 1.112
@@ -615,7 +606,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
         # =======================================================
-        # 🎯 MOTOR DE CICLOS DEFINITIVO 
+        # 🎯 MOTOR DE CICLOS 
         # =======================================================
         dias_ciclo_calc = 0
         try:
@@ -731,6 +722,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         coctel_piloto_base = partes_coctel[0]
         sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
 
+        # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para los Parámetros de Análisis
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
@@ -749,7 +741,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 widget_key = f"had_{casilla_key}"
                 
-                # 💥 SEGURO ANTI-LOCURA: Forzar actualización de la caja si SAP encontró un dato, ignorando la memoria caché
                 sap_val = st.session_state.get('ha_radar_sap', 0.0)
                 if sap_val > 0 and st.session_state.get(f"sync_{widget_key}") != sap_val:
                     st.session_state[widget_key] = float(sap_val)
@@ -792,6 +783,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
             val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
+            # 💥 SOLUCIÓN ESTÉTICA: Contenedor con borde para el Hangar
             with st.container(border=True):
                 st.markdown("#### ✈️ Hangar de Despliegue")
                 costo_total_vuegos = 0.0
@@ -823,7 +815,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     with c_dr:
                         st.markdown("##### 🚁 Base Drones (Apoyo)")
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
-                        escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)               
+                        escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)                
                     
                     for index, row in escuadron_aviones.iterrows():
                         av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
@@ -992,9 +984,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 if idx_saldo != -1: 
                                     saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
 
-                    # =====================================================================
-                    # 🔒 PROTOCOLO DE BLINDAJE: FORZAR PRECIO DE BÓVEDA MAESTRA (V12)
-                    # =====================================================================
                     try:
                         if not df_cfg.empty:
                             c_p_i, c_c_i = 8, 9
@@ -1004,7 +993,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
                                     break
                             
-                            # Escanear matriz en busca del producto
                             mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
                             if not mask_cfg.any(): 
                                 mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
@@ -1012,10 +1000,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if mask_cfg.any():
                                 precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
                                 if precio_maestro > 0:
-                                    costo_unit = float(precio_maestro) # 💥 REESCRIBE Y ANULA EL PRECIO FLOTANTE DE SAP
+                                    costo_unit = float(precio_maestro) 
                     except Exception as e:
                         pass
-                    # =====================================================================
 
                     total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                     dosis_teorica = None
@@ -1084,18 +1071,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             # --- LIQUIDACIÓN FINAL ---
             from decimal import Decimal, ROUND_HALF_UP
 
-            # Función de redondeo maestro (Clon del motor SAP)
             def sap_round(n): 
-                # 1. Limpiamos la "basura" flotante oculta de Python
                 n_limpio = round(float(n), 4)
-                # 2. Aplicamos redondeo financiero estricto (mitades siempre hacia arriba)
                 return int(Decimal(str(n_limpio)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
-            # Recalculamos la mezcla aplicando el redondeo línea por línea, igual que SAP
             costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round).sum()
 
             unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
-            
             unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
             
             subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
@@ -1242,8 +1224,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         row_azul[16], row_azul[17], row_azul[18], row_azul[19], row_azul[20] = hk_f, tipo_mision_str, float(gran_total), round(tarifa_vuelo_neta_ha, 2), round(float(recargo_final), 2)
                         row_azul[21], row_azul[23], row_azul[28], row_azul[29], row_azul[32], row_azul[33] = float(gran_total), pista_manual, float(gran_total), round(total_pago_avion_neto, 2), tipo_productor, "GÉNESIS_V2_PRO"
                         
-                        # 💥 CORRECCIÓN DE TRANSPARENCIA: Forzamos la inyección del gran_total exacto en la columna E (índice 4)
-                        # Reemplazamos el espacio vacío "" por float(gran_total)
                         fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), float(gran_total), fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_mision_str, ""]
                         
                         col_azul = hoja_maestra.col_values(1)
@@ -1283,3 +1263,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             del st.session_state['memoria_excel']
                     except Exception as e_save: 
                         st.error(f"🚨 Falla en el Guardado: {e_save}")
+
+if __name__ == "__main__":
+    pass
