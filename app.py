@@ -64,7 +64,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🎯 ARTILLERÍA VISUAL: DISEÑO CORPORATIVO APLICADO ---
+# --- 🎯 ARTILLERÍA VISUAL: LA BALA DE PLATA CSS 🎯 ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -78,30 +78,48 @@ footer { display: none !important; visibility: hidden !important; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
+[data-testid="stSidebar"] input { color: #0d1b2a !important; background-color: #ffffff !important; }
+[data-testid="stSidebar"] button svg { fill: #0d1b2a !important; color: #0d1b2a !important; }
+
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
+[data-testid="stSidebar"] button[kind="secondary"] p { color: #ffffff !important; }
+
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
+
+.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
+.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
+
+th { background-color: #f0f2f6 !important; color: black !important; }
+[data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
+
 /* ========================================================================= */
-/* 🎯🎯 TIRO DE GRACIA: DISEÑO CORPORATIVO APLICADO A LAS CAJAS 🎯🎯 */
+/* 💥 BALA DE PLATA: USAMOS #root PARA DESTRUIR LA TRANSPARENCIA DE STREAMLIT 💥 */
 /* ========================================================================= */
 
-/* 1. Fondo blanco y borde azul oscuro para las cajas contenedoras */
-div[data-baseweb="input"], 
-div[data-baseweb="select"] {
-    border: 2px solid #0d1b2a !important;
+#root div[data-testid="stTextInput"] div[data-baseweb="input"],
+#root div[data-testid="stSelectbox"] div[data-baseweb="select"],
+#root div[data-testid="stNumberInput"] div[data-baseweb="input"],
+#root div[data-testid="stDateInput"] div[data-baseweb="input"] {
     background-color: #ffffff !important;
+    border: 2px solid #0d1b2a !important;
     border-radius: 6px !important;
-    box-shadow: 0px 2px 4px rgba(0,0,0,0.1) !important;
+    box-shadow: 1px 1px 5px rgba(0,0,0,0.1) !important;
 }
 
-/* 2. Color del texto placeholder (gris normal para que no parezca error) */
-input::placeholder {
-    color: #6c757d !important;
-    font-weight: normal !important;
-}
-
-/* 3. Color del texto ingresado/seleccionado (negro/azul oscuro, negrita) */
-input, 
-div[data-baseweb="select"] span {
+#root div[data-testid="stTextInput"] input,
+#root div[data-testid="stNumberInput"] input,
+#root div[data-testid="stDateInput"] input,
+#root div[data-testid="stSelectbox"] span {
     color: #0d1b2a !important;
     font-weight: 900 !important;
+}
+
+#root input::placeholder {
+    color: #888888 !important;
+    font-weight: 500 !important;
 }
 /* ========================================================================= */
 </style>
