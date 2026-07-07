@@ -509,11 +509,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     # 📡⚡ INYECTOR AUTOMÁTICO DE SEGURIDAD VERBOSO (Sincronización robusta de TABLA 2)
     # ===========================================================================
     
-    # 💥 PURGA TÁCTICA: Obligamos al sistema a olvidar precios viejos y buscar los nuevos
-    if 'purga_precios' not in st.session_state:
+    # 💥 PURGA TÁCTICA PROFUNDA: Borramos TODO rastro de caché vieja (TABLA 2 y Precios)
+    if 'purga_total_v3' not in st.session_state:
         if 'df_config_base' in st.session_state: 
             del st.session_state['df_config_base']
-        st.session_state['purga_precios'] = True
+        if 'df_config' in st.session_state: 
+            del st.session_state['df_config']  # Esto obliga a descargar la TABLA 2 de nuevo
+        st.session_state['purga_total_v3'] = True
  
     if 'df_config' not in st.session_state or 'df_config_base' not in st.session_state:
         with st.spinner("📡 Descargando bases maestras de Fincas y Configuración actualizadas desde Google Drive..."):
