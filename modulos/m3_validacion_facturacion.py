@@ -340,42 +340,87 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if 'finca_anterior' not in st.session_state:
             st.session_state.finca_anterior = lista_fincas[0]
             st.session_state.idx_prod = 3
-            st.session_state.idx_tope = 0
- 
-        st.markdown("#### 📝 Parámetros de la Operación")
-        cs1, cs2, cs3, cs4 = st.columns(4)
-        coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
-        ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
-        finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
-        
-        if finca_sim != st.session_state.finca_anterior:
-            datos = diccionario_fincas.get(finca_sim, {})
-            if datos.get("Productor") in lista_productores:
-                st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
-            st.session_state.idx_tope = 0
-            tope_k = datos.get("Tope_Key", "")
-            if tope_k:
-                for i, p_t in enumerate(pistas_con_tope):
-                    if tope_k in p_t: 
-                        st.session_state.idx_tope = i
-                        break
-            st.session_state.finca_anterior = finca_sim
-            st.rerun()
- 
-        tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
-        
-        st.markdown("<br>", unsafe_allow_html=True) 
-        cs5, cs6, cs7, cs8 = st.columns(4)
-        
-        lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
-        vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
-        
-        pista_sim = cs6.selectbox("🛣️ Pista y Tope", pistas_con_tope, index=st.session_state.idx_tope)
-        horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-        dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, value=14, step=1)
-        recargo_sim = st.number_input("⚠️ Recargo ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
- 
-        if st.button("🚀 Construir Matriz MEGAZORD"):
+            
+        # 💥 SOLUCIÓN DÍAS CICLO: Se ata la variable a la sesión
+        if 'dias_ciclo_sim_mem' not in st.session_state:
+            st.session_state.dias_ciclo_sim_mem = 14
+
+        with st.container(border=True):
+            st.markdown("#### 📝 Parámetros de la Operación")
+            cs1, cs2, cs3, cs4 = st.columns(4)
+            coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
+            ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
+            finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+            
+            if finca_sim != st.session_state.finca_anterior:
+                datos = diccionario_fincas.get(finca_sim, {})
+                if datos.get("Productor") in lista_productores:
+                    st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
+                
+                # --- 🧠 INTELIGENCIA DE CICLOS REAL M3 (SIMULADOR) ---
+                dias_ciclo_calc_sim = 14
+                try:
+                    f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
+                    df_viva, df_hist = obtener_historial_completo_ciclos()
+                    fechas_enc = []
+                    
+                    for df_temp in [df_viva, df_hist]:
+                        if not df_temp.empty:
+                            col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+                            col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
+                            if col_f and col_d:
+                                mask = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x)).str.contains(f_obj_alpha[:8] if len(f_obj_alpha)>8 else f_obj_alpha, regex=False, na=False)
+                                for d_raw in df_temp[mask][col_d]:
+                                    s = str(d_raw).strip().lower()
+                                    if not s: continue
+                                    if s.isdigit(): 
+                                        fechas_enc.append(pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D'))
+                                        continue
+                                    try: fechas_enc.append(pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce'))
+                                    except: pass
+                    
+                    if fechas_enc:
+                        fechas_limpias = [f for f in fechas_enc if pd.notna(f)]
+                        hoy = pd.to_datetime(datetime.now())
+                        validas = [f for f in fechas_limpias if f <= hoy]
+                        if validas:
+                            ciclo = (hoy - max(validas)).days
+                            if 0 <= ciclo <= 365: dias_ciclo_calc_sim = ciclo
+                except:
+                    pass
+                
+                # Se empuja el cálculo a la memoria del widget
+                st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
+                st.session_state.finca_anterior = finca_sim
+                st.rerun()
+
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
+
+        # 💥 SOLUCIÓN TOPE AUTOMÁTICO: Extrae el tope que le corresponde a la Finca
+        tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
+        if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
+            tope_finca_auto = "TOPE MAX GENERAL"
+
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Configuración de Flota")
+            cs5, cs6, cs7, cs8 = st.columns(4)
+            
+            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
+            vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
+            
+            # 💥 SEPARACIÓN: Solo selecciona Pista, el tope es automático
+            pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+            pista_sim = cs6.selectbox("🛣️ Pista Base", pistas_base_lista)
+            
+            horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+            
+            # 💥 WIDGET REPARADO: Atado directamente a la variable de sesión
+            dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, step=1, key="dias_ciclo_sim_mem")
+            
+            st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
+            recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
+
+        if st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True):
             try:
                 if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
                 elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
@@ -383,20 +428,25 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                val_tope = 0.0
-                match = re.search(r'\(\$([\d\.]+)\)', pista_sim)
-                if match: 
-                    val_tope = float(match.group(1).replace('.', ''))
- 
+                # 💥 CÁLCULO INTERNO DEL TOPE (Invisible y Automático)
+                dict_topes_pista = {
+                    "TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, 
+                    "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, 
+                    "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}
+                }
+                
+                val_tope = float(dict_topes_pista.get(tope_finca_auto, {}).get(pista_sim, 999999))
+                if val_tope == 999999: val_tope = 0.0
+
                 if vuelo_sim == "DRONE": 
-                    if "PLUC" in pista_sim: base_dron = 84428
-                    elif "PDIV" in pista_sim: base_dron = 76916
+                    if "PLUC" == pista_sim: base_dron = 84428
+                    elif "PDIV" == pista_sim: base_dron = 76916
                     else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
                     tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
-                    if val_tope > 0: 
+                    if val_tope > 0 and pista_sim != "PDIV": 
                         costo_bruto = min(costo_bruto, val_tope)
                     unitario_vuelo = costo_bruto * mult_v
  
