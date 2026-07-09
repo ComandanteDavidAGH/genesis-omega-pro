@@ -539,18 +539,27 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 # 💥 AJUSTE 2: Se agrega 'user-select: all;' al título del Total Operación
                 st.markdown(f"<h3 style='text-align: center; color: #0d1b2a; font-weight: 900; user-select: all;' title='Doble clic para copiar'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h3>".replace(",", "."), unsafe_allow_html=True)
                 
-                # 💥 AJUSTE 3: Bloque Inteligente de Copiado Rápido
-                st.caption("📋 **COPIA RÁPIDA PARA COTIZACIÓN** (Clica en el ícono de copia a la derecha)")
-                resumen_cotizacion = f"""COTIZACIÓN DE OPERACIÓN
-========================
-👨‍🔬 Serv. Tec:  $ {subtotal_st:,.0f}
-✈️ Vuelo:      $ {subtotal_vuelo:,.0f}
-🧪 Mezcla:     $ {mezcla_total:,.0f}
-⚠️ Recargo:    $ {valor_recargo_t:,.0f}
-------------------------
-💰 COSTO X HA: $ {costo_ha:,.0f}
-🔥 TOTAL:      $ {total_finca:,.0f}""".replace(",", ".")
-                st.code(resumen_cotizacion, language="text")
+                # 💥 AJUSTE 3: Bloque Inteligente de Copiado Rápido Individual
+                st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
+                cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
+                with cc1:
+                    st.write("👨‍🔬 Serv. Tec")
+                    st.code(f"$ {subtotal_st:,.0f}".replace(",", "."), language="text")
+                with cc2:
+                    st.write("✈️ Vuelo")
+                    st.code(f"$ {subtotal_vuelo:,.0f}".replace(",", "."), language="text")
+                with cc3:
+                    st.write("🧪 Mezcla")
+                    st.code(f"$ {mezcla_total:,.0f}".replace(",", "."), language="text")
+                with cc4:
+                    st.write("⚠️ Recargo")
+                    st.code(f"$ {valor_recargo_t:,.0f}".replace(",", "."), language="text")
+                with cc5:
+                    st.write("💰 Costo x Ha")
+                    st.code(f"$ {costo_ha:,.0f}".replace(",", "."), language="text")
+                with cc6:
+                    st.write("🔥 TOTAL")
+                    st.code(f"$ {total_finca:,.0f}".replace(",", "."), language="text")
 
             except Exception as e: 
                 st.error(f"Error: {e}")
@@ -1247,18 +1256,27 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             """.replace(",", ".")
             st.markdown(html_totales, unsafe_allow_html=True)
             
-            # 💥 AJUSTE 3: Bloque Inteligente de Copiado Rápido (OPERATIVO REAL)
-            st.caption("📋 **COPIA RÁPIDA PARA COTIZACIÓN** (Clica en el ícono de copia a la derecha)")
-            resumen_cotizacion_real = f"""COTIZACIÓN DE OPERACIÓN
-========================
-👨‍🔬 Serv. Tec:  $ {subtotal_st_finca:,.0f}
-✈️ Vuelo:      $ {subtotal_vuelo_finca:,.0f}
-🧪 Mezcla:     $ {costo_mezcla_total:,.0f}
-⚠️ Recargo:    $ {0:,.0f}
-------------------------
-💰 COSTO X HA: $ {costo_por_ha:,.0f}
-🔥 TOTAL:      $ {gran_total:,.0f}""".replace(",", ".")
-            st.code(resumen_cotizacion_real, language="text")
+            # 💥 AJUSTE 3: Bloque Inteligente de Copiado Rápido Individual (OPERATIVO REAL)
+            st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
+            cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
+            with cc1:
+                st.write("👨‍🔬 Serv. Tec")
+                st.code(f"$ {subtotal_st_finca:,.0f}".replace(",", "."), language="text")
+            with cc2:
+                st.write("✈️ Vuelo")
+                st.code(f"$ {subtotal_vuelo_finca:,.0f}".replace(",", "."), language="text")
+            with cc3:
+                st.write("🧪 Mezcla")
+                st.code(f"$ {costo_mezcla_total:,.0f}".replace(",", "."), language="text")
+            with cc4:
+                st.write("⚠️ Recargo")
+                st.code(f"$ 0", language="text")
+            with cc5:
+                st.write("💰 Costo x Ha")
+                st.code(f"$ {costo_por_ha:,.0f}".replace(",", "."), language="text")
+            with cc6:
+                st.write("🔥 TOTAL")
+                st.code(f"$ {gran_total:,.0f}".replace(",", "."), language="text")
 
             st.markdown("---")
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
