@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import concurrent.futures 
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA 
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -126,14 +126,18 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # 💥 CORRECCIÓN MATEMÁTICA ESTABLECIDA ($42.704)
                             if v.count('.') == 1 and v.count(',') == 0:
                                 if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
                                 if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
                                 else: v = v.replace(',', '')
                             elif ',' in v: v = v.replace(',', '.')
-                            return float(v)
+                            
+                            f_val = float(v)
+                            # ARREGLO DE LOS MILES ($42.704)
+                            if f_val < 1000 and '.' in str(val) and len(str(val).split('.')[-1]) == 3:
+                                f_val = f_val * 1000
+                            return f_val
                         except: return 0.0
                         
                     df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).str.strip().str.upper()
@@ -224,14 +228,14 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL - 💥 INTERFAZ APLANADA (SIN PESTAÑAS)
+# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA (SIN TABLAS INTERACTIVAS)
 # =================================================================
 
 def ejecutar():
     st.markdown("""
     <style>
     .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
+    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
     .tarjeta-kpi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
     .kpi-titulo { font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .kpi-valor { font-size: 26px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
@@ -239,51 +243,68 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
+    st.error("🛡️ **MODO ANTI-COLAPSO ACTIVADO:** Hemos desactivado la tabla interactiva que causaba los bloqueos. Ahora debes pegar tus datos en el cuadro de texto seguro de abajo.")
 
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    # Memoria de la tabla limpia, puras columnas de texto
-    if 'memoria_plana_v14' not in st.session_state:
-        st.session_state.memoria_plana_v14 = pd.DataFrame([{
-            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
-        } for _ in range(500)])
+    columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
+    if 'memoria_df_seguro' not in st.session_state:
+        st.session_state.memoria_df_seguro = pd.DataFrame(columns=columnas_base)
 
-    # 💥 DISEÑO PLANO: Cero pestañas. El usuario sube el Excel o baja a pegar directo en la tabla.
-    st.info("💡 **Guía:** Sube un Excel, o ignora esta caja y pega tus datos directo en la tabla de abajo.")
-    with st.expander("📁 Subir Archivo Excel (Opcional)", expanded=False):
-        archivo_excel = st.file_uploader("Formato: FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO", type=['xlsx'])
+    # =================================================================
+    # 📥 OPCIONES DE CARGA BLINDADAS
+    # =================================================================
+    st.markdown("### 📥 1. Entrada de Datos")
+    
+    tab_pegar, tab_subir = st.tabs(["📋 Pegar desde Excel", "📁 Subir Archivo Excel"])
+    
+    with tab_pegar:
+        texto_crudo = st.text_area("Selecciona tus datos en Excel, haz Ctrl+C y pégalos (Ctrl+V) dentro de esta caja:", height=150, placeholder="FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO")
+        
+        if st.button("📥 Procesar Datos Pegados", type="primary"):
+            if texto_crudo.strip():
+                try:
+                    df_pegado = pd.read_csv(io.StringIO(texto_crudo), sep='\t', header=None, dtype=str)
+                    df_limpio = pd.DataFrame(columns=columnas_base)
+                    
+                    for i, col in enumerate(columnas_base):
+                        if i < len(df_pegado.columns):
+                            df_limpio[col] = df_pegado.iloc[:, i].fillna("").astype(str).str.strip()
+                        else:
+                            df_limpio[col] = ""
+                            
+                    # Si copiaron los títulos de Excel, los borramos
+                    if not df_limpio.empty and df_limpio.iloc[0]['FINCA'].upper() == "FINCA":
+                        df_limpio = df_limpio.iloc[1:].reset_index(drop=True)
+
+                    st.session_state.memoria_df_seguro = df_limpio
+                    st.success(f"✅ ¡Éxito! Se cargaron {len(df_limpio)} filas de forma segura.")
+                except Exception as e:
+                    st.error(f"Error procesando el texto: {e}")
+            else:
+                st.warning("La caja de texto está vacía.")
+
+    with tab_subir:
+        archivo_excel = st.file_uploader("Sube tu matriz (.xlsx)", type=['xlsx'])
         if archivo_excel is not None:
-            if st.button("🔄 Sobrescribir tabla con Excel"):
+            if st.button("🔄 Cargar Archivo Excel"):
                 try:
                     df_up = pd.read_excel(archivo_excel)
-                    cols_req = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
-                    for c in cols_req:
+                    for c in columnas_base:
                         if c not in df_up.columns: df_up[c] = ""
-                    df_up = df_up[cols_req].fillna("").astype(str)
-                    
-                    filas_faltantes = 500 - len(df_up)
-                    if filas_faltantes > 0:
-                        df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
-                        df_up = pd.concat([df_up, df_blanco], ignore_index=True)
-
-                    st.session_state.memoria_plana_v14 = df_up
-                    if hasattr(st, 'rerun'): st.rerun()
-                    else: st.experimental_rerun()
+                    st.session_state.memoria_df_seguro = df_up[columnas_base].fillna("").astype(str)
+                    st.success("✅ Archivo cargado correctamente.")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error al leer Excel: {e}")
 
-    st.markdown("### 📋 Tabla de Proyección")
-    # Tabla Libre, sin pestañas, sin dinámicas conflictivas
-    df_edited = st.data_editor(
-        st.session_state.memoria_plana_v14,
-        key="tabla_plana_v14",
-        use_container_width=True,
-        hide_index=True
-    )
+    st.markdown("### 📊 Datos en Memoria (Solo Lectura)")
+    st.info("Esta tabla no se puede editar manualmente para evitar colapsos. Si te equivocaste, corrige en Excel y vuelve a pegar arriba.")
+    # 💥 AQUI USAMOS ST.DATAFRAME EN LUGAR DE ST.DATA_EDITOR. Esto NUNCA arroja el error removeChild.
+    st.dataframe(st.session_state.memoria_df_seguro, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.markdown("### ⚙️ Parámetros de Riesgo y Proyección")
+    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
     col_r1, col_r2 = st.columns(2)
     inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
     colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
@@ -292,111 +313,115 @@ def ejecutar():
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         
-        df_valid = df_edited.dropna(subset=['FINCA']).copy()
+        df_valid = st.session_state.memoria_df_seguro.copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
-            
-        with st.spinner("Procesando matriz financiera y logística..."):
-            col_prod_idx = 5
-            if not df_t2.empty:
-                for i, c_name in enumerate(df_t2.columns):
-                    c_clean = str(c_name).upper().replace('\n', ' ').strip()
-                    if 'TIPO' in c_clean and 'PROD' in c_clean:
-                        col_prod_idx = i
-                        break 
-            
-            resultados = []
-            log_volumetrico = {}
-            año_actual = str(datetime.now().year)
-
-            for idx, row in df_valid.iterrows():
-                finca_n = str(row['FINCA']).strip().upper()
-                ha_num = limpiar_numero(row['HECTAREAS'])
-                coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
+        
+        if df_valid.empty:
+            st.error("⚠️ No hay datos válidos para proyectar. Por favor pega o sube información primero.")
+        else:
+            with st.spinner("Procesando matriz financiera y logística..."):
                 
-                fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
-                coctel_combinado = f"{coctel_n} {fert_n}".strip()
-
-                dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
-                precio_vuelo = limpiar_numero(row['PRECIO VUELO'])
-
-                if ha_num == 0 and not df_t2.empty:
-                    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
-                    if not match_f.empty:
-                        ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
-
-                if ha_num <= 0: continue
-
-                if precio_vuelo == 0:
-                    precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
-
-                precio_vuelo = precio_vuelo * factor_inflacion
-
-                tipo_prod = "TERCERO"
+                col_prod_idx = 5
                 if not df_t2.empty:
-                    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
-                    if not match_f.empty: tipo_prod = str(match_f.iloc[0].iloc[col_prod_idx]).strip().upper() if len(match_f.columns) > col_prod_idx else "TERCERO"
+                    for i, c_name in enumerate(df_t2.columns):
+                        c_clean = str(c_name).upper().replace('\n', ' ').strip()
+                        if 'TIPO' in c_clean and 'PROD' in c_clean:
+                            col_prod_idx = i
+                            break 
                 
-                if "COOP" in finca_n or "EMPREBANCOOP" in finca_n: tipo_prod = "COOPERATIVA"
+                resultados = []
+                log_volumetrico = {}
+                año_actual = str(datetime.now().year)
 
-                mult_m, st_base, mult_v = 1.112, 1337.0, 1.112
-                if not df_conf.empty:
-                    match_cfg = df_conf[df_conf.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_prod]
-                    if not match_cfg.empty:
-                        mult_m = limpiar_numero(match_cfg.iloc[0].iloc[3])
-                        st_base = limpiar_numero(match_cfg.iloc[0].iloc[4])
-                        mult_v = limpiar_numero(match_cfg.iloc[0].iloc[6])
-                
-                if mult_m == 0 or st_base == 0:
-                    if tipo_prod == "TERCERO": mult_m, st_base, mult_v = 1.451, 1583.0, 1.451
-                    elif tipo_prod == "AFILIADO": mult_m, st_base, mult_v = 1.164, 1510.0, 1.164
-                    elif tipo_prod == "COOPERATIVA": mult_m, st_base, mult_v = 1.112, 1510.0, 1.164
-                    elif tipo_prod == "ORGANICO": mult_m, st_base, mult_v = 1.011, 1337.0, 1.011
-                    else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 
-
-                st_base = st_base * factor_inflacion
-
-                costo_mezcla_fila = 0.0
-                c_p_i, c_c_i = 8, 9
-                if not df_conf.empty:
-                    for i in range(min(5, len(df_conf))):
-                        r_c = [str(x).upper() for x in df_conf.iloc[i]]
-                        if 'PRODUCTO' in r_c and 'COSTO' in r_c:
-                            c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
-                            break
-
-                dict_receta = extraer_receta_mega(coctel_combinado, finca_n, df_mezclas, df_dicc, df_t2)
-                
-                for p, d in dict_receta.items():
-                    log_volumetrico[finca_n] = log_volumetrico.get(finca_n, {})
-                    log_volumetrico[finca_n][p] = log_volumetrico[finca_n].get(p, 0.0) + (d * ha_num)
-
-                    precio_unitario = 0.0
-                    if not df_conf.empty:
-                        mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
-                        if not mask_cfg.any() and "NEMATICIDA" in p: mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
-                        if mask_cfg.any(): precio_unitario = limpiar_numero(df_conf[mask_cfg].iloc[0, c_c_i])
+                for idx, row in df_valid.iterrows():
+                    finca_n = str(row['FINCA']).strip().upper()
+                    ha_num = limpiar_numero(row['HECTAREAS'])
+                    coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
                     
-                    if precio_unitario == 0.0 and not df_precios.empty:
-                        match_p = df_precios[(df_precios['AÑO'] == año_actual) & (df_precios['PRODUCTO_CLEAN'] == p.replace(" ",""))]
-                        if not match_p.empty: precio_unitario = match_p['PRECIO_PROM'].mean()
+                    fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
+                    coctel_combinado = f"{coctel_n} {fert_n}".strip()
 
-                    precio_unitario = precio_unitario * factor_inflacion
-                    costo_mezcla_fila += (d * ha_num * precio_unitario * mult_m)
+                    dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
+                    precio_vuelo = limpiar_numero(row['PRECIO VUELO'])
 
-                costo_st_fila = dias_c * st_base * ha_num
-                costo_vuelo_fila = precio_vuelo * ha_num 
-                gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + 0.5)
-                costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
+                    if ha_num == 0 and not df_t2.empty:
+                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
+                        if not match_f.empty:
+                            ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
 
-                resultados.append({
-                    "FINCA": finca_n, "HECTAREAS": ha_num, "COCTEL": coctel_combinado, "DIAS CICLO": dias_c, "PRECIO VUELO": precio_vuelo,
-                    "Costo ST ($)": math.floor(costo_st_fila), "Costo Vuelo ($)": math.floor(costo_vuelo_fila), "Costo Mezcla ($)": math.floor(costo_mezcla_fila),
-                    "Costo x Ha ($)": costo_ha, "RESULTADO TOTAL ($)": gran_total
-                })
+                    if ha_num <= 0: continue
 
-            st.session_state.mega_resultados = pd.DataFrame(resultados)
-            st.session_state.mega_volumetria = log_volumetrico
-            st.success("✅ Proyección completada exitosamente.")
+                    if precio_vuelo == 0:
+                        precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
+
+                    precio_vuelo = precio_vuelo * factor_inflacion
+
+                    tipo_prod = "TERCERO"
+                    if not df_t2.empty:
+                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
+                        if not match_f.empty: tipo_prod = str(match_f.iloc[0].iloc[col_prod_idx]).strip().upper() if len(match_f.columns) > col_prod_idx else "TERCERO"
+                    
+                    if "COOP" in finca_n or "EMPREBANCOOP" in finca_n: tipo_prod = "COOPERATIVA"
+
+                    mult_m, st_base, mult_v = 1.112, 1337.0, 1.112
+                    if not df_conf.empty:
+                        match_cfg = df_conf[df_conf.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_prod]
+                        if not match_cfg.empty:
+                            mult_m = limpiar_numero(match_cfg.iloc[0].iloc[3])
+                            st_base = limpiar_numero(match_cfg.iloc[0].iloc[4])
+                            mult_v = limpiar_numero(match_cfg.iloc[0].iloc[6])
+                    
+                    if mult_m == 0 or st_base == 0:
+                        if tipo_prod == "TERCERO": mult_m, st_base, mult_v = 1.451, 1583.0, 1.451
+                        elif tipo_prod == "AFILIADO": mult_m, st_base, mult_v = 1.164, 1510.0, 1.164
+                        elif tipo_prod == "COOPERATIVA": mult_m, st_base, mult_v = 1.112, 1510.0, 1.164
+                        elif tipo_prod == "ORGANICO": mult_m, st_base, mult_v = 1.011, 1337.0, 1.011
+                        else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 
+
+                    st_base = st_base * factor_inflacion
+
+                    costo_mezcla_fila = 0.0
+                    c_p_i, c_c_i = 8, 9
+                    if not df_conf.empty:
+                        for i in range(min(5, len(df_conf))):
+                            r_c = [str(x).upper() for x in df_conf.iloc[i]]
+                            if 'PRODUCTO' in r_c and 'COSTO' in r_c:
+                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
+                                break
+
+                    dict_receta = extraer_receta_mega(coctel_combinado, finca_n, df_mezclas, df_dicc, df_t2)
+                    
+                    for p, d in dict_receta.items():
+                        log_volumetrico[finca_n] = log_volumetrico.get(finca_n, {})
+                        log_volumetrico[finca_n][p] = log_volumetrico[finca_n].get(p, 0.0) + (d * ha_num)
+
+                        precio_unitario = 0.0
+                        if not df_conf.empty:
+                            mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                            if not mask_cfg.any() and "NEMATICIDA" in p: mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
+                            if mask_cfg.any(): precio_unitario = limpiar_numero(df_conf[mask_cfg].iloc[0, c_c_i])
+                        
+                        if precio_unitario == 0.0 and not df_precios.empty:
+                            match_p = df_precios[(df_precios['AÑO'] == año_actual) & (df_precios['PRODUCTO_CLEAN'] == p.replace(" ",""))]
+                            if not match_p.empty: precio_unitario = match_p['PRECIO_PROM'].mean()
+
+                        precio_unitario = precio_unitario * factor_inflacion
+                        costo_mezcla_fila += (d * ha_num * precio_unitario * mult_m)
+
+                    costo_st_fila = dias_c * st_base * ha_num
+                    costo_vuelo_fila = precio_vuelo * ha_num 
+                    gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + 0.5)
+                    costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
+
+                    resultados.append({
+                        "FINCA": finca_n, "HECTAREAS": ha_num, "COCTEL": coctel_combinado, "DIAS CICLO": dias_c, "PRECIO VUELO": precio_vuelo,
+                        "Costo ST ($)": math.floor(costo_st_fila), "Costo Vuelo ($)": math.floor(costo_vuelo_fila), "Costo Mezcla ($)": math.floor(costo_mezcla_fila),
+                        "Costo x Ha ($)": costo_ha, "RESULTADO TOTAL ($)": gran_total
+                    })
+
+                st.session_state.mega_resultados = pd.DataFrame(resultados)
+                st.session_state.mega_volumetria = log_volumetrico
+                st.success("✅ Proyección completada exitosamente.")
 
     if 'mega_resultados' in st.session_state and not st.session_state.mega_resultados.empty:
         st.markdown("---")
@@ -435,41 +460,43 @@ def ejecutar():
             ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
         ].sum()
 
-        st.markdown("### 📊 Detalles Económicos Fila x Fila")
-        df_view = df_filtro.copy()
-        for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
-            df_view[col] = df_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
-        st.dataframe(df_view, use_container_width=True, hide_index=True)
+        tab1, tab2, tab3 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📑 Resumen Ejecutivo por Finca", "📦 Auditoría Volumétrica de Insumos"])
+        
+        with tab1:
+            df_view = df_filtro.copy()
+            for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
+                df_view[col] = df_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+            st.dataframe(df_view, use_container_width=True, hide_index=True)
 
-        st.markdown("### 📑 Resumen Ejecutivo por Finca")
-        if not df_resumen_finca.empty:
-            df_resumen_view = df_resumen_finca.copy()
-            for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
-                df_resumen_view[col] = df_resumen_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
-            st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
-        else:
-            st.info("No hay datos para resumir.")
+        with tab2:
+            if not df_resumen_finca.empty:
+                df_resumen_view = df_resumen_finca.copy()
+                for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
+                    df_resumen_view[col] = df_resumen_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+                st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay datos para resumir.")
 
-        st.markdown("### 📦 Auditoría Volumétrica de Insumos")
-        if cons_vol_agrupado:
-            df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
-            df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].map("{:,.1f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
-            
-            c_tbl, c_grf = st.columns([1, 1.2])
-            with c_tbl:
-                st.dataframe(df_insumos[["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]], use_container_width=True, hide_index=True)
-            with c_grf:
-                df_grafica = df_insumos.head(15).copy()
-                fig = px.bar(
-                    df_grafica, y="🧪 PRODUCTO", x="VOLUMEN ESTIMADO", text="📦 VOLUMEN ESTIMADO (L/Kg)",
-                    orientation='h', color="VOLUMEN ESTIMADO", color_continuous_scale="GnBu",
-                    title=f"Top 15 Insumos Proyectados"
-                )
-                fig.update_traces(textposition='outside', textfont_size=12)
-                fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100))
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No hay datos de insumos químicos.")
+        with tab3:
+            if cons_vol_agrupado:
+                df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
+                df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].map("{:,.1f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+                
+                c_tbl, c_grf = st.columns([1, 1.2])
+                with c_tbl:
+                    st.dataframe(df_insumos[["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]], use_container_width=True, hide_index=True)
+                with c_grf:
+                    df_grafica = df_insumos.head(15).copy()
+                    fig = px.bar(
+                        df_grafica, y="🧪 PRODUCTO", x="VOLUMEN ESTIMADO", text="📦 VOLUMEN ESTIMADO (L/Kg)",
+                        orientation='h', color="VOLUMEN ESTIMADO", color_continuous_scale="GnBu",
+                        title=f"Top 15 Insumos Proyectados"
+                    )
+                    fig.update_traces(textposition='outside', textfont_size=12)
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100))
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
 
         # ==========================================
         # 💾 SÚPER EXPORTACIÓN A EXCEL CON FÓRMULAS VIVAS
