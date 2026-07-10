@@ -10,7 +10,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
-import concurrent.futures # 💥 EL NITRO: Multihilo para descargas simultáneas
+import concurrent.futures 
 
 # =================================================================
 # 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada a nivel Turbo)
@@ -25,7 +25,6 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except: return None
 
-# 💥 NITRO 1: Caché extendida a 60 minutos (3600 seg) para no hacerte esperar
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_boveda_mega_proyeccion():
     gc = obtener_cliente_gspread_unificado()
@@ -38,7 +37,6 @@ def cargar_boveda_mega_proyeccion():
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         
-        # 💥 NITRO 2: MOTOR V8 MULTIHILO (Descarga 15 hojas de Google Sheets al MISMO TIEMPO)
         nombres_hojas = ["DD_Mesclas", "Configuración", "DICCIONARIO_SIGLAS", "TABLA 2", "TABLA 1"]
         
         def fetch_boveda(nombre):
@@ -90,7 +88,6 @@ def cargar_boveda_mega_proyeccion():
             for future in concurrent.futures.as_completed(futuros_precios):
                 precios_consolidados.extend(future.result())
 
-        # Ensamblaje ultrarrápido
         data_mez = resultados_boveda.get("DD_Mesclas", [])
         if data_mez and len(data_mez) > 1:
             df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
@@ -240,22 +237,14 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
-    st.info("💡 **Guía Rápida:** Sube tu Excel o pega los datos. Si dejas el `PRECIO VUELO` o las `HECTAREAS` vacíos o en 0, el sistema buscará el dato oficial de esa finca automáticamente.")
+    st.info("💡 **Guía Rápida:** Sube tu Excel o pega los datos. Al pegar de Excel, puedes poner cientos de filas de golpe.")
 
     with st.spinner("Conectando con la Bóveda Maestra (Modo Turbo Activado 🚀)..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    lista_fincas = []
-    if not df_t2.empty:
-        lista_fincas = sorted([str(x).upper().strip() for x in df_t2.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
-    
-    lista_cocteles = []
-    if not df_mezclas.empty:
-        lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
-
-    # 💥 NITRO 3: ANTI-LAG FRONTAL. Iniciamos con 50 celdas (Si pegas 1000, Streamlit expande automáticamente sin congelarse)
-    if 'memoria_base_v8' not in st.session_state:
-        st.session_state.memoria_base_v8 = pd.DataFrame([{
+    # 💥 MEMORIA V9: BLINDADA CONTRA EL EFECTO REBOTE
+    if 'memoria_base_v9' not in st.session_state:
+        st.session_state.memoria_base_v9 = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": "",
             "COCTEL": "", 
@@ -283,33 +272,33 @@ def ejecutar():
                         if c not in df_up.columns: df_up[c] = ""
                     
                     df_up = df_up[cols_req].fillna("").astype(str)
+                    st.session_state.memoria_base_v9 = df_up
                     
-                    st.session_state.memoria_base_v8 = df_up
+                    # 💥 MATAMOS LA TABLA "FANTASMA" AL SUBIR UN ARCHIVO NUEVO
+                    if "tabla_segura_v9" in st.session_state:
+                        del st.session_state["tabla_segura_v9"]
+                        
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error al leer Excel: {e}")
                     
     with tab_paste:
-        lista_fincas_segura = [""] + lista_fincas
-        lista_cocteles_segura = [""] + lista_cocteles
-
-        # AUTO-GUARDADO INCORPORADO PARA NO PERDER DATOS
+        # 💥 SOLUCIÓN BUG DE PEGADO: FINCA y COCTEL ahora son columnas de TEXTO para que no rechacen el copiado de Excel
         df_edited = st.data_editor(
-            st.session_state.memoria_base_v8,
-            key="tabla_segura_v8", 
+            st.session_state.memoria_base_v9,
+            key="tabla_segura_v9", 
             num_rows="dynamic",
             use_container_width=True,
             column_config={
-                "FINCA": st.column_config.SelectboxColumn("Finca (Seleccionar)", options=lista_fincas_segura, required=True),
+                "FINCA": st.column_config.TextColumn("Finca (Pega exacto de Excel)"),
                 "HECTAREAS": st.column_config.TextColumn("Hectáreas (Pega 70,63 o 70.63)"), 
-                "COCTEL": st.column_config.SelectboxColumn("Cóctel (Seleccionar)", options=lista_cocteles_segura),
+                "COCTEL": st.column_config.TextColumn("Cóctel (Pega de Excel)"),
                 "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
                 "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
                 "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
             }
         )
-        st.session_state.memoria_base_v8 = df_edited
 
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
@@ -319,8 +308,6 @@ def ejecutar():
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
-        
-        st.session_state.memoria_base_v8 = df_edited
         
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
@@ -340,6 +327,7 @@ def ejecutar():
             año_actual = str(datetime.now().year)
 
             for idx, row in df_valid.iterrows():
+                # 💥 LA ASPIRADORA: Aquí corregimos los espacios invisibles que vengan de Excel
                 finca_n = str(row['FINCA']).strip().upper()
                 ha_num = limpiar_numero(row['HECTAREAS'])
                 coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
