@@ -10,9 +10,10 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
+import concurrent.futures # 💥 EL NITRO: Multihilo para descargas simultáneas
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada)
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada a nivel Turbo)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -24,7 +25,8 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except: return None
 
-@st.cache_data(show_spinner=False, ttl=600)
+# 💥 NITRO 1: Caché extendida a 60 minutos (3600 seg) para no hacerte esperar
+@st.cache_data(show_spinner=False, ttl=3600)
 def cargar_boveda_mega_proyeccion():
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
@@ -34,35 +36,27 @@ def cargar_boveda_mega_proyeccion():
 
     try:
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        try:
-            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-        except: pass
-
-        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
-        except: pass
-        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
-        except: pass
-        try: 
-            t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
-            idx_t2 = next((i for i, r in enumerate(t2_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 0)
-            df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
-        except: pass
-
-        try:
-            sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
-            precios_consolidados = []
-            for ws in sh_precios.worksheets():
-                datos_hoja = ws.get_all_values()
-                if not datos_hoja: continue
+        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
+        
+        # 💥 NITRO 2: MOTOR V8 MULTIHILO (Descarga 15 hojas de Google Sheets al MISMO TIEMPO)
+        nombres_hojas = ["DD_Mesclas", "Configuración", "DICCIONARIO_SIGLAS", "TABLA 2", "TABLA 1"]
+        
+        def fetch_boveda(nombre):
+            try: return nombre, boveda_recetas.worksheet(nombre).get_all_values()
+            except: return nombre, []
+            
+        def fetch_precios(ws):
+            try:
+                datos = ws.get_all_values()
+                if not datos: return []
+                res = []
                 idx_header, col_anio, col_prod = -1, -1, -1
-                for i in range(min(10, len(datos_hoja))):
-                    fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                for i in range(min(10, len(datos))):
+                    fila_upper = [str(x).upper().strip() for x in datos[i]]
                     if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
                         idx_header, col_anio, col_prod = i, fila_upper.index('AÑO'), fila_upper.index('PRODUCTO'); break
                 if idx_header != -1:
-                    for row in datos_hoja[idx_header+1:]:
+                    for row in datos[idx_header+1:]:
                         if len(row) > max(col_anio, col_prod):
                             anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
                             if anio_str and str_prod:
@@ -74,15 +68,53 @@ def cargar_boveda_mega_proyeccion():
                                         elif ',' in val_c: val_c = val_c.replace(',', '.')
                                         try: vals.append(float(val_c))
                                         except: pass
-                                if vals: precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRODUCTO_CLEAN': str_prod.replace(" ", ""), 'PRECIO_PROM': sum(vals)/len(vals)})
-            df_precios = pd.DataFrame(precios_consolidados)
-        except: pass
+                                if vals: res.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRODUCTO_CLEAN': str_prod.replace(" ", ""), 'PRECIO_PROM': sum(vals)/len(vals)})
+                return res
+            except: return []
 
-        try:
-            t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
-            if t1_raw:
-                idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+            futuros_boveda = {executor.submit(fetch_boveda, n): n for n in nombres_hojas}
+            
+            try:
+                worksheets_precios = sh_precios.worksheets()
+                futuros_precios = [executor.submit(fetch_precios, ws) for ws in worksheets_precios]
+            except:
+                futuros_precios = []
                 
+            resultados_boveda = {}
+            for future in concurrent.futures.as_completed(futuros_boveda):
+                nombre, datos = future.result()
+                resultados_boveda[nombre] = datos
+                
+            precios_consolidados = []
+            for future in concurrent.futures.as_completed(futuros_precios):
+                precios_consolidados.extend(future.result())
+
+        # Ensamblaje ultrarrápido
+        data_mez = resultados_boveda.get("DD_Mesclas", [])
+        if data_mez and len(data_mez) > 1:
+            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+            
+        data_conf = resultados_boveda.get("Configuración", [])
+        if data_conf and len(data_conf) > 1: df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
+        
+        data_dicc = resultados_boveda.get("DICCIONARIO_SIGLAS", [])
+        if data_dicc and len(data_dicc) > 1: df_dicc = pd.DataFrame(data_dicc[1:], columns=data_dicc[0])
+        
+        t2_raw = resultados_boveda.get("TABLA 2", [])
+        if t2_raw:
+            idx_t2 = next((i for i, r in enumerate(t2_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 0)
+            if len(t2_raw) > idx_t2 + 1:
+                df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
+                
+        if precios_consolidados:
+            df_precios = pd.DataFrame(precios_consolidados)
+
+        t1_raw = resultados_boveda.get("TABLA 1", [])
+        if t1_raw:
+            idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
+            if len(t1_raw) > idx_t1 + 1:
                 encabezados = [str(c).upper().replace('\n', ' ').strip() for c in t1_raw[idx_t1]]
                 encabezados_limpios = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in encabezados]
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
@@ -115,13 +147,11 @@ def cargar_boveda_mega_proyeccion():
                     for finca, grp in df_calc.groupby('F_CLEAN'):
                         if col_fecha:
                             grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual) | grp[col_fecha].astype(str).str.endswith(f"/{año_corto}")]
-                            if not grp_actual.empty:
-                                hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
-                            else:
-                                hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
+                            if not grp_actual.empty: hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
+                            else: hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                         else:
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
-        except: pass
+                            
     except Exception as e: st.error(f"Error cargando bases: {e}")
 
     return df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo_promedio
@@ -212,7 +242,7 @@ def ejecutar():
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
     st.info("💡 **Guía Rápida:** Sube tu Excel o pega los datos. Si dejas el `PRECIO VUELO` o las `HECTAREAS` vacíos o en 0, el sistema buscará el dato oficial de esa finca automáticamente.")
 
-    with st.spinner("Conectando con la Bóveda Maestra..."):
+    with st.spinner("Conectando con la Bóveda Maestra (Modo Turbo Activado 🚀)..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
     lista_fincas = []
@@ -223,23 +253,22 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 💥 MEMORIA V7 - HECTAREAS COMO TEXTO PARA EVITAR BUG DEL X100
-    if 'memoria_base_v7' not in st.session_state:
-        st.session_state.memoria_base_v7 = pd.DataFrame([{
+    # 💥 NITRO 3: ANTI-LAG FRONTAL. Iniciamos con 50 celdas (Si pegas 1000, Streamlit expande automáticamente sin congelarse)
+    if 'memoria_base_v8' not in st.session_state:
+        st.session_state.memoria_base_v8 = pd.DataFrame([{
             "FINCA": "", 
-            "HECTAREAS": "",  # Como texto para evitar mal formato
+            "HECTAREAS": "",
             "COCTEL": "", 
             "FERTILIZANTE": "", 
             "DIAS CICLO": 0, 
             "PRECIO VUELO": 0.0
-        } for _ in range(1000)])
+        } for _ in range(50)])
 
     # =================================================================
     # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE (MODO HÍBRIDO)
     # =================================================================
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Elige tu método)")
     
-    # LAS DOS PESTAÑAS
     tab_upload, tab_paste = st.tabs(["📁 Subir Archivo Excel (Recomendado)", "📋 Pegar Manualmente"])
     
     with tab_upload:
@@ -255,13 +284,7 @@ def ejecutar():
                     
                     df_up = df_up[cols_req].fillna("").astype(str)
                     
-                    # Rellenar con blancos hasta completar 1000 filas para no perder espacio visual
-                    filas_faltantes = 1000 - len(df_up)
-                    if filas_faltantes > 0:
-                        df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
-                        df_up = pd.concat([df_up, df_blanco], ignore_index=True)
-                    
-                    st.session_state.memoria_base_v7 = df_up
+                    st.session_state.memoria_base_v8 = df_up
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
@@ -271,10 +294,10 @@ def ejecutar():
         lista_fincas_segura = [""] + lista_fincas
         lista_cocteles_segura = [""] + lista_cocteles
 
-        # AUTO-GUARDADO INCORPORADO PARA NO PERDER DATOS AL AJUSTAR INFLACIÓN
+        # AUTO-GUARDADO INCORPORADO PARA NO PERDER DATOS
         df_edited = st.data_editor(
-            st.session_state.memoria_base_v7,
-            key="tabla_segura_v7", 
+            st.session_state.memoria_base_v8,
+            key="tabla_segura_v8", 
             num_rows="dynamic",
             use_container_width=True,
             column_config={
@@ -286,8 +309,7 @@ def ejecutar():
                 "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
             }
         )
-        # Sincronizamos la memoria en tiempo real
-        st.session_state.memoria_base_v7 = df_edited
+        st.session_state.memoria_base_v8 = df_edited
 
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
@@ -298,12 +320,13 @@ def ejecutar():
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         
+        st.session_state.memoria_base_v8 = df_edited
+        
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
         with st.spinner("Procesando matriz financiera y logística..."):
             
-            # Escáner dinámico para Productor en TABLA 2
             col_prod_idx = 5
             if not df_t2.empty:
                 for i, c_name in enumerate(df_t2.columns):
@@ -494,20 +517,16 @@ def ejecutar():
             
             workbook = writer.book
             
-            # 💥 INYECCIÓN BLINDADA DE FÓRMULAS DE EXCEL 💥
             ws_detalle = workbook['Detalle_Económico']
             for row_idx in range(2, ws_detalle.max_row + 1):
-                # 1. Costo Vuelo (Columna G = 7) -> Hectareas(B) * Precio Vuelo(E)
                 celda_vuelo = ws_detalle.cell(row=row_idx, column=7)
                 celda_vuelo.value = f"=B{row_idx}*E{row_idx}"
                 celda_vuelo.data_type = 'f' 
                 
-                # 2. Gran Total (Columna J = 10) -> Costo ST(F) + Costo Vuelo(G) + Costo Mezcla(H)
                 celda_total = ws_detalle.cell(row=row_idx, column=10)
                 celda_total.value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
                 celda_total.data_type = 'f' 
                 
-                # 3. Costo x Ha (Columna I = 9) -> Gran Total(J) / Hectareas(B)
                 celda_ha = ws_detalle.cell(row=row_idx, column=9)
                 celda_ha.value = f"=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)"
                 celda_ha.data_type = 'f' 
@@ -532,7 +551,6 @@ def ejecutar():
                             cell.alignment = Alignment(vertical='center')
                             col_name = str(ws.cell(row=1, column=cell.column).value).upper()
                             
-                            # Formato de dinero respetando las fórmulas
                             if cell.data_type == 'f' or isinstance(cell.value, (int, float)):
                                 if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name:
                                     cell.number_format = '"$" #,##0' 
