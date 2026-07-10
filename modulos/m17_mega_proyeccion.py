@@ -270,14 +270,14 @@ def ejecutar():
         lista_fincas_segura = [""] + lista_fincas
         lista_cocteles_segura = [""] + lista_cocteles
 
-        df_edited = st.data_editor(
+        # 💥 AUTO-GUARDADO: Capturamos la edición directamente en una variable
+        df_editado_en_vivo = st.data_editor(
             st.session_state.memoria_base_v7,
             key="tabla_segura_v7", 
             num_rows="dynamic",
             use_container_width=True,
             column_config={
                 "FINCA": st.column_config.SelectboxColumn("Finca (Seleccionar)", options=lista_fincas_segura, required=True),
-                # 💥 SOLUCIÓN BUG x100: Texto libre para que acepte comas y puntos.
                 "HECTAREAS": st.column_config.TextColumn("Hectáreas (Pega 70,63 o 70.63)"), 
                 "COCTEL": st.column_config.SelectboxColumn("Cóctel (Seleccionar)", options=lista_cocteles_segura),
                 "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
@@ -285,7 +285,9 @@ def ejecutar():
                 "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
             }
         )
-
+        
+        # 💥 SINCRONIZACIÓN INMEDIATA: Lo que pegues se guarda en la memoria RAM al instante
+        st.session_state.memoria_base_v7 = df_editado_en_vivo
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
     inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
