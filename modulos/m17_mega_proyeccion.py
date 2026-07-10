@@ -218,11 +218,15 @@ def ejecutar():
     if 'mega_input' not in st.session_state:
         st.session_state.mega_input = pd.DataFrame([{"FINCA": None, "HECTAREAS": 0.0, "COCTEL": None, "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
 
-    # Escáner dinámico para Productor en TABLA 2
+    # Escáner dinámico para Productor en TABLA 2 - BLINDADO CONTRA "TIPO AVION"
     col_prod_idx = 5
     if not df_t2.empty:
         for i, c_name in enumerate(df_t2.columns):
-            if 'PROD' in str(c_name).upper() or 'TIPO' in str(c_name).upper(): col_prod_idx = i
+            c_clean = str(c_name).upper().replace('\n', ' ').strip()
+            # Tiene que decir TIPO y PROD al mismo tiempo para no confundirse con TIPO AVION
+            if 'TIPO' in c_clean and 'PROD' in c_clean:
+                col_prod_idx = i
+                break # Si encuentra la columna perfecta, se detiene y no busca más
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Pegar desde Excel)")
     df_edited = st.data_editor(
