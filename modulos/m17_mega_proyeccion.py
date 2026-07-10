@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import concurrent.futures 
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada)
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -126,9 +126,9 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # 💥 PARSEO MATEMÁTICO BLINDADO (El arreglo del $42.704 vs $63.326,00)
+                            # 💥 LECTURA MATEMÁTICA EXACTA PARA LA JUNTA ($42.704)
                             if v.count('.') == 1 and v.count(',') == 0:
-                                if len(v.split('.')[1]) == 3: v = v.replace('.', '') # Es un mil cerrado (42.704 -> 42704)
+                                if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
                                 if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
                                 else: v = v.replace(',', '')
@@ -243,74 +243,111 @@ def ejecutar():
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    # Memoria con 1000 filas para que nunca te falte espacio
-    if 'memoria_base_v12' not in st.session_state:
-        st.session_state.memoria_base_v12 = pd.DataFrame([{
-            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": 0, "PRECIO VUELO": 0.0
-        } for _ in range(1000)])
+    if 'memoria_base_v13' not in st.session_state:
+        st.session_state.memoria_base_v13 = pd.DataFrame([{
+            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
+        } for _ in range(500)]) # Generamos 500 filas estáticas
 
     # =================================================================
-    # 📥 OPCIÓN MASIVA A: CARGAR EXCEL DESDE ARCHIVO
+    # 📥 OPCIONES DE CARGA (EL BYPASS ANTI-COLAPSO)
     # =================================================================
-    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Opción A o B)")
+    st.markdown("### 📥 1. Pista de Aterrizaje Segura")
     
-    with st.expander("📁 OPCIÓN A: SUBIR ARCHIVO EXCEL (.xlsx)", expanded=False):
-        st.write("Sube tu archivo con las columnas exactas: **FINCA, HECTAREAS, COCTEL, FERTILIZANTE, DIAS CICLO, PRECIO VUELO**")
+    tab_upload, tab_paste_safe = st.tabs(["📁 Subir Excel", "🛡️ Pegar Excel (Modo Seguro/Bypass)"])
+    
+    with tab_upload:
+        st.write("Sube tu archivo con las columnas: **FINCA, HECTAREAS, COCTEL, FERTILIZANTE, DIAS CICLO, PRECIO VUELO**")
         archivo_excel = st.file_uploader("Sube tu matriz de proyección", type=['xlsx'])
         if archivo_excel is not None:
-            if st.button("🔄 Cargar datos a la tabla principal", type="primary"):
+            if st.button("🔄 Cargar Excel a Memoria"):
                 try:
                     df_up = pd.read_excel(archivo_excel)
                     cols_req = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
                     for c in cols_req:
                         if c not in df_up.columns: df_up[c] = ""
-                    
                     df_up = df_up[cols_req].fillna("").astype(str)
                     
-                    filas_faltantes = 1000 - len(df_up)
+                    filas_faltantes = 500 - len(df_up)
                     if filas_faltantes > 0:
                         df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
                         df_up = pd.concat([df_up, df_blanco], ignore_index=True)
 
-                    st.session_state.memoria_base_v12 = df_up
+                    st.session_state.memoria_base_v13 = df_up
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
-                    st.error(f"Error al leer Excel: {e}")
+                    st.error(f"Error cargando Excel: {e}")
 
-    # =================================================================
-    # 🛡️ OPCIÓN MASIVA B: EL ESCUDO ANTI-RECARGAS (ST.FORM)
-    # =================================================================
-    with st.form("mega_formulario_protegido"):
-        st.markdown("📋 **OPCIÓN B: PEGAR MANUALMENTE O EDITAR (Sistema Anti-Colapsos)**")
-        st.caption("Pega tus datos tranquilo. La tabla NO se actualizará hasta que presiones el botón rojo de abajo.")
+    with tab_paste_safe:
+        st.info("💡 **LA TRAMPA PARA EL BUG:** Pega aquí todo tu bloque de celdas de Excel. Este cuadro NO usa React dinámico, por lo que JAMÁS colapsará.")
         
-        df_edited = st.data_editor(
-            st.session_state.memoria_base_v12,
-            key="mega_tabla_v12", 
-            use_container_width=True,
-            column_config={
-                "FINCA": st.column_config.TextColumn("Finca"),
-                "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
-                "COCTEL": st.column_config.TextColumn("Cóctel"),
-                "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
-                "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo"),
-                "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo"),
-            }
-        )
+        texto_pegado = st.text_area("📋 Haz Ctrl+V aquí (Pega las 6 columnas):", height=200, placeholder="FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO")
+        
+        if st.button("📥 Procesar Texto Pegado", type="primary"):
+            if texto_pegado.strip():
+                try:
+                    # EL CEBO EN ACCIÓN: Transformamos el texto plano a Tabla sin usar la interfaz gráfica buggy
+                    datos_sucios = io.StringIO(texto_pegado)
+                    df_clip = pd.read_csv(datos_sucios, sep='\t', header=None, dtype=str)
+                    
+                    # Forzamos las 6 columnas sin importar qué haya pegado el usuario
+                    columnas_oficiales = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
+                    df_limpio = pd.DataFrame(columns=columnas_oficiales)
+                    
+                    for i, col_name in enumerate(columnas_oficiales):
+                        if i < len(df_clip.columns):
+                            df_limpio[col_name] = df_clip.iloc[:, i].fillna("").astype(str).str.strip()
+                        else:
+                            df_limpio[col_name] = ""
+                            
+                    # Si la primera fila son los títulos de Excel, el cebo la elimina
+                    if df_limpio.iloc[0]['FINCA'].upper() == "FINCA":
+                        df_limpio = df_limpio.iloc[1:].reset_index(drop=True)
 
-        st.markdown("---")
-        st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
-        col_r1, col_r2 = st.columns(2)
-        inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
-        colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
+                    # Rellenamos para no romper el tamaño visual de 500
+                    filas_faltantes = 500 - len(df_limpio)
+                    if filas_faltantes > 0:
+                        df_blanco = pd.DataFrame([{c: "" for c in columnas_oficiales} for _ in range(filas_faltantes)])
+                        df_limpio = pd.concat([df_limpio, df_blanco], ignore_index=True)
 
-        factor_inflacion = 1 + (inflacion_proyectada / 100)
+                    st.session_state.memoria_base_v13 = df_limpio
+                    st.success(f"✅ ¡Cebo funcionó! Se cargaron {len(df_clip)} filas a la memoria central.")
+                    if hasattr(st, 'rerun'): st.rerun()
+                    else: st.experimental_rerun()
 
-        # 💥 ESTE BOTÓN ES LA LLAVE. Hasta que no se presiona, el sistema ignora tus pegados (evitando el error de React)
-        submit_btn = st.form_submit_button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True)
+                except Exception as e:
+                    st.error(f"🐛 El cebo capturó un error en tus datos copiados: {e}")
+            else:
+                st.warning("No has pegado nada en el cuadro de texto.")
 
-    if submit_btn:
+    # Mostramos la tabla solo como referencia visual, TODAS LAS CELDAS SON TEXTO para evitar el colapso
+    st.markdown("---")
+    st.markdown("### 📊 Memoria Activa (Revisa tus datos aquí)")
+    df_edited = st.data_editor(
+        st.session_state.memoria_base_v13,
+        key="mega_tabla_v13", 
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "FINCA": st.column_config.TextColumn("Finca"),
+            "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
+            "COCTEL": st.column_config.TextColumn("Cóctel"),
+            "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
+            "DIAS CICLO": st.column_config.TextColumn("Días Ciclo"),
+            "PRECIO VUELO": st.column_config.TextColumn("Precio/Ha Vuelo"),
+        }
+    )
+
+    st.markdown("---")
+    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
+    col_r1, col_r2 = st.columns(2)
+    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
+
+    factor_inflacion = 1 + (inflacion_proyectada / 100)
+
+    if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
+        
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
