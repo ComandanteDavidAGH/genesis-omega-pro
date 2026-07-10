@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import concurrent.futures 
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA 
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -126,7 +126,7 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # 💥 LECTURA MATEMÁTICA EXACTA PARA LA JUNTA ($42.704)
+                            # 💥 CORRECCIÓN MATEMÁTICA ESTABLECIDA ($42.704)
                             if v.count('.') == 1 and v.count(',') == 0:
                                 if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
@@ -156,7 +156,7 @@ def cargar_boveda_mega_proyeccion():
     return df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo_promedio
 
 # =================================================================
-# 🧠 MOTORES DE LÓGICA (Márgenes y Volumetría)
+# 🧠 MOTORES DE LÓGICA
 # =================================================================
 
 def limpiar_numero(val):
@@ -224,7 +224,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL
+# 👑 RENDERIZADO VISUAL - 💥 INTERFAZ APLANADA (SIN PESTAÑAS)
 # =================================================================
 
 def ejecutar():
@@ -243,23 +243,18 @@ def ejecutar():
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    if 'memoria_base_v13' not in st.session_state:
-        st.session_state.memoria_base_v13 = pd.DataFrame([{
+    # Memoria de la tabla limpia, puras columnas de texto
+    if 'memoria_plana_v14' not in st.session_state:
+        st.session_state.memoria_plana_v14 = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
-        } for _ in range(500)]) # Generamos 500 filas estáticas
+        } for _ in range(500)])
 
-    # =================================================================
-    # 📥 OPCIONES DE CARGA (EL BYPASS ANTI-COLAPSO)
-    # =================================================================
-    st.markdown("### 📥 1. Pista de Aterrizaje Segura")
-    
-    tab_upload, tab_paste_safe = st.tabs(["📁 Subir Excel", "🛡️ Pegar Excel (Modo Seguro/Bypass)"])
-    
-    with tab_upload:
-        st.write("Sube tu archivo con las columnas: **FINCA, HECTAREAS, COCTEL, FERTILIZANTE, DIAS CICLO, PRECIO VUELO**")
-        archivo_excel = st.file_uploader("Sube tu matriz de proyección", type=['xlsx'])
+    # 💥 DISEÑO PLANO: Cero pestañas. El usuario sube el Excel o baja a pegar directo en la tabla.
+    st.info("💡 **Guía:** Sube un Excel, o ignora esta caja y pega tus datos directo en la tabla de abajo.")
+    with st.expander("📁 Subir Archivo Excel (Opcional)", expanded=False):
+        archivo_excel = st.file_uploader("Formato: FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO", type=['xlsx'])
         if archivo_excel is not None:
-            if st.button("🔄 Cargar Excel a Memoria"):
+            if st.button("🔄 Sobrescribir tabla con Excel"):
                 try:
                     df_up = pd.read_excel(archivo_excel)
                     cols_req = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
@@ -272,74 +267,23 @@ def ejecutar():
                         df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
                         df_up = pd.concat([df_up, df_blanco], ignore_index=True)
 
-                    st.session_state.memoria_base_v13 = df_up
+                    st.session_state.memoria_plana_v14 = df_up
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
-                    st.error(f"Error cargando Excel: {e}")
+                    st.error(f"Error: {e}")
 
-    with tab_paste_safe:
-        st.info("💡 **LA TRAMPA PARA EL BUG:** Pega aquí todo tu bloque de celdas de Excel. Este cuadro NO usa React dinámico, por lo que JAMÁS colapsará.")
-        
-        texto_pegado = st.text_area("📋 Haz Ctrl+V aquí (Pega las 6 columnas):", height=200, placeholder="FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO")
-        
-        if st.button("📥 Procesar Texto Pegado", type="primary"):
-            if texto_pegado.strip():
-                try:
-                    # EL CEBO EN ACCIÓN: Transformamos el texto plano a Tabla sin usar la interfaz gráfica buggy
-                    datos_sucios = io.StringIO(texto_pegado)
-                    df_clip = pd.read_csv(datos_sucios, sep='\t', header=None, dtype=str)
-                    
-                    # Forzamos las 6 columnas sin importar qué haya pegado el usuario
-                    columnas_oficiales = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
-                    df_limpio = pd.DataFrame(columns=columnas_oficiales)
-                    
-                    for i, col_name in enumerate(columnas_oficiales):
-                        if i < len(df_clip.columns):
-                            df_limpio[col_name] = df_clip.iloc[:, i].fillna("").astype(str).str.strip()
-                        else:
-                            df_limpio[col_name] = ""
-                            
-                    # Si la primera fila son los títulos de Excel, el cebo la elimina
-                    if df_limpio.iloc[0]['FINCA'].upper() == "FINCA":
-                        df_limpio = df_limpio.iloc[1:].reset_index(drop=True)
-
-                    # Rellenamos para no romper el tamaño visual de 500
-                    filas_faltantes = 500 - len(df_limpio)
-                    if filas_faltantes > 0:
-                        df_blanco = pd.DataFrame([{c: "" for c in columnas_oficiales} for _ in range(filas_faltantes)])
-                        df_limpio = pd.concat([df_limpio, df_blanco], ignore_index=True)
-
-                    st.session_state.memoria_base_v13 = df_limpio
-                    st.success(f"✅ ¡Cebo funcionó! Se cargaron {len(df_clip)} filas a la memoria central.")
-                    if hasattr(st, 'rerun'): st.rerun()
-                    else: st.experimental_rerun()
-
-                except Exception as e:
-                    st.error(f"🐛 El cebo capturó un error en tus datos copiados: {e}")
-            else:
-                st.warning("No has pegado nada en el cuadro de texto.")
-
-    # Mostramos la tabla solo como referencia visual, TODAS LAS CELDAS SON TEXTO para evitar el colapso
-    st.markdown("---")
-    st.markdown("### 📊 Memoria Activa (Revisa tus datos aquí)")
+    st.markdown("### 📋 Tabla de Proyección")
+    # Tabla Libre, sin pestañas, sin dinámicas conflictivas
     df_edited = st.data_editor(
-        st.session_state.memoria_base_v13,
-        key="mega_tabla_v13", 
+        st.session_state.memoria_plana_v14,
+        key="tabla_plana_v14",
         use_container_width=True,
-        hide_index=True,
-        column_config={
-            "FINCA": st.column_config.TextColumn("Finca"),
-            "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
-            "COCTEL": st.column_config.TextColumn("Cóctel"),
-            "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
-            "DIAS CICLO": st.column_config.TextColumn("Días Ciclo"),
-            "PRECIO VUELO": st.column_config.TextColumn("Precio/Ha Vuelo"),
-        }
+        hide_index=True
     )
 
     st.markdown("---")
-    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
+    st.markdown("### ⚙️ Parámetros de Riesgo y Proyección")
     col_r1, col_r2 = st.columns(2)
     inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
     colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
@@ -352,7 +296,6 @@ def ejecutar():
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
         with st.spinner("Procesando matriz financiera y logística..."):
-            
             col_prod_idx = 5
             if not df_t2.empty:
                 for i, c_name in enumerate(df_t2.columns):
@@ -492,43 +435,41 @@ def ejecutar():
             ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
         ].sum()
 
-        tab1, tab2, tab3 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📑 Resumen Ejecutivo por Finca", "📦 Auditoría Volumétrica de Insumos"])
-        
-        with tab1:
-            df_view = df_filtro.copy()
-            for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
-                df_view[col] = df_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
-            st.dataframe(df_view, use_container_width=True, hide_index=True)
+        st.markdown("### 📊 Detalles Económicos Fila x Fila")
+        df_view = df_filtro.copy()
+        for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
+            df_view[col] = df_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+        st.dataframe(df_view, use_container_width=True, hide_index=True)
 
-        with tab2:
-            if not df_resumen_finca.empty:
-                df_resumen_view = df_resumen_finca.copy()
-                for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
-                    df_resumen_view[col] = df_resumen_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
-                st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
-            else:
-                st.info("No hay datos para resumir.")
+        st.markdown("### 📑 Resumen Ejecutivo por Finca")
+        if not df_resumen_finca.empty:
+            df_resumen_view = df_resumen_finca.copy()
+            for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
+                df_resumen_view[col] = df_resumen_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+            st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay datos para resumir.")
 
-        with tab3:
-            if cons_vol_agrupado:
-                df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
-                df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].map("{:,.1f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
-                
-                c_tbl, c_grf = st.columns([1, 1.2])
-                with c_tbl:
-                    st.dataframe(df_insumos[["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]], use_container_width=True, hide_index=True)
-                with c_grf:
-                    df_grafica = df_insumos.head(15).copy()
-                    fig = px.bar(
-                        df_grafica, y="🧪 PRODUCTO", x="VOLUMEN ESTIMADO", text="📦 VOLUMEN ESTIMADO (L/Kg)",
-                        orientation='h', color="VOLUMEN ESTIMADO", color_continuous_scale="GnBu",
-                        title=f"Top 15 Insumos Proyectados"
-                    )
-                    fig.update_traces(textposition='outside', textfont_size=12)
-                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100))
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
+        st.markdown("### 📦 Auditoría Volumétrica de Insumos")
+        if cons_vol_agrupado:
+            df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
+            df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].map("{:,.1f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+            
+            c_tbl, c_grf = st.columns([1, 1.2])
+            with c_tbl:
+                st.dataframe(df_insumos[["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]], use_container_width=True, hide_index=True)
+            with c_grf:
+                df_grafica = df_insumos.head(15).copy()
+                fig = px.bar(
+                    df_grafica, y="🧪 PRODUCTO", x="VOLUMEN ESTIMADO", text="📦 VOLUMEN ESTIMADO (L/Kg)",
+                    orientation='h', color="VOLUMEN ESTIMADO", color_continuous_scale="GnBu",
+                    title=f"Top 15 Insumos Proyectados"
+                )
+                fig.update_traces(textposition='outside', textfont_size=12)
+                fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100))
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No hay datos de insumos químicos.")
 
         # ==========================================
         # 💾 SÚPER EXPORTACIÓN A EXCEL CON FÓRMULAS VIVAS
