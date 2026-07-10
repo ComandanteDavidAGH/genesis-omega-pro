@@ -28,6 +28,7 @@ import modulos.m13_oraculo as m13
 import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
+import modulos.m17_mega_proyeccion as m17
 
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
@@ -210,7 +211,8 @@ with st.sidebar:
             "🔮 13. El Oráculo (Inventarios)",
             "💰 14. Pronóstico Financiero",
             "🗺️ 15. Mapa de Calor Agronómico",
-            "💼 16. Comparativo Gerencial (Dron vs Avión)"
+            "💼 16. Comparativo Gerencial (Dron vs Avión)",
+            "🚀 17. Mega-Proyección Operativa"
         ], key="modulo_actual")
     else: 
         st.info("🛰️ Modo Consulta Gerencial Activado.")
@@ -251,3 +253,4 @@ elif menu == "🔮 13. El Oráculo (Inventarios)": m13.ejecutar(purificar_lote, 
 elif menu == "💰 14. Pronóstico Financiero": m14.ejecutar(purificar_lote, extraer_numero)
 elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lote, extraer_numero)
 elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar()
+elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar()
