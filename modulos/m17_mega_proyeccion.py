@@ -80,17 +80,19 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - BLINDADO
+        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - BLINDADO CON IMAGEN
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
                 idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
-                encabezados = [str(c).upper().strip() for c in t1_raw[idx_t1]]
+                
+                # 💥 CLAVE: Quitamos los saltos de línea (\n) que ocultaba Google Sheets
+                encabezados = [str(c).upper().replace('\n', ' ').strip() for c in t1_raw[idx_t1]]
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
                 
-                # Búsqueda estricta de columnas para no confundir Total con Costo/Ha
+                # 💥 Búsqueda estricta basada en tu imagen (Columna T)
                 col_finca = next((c for c in encabezados if "FINCA" in c or "PROPIEDAD" in c), None)
-                col_costo_ha = next((c for c in encabezados if "COSTO_HA" in c or "COSTO/HA" in c or "COSTO HA" in c), None)
+                col_costo_ha = next((c for c in encabezados if "COSTO" in c and "AVI" in c and "$/HA" in c), None)
                 col_fecha = next((c for c in encabezados if "FECHA" in c), None)
                 
                 if col_finca and col_costo_ha:
