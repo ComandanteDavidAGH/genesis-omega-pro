@@ -247,7 +247,7 @@ def ejecutar():
         st.session_state.mega_input,
         num_rows="dynamic",
         use_container_width=True,
-        key="mega_editor_persistencia", # 💥 CANDADO 1: Ancla visual a la sesión
+        # 💥 CORRECCIÓN: Quitamos el 'key' para evitar el cortocircuito interno
         column_config={
             "FINCA": st.column_config.SelectboxColumn("Finca", options=lista_fincas, required=True),
             "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
@@ -257,8 +257,8 @@ def ejecutar():
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
         }
     )
-    
-    # 💥 CANDADO 2: Sobrescribe la memoria en tiempo real para que jamás se borre
+
+    # 💥 CANDADO ÚNICO: Sobrescribe la memoria en tiempo real de forma segura
     st.session_state.mega_input = df_edited
 
     # 💥 NUEVO BLOQUE: PARÁMETROS DE RIESGO Y PROYECCIÓN (INFLACIÓN Y COLCHÓN) 💥
