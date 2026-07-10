@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Modo Tanque - Secuencial y Seguro)
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (SECUENCIAL Y SEGURO)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -33,19 +33,24 @@ def cargar_boveda_mega_proyeccion():
     hist_vuelo_promedio = {}
 
     try:
-        # Descarga secuencial a prueba de fallos de RAM
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         
+        # 💥 DESCARGA SECUENCIAL (LENTA PERO 100% SEGURA CONTRA COLAPSOS DE RAM)
         try:
             data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
             df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
             df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
         except: pass
 
-        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        try:
+            d_conf = boveda_recetas.worksheet("Configuración").get_all_values()
+            df_conf = pd.DataFrame(d_conf[1:], columns=d_conf[0])
         except: pass
         
-        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        try:
+            d_dicc = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
+            df_dicc = pd.DataFrame(d_dicc[1:], columns=d_dicc[0])
         except: pass
         
         try: 
@@ -54,9 +59,7 @@ def cargar_boveda_mega_proyeccion():
             df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
         except: pass
 
-        # Precios
         try:
-            sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
             precios_consolidados = []
             for ws in sh_precios.worksheets():
                 datos_hoja = ws.get_all_values()
@@ -83,7 +86,6 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # Tabla 1
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -103,6 +105,7 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
+                            # CORRECCIÓN DE MILES (42.704 -> 42704)
                             if v.count('.') == 1 and v.count(',') == 0:
                                 if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
@@ -205,7 +208,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA Y AISLADA
+# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA
 # =================================================================
 
 def ejecutar():
@@ -221,7 +224,7 @@ def ejecutar():
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
-    with st.spinner("Conectando con la Bóveda Maestra (Modo Seguro)..."):
+    with st.spinner("Conectando con la Bóveda Maestra (Modo Seguro y Secuencial)..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
