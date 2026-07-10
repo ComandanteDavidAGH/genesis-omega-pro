@@ -80,23 +80,24 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - BLINDADO CON IMAGEN
+        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - ESCÁNER BLINDADO
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
                 idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
+                encabezados_raw = t1_raw[idx_t1]
+                df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados_raw)
                 
-                # 💥 CLAVE: Quitamos los saltos de línea (\n) que ocultaba Google Sheets
-                encabezados = [str(c).upper().replace('\n', ' ').strip() for c in t1_raw[idx_t1]]
-                df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
-                
-                # 💥 Búsqueda estricta basada en tu imagen (Columna T)
-                col_finca = next((c for c in encabezados if "FINCA" in c or "PROPIEDAD" in c), None)
-                col_costo_ha = next((c for c in encabezados if "COSTO" in c and "AVI" in c and "$/HA" in c), None)
-                col_fecha = next((c for c in encabezados if "FECHA" in c), None)
+                # 💥 ESCÁNER DESTRUCTOR: Quita espacios y símbolos para lectura pura
+                col_finca, col_costo_ha, col_fecha = None, None, None
+                for c in encabezados_raw:
+                    c_clean = re.sub(r'[^A-Z]', '', str(c).upper().replace('Á','A').replace('Ó','O'))
+                    if 'FINCA' in c_clean or 'PROPIEDAD' in c_clean: col_finca = c
+                    if 'FECHA' in c_clean: col_fecha = c
+                    if ('COSTO' in c_clean and 'HA' in c_clean and 'AVION' in c_clean) or ('COSTOHA' in c_clean):
+                        col_costo_ha = c
                 
                 if col_finca and col_costo_ha:
-                    # Limpiador estricto para moneda colombiana
                     def limp_num_col(val):
                         v = str(val).strip()
                         if not v or v == '-': return 0.0
@@ -113,18 +114,15 @@ def cargar_boveda_mega_proyeccion():
                     df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).str.strip().str.upper()
                     df_t1['VAL_COSTO_HA'] = df_t1[col_costo_ha].apply(limp_num_col)
                     
-                    # Solo promediamos vuelos válidos (mayores a $1,000) para evitar que los ceros bajen el promedio
                     df_calc = df_t1[df_t1['VAL_COSTO_HA'] > 1000] 
                     año_actual = str(datetime.now().year)
                     
                     for finca, grp in df_calc.groupby('F_CLEAN'):
                         if col_fecha:
-                            # Prioridad: Promedio de este año
                             grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual)]
                             if not grp_actual.empty:
                                 hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
                             else:
-                                # Plan B: Promedio histórico si no ha volado este año
                                 hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                         else:
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
@@ -286,12 +284,14 @@ def ejecutar():
                         st_base = limpiar_numero(match_cfg.iloc[0].iloc[4])
                         mult_v = limpiar_numero(match_cfg.iloc[0].iloc[6])
                 
-                # Excepciones de backup si falla el excel
-                if mult_m == 0:
+                # 💥 CATCH-ALL DEFINITIVO PARA EVITAR CEROS 💥
+                # Si en la hoja base faltó el dato, fuerza el valor por defecto para no anular la factura.
+                if mult_m == 0 or st_base == 0:
                     if tipo_prod == "TERCERO": mult_m, st_base, mult_v = 1.451, 1583.0, 1.451
                     elif tipo_prod == "AFILIADO": mult_m, st_base, mult_v = 1.164, 1510.0, 1.164
                     elif tipo_prod == "COOPERATIVA": mult_m, st_base, mult_v = 1.112, 1510.0, 1.164
                     elif tipo_prod == "ORGANICO": mult_m, st_base, mult_v = 1.011, 1337.0, 1.011
+                    else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 # Default para fincas sin configuración como Bonanza
 
                 # Costo Mezcla
                 costo_mezcla_fila = 0.0
