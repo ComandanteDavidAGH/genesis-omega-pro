@@ -496,16 +496,26 @@ def ejecutar():
             
             workbook = writer.book
             
-            # 💥 INYECCIÓN DE FÓRMULAS DE EXCEL A LAS CELDAS
+            # 💥 INYECCIÓN BLINDADA DE FÓRMULAS DE EXCEL 💥
             ws_detalle = workbook['Detalle_Económico']
             for row_idx in range(2, ws_detalle.max_row + 1):
-                # Columna G (7) = Costo Vuelo: Hectareas (B) * Precio Vuelo (E)
-                ws_detalle.cell(row=row_idx, column=7).value = f"=B{row_idx}*E{row_idx}"
-                # Columna J (10) = Gran Total: Costo ST (F) + Costo Vuelo (G) + Costo Mezcla (H)
-                ws_detalle.cell(row=row_idx, column=10).value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
-                # Columna I (9) = Costo x Ha: Gran Total (J) / Hectareas (B)
-                ws_detalle.cell(row=row_idx, column=9).value = f'=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)'
+                
+                # 1. Costo Vuelo (Columna G = 7) -> Hectareas(B) * Precio Vuelo(E)
+                celda_vuelo = ws_detalle.cell(row=row_idx, column=7)
+                celda_vuelo.value = f"=B{row_idx}*E{row_idx}"
+                celda_vuelo.data_type = 'f' # 💥 OBLIGAMOS A EXCEL A LEERLO COMO FÓRMULA
+                
+                # 2. Gran Total (Columna J = 10) -> Costo ST(F) + Costo Vuelo(G) + Costo Mezcla(H)
+                celda_total = ws_detalle.cell(row=row_idx, column=10)
+                celda_total.value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
+                celda_total.data_type = 'f' # 💥 OBLIGAMOS A EXCEL A LEERLO COMO FÓRMULA
+                
+                # 3. Costo x Ha (Columna I = 9) -> Gran Total(J) / Hectareas(B)
+                celda_ha = ws_detalle.cell(row=row_idx, column=9)
+                celda_ha.value = f"=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)"
+                celda_ha.data_type = 'f' # 💥 OBLIGAMOS A EXCEL A LEERLO COMO FÓRMULA
 
+            # --- Estética del Excel ---
             borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
             header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
             header_font = Font(color="FFFFFF", bold=True)
@@ -525,8 +535,9 @@ def ejecutar():
                         else:
                             cell.alignment = Alignment(vertical='center')
                             col_name = str(ws.cell(row=1, column=cell.column).value).upper()
-                            # Validar que si es un número o si empieza con '=' (Fórmula) aplique el formato de dinero
-                            if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
+                            
+                            # Formato de dinero respetando las fórmulas
+                            if cell.data_type == 'f' or isinstance(cell.value, (int, float)):
                                 if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name:
                                     cell.number_format = '"$" #,##0' 
                                 elif "HECTAREAS" in col_name or "VOLUMEN" in col_name:
