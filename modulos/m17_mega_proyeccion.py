@@ -80,22 +80,25 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - ESCÁNER BLINDADO
+        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - CON CEBO EXPLOSIVO
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
                 idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
-                encabezados_raw = t1_raw[idx_t1]
-                df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados_raw)
                 
-                # 💥 ESCÁNER DESTRUCTOR: Quita espacios y símbolos para lectura pura
-                col_finca, col_costo_ha, col_fecha = None, None, None
-                for c in encabezados_raw:
-                    c_clean = re.sub(r'[^A-Z]', '', str(c).upper().replace('Á','A').replace('Ó','O'))
-                    if 'FINCA' in c_clean or 'PROPIEDAD' in c_clean: col_finca = c
-                    if 'FECHA' in c_clean: col_fecha = c
-                    if ('COSTO' in c_clean and 'HA' in c_clean and 'AVION' in c_clean) or ('COSTOHA' in c_clean):
-                        col_costo_ha = c
+                # Leemos encabezados y les quitamos tildes y saltos de línea
+                encabezados = [str(c).upper().replace('\n', ' ').strip() for c in t1_raw[idx_t1]]
+                encabezados_limpios = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in encabezados]
+                df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
+                
+                # Buscamos columnas
+                col_finca = next((c for i, c in enumerate(encabezados) if "FINCA" in encabezados_limpios[i] or "PROPIEDAD" in encabezados_limpios[i]), None)
+                col_costo_ha = next((c for i, c in enumerate(encabezados) if "COSTO" in encabezados_limpios[i] and "AVI" in encabezados_limpios[i] and "$/HA" in encabezados_limpios[i]), None)
+                col_fecha = next((c for i, c in enumerate(encabezados) if "FECHA" in encabezados_limpios[i]), None)
+                
+                # 🪤 CEBO 1: SI NO ENCUENTRA LA COLUMNA, NOS MUESTRA QUÉ FUE LO QUE LEYÓ
+                if not col_costo_ha:
+                    st.error(f"🚨 CEBO 1 FALLÓ (No encontré la columna de Costo). Esto es lo que el sistema leyó de tu tabla: {encabezados_limpios}")
                 
                 if col_finca and col_costo_ha:
                     def limp_num_col(val):
@@ -115,18 +118,29 @@ def cargar_boveda_mega_proyeccion():
                     df_t1['VAL_COSTO_HA'] = df_t1[col_costo_ha].apply(limp_num_col)
                     
                     df_calc = df_t1[df_t1['VAL_COSTO_HA'] > 1000] 
-                    año_actual = str(datetime.now().year)
+                    
+                    # 🪤 CEBO 2: SI ENCONTRÓ LA COLUMNA PERO LOS NÚMEROS ESTÁN DAÑADOS
+                    if df_calc.empty:
+                        st.warning(f"🚨 CEBO 2 FALLÓ: Encontré la columna '{col_costo_ha}', pero al leer los números todos daban $0. Revisa el formato en Google Sheets.")
+                        
+                    año_actual = str(datetime.now().year) # "2026"
+                    año_corto = año_actual[-2:] # "26"
                     
                     for finca, grp in df_calc.groupby('F_CLEAN'):
                         if col_fecha:
-                            grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual)]
+                            # 🪤 Mejora del filtro de año: a veces Excel guarda "06/07/26" en vez de "2026"
+                            grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual) | grp[col_fecha].astype(str).str.endswith(f"/{año_corto}")]
                             if not grp_actual.empty:
                                 hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
                             else:
                                 hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                         else:
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
-        except: pass
+                            
+                    # 🪤 CEBO 3: ÉXITO. TE AVISARÁ SI LOGRÓ SACAR PROMEDIOS
+                    st.info(f"✅ CEBO 3 (ÉXITO): Logré calcular el promedio real de vuelo para {len(hist_vuelo_promedio)} fincas.")
+        except Exception as e: 
+            st.error(f"🚨 CEBO CRÍTICO DE ERROR: {e}")
     except Exception as e: st.error(f"Error cargando bases: {e}")
 
     return df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo_promedio
