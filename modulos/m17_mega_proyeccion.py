@@ -97,7 +97,6 @@ def cargar_boveda_mega_proyeccion():
                 df_calc['HA'] = df_calc[col_ha].apply(limp_num)
                 df_calc['COSTO'] = df_calc[col_costo].apply(limp_num)
                 df_calc = df_calc[df_calc['HA'] > 0]
-                # Diccionario: Finca -> Promedio de Costo/Ha
                 for finca, grp in df_calc.groupby(col_finca):
                     hist_vuelo_promedio[str(finca).strip().upper()] = grp['COSTO'].mean()
         except: pass
@@ -174,15 +173,24 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
-    st.info("💡 **Guía Rápida:** Pega tus datos de Excel directamente en la tabla. Si dejas el `PRECIO VUELO` en 0, el sistema buscará el promedio histórico de esa finca automáticamente.")
+    st.info("💡 **Guía Rápida:** Pega tus datos de Excel directamente en la tabla. Si dejas el `PRECIO VUELO` o las `HECTAREAS` en 0, el sistema buscará el dato oficial de esa finca automáticamente.")
 
     # 1. Cargar bases maestras en caché
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
+    # Extracción de listas para los selectores
+    lista_fincas = []
+    if not df_t2.empty:
+        lista_fincas = sorted([str(x).upper().strip() for x in df_t2.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
+    
+    lista_cocteles = []
+    if not df_mezclas.empty:
+        lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
+
     # 2. Configurar Data Editor Inicial
     if 'mega_input' not in st.session_state:
-        st.session_state.mega_input = pd.DataFrame([{"FINCA": "", "HECTAREAS": 0.0, "COCTEL": "", "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
+        st.session_state.mega_input = pd.DataFrame([{"FINCA": None, "HECTAREAS": 0.0, "COCTEL": None, "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
 
     # Escáner dinámico para Productor en TABLA 2
     col_prod_idx = 5
@@ -196,9 +204,9 @@ def ejecutar():
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "FINCA": st.column_config.TextColumn("Finca", required=True),
+            "FINCA": st.column_config.SelectboxColumn("Finca", options=lista_fincas, required=True),
             "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
-            "COCTEL": st.column_config.TextColumn("Cóctel"),
+            "COCTEL": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles),
             "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
         }
@@ -209,23 +217,30 @@ def ejecutar():
             resultados = []
             log_volumetrico = {}
             
-            # Limpiar dataframe de filas vacías
-            df_valid = df_edited[df_edited['FINCA'].str.strip() != ""].copy()
+            # Limpiar dataframe de filas vacías (evitar NoneType errors)
+            df_valid = df_edited.dropna(subset=['FINCA']).copy()
+            df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
             año_actual = str(datetime.now().year)
 
             for idx, row in df_valid.iterrows():
                 finca_n = str(row['FINCA']).strip().upper()
                 ha_num = limpiar_numero(row['HECTAREAS'])
-                coctel_n = str(row['COCTEL']).strip().upper()
+                coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
                 dias_c = int(limpiar_numero(row['DIAS CICLO']))
                 precio_vuelo = limpiar_numero(row['PRECIO VUELO'])
 
+                # 💥 Auto-completar Hectáreas Oficiales si el usuario dejó 0
+                if ha_num == 0 and not df_t2.empty:
+                    match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
+                    if not match_f.empty:
+                        ha_num = limpiar_numero(match_f.iloc[0].iloc[2]) # Columna de Área Bruta en TABLA 2
+
                 if ha_num <= 0: continue
 
-                # Auto-completar precio vuelo si es 0
+                # 💥 Auto-completar Precio Vuelo histórico si es 0
                 if precio_vuelo == 0:
-                    precio_vuelo = hist_vuelo.get(finca_n, 45000.0) # 45k fallback
+                    precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
 
                 # Inteligencia Productor y Márgenes
                 tipo_prod = "TERCERO"
