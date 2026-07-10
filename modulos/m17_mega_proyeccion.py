@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import concurrent.futures 
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada a nivel Turbo)
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -72,7 +72,6 @@ def cargar_boveda_mega_proyeccion():
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
             futuros_boveda = {executor.submit(fetch_boveda, n): n for n in nombres_hojas}
-            
             try:
                 worksheets_precios = sh_precios.worksheets()
                 futuros_precios = [executor.submit(fetch_precios, ws) for ws in worksheets_precios]
@@ -127,15 +126,14 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # Parseo inteligente para formato Colombia
+                            # 💥 CORRECCIÓN MATEMÁTICA PARA LA JUNTA (42.704 -> 42704)
                             if '.' in v and ',' in v:
                                 if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
                                 else: v = v.replace(',', '')
                             elif ',' in v: v = v.replace(',', '.')
                             
                             f_val = float(v)
-                            
-                            # 💥 EL FIX MATEMÁTICO: Si Python leyó 42.704 como 42 pesos, lo corregimos a 42704
+                            # Si detectó menos de 1000 y el original tenía punto con 3 ceros, multiplica por mil
                             if '.' in v and ',' not in v and f_val < 1000 and len(v.split('.')[-1]) == 3:
                                 f_val = f_val * 1000
                                 
@@ -150,13 +148,10 @@ def cargar_boveda_mega_proyeccion():
                     año_corto = año_actual[-2:] 
                     
                     for finca, grp in df_calc.groupby('F_CLEAN'):
-                        # 💥 RESTAURADO: Cálculo ESTRICTO del AÑO ACTUAL para la Junta
                         if col_fecha:
                             grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual) | grp[col_fecha].astype(str).str.endswith(f"/{año_corto}")]
-                            if not grp_actual.empty: 
-                                hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
-                            else: 
-                                hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
+                            if not grp_actual.empty: hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
+                            else: hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                         else:
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                             
@@ -248,14 +243,13 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
-    st.info("💡 **Guía Rápida:** Sube tu Excel o pega los datos. Al pegar de Excel, puedes poner cientos de filas de golpe.")
 
-    with st.spinner("Conectando con la Bóveda Maestra (Modo Turbo Activado 🚀)..."):
+    with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    # 💥 MEMORIA V9: BLINDADA CONTRA EL EFECTO REBOTE
-    if 'memoria_base_v9' not in st.session_state:
-        st.session_state.memoria_base_v9 = pd.DataFrame([{
+    # 💥 MEMORIA V10: Totalmente libre de cortocircuitos React
+    if 'memoria_base_v10' not in st.session_state:
+        st.session_state.memoria_base_v10 = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": "",
             "COCTEL": "", 
@@ -265,7 +259,7 @@ def ejecutar():
         } for _ in range(50)])
 
     # =================================================================
-    # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE (MODO HÍBRIDO)
+    # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE
     # =================================================================
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Elige tu método)")
     
@@ -283,22 +277,20 @@ def ejecutar():
                         if c not in df_up.columns: df_up[c] = ""
                     
                     df_up = df_up[cols_req].fillna("").astype(str)
-                    st.session_state.memoria_base_v9 = df_up
                     
-                    # 💥 MATAMOS LA TABLA "FANTASMA" AL SUBIR UN ARCHIVO NUEVO
-                    if "tabla_segura_v9" in st.session_state:
-                        del st.session_state["tabla_segura_v9"]
-                        
+                    st.session_state.memoria_base_v10 = df_up
+                    if "tabla_segura_v10" in st.session_state:
+                        del st.session_state["tabla_segura_v10"]
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error al leer Excel: {e}")
                     
     with tab_paste:
-        # 💥 SOLUCIÓN BUG DE PEGADO: FINCA y COCTEL ahora son columnas de TEXTO para que no rechacen el copiado de Excel
+        # 💥 TABLA BLINDADA: Removida la línea tóxica que colapsaba la app.
         df_edited = st.data_editor(
-            st.session_state.memoria_base_v9,
-            key="tabla_segura_v9", 
+            st.session_state.memoria_base_v10,
+            key="tabla_segura_v10", 
             num_rows="dynamic",
             use_container_width=True,
             column_config={
@@ -338,7 +330,6 @@ def ejecutar():
             año_actual = str(datetime.now().year)
 
             for idx, row in df_valid.iterrows():
-                # 💥 LA ASPIRADORA: Aquí corregimos los espacios invisibles que vengan de Excel
                 finca_n = str(row['FINCA']).strip().upper()
                 ha_num = limpiar_numero(row['HECTAREAS'])
                 coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
