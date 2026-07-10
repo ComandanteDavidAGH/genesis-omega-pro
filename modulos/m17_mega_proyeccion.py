@@ -80,27 +80,39 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1)
+        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - ENFOCADO EN AÑO ACTUAL
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
             df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=t1_raw[idx_t1])
+            
             col_finca = next((c for c in df_t1.columns if "FINCA" in str(c).upper()), None)
             col_ha = next((c for c in df_t1.columns if "AREA_FUMIG" in str(c).upper() or "CANTIDAD" in str(c).upper()), None)
             col_costo = next((c for c in df_t1.columns if "COSTO_HA" in str(c).upper() or "AVION" in str(c).upper()), None)
+            col_fecha = next((c for c in df_t1.columns if "FECHA" in str(c).upper()), None)
             
-            if col_finca and col_ha and col_costo:
-                df_calc = df_t1[[col_finca, col_ha, col_costo]].copy()
+            if col_finca and col_ha and col_costo and col_fecha:
+                df_calc = df_t1[[col_finca, col_ha, col_costo, col_fecha]].copy()
                 def limp_num(x):
                     try: return float(re.sub(r'[^\d\.]', '', str(x).replace(',', '.')))
                     except: return 0.0
                 df_calc['HA'] = df_calc[col_ha].apply(limp_num)
                 df_calc['COSTO'] = df_calc[col_costo].apply(limp_num)
                 df_calc = df_calc[df_calc['HA'] > 0]
+                
+                año_actual = str(datetime.now().year) # Extrae 2026 automáticamente
+                
                 for finca, grp in df_calc.groupby(col_finca):
-                    hist_vuelo_promedio[str(finca).strip().upper()] = grp['COSTO'].mean()
+                    # Filtramos los vuelos de esta finca que ocurrieron en el año actual (2026)
+                    grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual)]
+                    
+                    if not grp_actual.empty:
+                        # Si tiene vuelos este año, promediamos SOLO la realidad de este año
+                        hist_vuelo_promedio[str(finca).strip().upper()] = grp_actual['COSTO'].mean()
+                    else:
+                        # Plan B: Si no ha volado este año, usamos su promedio histórico general
+                        hist_vuelo_promedio[str(finca).strip().upper()] = grp['COSTO'].mean()
         except: pass
-
     except Exception as e: st.error(f"Error cargando bases: {e}")
 
     return df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo_promedio
