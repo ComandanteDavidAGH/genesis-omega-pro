@@ -235,10 +235,11 @@ def ejecutar():
         } for _ in range(1000)])
 
     # =================================================================
-    # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE
+    # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE (MODO HÍBRIDO)
     # =================================================================
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Elige tu método)")
     
+    # LAS DOS PESTAÑAS
     tab_upload, tab_paste = st.tabs(["📁 Subir Archivo Excel (Recomendado)", "📋 Pegar Manualmente"])
     
     with tab_upload:
@@ -270,8 +271,8 @@ def ejecutar():
         lista_fincas_segura = [""] + lista_fincas
         lista_cocteles_segura = [""] + lista_cocteles
 
-        # 💥 AUTO-GUARDADO: Capturamos la edición directamente en una variable
-        df_editado_en_vivo = st.data_editor(
+        # AUTO-GUARDADO INCORPORADO PARA NO PERDER DATOS AL AJUSTAR INFLACIÓN
+        df_edited = st.data_editor(
             st.session_state.memoria_base_v7,
             key="tabla_segura_v7", 
             num_rows="dynamic",
@@ -285,9 +286,9 @@ def ejecutar():
                 "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
             }
         )
-        
-        # 💥 SINCRONIZACIÓN INMEDIATA: Lo que pegues se guarda en la memoria RAM al instante
-        st.session_state.memoria_base_v7 = df_editado_en_vivo
+        # Sincronizamos la memoria en tiempo real
+        st.session_state.memoria_base_v7 = df_edited
+
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
     inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
@@ -296,9 +297,6 @@ def ejecutar():
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
-        
-        # Guardado en memoria fuerte
-        st.session_state.memoria_base_v7 = df_edited
         
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
@@ -499,23 +497,21 @@ def ejecutar():
             # 💥 INYECCIÓN BLINDADA DE FÓRMULAS DE EXCEL 💥
             ws_detalle = workbook['Detalle_Económico']
             for row_idx in range(2, ws_detalle.max_row + 1):
-                
                 # 1. Costo Vuelo (Columna G = 7) -> Hectareas(B) * Precio Vuelo(E)
                 celda_vuelo = ws_detalle.cell(row=row_idx, column=7)
                 celda_vuelo.value = f"=B{row_idx}*E{row_idx}"
-                celda_vuelo.data_type = 'f' # 💥 OBLIGAMOS A EXCEL A LEERLO COMO FÓRMULA
+                celda_vuelo.data_type = 'f' 
                 
                 # 2. Gran Total (Columna J = 10) -> Costo ST(F) + Costo Vuelo(G) + Costo Mezcla(H)
                 celda_total = ws_detalle.cell(row=row_idx, column=10)
                 celda_total.value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
-                celda_total.data_type = 'f' # 💥 OBLIGAMOS A EXCEL A LEERLO COMO FÓRMULA
+                celda_total.data_type = 'f' 
                 
                 # 3. Costo x Ha (Columna I = 9) -> Gran Total(J) / Hectareas(B)
                 celda_ha = ws_detalle.cell(row=row_idx, column=9)
                 celda_ha.value = f"=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)"
-                celda_ha.data_type = 'f' # 💥 OBLIGAMOS A EXCEL A LEERLO COMO FÓRMULA
+                celda_ha.data_type = 'f' 
 
-            # --- Estética del Excel ---
             borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
             header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
             header_font = Font(color="FFFFFF", bold=True)
