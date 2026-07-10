@@ -229,16 +229,16 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial (MEMORIA BLINDADA V5)
-    if 'memoria_base_v5' not in st.session_state:
-        st.session_state.memoria_base_v5 = pd.DataFrame([{
+    # 2. Configurar Data Editor Inicial (MEMORIA BLINDADA V6 - CAPACIDAD MASIVA)
+    if 'memoria_base_v6' not in st.session_state:
+        st.session_state.memoria_base_v6 = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": 0.0, 
             "COCTEL": "", 
             "FERTILIZANTE": "", 
             "DIAS CICLO": 0, 
             "PRECIO VUELO": 0.0
-        } for _ in range(30)])
+        } for _ in range(1000)]) # 💥 AQUÍ ESTÁ LA MAGIA: 1000 filas pre-cargadas
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Selección Manual)")
     
@@ -247,8 +247,8 @@ def ejecutar():
 
     # 💥 RESTAURAMOS LOS SELECTORES ESTRICTOS: 100% de integridad con la BD
     df_edited = st.data_editor(
-        st.session_state.memoria_base_v5,
-        key="tabla_segura_v5", 
+        st.session_state.memoria_base_v6,
+        key="tabla_segura_v6", # 💥 NUEVA LLAVE: Fuerza a Streamlit a cargar las 1000 filas de inmediato
         num_rows="dynamic",
         use_container_width=True,
         column_config={
