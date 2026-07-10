@@ -10,10 +10,9 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
-import concurrent.futures 
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Caché Optimizada)
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (Modo Tanque - Secuencial y Seguro)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -34,27 +33,41 @@ def cargar_boveda_mega_proyeccion():
     hist_vuelo_promedio = {}
 
     try:
+        # Descarga secuencial a prueba de fallos de RAM
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         
-        nombres_hojas = ["DD_Mesclas", "Configuración", "DICCIONARIO_SIGLAS", "TABLA 2", "TABLA 1"]
+        try:
+            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+        except: pass
+
+        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        except: pass
         
-        def fetch_boveda(nombre):
-            try: return nombre, boveda_recetas.worksheet(nombre).get_all_values()
-            except: return nombre, []
-            
-        def fetch_precios(ws):
-            try:
-                datos = ws.get_all_values()
-                if not datos: return []
-                res = []
+        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        except: pass
+        
+        try: 
+            t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
+            idx_t2 = next((i for i, r in enumerate(t2_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 0)
+            df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
+        except: pass
+
+        # Precios
+        try:
+            sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
+            precios_consolidados = []
+            for ws in sh_precios.worksheets():
+                datos_hoja = ws.get_all_values()
+                if not datos_hoja: continue
                 idx_header, col_anio, col_prod = -1, -1, -1
-                for i in range(min(10, len(datos))):
-                    fila_upper = [str(x).upper().strip() for x in datos[i]]
+                for i in range(min(10, len(datos_hoja))):
+                    fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                     if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
                         idx_header, col_anio, col_prod = i, fila_upper.index('AÑO'), fila_upper.index('PRODUCTO'); break
                 if idx_header != -1:
-                    for row in datos[idx_header+1:]:
+                    for row in datos_hoja[idx_header+1:]:
                         if len(row) > max(col_anio, col_prod):
                             anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
                             if anio_str and str_prod:
@@ -66,51 +79,15 @@ def cargar_boveda_mega_proyeccion():
                                         elif ',' in val_c: val_c = val_c.replace(',', '.')
                                         try: vals.append(float(val_c))
                                         except: pass
-                                if vals: res.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRODUCTO_CLEAN': str_prod.replace(" ", ""), 'PRECIO_PROM': sum(vals)/len(vals)})
-                return res
-            except: return []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-            futuros_boveda = {executor.submit(fetch_boveda, n): n for n in nombres_hojas}
-            try:
-                worksheets_precios = sh_precios.worksheets()
-                futuros_precios = [executor.submit(fetch_precios, ws) for ws in worksheets_precios]
-            except:
-                futuros_precios = []
-                
-            resultados_boveda = {}
-            for future in concurrent.futures.as_completed(futuros_boveda):
-                nombre, datos = future.result()
-                resultados_boveda[nombre] = datos
-                
-            precios_consolidados = []
-            for future in concurrent.futures.as_completed(futuros_precios):
-                precios_consolidados.extend(future.result())
-
-        data_mez = resultados_boveda.get("DD_Mesclas", [])
-        if data_mez and len(data_mez) > 1:
-            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-            
-        data_conf = resultados_boveda.get("Configuración", [])
-        if data_conf and len(data_conf) > 1: df_conf = pd.DataFrame(data_conf[1:], columns=data_conf[0])
-        
-        data_dicc = resultados_boveda.get("DICCIONARIO_SIGLAS", [])
-        if data_dicc and len(data_dicc) > 1: df_dicc = pd.DataFrame(data_dicc[1:], columns=data_dicc[0])
-        
-        t2_raw = resultados_boveda.get("TABLA 2", [])
-        if t2_raw:
-            idx_t2 = next((i for i, r in enumerate(t2_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 0)
-            if len(t2_raw) > idx_t2 + 1:
-                df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
-                
-        if precios_consolidados:
+                                if vals: precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRODUCTO_CLEAN': str_prod.replace(" ", ""), 'PRECIO_PROM': sum(vals)/len(vals)})
             df_precios = pd.DataFrame(precios_consolidados)
+        except: pass
 
-        t1_raw = resultados_boveda.get("TABLA 1", [])
-        if t1_raw:
-            idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
-            if len(t1_raw) > idx_t1 + 1:
+        # Tabla 1
+        try:
+            t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
+            if t1_raw:
+                idx_t1 = next((i for i, r in enumerate(t1_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 4)
                 encabezados = [str(c).upper().replace('\n', ' ').strip() for c in t1_raw[idx_t1]]
                 encabezados_limpios = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in encabezados]
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
@@ -134,7 +111,6 @@ def cargar_boveda_mega_proyeccion():
                             elif ',' in v: v = v.replace(',', '.')
                             
                             f_val = float(v)
-                            # ARREGLO DE LOS MILES ($42.704)
                             if f_val < 1000 and '.' in str(val) and len(str(val).split('.')[-1]) == 3:
                                 f_val = f_val * 1000
                             return f_val
@@ -154,6 +130,7 @@ def cargar_boveda_mega_proyeccion():
                             else: hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                         else:
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
+        except: pass
                             
     except Exception as e: st.error(f"Error cargando bases: {e}")
 
@@ -228,7 +205,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA (SIN TABLAS INTERACTIVAS)
+# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA Y AISLADA
 # =================================================================
 
 def ejecutar():
@@ -243,19 +220,15 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
-    st.error("🛡️ **MODO ANTI-COLAPSO ACTIVADO:** Hemos desactivado la tabla interactiva que causaba los bloqueos. Ahora debes pegar tus datos en el cuadro de texto seguro de abajo.")
 
-    with st.spinner("Conectando con la Bóveda Maestra..."):
+    with st.spinner("Conectando con la Bóveda Maestra (Modo Seguro)..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     if 'memoria_df_seguro' not in st.session_state:
         st.session_state.memoria_df_seguro = pd.DataFrame(columns=columnas_base)
 
-    # =================================================================
-    # 📥 OPCIONES DE CARGA BLINDADAS
-    # =================================================================
-    st.markdown("### 📥 1. Entrada de Datos")
+    st.markdown("### 📥 1. Pista de Aterrizaje Inquebrantable")
     
     tab_pegar, tab_subir = st.tabs(["📋 Pegar desde Excel", "📁 Subir Archivo Excel"])
     
@@ -274,12 +247,11 @@ def ejecutar():
                         else:
                             df_limpio[col] = ""
                             
-                    # Si copiaron los títulos de Excel, los borramos
                     if not df_limpio.empty and df_limpio.iloc[0]['FINCA'].upper() == "FINCA":
                         df_limpio = df_limpio.iloc[1:].reset_index(drop=True)
 
                     st.session_state.memoria_df_seguro = df_limpio
-                    st.success(f"✅ ¡Éxito! Se cargaron {len(df_limpio)} filas de forma segura.")
+                    st.success(f"✅ Se cargaron {len(df_limpio)} filas de forma segura.")
                 except Exception as e:
                     st.error(f"Error procesando el texto: {e}")
             else:
@@ -299,8 +271,6 @@ def ejecutar():
                     st.error(f"Error al leer Excel: {e}")
 
     st.markdown("### 📊 Datos en Memoria (Solo Lectura)")
-    st.info("Esta tabla no se puede editar manualmente para evitar colapsos. Si te equivocaste, corrige en Excel y vuelve a pegar arriba.")
-    # 💥 AQUI USAMOS ST.DATAFRAME EN LUGAR DE ST.DATA_EDITOR. Esto NUNCA arroja el error removeChild.
     st.dataframe(st.session_state.memoria_df_seguro, use_container_width=True, hide_index=True)
 
     st.markdown("---")
@@ -317,7 +287,7 @@ def ejecutar():
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
         
         if df_valid.empty:
-            st.error("⚠️ No hay datos válidos para proyectar. Por favor pega o sube información primero.")
+            st.error("⚠️ No hay datos válidos para proyectar.")
         else:
             with st.spinner("Procesando matriz financiera y logística..."):
                 
@@ -498,9 +468,6 @@ def ejecutar():
             else:
                 st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
 
-        # ==========================================
-        # 💾 SÚPER EXPORTACIÓN A EXCEL CON FÓRMULAS VIVAS
-        # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
