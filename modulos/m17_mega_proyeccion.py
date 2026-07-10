@@ -276,13 +276,18 @@ def ejecutar():
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
         with st.spinner("Procesando matriz financiera y logística..."):
+            
+            # 💥 PARCHE APLICADO: Restauramos el escáner del Productor que se había borrado
+            col_prod_idx = 5
+            if not df_t2.empty:
+                for i, c_name in enumerate(df_t2.columns):
+                    c_clean = str(c_name).upper().replace('\n', ' ').strip()
+                    if 'TIPO' in c_clean and 'PROD' in c_clean:
+                        col_prod_idx = i
+                        break 
+            
             resultados = []
             log_volumetrico = {}
-            
-            # Limpiar dataframe de filas vacías
-            df_valid = df_edited.dropna(subset=['FINCA']).copy()
-            df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
-            
             año_actual = str(datetime.now().year)
 
             for idx, row in df_valid.iterrows():
