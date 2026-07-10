@@ -229,9 +229,9 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial (CORRECCIÓN DE TIPOS)
-    if 'mega_input' not in st.session_state:
-        st.session_state.mega_input = pd.DataFrame([{
+    # 2. Configurar Data Editor Inicial (MEMORIA BLINDADA V3)
+    if 'memoria_base_v3' not in st.session_state:
+        st.session_state.memoria_base_v3 = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": 0.0, 
             "COCTEL": "", 
@@ -255,8 +255,8 @@ def ejecutar():
     lista_cocteles_segura = [""] + lista_cocteles
 
     df_edited = st.data_editor(
-        st.session_state.mega_input,
-        key="memoria_tabla_segura", # 💥 CANDADO INTERNO DE STREAMLIT (100% SEGURO)
+        st.session_state.memoria_base_v3,
+        key="tabla_segura_v3", # 💥 NUEVA LLAVE: Destruye la tabla corrupta anterior
         num_rows="dynamic",
         use_container_width=True,
         column_config={
