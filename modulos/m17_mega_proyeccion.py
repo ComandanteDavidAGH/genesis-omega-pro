@@ -229,9 +229,9 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial (MEMORIA BLINDADA V3)
-    if 'memoria_base_v3' not in st.session_state:
-        st.session_state.memoria_base_v3 = pd.DataFrame([{
+    # 2. Configurar Data Editor Inicial (MEMORIA BLINDADA V5)
+    if 'memoria_base_v5' not in st.session_state:
+        st.session_state.memoria_base_v5 = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": 0.0, 
             "COCTEL": "", 
@@ -240,38 +240,21 @@ def ejecutar():
             "PRECIO VUELO": 0.0
         } for _ in range(30)])
 
-    # Escáner dinámico para Productor en TABLA 2
-    col_prod_idx = 5
-    if not df_t2.empty:
-        for i, c_name in enumerate(df_t2.columns):
-            c_clean = str(c_name).upper().replace('\n', ' ').strip()
-            if 'TIPO' in c_clean and 'PROD' in c_clean:
-                col_prod_idx = i
-                break 
-
-    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Pegar desde Excel)")
+    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Selección Manual)")
     
-    # 2. Configurar Data Editor Inicial (LIBERADO DE CORTOCIRCUITOS)
-    if 'memoria_base_v4' not in st.session_state:
-        st.session_state.memoria_base_v4 = pd.DataFrame([{
-            "FINCA": "", 
-            "HECTAREAS": 0.0, 
-            "COCTEL": "", 
-            "FERTILIZANTE": "", 
-            "DIAS CICLO": 0, 
-            "PRECIO VUELO": 0.0
-        } for _ in range(30)])
+    lista_fincas_segura = [""] + lista_fincas
+    lista_cocteles_segura = [""] + lista_cocteles
 
-    # 💥 ELIMINAMOS EL MENÚ DESPLEGABLE ESTRICTO PARA QUE SOPORTE EL COPIADO DE EXCEL SIN EXPLOTAR
+    # 💥 RESTAURAMOS LOS SELECTORES ESTRICTOS: 100% de integridad con la BD
     df_edited = st.data_editor(
-        st.session_state.memoria_base_v4,
-        key="tabla_segura_v4", 
+        st.session_state.memoria_base_v5,
+        key="tabla_segura_v5", 
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "FINCA": st.column_config.TextColumn("Finca (Pegar de Excel)", required=True),
+            "FINCA": st.column_config.SelectboxColumn("Finca (Seleccionar)", options=lista_fincas_segura, required=True),
             "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
-            "COCTEL": st.column_config.TextColumn("Cóctel"),
+            "COCTEL": st.column_config.SelectboxColumn("Cóctel (Seleccionar)", options=lista_cocteles_segura),
             "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
             "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
@@ -288,19 +271,9 @@ def ejecutar():
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         
-        # 🪤 EL CEBO EXPLOSIVO: DETECTA EL SABOTEADOR ANTES DE QUE ROMPA EL SISTEMA
+        # Filtramos solo las filas donde se haya seleccionado una Finca válida
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
-        
-        fincas_saboteadoras = []
-        for f in df_valid['FINCA']:
-            f_limpia = str(f).strip().upper()
-            if f_limpia not in lista_fincas:
-                fincas_saboteadoras.append(f_limpia)
-                
-        if fincas_saboteadoras:
-            st.error(f"🚨 CEBO ACTIVADO: El sistema detuvo un colapso. Detecté estas fincas mal escritas o que no existen en la base de datos: {set(fincas_saboteadoras)}. ¡Por favor revisa si tienen espacios extra al final y corrígelas en la tabla!")
-            st.stop() # Frena la ejecución con elegancia
             
         with st.spinner("Procesando matriz financiera y logística..."):
             resultados = []
