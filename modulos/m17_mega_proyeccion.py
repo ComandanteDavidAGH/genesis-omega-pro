@@ -126,18 +126,14 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # 💥 CORRECCIÓN MATEMÁTICA PARA LA JUNTA (42.704 -> 42704)
+                            # 💥 PARSEO MATEMÁTICO BLINDADO (El arreglo del $42.704 vs $63.326,00)
+                            if v.count('.') == 1 and v.count(',') == 0:
+                                if len(v.split('.')[1]) == 3: v = v.replace('.', '') # Es un mil cerrado (42.704 -> 42704)
                             if '.' in v and ',' in v:
                                 if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
                                 else: v = v.replace(',', '')
                             elif ',' in v: v = v.replace(',', '.')
-                            
-                            f_val = float(v)
-                            # Si detectó menos de 1000 y el original tenía punto con 3 ceros, multiplica por mil
-                            if '.' in v and ',' not in v and f_val < 1000 and len(v.split('.')[-1]) == 3:
-                                f_val = f_val * 1000
-                                
-                            return f_val
+                            return float(v)
                         except: return 0.0
                         
                     df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).str.strip().str.upper()
@@ -247,27 +243,20 @@ def ejecutar():
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    # 💥 LA SOLUCIÓN DE FONDO: 1,000 FILAS EN BLANCO ESTÁTICAS PARA EVITAR COLAPSO DE REACT
-    if 'memoria_base_v11' not in st.session_state:
-        st.session_state.memoria_base_v11 = pd.DataFrame([{
-            "FINCA": "", 
-            "HECTAREAS": "",
-            "COCTEL": "", 
-            "FERTILIZANTE": "", 
-            "DIAS CICLO": 0, 
-            "PRECIO VUELO": 0.0
+    # Memoria con 1000 filas para que nunca te falte espacio
+    if 'memoria_base_v12' not in st.session_state:
+        st.session_state.memoria_base_v12 = pd.DataFrame([{
+            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": 0, "PRECIO VUELO": 0.0
         } for _ in range(1000)])
 
     # =================================================================
-    # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE
+    # 📥 OPCIÓN MASIVA A: CARGAR EXCEL DESDE ARCHIVO
     # =================================================================
-    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Elige tu método)")
+    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Opción A o B)")
     
-    tab_upload, tab_paste = st.tabs(["📁 Subir Archivo Excel (Recomendado)", "📋 Pegar Manualmente"])
-    
-    with tab_upload:
+    with st.expander("📁 OPCIÓN A: SUBIR ARCHIVO EXCEL (.xlsx)", expanded=False):
         st.write("Sube tu archivo con las columnas exactas: **FINCA, HECTAREAS, COCTEL, FERTILIZANTE, DIAS CICLO, PRECIO VUELO**")
-        archivo_excel = st.file_uploader("Sube tu matriz de proyección (.xlsx)", type=['xlsx'])
+        archivo_excel = st.file_uploader("Sube tu matriz de proyección", type=['xlsx'])
         if archivo_excel is not None:
             if st.button("🔄 Cargar datos a la tabla principal", type="primary"):
                 try:
@@ -278,25 +267,27 @@ def ejecutar():
                     
                     df_up = df_up[cols_req].fillna("").astype(str)
                     
-                    # Asegurar que siempre haya 1000 filas para mantener la estabilidad del frontend
                     filas_faltantes = 1000 - len(df_up)
                     if filas_faltantes > 0:
                         df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
                         df_up = pd.concat([df_up, df_blanco], ignore_index=True)
 
-                    st.session_state.memoria_base_v11 = df_up
-                    if "tabla_segura_v11" in st.session_state:
-                        del st.session_state["tabla_segura_v11"]
+                    st.session_state.memoria_base_v12 = df_up
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error al leer Excel: {e}")
-                    
-    with tab_paste:
-        # 💥 TABLA BLINDADA: Sin 'num_rows="dynamic"'. Esto evitará el error removeChild al pegar masivamente.
+
+    # =================================================================
+    # 🛡️ OPCIÓN MASIVA B: EL ESCUDO ANTI-RECARGAS (ST.FORM)
+    # =================================================================
+    with st.form("mega_formulario_protegido"):
+        st.markdown("📋 **OPCIÓN B: PEGAR MANUALMENTE O EDITAR (Sistema Anti-Colapsos)**")
+        st.caption("Pega tus datos tranquilo. La tabla NO se actualizará hasta que presiones el botón rojo de abajo.")
+        
         df_edited = st.data_editor(
-            st.session_state.memoria_base_v11,
-            key="tabla_segura_v11", 
+            st.session_state.memoria_base_v12,
+            key="mega_tabla_v12", 
             use_container_width=True,
             column_config={
                 "FINCA": st.column_config.TextColumn("Finca"),
@@ -308,15 +299,18 @@ def ejecutar():
             }
         )
 
-    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
-    col_r1, col_r2 = st.columns(2)
-    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
-    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
+        st.markdown("---")
+        st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
+        col_r1, col_r2 = st.columns(2)
+        inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+        colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
 
-    factor_inflacion = 1 + (inflacion_proyectada / 100)
+        factor_inflacion = 1 + (inflacion_proyectada / 100)
 
-    if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
-        
+        # 💥 ESTE BOTÓN ES LA LLAVE. Hasta que no se presiona, el sistema ignora tus pegados (evitando el error de React)
+        submit_btn = st.form_submit_button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True)
+
+    if submit_btn:
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
