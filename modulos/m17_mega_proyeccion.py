@@ -173,6 +173,23 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 p_ad, d_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper(), limpiar_numero(m_s.iloc[0]['DOSIS'])
                 if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']: dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
 
+    # 💥 BLINDAJE EXTRA PARA FERTILIZANTES COMUNES
+    fert_fallback = {"ZN": "ZINTRAC X LITRO SV", "BT": "BANATREL SC", "NM": "NATURAMIN WSP", "QM": "QUELAMIX", "ZT": "ZITRON"}
+    for ad in aditivos:
+        if ad in fert_fallback:
+            p_fall = fert_fallback[ad]
+            if not any(p_fall in k for k in dict_prods.keys()):
+                d_fall = 0.5 # default
+                if not df_mezclas.empty:
+                    try:
+                        for col_idx in range(len(df_mezclas.columns) - 1):
+                            mask = df_mezclas.iloc[:, col_idx].astype(str).str.strip().str.upper() == p_fall
+                            if mask.any():
+                                val = limpiar_numero(df_mezclas[mask].iloc[0, col_idx+1])
+                                if val > 0: d_fall = val
+                    except: pass
+                dict_prods[p_fall] = dict_prods.get(p_fall, 0.0) + d_fall
+
     for p in list(dict_prods.keys()):
         if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
         elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = 1.5 if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else 1.0
@@ -212,9 +229,9 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial
+    # 2. Configurar Data Editor Inicial (INCLUYE COLUMNA FERTILIZANTE)
     if 'mega_input' not in st.session_state:
-        st.session_state.mega_input = pd.DataFrame([{"FINCA": None, "HECTAREAS": 0.0, "COCTEL": None, "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
+        st.session_state.mega_input = pd.DataFrame([{"FINCA": None, "HECTAREAS": 0.0, "COCTEL": None, "FERTILIZANTE": None, "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
 
     # Escáner dinámico para Productor en TABLA 2 - BLINDADO CONTRA "TIPO AVION"
     col_prod_idx = 5
@@ -235,6 +252,7 @@ def ejecutar():
             "FINCA": st.column_config.SelectboxColumn("Finca", options=lista_fincas, required=True),
             "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
             "COCTEL": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles),
+            "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
             "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
         }
@@ -255,6 +273,11 @@ def ejecutar():
                 finca_n = str(row['FINCA']).strip().upper()
                 ha_num = limpiar_numero(row['HECTAREAS'])
                 coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
+                
+                # 💥 FUSIÓN INTELIGENTE: Capturamos el fertilizante y lo unimos al cóctel
+                fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
+                coctel_combinado = f"{coctel_n} {fert_n}".strip()
+
                 dias_c = int(limpiar_numero(row['DIAS CICLO']))
                 precio_vuelo = limpiar_numero(row['PRECIO VUELO'])
 
@@ -305,7 +328,7 @@ def ejecutar():
                             c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
                             break
 
-                dict_receta = extraer_receta_mega(coctel_n, finca_n, df_mezclas, df_dicc, df_t2)
+                dict_receta = extraer_receta_mega(coctel_combinado, finca_n, df_mezclas, df_dicc, df_t2)
                 
                 for p, d in dict_receta.items():
                     # Para la gráfica volumétrica
@@ -332,7 +355,7 @@ def ejecutar():
                 costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
 
                 resultados.append({
-                    "FINCA": finca_n, "HECTAREAS": ha_num, "COCTEL": coctel_n, "DIAS CICLO": dias_c, "PRECIO VUELO": precio_vuelo,
+                    "FINCA": finca_n, "HECTAREAS": ha_num, "COCTEL": coctel_combinado, "DIAS CICLO": dias_c, "PRECIO VUELO": precio_vuelo,
                     "Costo ST ($)": math.floor(costo_st_fila), "Costo Vuelo ($)": math.floor(costo_vuelo_fila), "Costo Mezcla ($)": math.floor(costo_mezcla_fila),
                     "Costo x Ha ($)": costo_ha, "RESULTADO TOTAL ($)": gran_total
                 })
