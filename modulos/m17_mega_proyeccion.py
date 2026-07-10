@@ -229,9 +229,8 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial (CORRECCIÓN DE TIPOS PARA EVITAR CORTOCIRCUITO)
+    # 2. Configurar Data Editor Inicial (CORRECCIÓN DE TIPOS)
     if 'mega_input' not in st.session_state:
-        # 💥 CLAVE: Usamos comillas vacías ("") en lugar de None para no bloquear el menú desplegable
         st.session_state.mega_input = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": 0.0, 
@@ -252,12 +251,12 @@ def ejecutar():
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Pegar desde Excel)")
     
-    # 💥 Añadimos un espacio en blanco a las listas para que acepte la plantilla inicial
     lista_fincas_segura = [""] + lista_fincas
     lista_cocteles_segura = [""] + lista_cocteles
 
     df_edited = st.data_editor(
         st.session_state.mega_input,
+        key="memoria_tabla_segura", # 💥 CANDADO INTERNO DE STREAMLIT (100% SEGURO)
         num_rows="dynamic",
         use_container_width=True,
         column_config={
@@ -269,10 +268,8 @@ def ejecutar():
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
         }
     )
-
-    # 💥 CANDADO INTELIGENTE: Guarda los datos ingresados en la memoria en tiempo real
-    st.session_state.mega_input = df_edited
-
+    
+    # 💥 (AQUÍ BORRAMOS LA LÍNEA QUE CAUSABA EL CORTOCIRCUITO)
     # 💥 NUEVO BLOQUE: PARÁMETROS DE RIESGO Y PROYECCIÓN (INFLACIÓN Y COLCHÓN) 💥
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
