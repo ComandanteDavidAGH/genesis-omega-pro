@@ -247,16 +247,16 @@ def ejecutar():
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    # 💥 MEMORIA V10: Totalmente libre de cortocircuitos React
-    if 'memoria_base_v10' not in st.session_state:
-        st.session_state.memoria_base_v10 = pd.DataFrame([{
+    # 💥 LA SOLUCIÓN DE FONDO: 1,000 FILAS EN BLANCO ESTÁTICAS PARA EVITAR COLAPSO DE REACT
+    if 'memoria_base_v11' not in st.session_state:
+        st.session_state.memoria_base_v11 = pd.DataFrame([{
             "FINCA": "", 
             "HECTAREAS": "",
             "COCTEL": "", 
             "FERTILIZANTE": "", 
             "DIAS CICLO": 0, 
             "PRECIO VUELO": 0.0
-        } for _ in range(50)])
+        } for _ in range(1000)])
 
     # =================================================================
     # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE
@@ -278,28 +278,33 @@ def ejecutar():
                     
                     df_up = df_up[cols_req].fillna("").astype(str)
                     
-                    st.session_state.memoria_base_v10 = df_up
-                    if "tabla_segura_v10" in st.session_state:
-                        del st.session_state["tabla_segura_v10"]
+                    # Asegurar que siempre haya 1000 filas para mantener la estabilidad del frontend
+                    filas_faltantes = 1000 - len(df_up)
+                    if filas_faltantes > 0:
+                        df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
+                        df_up = pd.concat([df_up, df_blanco], ignore_index=True)
+
+                    st.session_state.memoria_base_v11 = df_up
+                    if "tabla_segura_v11" in st.session_state:
+                        del st.session_state["tabla_segura_v11"]
                     if hasattr(st, 'rerun'): st.rerun()
                     else: st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error al leer Excel: {e}")
                     
     with tab_paste:
-        # 💥 TABLA BLINDADA: Removida la línea tóxica que colapsaba la app.
+        # 💥 TABLA BLINDADA: Sin 'num_rows="dynamic"'. Esto evitará el error removeChild al pegar masivamente.
         df_edited = st.data_editor(
-            st.session_state.memoria_base_v10,
-            key="tabla_segura_v10", 
-            num_rows="dynamic",
+            st.session_state.memoria_base_v11,
+            key="tabla_segura_v11", 
             use_container_width=True,
             column_config={
-                "FINCA": st.column_config.TextColumn("Finca (Pega exacto de Excel)"),
-                "HECTAREAS": st.column_config.TextColumn("Hectáreas (Pega 70,63 o 70.63)"), 
-                "COCTEL": st.column_config.TextColumn("Cóctel (Pega de Excel)"),
-                "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
-                "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
-                "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
+                "FINCA": st.column_config.TextColumn("Finca"),
+                "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
+                "COCTEL": st.column_config.TextColumn("Cóctel"),
+                "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
+                "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo"),
+                "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo"),
             }
         )
 
