@@ -80,7 +80,7 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1) - MOTOR DEFINITIVO
+        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1)
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -173,13 +173,12 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 p_ad, d_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper(), limpiar_numero(m_s.iloc[0]['DOSIS'])
                 if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']: dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
 
-    # 💥 BLINDAJE EXTRA PARA FERTILIZANTES COMUNES
     fert_fallback = {"ZN": "ZINTRAC X LITRO SV", "BT": "BANATREL SC", "NM": "NATURAMIN WSP", "QM": "QUELAMIX", "ZT": "ZITRON"}
     for ad in aditivos:
         if ad in fert_fallback:
             p_fall = fert_fallback[ad]
             if not any(p_fall in k for k in dict_prods.keys()):
-                d_fall = 0.5 # default
+                d_fall = 0.5 
                 if not df_mezclas.empty:
                     try:
                         for col_idx in range(len(df_mezclas.columns) - 1):
@@ -216,11 +215,9 @@ def ejecutar():
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
     st.info("💡 **Guía Rápida:** Pega tus datos de Excel directamente en la tabla. Si dejas el `PRECIO VUELO` o las `HECTAREAS` en 0, el sistema buscará el dato oficial de esa finca automáticamente.")
 
-    # 1. Cargar bases maestras en caché
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
-    # Extracción de listas para los selectores
     lista_fincas = []
     if not df_t2.empty:
         lista_fincas = sorted([str(x).upper().strip() for x in df_t2.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
@@ -238,17 +235,16 @@ def ejecutar():
             "FERTILIZANTE": "", 
             "DIAS CICLO": 0, 
             "PRECIO VUELO": 0.0
-        } for _ in range(1000)]) # 💥 AQUÍ ESTÁ LA MAGIA: 1000 filas pre-cargadas
+        } for _ in range(1000)])
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Selección Manual)")
     
     lista_fincas_segura = [""] + lista_fincas
     lista_cocteles_segura = [""] + lista_cocteles
 
-    # 💥 RESTAURAMOS LOS SELECTORES ESTRICTOS: 100% de integridad con la BD
     df_edited = st.data_editor(
         st.session_state.memoria_base_v6,
-        key="tabla_segura_v6", # 💥 NUEVA LLAVE: Fuerza a Streamlit a cargar las 1000 filas de inmediato
+        key="tabla_segura_v6", 
         num_rows="dynamic",
         use_container_width=True,
         column_config={
@@ -261,7 +257,6 @@ def ejecutar():
         }
     )
 
-    # PARÁMETROS DE RIESGO
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
     inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
@@ -271,13 +266,12 @@ def ejecutar():
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         
-        # Filtramos solo las filas donde se haya seleccionado una Finca válida
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
         with st.spinner("Procesando matriz financiera y logística..."):
             
-            # 💥 PARCHE APLICADO: Restauramos el escáner del Productor que se había borrado
+            # Escáner dinámico para Productor en TABLA 2
             col_prod_idx = 5
             if not df_t2.empty:
                 for i, c_name in enumerate(df_t2.columns):
@@ -298,12 +292,9 @@ def ejecutar():
                 fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
                 coctel_combinado = f"{coctel_n} {fert_n}".strip()
 
-                # 💥 CÁLCULO DEL COLCHÓN DE DÍAS 💥
                 dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
-                
                 precio_vuelo = limpiar_numero(row['PRECIO VUELO'])
 
-                # Auto-completar Hectáreas Oficiales si el usuario dejó 0
                 if ha_num == 0 and not df_t2.empty:
                     match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
                     if not match_f.empty:
@@ -311,14 +302,11 @@ def ejecutar():
 
                 if ha_num <= 0: continue
 
-                # Auto-completar Precio Vuelo histórico si es 0
                 if precio_vuelo == 0:
                     precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
 
-                # 💥 CÁLCULO DE INFLACIÓN PARA EL VUELO 💥
                 precio_vuelo = precio_vuelo * factor_inflacion
 
-                # Inteligencia Productor y Márgenes
                 tipo_prod = "TERCERO"
                 if not df_t2.empty:
                     match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
@@ -334,7 +322,6 @@ def ejecutar():
                         st_base = limpiar_numero(match_cfg.iloc[0].iloc[4])
                         mult_v = limpiar_numero(match_cfg.iloc[0].iloc[6])
                 
-                # Catch-all
                 if mult_m == 0 or st_base == 0:
                     if tipo_prod == "TERCERO": mult_m, st_base, mult_v = 1.451, 1583.0, 1.451
                     elif tipo_prod == "AFILIADO": mult_m, st_base, mult_v = 1.164, 1510.0, 1.164
@@ -342,10 +329,8 @@ def ejecutar():
                     elif tipo_prod == "ORGANICO": mult_m, st_base, mult_v = 1.011, 1337.0, 1.011
                     else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 
 
-                # 💥 CÁLCULO DE INFLACIÓN PARA EL SERVICIO TÉCNICO 💥
                 st_base = st_base * factor_inflacion
 
-                # Costo Mezcla
                 costo_mezcla_fila = 0.0
                 c_p_i, c_c_i = 8, 9
                 if not df_conf.empty:
@@ -371,12 +356,9 @@ def ejecutar():
                         match_p = df_precios[(df_precios['AÑO'] == año_actual) & (df_precios['PRODUCTO_CLEAN'] == p.replace(" ",""))]
                         if not match_p.empty: precio_unitario = match_p['PRECIO_PROM'].mean()
 
-                    # 💥 CÁLCULO DE INFLACIÓN PARA LOS QUÍMICOS 💥
                     precio_unitario = precio_unitario * factor_inflacion
-
                     costo_mezcla_fila += (d * ha_num * precio_unitario * mult_m)
 
-                # Costos Totales
                 costo_st_fila = dias_c * st_base * ha_num
                 costo_vuelo_fila = precio_vuelo * ha_num 
                 gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + 0.5)
@@ -392,7 +374,6 @@ def ejecutar():
             st.session_state.mega_volumetria = log_volumetrico
             st.success("✅ Proyección completada exitosamente.")
 
-    # 3. RENDERIZADO DEL DASHBOARD (Si hay datos procesados)
     if 'mega_resultados' in st.session_state and not st.session_state.mega_resultados.empty:
         st.markdown("---")
         df_res = st.session_state.mega_resultados
@@ -426,7 +407,12 @@ def ejecutar():
         with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$ {t_mx:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
         with c4: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$ {t_gr:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
 
-        tab1, tab2 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📦 Auditoría Volumétrica de Insumos"])
+        # 💥 NUEVO MOTOR: Consolidado Resumen por Finca
+        df_resumen_finca = df_filtro.groupby('FINCA', as_index=False)[
+            ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
+        ].sum()
+
+        tab1, tab2, tab3 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📑 Resumen Ejecutivo por Finca", "📦 Auditoría Volumétrica de Insumos"])
         
         with tab1:
             df_view = df_filtro.copy()
@@ -435,6 +421,15 @@ def ejecutar():
             st.dataframe(df_view, use_container_width=True, hide_index=True)
 
         with tab2:
+            if not df_resumen_finca.empty:
+                df_resumen_view = df_resumen_finca.copy()
+                for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
+                    df_resumen_view[col] = df_resumen_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+                st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay datos para resumir.")
+
+        with tab3:
             if cons_vol_agrupado:
                 df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
                 df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].map("{:,.1f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
@@ -455,13 +450,11 @@ def ejecutar():
             else:
                 st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
 
-        # ==========================================
-        # 💾 SÚPER EXPORTACIÓN A EXCEL (3 Pestañas)
-        # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False)
+            df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
             if cons_vol_agrupado:
                 df_insumos[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False)
             
