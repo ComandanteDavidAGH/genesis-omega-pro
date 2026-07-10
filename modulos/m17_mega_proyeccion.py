@@ -229,19 +229,18 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial (INCLUYE COLUMNA FERTILIZANTE)
+    # 2. Configurar Data Editor Inicial
     if 'mega_input' not in st.session_state:
         st.session_state.mega_input = pd.DataFrame([{"FINCA": None, "HECTAREAS": 0.0, "COCTEL": None, "FERTILIZANTE": None, "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
 
-    # Escáner dinámico para Productor en TABLA 2 - BLINDADO CONTRA "TIPO AVION"
+    # Escáner dinámico para Productor en TABLA 2
     col_prod_idx = 5
     if not df_t2.empty:
         for i, c_name in enumerate(df_t2.columns):
             c_clean = str(c_name).upper().replace('\n', ' ').strip()
-            # Tiene que decir TIPO y PROD al mismo tiempo para no confundirse con TIPO AVION
             if 'TIPO' in c_clean and 'PROD' in c_clean:
                 col_prod_idx = i
-                break # Si encuentra la columna perfecta, se detiene y no busca más
+                break 
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Pegar desde Excel)")
     df_edited = st.data_editor(
@@ -258,12 +257,20 @@ def ejecutar():
         }
     )
 
+    # 💥 NUEVO BLOQUE: PARÁMETROS DE RIESGO Y PROYECCIÓN (INFLACIÓN Y COLCHÓN) 💥
+    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
+    col_r1, col_r2 = st.columns(2)
+    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, help="Aumenta los costos de Vuelo, Insumos y Servicio Técnico para simular escenarios futuros.")
+    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1, help="Agrega días extra al ciclo de cada finca como margen de seguridad operativa.")
+
+    factor_inflacion = 1 + (inflacion_proyectada / 100)
+
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         with st.spinner("Procesando matriz financiera y logística..."):
             resultados = []
             log_volumetrico = {}
             
-            # Limpiar dataframe de filas vacías (evitar NoneType errors)
+            # Limpiar dataframe de filas vacías
             df_valid = df_edited.dropna(subset=['FINCA']).copy()
             df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
             
@@ -274,24 +281,28 @@ def ejecutar():
                 ha_num = limpiar_numero(row['HECTAREAS'])
                 coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
                 
-                # 💥 FUSIÓN INTELIGENTE: Capturamos el fertilizante y lo unimos al cóctel
                 fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
                 coctel_combinado = f"{coctel_n} {fert_n}".strip()
 
-                dias_c = int(limpiar_numero(row['DIAS CICLO']))
+                # 💥 CÁLCULO DEL COLCHÓN DE DÍAS 💥
+                dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
+                
                 precio_vuelo = limpiar_numero(row['PRECIO VUELO'])
 
-                # 💥 Auto-completar Hectáreas Oficiales si el usuario dejó 0
+                # Auto-completar Hectáreas Oficiales si el usuario dejó 0
                 if ha_num == 0 and not df_t2.empty:
                     match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
                     if not match_f.empty:
-                        ha_num = limpiar_numero(match_f.iloc[0].iloc[2]) # Columna de Área Bruta en TABLA 2
+                        ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
 
                 if ha_num <= 0: continue
 
-                # 💥 Auto-completar Precio Vuelo histórico si es 0
+                # Auto-completar Precio Vuelo histórico si es 0
                 if precio_vuelo == 0:
                     precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
+
+                # 💥 CÁLCULO DE INFLACIÓN PARA EL VUELO 💥
+                precio_vuelo = precio_vuelo * factor_inflacion
 
                 # Inteligencia Productor y Márgenes
                 tipo_prod = "TERCERO"
@@ -309,14 +320,16 @@ def ejecutar():
                         st_base = limpiar_numero(match_cfg.iloc[0].iloc[4])
                         mult_v = limpiar_numero(match_cfg.iloc[0].iloc[6])
                 
-                # 💥 CATCH-ALL DEFINITIVO PARA EVITAR CEROS 💥
-                # Si en la hoja base faltó el dato, fuerza el valor por defecto para no anular la factura.
+                # Catch-all
                 if mult_m == 0 or st_base == 0:
                     if tipo_prod == "TERCERO": mult_m, st_base, mult_v = 1.451, 1583.0, 1.451
                     elif tipo_prod == "AFILIADO": mult_m, st_base, mult_v = 1.164, 1510.0, 1.164
                     elif tipo_prod == "COOPERATIVA": mult_m, st_base, mult_v = 1.112, 1510.0, 1.164
                     elif tipo_prod == "ORGANICO": mult_m, st_base, mult_v = 1.011, 1337.0, 1.011
-                    else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 # Default para fincas sin configuración como Bonanza
+                    else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 
+
+                # 💥 CÁLCULO DE INFLACIÓN PARA EL SERVICIO TÉCNICO 💥
+                st_base = st_base * factor_inflacion
 
                 # Costo Mezcla
                 costo_mezcla_fila = 0.0
@@ -331,11 +344,9 @@ def ejecutar():
                 dict_receta = extraer_receta_mega(coctel_combinado, finca_n, df_mezclas, df_dicc, df_t2)
                 
                 for p, d in dict_receta.items():
-                    # Para la gráfica volumétrica
                     log_volumetrico[finca_n] = log_volumetrico.get(finca_n, {})
                     log_volumetrico[finca_n][p] = log_volumetrico[finca_n].get(p, 0.0) + (d * ha_num)
 
-                    # Para Costos
                     precio_unitario = 0.0
                     if not df_conf.empty:
                         mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
@@ -346,11 +357,14 @@ def ejecutar():
                         match_p = df_precios[(df_precios['AÑO'] == año_actual) & (df_precios['PRODUCTO_CLEAN'] == p.replace(" ",""))]
                         if not match_p.empty: precio_unitario = match_p['PRECIO_PROM'].mean()
 
+                    # 💥 CÁLCULO DE INFLACIÓN PARA LOS QUÍMICOS 💥
+                    precio_unitario = precio_unitario * factor_inflacion
+
                     costo_mezcla_fila += (d * ha_num * precio_unitario * mult_m)
 
                 # Costos Totales
                 costo_st_fila = dias_c * st_base * ha_num
-                costo_vuelo_fila = precio_vuelo * ha_num # Directo y Neto
+                costo_vuelo_fila = precio_vuelo * ha_num 
                 gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + 0.5)
                 costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
 
@@ -372,10 +386,9 @@ def ejecutar():
         
         fincas_procesadas = sorted(df_res['FINCA'].unique().tolist())
         
-        st.markdown("### 🎛️ 2. Tablero de Mando y Filtros")
+        st.markdown("### 🎛️ 3. Tablero de Mando y Filtros")
         fincas_filtro = st.multiselect("📍 Filtrar análisis por Finca(s) [Dejar vacío para ver TOTAL GENERAL]:", fincas_procesadas)
         
-        # Filtrado Dinámico
         if fincas_filtro:
             df_filtro = df_res[df_res['FINCA'].isin(fincas_filtro)]
             vol_dict_filtro = {k: v for k, v in vol_dict.items() if k in fincas_filtro}
@@ -383,13 +396,11 @@ def ejecutar():
             df_filtro = df_res
             vol_dict_filtro = vol_dict
 
-        # Consolidación Volumétrica Filtrada
         cons_vol_agrupado = {}
         for f, prods in vol_dict_filtro.items():
             for p, vol in prods.items():
                 cons_vol_agrupado[p] = cons_vol_agrupado.get(p, 0.0) + vol
         
-        # Tarjetas de KPI
         t_st = df_filtro['Costo ST ($)'].sum()
         t_vu = df_filtro['Costo Vuelo ($)'].sum()
         t_mx = df_filtro['Costo Mezcla ($)'].sum()
@@ -401,7 +412,6 @@ def ejecutar():
         with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$ {t_mx:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
         with c4: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$ {t_gr:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
 
-        # Tablas y Gráficas
         tab1, tab2 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📦 Auditoría Volumétrica de Insumos"])
         
         with tab1:
