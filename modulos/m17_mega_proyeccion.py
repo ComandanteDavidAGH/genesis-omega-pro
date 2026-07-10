@@ -229,9 +229,17 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial
+    # 2. Configurar Data Editor Inicial (CORRECCIÓN DE TIPOS PARA EVITAR CORTOCIRCUITO)
     if 'mega_input' not in st.session_state:
-        st.session_state.mega_input = pd.DataFrame([{"FINCA": None, "HECTAREAS": 0.0, "COCTEL": None, "FERTILIZANTE": None, "DIAS CICLO": 0, "PRECIO VUELO": 0.0} for _ in range(30)])
+        # 💥 CLAVE: Usamos comillas vacías ("") en lugar de None para no bloquear el menú desplegable
+        st.session_state.mega_input = pd.DataFrame([{
+            "FINCA": "", 
+            "HECTAREAS": 0.0, 
+            "COCTEL": "", 
+            "FERTILIZANTE": "", 
+            "DIAS CICLO": 0, 
+            "PRECIO VUELO": 0.0
+        } for _ in range(30)])
 
     # Escáner dinámico para Productor en TABLA 2
     col_prod_idx = 5
@@ -243,22 +251,26 @@ def ejecutar():
                 break 
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Pegar desde Excel)")
+    
+    # 💥 Añadimos un espacio en blanco a las listas para que acepte la plantilla inicial
+    lista_fincas_segura = [""] + lista_fincas
+    lista_cocteles_segura = [""] + lista_cocteles
+
     df_edited = st.data_editor(
         st.session_state.mega_input,
         num_rows="dynamic",
         use_container_width=True,
-        # 💥 CORRECCIÓN: Quitamos el 'key' para evitar el cortocircuito interno
         column_config={
-            "FINCA": st.column_config.SelectboxColumn("Finca", options=lista_fincas, required=True),
+            "FINCA": st.column_config.SelectboxColumn("Finca", options=lista_fincas_segura, required=True),
             "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
-            "COCTEL": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles),
+            "COCTEL": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_segura),
             "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
             "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
         }
     )
 
-    # 💥 CANDADO ÚNICO: Sobrescribe la memoria en tiempo real de forma segura
+    # 💥 CANDADO INTELIGENTE: Guarda los datos ingresados en la memoria en tiempo real
     st.session_state.mega_input = df_edited
 
     # 💥 NUEVO BLOQUE: PARÁMETROS DE RIESGO Y PROYECCIÓN (INFLACIÓN Y COLCHÓN) 💥
