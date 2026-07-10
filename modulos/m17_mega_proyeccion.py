@@ -33,7 +33,6 @@ def cargar_boveda_mega_proyeccion():
     hist_vuelo_promedio = {}
 
     try:
-        # 1. Bóveda Recetas y Configuración
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         try:
             data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
@@ -51,7 +50,6 @@ def cargar_boveda_mega_proyeccion():
             df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
         except: pass
 
-        # 2. Bóveda Precios
         try:
             sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
             precios_consolidados = []
@@ -80,7 +78,6 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. Inteligencia de Precio de Vuelo Histórico (Tabla 1)
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -213,7 +210,7 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
-    st.info("💡 **Guía Rápida:** Pega tus datos de Excel directamente en la tabla. Si dejas el `PRECIO VUELO` o las `HECTAREAS` en 0, el sistema buscará el dato oficial de esa finca automáticamente.")
+    st.info("💡 **Guía Rápida:** Sube tu Excel o pega los datos. Si dejas el `PRECIO VUELO` o las `HECTAREAS` vacíos o en 0, el sistema buscará el dato oficial de esa finca automáticamente.")
 
     with st.spinner("Conectando con la Bóveda Maestra..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
@@ -226,36 +223,68 @@ def ejecutar():
     if not df_mezclas.empty:
         lista_cocteles = sorted([str(x).upper().strip() for x in df_mezclas.iloc[:, 0].dropna().unique() if str(x).upper().strip() not in ['NAN', 'NONE', '']])
 
-    # 2. Configurar Data Editor Inicial (MEMORIA BLINDADA V6 - CAPACIDAD MASIVA)
-    if 'memoria_base_v6' not in st.session_state:
-        st.session_state.memoria_base_v6 = pd.DataFrame([{
+    # 💥 MEMORIA V7 - HECTAREAS COMO TEXTO PARA EVITAR BUG DEL X100
+    if 'memoria_base_v7' not in st.session_state:
+        st.session_state.memoria_base_v7 = pd.DataFrame([{
             "FINCA": "", 
-            "HECTAREAS": 0.0, 
+            "HECTAREAS": "",  # Como texto para evitar mal formato
             "COCTEL": "", 
             "FERTILIZANTE": "", 
             "DIAS CICLO": 0, 
             "PRECIO VUELO": 0.0
         } for _ in range(1000)])
 
-    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Selección Manual)")
+    # =================================================================
+    # 📥 OPCIÓN MASIVA: CARGAR EXCEL O PEGAR MANUALMENTE
+    # =================================================================
+    st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Elige tu método)")
     
-    lista_fincas_segura = [""] + lista_fincas
-    lista_cocteles_segura = [""] + lista_cocteles
+    tab_upload, tab_paste = st.tabs(["📁 Subir Archivo Excel (Recomendado)", "📋 Pegar Manualmente"])
+    
+    with tab_upload:
+        st.write("Sube tu archivo con las columnas exactas: **FINCA, HECTAREAS, COCTEL, FERTILIZANTE, DIAS CICLO, PRECIO VUELO**")
+        archivo_excel = st.file_uploader("Sube tu matriz de proyección (.xlsx)", type=['xlsx'])
+        if archivo_excel is not None:
+            if st.button("🔄 Cargar datos a la tabla principal", type="primary"):
+                try:
+                    df_up = pd.read_excel(archivo_excel)
+                    cols_req = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
+                    for c in cols_req:
+                        if c not in df_up.columns: df_up[c] = ""
+                    
+                    df_up = df_up[cols_req].fillna("").astype(str)
+                    
+                    # Rellenar con blancos hasta completar 1000 filas para no perder espacio visual
+                    filas_faltantes = 1000 - len(df_up)
+                    if filas_faltantes > 0:
+                        df_blanco = pd.DataFrame([{c: "" for c in cols_req} for _ in range(filas_faltantes)])
+                        df_up = pd.concat([df_up, df_blanco], ignore_index=True)
+                    
+                    st.session_state.memoria_base_v7 = df_up
+                    if hasattr(st, 'rerun'): st.rerun()
+                    else: st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"Error al leer Excel: {e}")
+                    
+    with tab_paste:
+        lista_fincas_segura = [""] + lista_fincas
+        lista_cocteles_segura = [""] + lista_cocteles
 
-    df_edited = st.data_editor(
-        st.session_state.memoria_base_v6,
-        key="tabla_segura_v6", 
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "FINCA": st.column_config.SelectboxColumn("Finca (Seleccionar)", options=lista_fincas_segura, required=True),
-            "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
-            "COCTEL": st.column_config.SelectboxColumn("Cóctel (Seleccionar)", options=lista_cocteles_segura),
-            "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
-            "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
-            "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
-        }
-    )
+        df_edited = st.data_editor(
+            st.session_state.memoria_base_v7,
+            key="tabla_segura_v7", 
+            num_rows="dynamic",
+            use_container_width=True,
+            column_config={
+                "FINCA": st.column_config.SelectboxColumn("Finca (Seleccionar)", options=lista_fincas_segura, required=True),
+                # 💥 SOLUCIÓN BUG x100: Texto libre para que acepte comas y puntos.
+                "HECTAREAS": st.column_config.TextColumn("Hectáreas (Pega 70,63 o 70.63)"), 
+                "COCTEL": st.column_config.SelectboxColumn("Cóctel (Seleccionar)", options=lista_cocteles_segura),
+                "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
+                "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
+                "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
+            }
+        )
 
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
@@ -265,6 +294,9 @@ def ejecutar():
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
+        
+        # Guardado en memoria fuerte
+        st.session_state.memoria_base_v7 = df_edited
         
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
@@ -407,7 +439,6 @@ def ejecutar():
         with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$ {t_mx:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
         with c4: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$ {t_gr:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
 
-        # 💥 NUEVO MOTOR: Consolidado Resumen por Finca
         df_resumen_finca = df_filtro.groupby('FINCA', as_index=False)[
             ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
         ].sum()
@@ -450,6 +481,9 @@ def ejecutar():
             else:
                 st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
 
+        # ==========================================
+        # 💾 SÚPER EXPORTACIÓN A EXCEL CON FÓRMULAS VIVAS
+        # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -459,6 +493,17 @@ def ejecutar():
                 df_insumos[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False)
             
             workbook = writer.book
+            
+            # 💥 INYECCIÓN DE FÓRMULAS DE EXCEL A LAS CELDAS
+            ws_detalle = workbook['Detalle_Económico']
+            for row_idx in range(2, ws_detalle.max_row + 1):
+                # Columna G (7) = Costo Vuelo: Hectareas (B) * Precio Vuelo (E)
+                ws_detalle.cell(row=row_idx, column=7).value = f"=B{row_idx}*E{row_idx}"
+                # Columna J (10) = Gran Total: Costo ST (F) + Costo Vuelo (G) + Costo Mezcla (H)
+                ws_detalle.cell(row=row_idx, column=10).value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
+                # Columna I (9) = Costo x Ha: Gran Total (J) / Hectareas (B)
+                ws_detalle.cell(row=row_idx, column=9).value = f'=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)'
+
             borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
             header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
             header_font = Font(color="FFFFFF", bold=True)
@@ -478,7 +523,8 @@ def ejecutar():
                         else:
                             cell.alignment = Alignment(vertical='center')
                             col_name = str(ws.cell(row=1, column=cell.column).value).upper()
-                            if isinstance(cell.value, (int, float)):
+                            # Validar que si es un número o si empieza con '=' (Fórmula) aplique el formato de dinero
+                            if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
                                 if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name:
                                     cell.number_format = '"$" #,##0' 
                                 elif "HECTAREAS" in col_name or "VOLUMEN" in col_name:
