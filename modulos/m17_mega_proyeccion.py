@@ -251,34 +251,57 @@ def ejecutar():
 
     st.markdown("### 📥 1. Pista de Aterrizaje de Datos (Pegar desde Excel)")
     
-    lista_fincas_segura = [""] + lista_fincas
-    lista_cocteles_segura = [""] + lista_cocteles
+    # 2. Configurar Data Editor Inicial (LIBERADO DE CORTOCIRCUITOS)
+    if 'memoria_base_v4' not in st.session_state:
+        st.session_state.memoria_base_v4 = pd.DataFrame([{
+            "FINCA": "", 
+            "HECTAREAS": 0.0, 
+            "COCTEL": "", 
+            "FERTILIZANTE": "", 
+            "DIAS CICLO": 0, 
+            "PRECIO VUELO": 0.0
+        } for _ in range(30)])
 
+    # 💥 ELIMINAMOS EL MENÚ DESPLEGABLE ESTRICTO PARA QUE SOPORTE EL COPIADO DE EXCEL SIN EXPLOTAR
     df_edited = st.data_editor(
-        st.session_state.memoria_base_v3,
-        key="tabla_segura_v3", # 💥 NUEVA LLAVE: Destruye la tabla corrupta anterior
+        st.session_state.memoria_base_v4,
+        key="tabla_segura_v4", 
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "FINCA": st.column_config.SelectboxColumn("Finca", options=lista_fincas_segura, required=True),
+            "FINCA": st.column_config.TextColumn("Finca (Pegar de Excel)", required=True),
             "HECTAREAS": st.column_config.NumberColumn("Hectáreas", min_value=0.0, format="%.2f"),
-            "COCTEL": st.column_config.SelectboxColumn("Cóctel", options=lista_cocteles_segura),
+            "COCTEL": st.column_config.TextColumn("Cóctel"),
             "FERTILIZANTE": st.column_config.TextColumn("Fertilizante", help="Ej: ZN, BT, NM..."),
             "DIAS CICLO": st.column_config.NumberColumn("Días Ciclo", min_value=0),
             "PRECIO VUELO": st.column_config.NumberColumn("Precio/Ha Vuelo", min_value=0.0, format="%.0f"),
         }
     )
-    
-    # 💥 (AQUÍ BORRAMOS LA LÍNEA QUE CAUSABA EL CORTOCIRCUITO)
-    # 💥 NUEVO BLOQUE: PARÁMETROS DE RIESGO Y PROYECCIÓN (INFLACIÓN Y COLCHÓN) 💥
+
+    # PARÁMETROS DE RIESGO
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección (Visión Gerencial)")
     col_r1, col_r2 = st.columns(2)
-    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, help="Aumenta los costos de Vuelo, Insumos y Servicio Técnico para simular escenarios futuros.")
-    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1, help="Agrega días extra al ciclo de cada finca como margen de seguridad operativa.")
+    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
 
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
+        
+        # 🪤 EL CEBO EXPLOSIVO: DETECTA EL SABOTEADOR ANTES DE QUE ROMPA EL SISTEMA
+        df_valid = df_edited.dropna(subset=['FINCA']).copy()
+        df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
+        
+        fincas_saboteadoras = []
+        for f in df_valid['FINCA']:
+            f_limpia = str(f).strip().upper()
+            if f_limpia not in lista_fincas:
+                fincas_saboteadoras.append(f_limpia)
+                
+        if fincas_saboteadoras:
+            st.error(f"🚨 CEBO ACTIVADO: El sistema detuvo un colapso. Detecté estas fincas mal escritas o que no existen en la base de datos: {set(fincas_saboteadoras)}. ¡Por favor revisa si tienen espacios extra al final y corrígelas en la tabla!")
+            st.stop() # Frena la ejecución con elegancia
+            
         with st.spinner("Procesando matriz financiera y logística..."):
             resultados = []
             log_volumetrico = {}
