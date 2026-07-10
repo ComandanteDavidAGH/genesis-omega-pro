@@ -127,11 +127,19 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
+                            # Parseo inteligente para formato Colombia
                             if '.' in v and ',' in v:
                                 if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
                                 else: v = v.replace(',', '')
                             elif ',' in v: v = v.replace(',', '.')
-                            return float(v)
+                            
+                            f_val = float(v)
+                            
+                            # 💥 EL FIX MATEMÁTICO: Si Python leyó 42.704 como 42 pesos, lo corregimos a 42704
+                            if '.' in v and ',' not in v and f_val < 1000 and len(v.split('.')[-1]) == 3:
+                                f_val = f_val * 1000
+                                
+                            return f_val
                         except: return 0.0
                         
                     df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).str.strip().str.upper()
@@ -142,10 +150,13 @@ def cargar_boveda_mega_proyeccion():
                     año_corto = año_actual[-2:] 
                     
                     for finca, grp in df_calc.groupby('F_CLEAN'):
+                        # 💥 RESTAURADO: Cálculo ESTRICTO del AÑO ACTUAL para la Junta
                         if col_fecha:
                             grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual) | grp[col_fecha].astype(str).str.endswith(f"/{año_corto}")]
-                            if not grp_actual.empty: hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
-                            else: hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
+                            if not grp_actual.empty: 
+                                hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
+                            else: 
+                                hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                         else:
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
                             
