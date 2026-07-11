@@ -249,7 +249,7 @@ elif menu == "🛠️ 1. Mantenimiento Plantilla SAP": m1.ejecutar(extraer_numer
 elif menu == "📥 2. Carga Facturación": m2.ejecutar(extraer_numero)
 elif menu == "⚙️ 3. Validación de Misión": m3.ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada)
 elif menu == "⌨️ 4. Ingreso Manual Acelerado (OS)": m4.ejecutar(extraer_numero, purificar_lote)
-elif menu == "📈 5. Sincronización Precios": m5.ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro)
+elif menu == "📈 5. Sincronización Precios": m5.ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro)
 elif menu == "✈️ 6. Rastreo Dominicales": m6.ejecutar(procesar_fecha_pesada, limpiar_val_dom)
 elif menu == "⚖️ 7. Arqueo de Inventarios": m7.ejecutar(quitar_tildes, purificar_lote)
 elif menu == "📊 8. Reporte Hectáreas (Pistas)": m8.ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada, HAS_MATPLOTLIB)
