@@ -52,7 +52,7 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
         except: pass
 
-        # 🎯 2. FRANCOTIRADOR DE PRECIOS (SOLO PESTAÑA "DATOS")
+        # 2. FRANCOTIRADOR DE PRECIOS (SOLO PESTAÑA "DATOS")
         try:
             ws_datos = sh_precios.worksheet("DATOS") 
             datos_hoja = ws_datos.get_all_values()
@@ -82,7 +82,7 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 🎯 3. FRANCOTIRADOR TABLA 1 (Buscando "COSTO AVIÓN ($/ha)")
+        # 3. FRANCOTIRADOR TABLA 1 (Buscando "COSTO AVIÓN ($/ha)")
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -102,7 +102,6 @@ def cargar_bases_m17(url_boveda, url_precios):
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # CORRECCIÓN MATEMÁTICA COLOMBIA ($42.704 -> 42704)
                             if v.count('.') == 1 and v.count(',') == 0:
                                 if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
@@ -211,7 +210,7 @@ def ejecutar():
     st.markdown("""
     <style>
     .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
-    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
     .tarjeta-kpi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
     .kpi-titulo { font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .kpi-valor { font-size: 26px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
@@ -220,13 +219,12 @@ def ejecutar():
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
-    # 🔗 PANEL DE CONEXIÓN INDEPENDIENTE (TU IDEA MAGISTRAL)
+    # PANEL DE CONEXIÓN DE ENLACES
     db_cargada = st.session_state.get('m17_db_cargada', False)
     
     with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE", expanded=not db_cargada):
         if db_cargada:
             st.success("✅ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
-            st.caption("Si actualizaste algo en el Drive, puedes volver a cargar los enlaces aquí.")
         else:
             st.info("💡 Pega los enlaces de tus archivos de Google Sheets para alimentar la proyección.")
             
@@ -256,7 +254,7 @@ def ejecutar():
                 st.warning("⚠️ Debes pegar ambos enlaces.")
 
     if not db_cargada:
-        st.stop() # Frena todo aquí hasta que no se carguen las URLs
+        st.stop() 
 
     # Rescatar variables de la memoria
     df_mezclas = st.session_state['m17_mez']
@@ -267,53 +265,31 @@ def ejecutar():
     hist_vuelo = st.session_state['m17_hist']
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
-    if 'm17_df_entrada' not in st.session_state:
-        st.session_state.m17_df_entrada = pd.DataFrame(columns=columnas_base)
-
-    st.markdown("### 📥 1. Pista de Aterrizaje Segura")
     
-    tab_pegar, tab_subir = st.tabs(["📋 Pegar desde Excel (Recomendado)", "📁 Subir Archivo Excel"])
+    # 💥 RESTAURADO: Inicialización de la matriz con 500 filas vacías, pero de verdad
+    if 'm17_df_entrada_grid' not in st.session_state:
+        st.session_state.m17_df_entrada_grid = pd.DataFrame([{
+            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
+        } for _ in range(500)])
+
+    st.markdown("### 📥 1. Pista de Aterrizaje Segura (Spreadsheet)")
+    st.caption("📋 Selecciona tus columnas en Excel, haz Ctrl+C, párate en la primera celda de abajo y presiona **Ctrl+V**.")
     
-    with tab_pegar:
-        texto_crudo = st.text_area("Selecciona tus datos en Excel, haz Ctrl+C y pégalos (Ctrl+V) dentro de esta caja:", height=150, placeholder="FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO")
-        
-        if st.button("📥 Procesar Datos Pegados", type="primary"):
-            if texto_crudo.strip():
-                try:
-                    df_pegado = pd.read_csv(io.StringIO(texto_crudo), sep='\t', header=None, dtype=str)
-                    df_limpio = pd.DataFrame(columns=columnas_base)
-                    
-                    for i, col in enumerate(columnas_base):
-                        if i < len(df_pegado.columns):
-                            df_limpio[col] = df_pegado.iloc[:, i].fillna("").astype(str).str.strip()
-                        else:
-                            df_limpio[col] = ""
-                            
-                    if not df_limpio.empty and df_limpio.iloc[0]['FINCA'].upper() == "FINCA":
-                        df_limpio = df_limpio.iloc[1:].reset_index(drop=True)
-
-                    st.session_state.m17_df_entrada = df_limpio
-                    st.success(f"✅ Se cargaron {len(df_limpio)} filas de forma segura en la memoria interna.")
-                except Exception as e:
-                    st.error(f"Error procesando el texto: {e}")
-            else:
-                st.warning("La caja de texto está vacía.")
-
-    with tab_subir:
-        archivo_excel = st.file_uploader("Sube tu matriz (.xlsx)", type=['xlsx'])
-        if archivo_excel is not None:
-            if st.button("🔄 Cargar Archivo Excel"):
-                try:
-                    df_up = pd.read_excel(archivo_excel)
-                    for c in columnas_base:
-                        if c not in df_up.columns: df_up[c] = ""
-                    st.session_state.m17_df_entrada = df_up[columnas_base].fillna("").astype(str)
-                    st.success("✅ Archivo cargado correctamente en memoria.")
-                except Exception as e:
-                    st.error(f"Error al leer Excel: {e}")
-
-    st.markdown("### 📊 Datos en Memoria (Solo Lectura)")
-    st.dataframe(st.session_state.m17_df_entrada, use_container_width=True, hide_index=True)
+    # 💥 RESTAURADO: El editor de datos visual, elegante e inmune a colapsos
+    df_edited = st.data_editor(
+        st.session_state.m17_df_entrada_grid,
+        key="m17_tabla_maestra_grid", 
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "FINCA": st.column_config.TextColumn("Finca"),
+            "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
+            "COCTEL": st.column_config.TextColumn("Cóctel"),
+            "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
+            "DIAS CICLO": st.column_config.TextColumn("Días Ciclo"),
+            "PRECIO VUELO": st.column_config.TextColumn("Precio Vuelo"),
+        }
+    )
 
     st.markdown("---")
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
@@ -325,11 +301,12 @@ def ejecutar():
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         
-        df_valid = st.session_state.m17_df_entrada.copy()
+        # Filtrar las filas en blanco de la cuadrícula
+        df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
         
         if df_valid.empty:
-            st.error("⚠️ No hay datos válidos para proyectar.")
+            st.error("⚠️ La tabla está vacía. Por favor pega datos antes de ejecutar.")
         else:
             with st.spinner("Procesando matriz financiera y logística..."):
                 
@@ -363,7 +340,6 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
-                    # BÚSQUEDA DEL PRECIO DE VUELO
                     if precio_vuelo == 0:
                         precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
 
@@ -434,7 +410,7 @@ def ejecutar():
 
                 st.session_state.m17_resultados = pd.DataFrame(resultados)
                 st.session_state.m17_volumetria = log_volumetrico
-                st.success("✅ Proyección completada con velocidad turbo.")
+                st.success("✅ Proyección completada exitosamente.")
 
     if 'm17_resultados' in st.session_state and not st.session_state.m17_resultados.empty:
         st.markdown("---")
