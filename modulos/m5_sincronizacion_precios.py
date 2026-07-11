@@ -60,21 +60,14 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
-        st.info("💡 Obtenga la lista de precios exactos multiplicados por el margin de cada perfil, listos para copiar y pegar en SAP.")
+        st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
         
         if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
             with st.spinner("📡 Descargando arsenal de precios desde Supabase Cloud..."):
                 try:
-                    # 🎯 Consulta a la base de datos
+                    # Consulta directa a las filas autorizadas
                     respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                     raw_config = respuesta.data
-                    
-                    # 🔍 ESCÁNER DE DIAGNÓSTICO EN VIVO
-                    if not raw_config:
-                        st.warning("⚠️ LA TABLA ESTÁ VACÍA: Supabase conectó, pero no hay filas dentro de PRECIOS_INSUMOS. Verifica si el CSV se guardó correctamente.")
-                    else:
-                        st.info(f"📋 ESCÁNER: Columnas encontradas en Supabase: {list(raw_config[0].keys())}")
-                        st.write("👀 Muestra del primer registro recibido:", raw_config[0])
                     
                     lista_precios = []
                     for row in raw_config:
@@ -87,8 +80,16 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             pass
                             
                         if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
-                            val_costo = row.get('COSTO BASE', row.get('COSTO_BASE', row.get('costo_base', 0)))
-                            costo_base = extraer_numero(str(val_costo))
+                            # 🎯 EXTRACCIÓN ULTRA-ROBUSTA: Usamos el campo PRECIOS o COSTO y limpiamos su formato de texto
+                            val_costo = row.get('PRECIOS', row.get('COSTO', row.get('costo', 0)))
+                            
+                            # Quitamos puntos de miles, cambiamos la coma decimal por punto e interpretamos como número
+                            txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
+                            try:
+                                costo_base = float(txt_costo)
+                            except ValueError:
+                                costo_base = extraer_numero(str(val_costo))
+                                
                             if costo_base > 0:
                                 lista_precios.append({
                                     "PRODUCTO": prod,
@@ -102,7 +103,9 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos.")
+                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos extraídos de Supabase.")
+                    else:
+                        st.warning("⚠️ Supabase respondió, pero los filtros matemáticos no pudieron procesar los valores de costo. Verifica el formato de la columna.")
                 except Exception as e:
                     st.error(f"🚨 Error al consultar Supabase: {e}")
                     
@@ -224,9 +227,15 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 dict_precios = {}
                 for row in respuesta.data:
                     prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                    val_costo = row.get('COSTO BASE', row.get('COSTO_BASE', row.get('costo_base', 0)))
+                    val_costo = row.get('PRECIOS', row.get('COSTO', row.get('costo', 0)))
+                    txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
+                    try:
+                        precio_final = float(txt_costo)
+                    except:
+                        precio_final = val_seguro(str(val_costo))
+                        
                     if prod:
-                        dict_precios[prod] = val_seguro(str(val_costo))
+                        dict_precios[prod] = precio_final
                 
                 st.write(f"📊 **Supabase:** `{len(dict_precios)}` precios maestros mapeados.")
 
