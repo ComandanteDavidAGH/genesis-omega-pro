@@ -38,12 +38,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
     try:
         with st.spinner("🛰️ Escaneando la Bóveda de Supabase y Anclando Flotas a sus Bases..."):
-            # 🎯 ARMADURA 1: Limitar la descarga para evitar el colapso de memoria (OOM)
-            respuesta = supabase_client.table("TABLA_1").select("*").limit(15000).execute()
+            respuesta = supabase_client.table("TABLA_1").select("*").limit(10000).execute()
             raw_data = respuesta.data
             
         if not raw_data:
-            st.warning("⚠️ La tabla 'TABLA_1' en Supabase está completamente vacía. Agregue datos para ver el radar.")
+            st.warning("⚠️ La tabla 'TABLA_1' en Supabase está vacía. Ingrese datos para activar el radar.")
             return
             
         columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
@@ -57,7 +56,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 
         df_rep = df_raw[columnas].copy()
         
-        # 🎯 ARMADURA 2: Limpieza de datos extrema
         df_rep['HA_NETAS'] = df_rep['HA_NETAS'].apply(extraer_numero)
         df_rep['H_PROPORCIONAL'] = df_rep['H_PROPORCIONAL'].apply(extraer_numero)
         df_rep['SEMANA'] = df_rep['SEMANA'].astype(str).str.strip()
@@ -77,7 +75,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         df_rep = df_rep.dropna(subset=['FECHA_DT'])
         
         if df_rep.empty:
-            st.warning("⚠️ No se encontraron registros válidos con fechas y hectáreas correctas en la base de datos.")
+            st.warning("⚠️ No hay registros con formatos de fecha o hectáreas válidas para procesar.")
             return
 
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
@@ -226,15 +224,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if mostrar_horas or calcular_rend_prom: formato_columnas['REND (hr)'] = fmt_latino
                 if calcular_rend_prom: formato_columnas['REND. PROMEDIO (Ha/Hr)'] = fmt_latino
                 
-                try:
-                    # 🎯 ARMADURA 3: Evitar el colapso de serialización visual PyArrow
-                    st.dataframe(
-                        df_visual.style.apply(stylize_rows, axis=1).format(formato_columnas),
-                        hide_index=True
-                    )
-                except Exception as e_df:
-                    st.warning(f"Modo a prueba de fallos activado: {e_df}")
-                    st.dataframe(df_visual, hide_index=True)
+                st.dataframe(
+                    df_visual.style.apply(stylize_rows, axis=1).format(formato_columnas),
+                    hide_index=True,
+                    use_container_width=True
+                )
 
             else:
                 matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
@@ -247,14 +241,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
                 
                 st.markdown(f"#### 🛩️ Rendimiento Semana a Semana: **{pista_sel}** ({rango_txt})")
-                
-                try:
-                    if HAS_MATPLOTLIB:
-                        st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None))
-                    else:
-                        st.dataframe(matriz.style.format(fmt_latino))
-                except:
-                    st.dataframe(matriz)
+                st.dataframe(matriz.style.format(fmt_latino), use_container_width=True)
                 
                 st.markdown("---")
                 df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
@@ -268,136 +255,29 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                     )
                     fig.update_traces(textposition='outside')
                     fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False, xaxis_title="Mes", separators=",.")
-                    st.plotly_chart(fig)
+                    st.plotly_chart(fig, use_container_width=True)
 
+            # 🎯 EXPORTADOR INTELIGENTE ULTRA-LIGERO (CERO COLAPSO DE RAM)
             st.markdown("---")
-            try:
-                buffer_rep = io.BytesIO()
-                with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
-                    nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
-                    
-                    if "Gerencial" in vista_seleccionada:
-                        df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
-                    else:
-                        matriz.to_excel(writer, sheet_name=nombre_hoja)
-                        
-                    workbook = writer.book
-                    worksheet = writer.sheets[nombre_hoja]
-                    worksheet.sheet_view.showGridLines = False
-                    worksheet.row_dimensions[1].height = 30
-                    
-                    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                    from openpyxl.chart import BarChart, Reference
-                    from openpyxl.utils import get_column_letter
-
-                    borde_pro = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), 
-                                       top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
-                    navy_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    white_font = Font(color="FFFFFF", bold=True, size=11)
-                    months_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
-                    pista_fill = PatternFill(start_color="D1ECF1", end_color="D1ECF1", fill_type="solid") 
-                    sub_fill = PatternFill(start_color="E2E6EA", end_color="E2E6EA", fill_type="solid") 
-                    total_fill = PatternFill(start_color="C3E6CB", end_color="C3E6CB", fill_type="solid") 
-
-                    max_row = worksheet.max_row
-                    max_col = worksheet.max_column
-
-                    for row in worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
-                        for cell in row:
-                            cell.border = borde_pro
-                            if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith('=')):
-                                cell.number_format = '#,##0.00'
-                            if cell.row == 1:
-                                cell.fill = navy_fill; cell.font = white_font
-                                cell.alignment = Alignment(horizontal='center', vertical='center')
-                            else:
-                                cell.alignment = Alignment(vertical='center', indent=1)
-                                
-                            if "Gerencial" in vista_seleccionada and cell.row > 1:
-                                nivel_v = str(worksheet.cell(row=cell.row, column=1).value or "").strip()
-                                if "BASE:" in nivel_v: cell.fill = pista_fill; cell.font = Font(bold=True, color="0C5460")
-                                elif "TOTAL GENERAL" in nivel_v: cell.fill = total_fill; cell.font = Font(bold=True, color="155724")
-                                elif nivel_v == "" or nivel_v == "None": cell.fill = months_fill
-                                
-                                if agrupar_avion:
-                                    avion_v = str(worksheet.cell(row=cell.row, column=2).value or "").strip()
-                                    if "✈️" in avion_v or "🚁" in avion_v: cell.fill = sub_fill; cell.font = Font(bold=True)
-
-                chart = BarChart()
-                chart.type = "col"; chart.style = 10
-                chart.title = "Rendimiento Operativo (Ha)"; chart.y_axis.title = "Hectáreas"
-                
+            buffer_rep = io.BytesIO()
+            with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
+                nombre_hoja = 'Resumen_Gerencial' if "Gerencial" in vista_seleccionada else 'Reporte_Semanal'
                 if "Gerencial" in vista_seleccionada:
-                    idx_ha = df_visual.columns.get_loc('ÁREA FUMIG (ha)') + 1
-                    col_ha_letra = get_column_letter(idx_ha)
-                    col_lbl_chart = max_col + 2
-                    col_val_chart = max_col + 3
-                    
-                    worksheet.cell(row=1, column=col_lbl_chart).value = "Etiqueta_Grafico"
-                    worksheet.cell(row=1, column=col_val_chart).value = "Ha"
-                    row_g = 2
-                    
-                    for r_b in range(2, max_row + 1):
-                        n_v = str(worksheet.cell(row=r_b, column=1).value or "")
-                        if agrupar_avion:
-                            a_v = str(worksheet.cell(row=r_b, column=2).value or "")
-                            m_v = str(worksheet.cell(row=r_b, column=3).value or "")
-                            if n_v == "" and a_v == "" and m_v not in ["Total Avión", "Total Flota", "TOTAL BASE", ""]:
-                                av_encontrado = "Desc"
-                                for r_back in range(r_b, 1, -1):
-                                    val_back = str(worksheet.cell(row=r_back, column=2).value)
-                                    if "✈️" in val_back or "🚁" in val_back:
-                                        av_encontrado = val_back.replace("✈️ AVION:", "").replace("🚁 DRON:", "").strip()
-                                        break
-                                worksheet.cell(row=row_g, column=col_lbl_chart).value = f"{m_v} ({av_encontrado})"
-                                worksheet.cell(row=row_g, column=col_val_chart).value = f"={col_ha_letra}{r_b}"
-                                row_g += 1
-                        else:
-                            m_v = str(worksheet.cell(row=r_b, column=2).value or "")
-                            if n_v == "" and m_v not in ["TOTAL BASE", ""]:
-                                pista_encontrada = "Desc"
-                                for r_back in range(r_b, 1, -1):
-                                    if "BASE:" in str(worksheet.cell(row=r_back, column=1).value):
-                                        pista_encontrada = str(worksheet.cell(row=r_back, column=1).value).replace("📍 BASE:", "").strip()
-                                        break
-                                worksheet.cell(row=row_g, column=col_lbl_chart).value = f"{m_v} ({pista_encontrada})"
-                                worksheet.cell(row=row_g, column=col_val_chart).value = f"={col_ha_letra}{r_b}"
-                                row_g += 1
-                
-                if row_g > 2:
-                    data = Reference(worksheet, min_col=col_val_chart, min_row=1, max_row=row_g-1)
-                    cats = Reference(worksheet, min_col=col_lbl_chart, min_row=2, max_row=row_g-1)
-                    chart.add_data(data, titles_from_data=True)
-                    chart.set_categories(cats)
-                    
-                    for r_inv in range(1, row_g):
-                        worksheet.cell(row=r_inv, column=col_lbl_chart).font = Font(color="FFFFFF")
-                        worksheet.cell(row=r_inv, column=col_val_chart).font = Font(color="FFFFFF")
-                        
-                    worksheet.add_chart(chart, f"{get_column_letter(max_col + 1)}2")
+                    df_visual.to_excel(writer, sheet_name=nombre_hoja, index=False)
                 else:
-                    data = Reference(worksheet, min_col=max_col, min_row=1, max_row=max_row-1)
-                    cats = Reference(worksheet, min_col=1, min_row=2, max_row=max_row-1)
-                    chart.add_data(data, titles_from_data=True)
-                    chart.set_categories(cats)
-                    worksheet.add_chart(chart, f"{get_column_letter(max_col + 2)}2")
-                
-                for col_idx in range(1, max_col + 1):
-                    worksheet.column_dimensions[get_column_letter(col_idx)].width = 24
-                worksheet.freeze_panes = "A2"
-
-                rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
-                st.download_button(
-                    label="💾 DESCARGAR REPORTE GERENCIAL TOP",
-                    data=buffer_rep.getvalue(),
-                    file_name=f"Reporte_Rendimiento_{rango_label}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )                        
-            except Exception as exc_excel:
-                st.warning(f"⚠️ El botón de descarga Excel está en mantenimiento: {exc_excel}")
+                    matriz.to_excel(writer, sheet_name=nombre_hoja)
+                    
+            rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
+            st.download_button(
+                label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL",
+                data=buffer_rep.getvalue(),
+                file_name=f"Reporte_Rendimiento_{rango_label}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )                        
 
     except Exception as e:
-        st.error(f"🚨 Falla crítica procesando el radar: {e}")
+        st.error(f"🚨 Falla procesando el radar: {e}")
 
 if __name__ == "__main__":
     pass
