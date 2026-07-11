@@ -38,7 +38,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
     try:
         with st.spinner("🛰️ Escaneando la Bóveda de Supabase y Anclando Flotas a sus Bases..."):
-            # 🎯 JUGADA MAESTRA: Descarga directa de la TABLA_1 de Supabase en milisegundos
             respuesta = supabase_client.table("TABLA_1").select("*").execute()
             raw_data = respuesta.data
             
@@ -46,14 +45,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.error("🚨 ALERTA ROJA: Conexión establecida pero la tabla 'TABLA_1' en Supabase está vacía.")
             return
             
-        # Mapeo y normalización automática de columnas
         columnas = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "HA_NETAS", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "H_PROPORCIONAL", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_TOTAL_AVION", "TARIFA_HA", "RECARGO_HA", "SUBTOTAL", "COSTO_HORA", "PISTA"]
         
         df_raw = pd.DataFrame(raw_data)
-        # Forzamos las columnas a mayúsculas por si el CSV las subió en minúsculas
         df_raw.columns = [str(c).upper().strip() for c in df_raw.columns]
         
-        # Rellenamos columnas faltantes por seguridad
         for col in columnas:
             if col not in df_raw.columns:
                 df_raw[col] = ""
@@ -67,7 +63,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         df_rep['HK'] = df_rep['HK'].astype(str).str.strip().str.upper()
         df_rep['MODELO'] = df_rep['MODELO'].astype(str).str.strip().str.upper()
         
-        # Anclaje de Base Maestra y Diccionario de Modelos
         mask_hk = df_rep['HK'] != ""
         mapa_modelo = {}
         if not df_rep[mask_hk].empty:
@@ -381,7 +376,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 label="💾 DESCARGAR REPORTE GERENCIAL TOP",
                 data=buffer_rep.getvalue(),
                 file_name=f"Reporte_Rendimiento_{rango_label}.xlsx",
-                file_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )                        
     except Exception as e:
