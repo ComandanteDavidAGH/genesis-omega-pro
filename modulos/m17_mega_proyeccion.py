@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (CON LA "DIETA" APLICADA)
+# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (HEREDADO EXACTAMENTE DEL MÓDULO 3)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -24,94 +24,101 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except: return None
 
+# 💥 SEPARACIÓN DE CACHÉ PARA EVITAR EXPLOSIÓN DE MEMORIA (OOM)
 @st.cache_data(show_spinner=False, ttl=3600)
-def cargar_bases_m17(url_boveda, url_precios):
+def cargar_maestras_ligeras(url_boveda):
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    boveda = gc.open_by_url(url_boveda)
     
-    df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    try: 
+        m_vals = boveda.worksheet("DD_Mesclas").get_all_values()
+        df_mezclas = pd.DataFrame(m_vals[1:], columns=m_vals[0])
+        df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+    except: df_mezclas = pd.DataFrame()
 
+    try: 
+        c_vals = boveda.worksheet("Configuración").get_all_values()
+        df_conf = pd.DataFrame(c_vals[1:], columns=c_vals[0])
+    except: df_conf = pd.DataFrame()
+    
+    try: 
+        d_vals = boveda.worksheet("DICCIONARIO_SIGLAS").get_all_values()
+        df_dicc = pd.DataFrame(d_vals[1:], columns=d_vals[0])
+    except: df_dicc = pd.DataFrame()
+    
+    try: 
+        t2_vals = boveda.worksheet("TABLA 2").get_all_values()
+        idx_t2 = 0
+        for i, r in enumerate(t2_vals[:10]):
+            if "FINCA" in [str(x).upper().strip() for x in r]:
+                idx_t2 = i; break
+        df_t2 = pd.DataFrame(t2_vals[idx_t2+1:], columns=[str(c).strip() for c in t2_vals[idx_t2]])
+    except: df_t2 = pd.DataFrame()
+
+    return df_mezclas, df_conf, df_dicc, df_t2
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def cargar_precios(url_precios):
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
+    sh_precios = gc.open_by_url(url_precios)
     try:
-        boveda_recetas = gc.open_by_url(url_boveda)
-        sh_precios = gc.open_by_url(url_precios)
+        p_vals = sh_precios.worksheet("DATOS").get_all_values()
+        precios_consolidados = []
+        idx_header, col_anio, col_prod = -1, -1, -1
+        for i in range(min(10, len(p_vals))):
+            fila_upper = [str(x).upper().strip() for x in p_vals[i]]
+            if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                idx_header, col_anio, col_prod = i, fila_upper.index('AÑO'), fila_upper.index('PRODUCTO'); break
+        if idx_header != -1:
+            for row in p_vals[idx_header+1:]:
+                if len(row) > max(col_anio, col_prod):
+                    anio_str = str(row[col_anio]).strip().upper()
+                    str_prod = str(row[col_prod]).strip().upper()
+                    if anio_str and str_prod:
+                        vals = []
+                        for v in row[max(col_anio, col_prod) + 1:]:
+                            val_c = re.sub(r'[^\d\.,\-]', '', str(v).strip())
+                            if val_c:
+                                if '.' in val_c and ',' in val_c: val_c = val_c.replace('.', '').replace(',', '.') if val_c.rfind(',') > val_c.rfind('.') else val_c.replace(',', '')
+                                elif ',' in val_c: val_c = val_c.replace(',', '.')
+                                try: vals.append(float(val_c))
+                                except: pass
+                        if vals: precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRODUCTO_CLEAN': str_prod.replace(" ", ""), 'PRECIO_PROM': sum(vals)/len(vals)})
+        return pd.DataFrame(precios_consolidados)
+    except: return pd.DataFrame()
+
+# 💥 EL CÓDIGO EXACTO DE TU MÓDULO 3
+@st.cache_data(show_spinner=False, ttl=3600)
+def cargar_tabla_1(url_boveda):
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
+    boveda = gc.open_by_url(url_boveda)
+    try:
+        t1 = boveda.worksheet("TABLA 1").get_all_values()
+        idx_t1 = 4
+        for i in range(min(10, len(t1))):
+            if "FINCA" in [str(x).upper() for x in t1[i]]:
+                idx_t1 = i
+                break
         
-        try: df_mezclas = pd.DataFrame(boveda_recetas.worksheet("DD_Mesclas").get_all_values()[1:], columns=boveda_recetas.worksheet("DD_Mesclas").get_all_values()[0])
-        except: pass
-        if not df_mezclas.empty: df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-
-        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
-        except: pass
+        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
         
-        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
-        except: pass
+        # Filtramos para no ahogar la RAM
+        cols_to_keep = []
+        col_finca, col_fecha, col_costo = None, None, None
         
-        try: 
-            t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
-            idx_t2 = next((i for i, r in enumerate(t2_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 0)
-            df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
-        except: pass
-
-        try:
-            ws_datos = sh_precios.worksheet("DATOS") 
-            datos_hoja = ws_datos.get_all_values()
-            precios_consolidados = []
+        for c in df_t1.columns:
+            c_up = str(c).upper().replace('\n', '').strip()
+            c_clean = c_up.replace(" ", "")
+            if "FINCA" in c_up or "PROPIEDAD" in c_up: col_finca = c; cols_to_keep.append(c)
+            elif "FECHA" in c_up or "DATE" in c_up: col_fecha = c; cols_to_keep.append(c)
+            elif "COSTO" in c_up and "AVI" in c_up and "$/HA" in c_clean: col_costo = c; cols_to_keep.append(c)
+            elif "COSTO" in c_up and "$/HA" in c_clean and not col_costo: col_costo = c; cols_to_keep.append(c)
             
-            if datos_hoja:
-                idx_header, col_anio, col_prod = -1, -1, -1
-                for i in range(min(10, len(datos_hoja))):
-                    fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
-                    if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                        idx_header, col_anio, col_prod = i, fila_upper.index('AÑO'), fila_upper.index('PRODUCTO'); break
-                
-                if idx_header != -1:
-                    for row in datos_hoja[idx_header+1:]:
-                        if len(row) > max(col_anio, col_prod):
-                            anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
-                            if anio_str and str_prod:
-                                vals = []
-                                for v in row[max(col_anio, col_prod) + 1:]:
-                                    val_c = re.sub(r'[^\d\.,\-]', '', str(v).strip())
-                                    if val_c:
-                                        if '.' in val_c and ',' in val_c: val_c = val_c.replace('.', '').replace(',', '.') if val_c.rfind(',') > val_c.rfind('.') else val_c.replace(',', '')
-                                        elif ',' in val_c: val_c = val_c.replace(',', '.')
-                                        try: vals.append(float(val_c))
-                                        except: pass
-                                if vals: precios_consolidados.append({'AÑO': anio_str, 'PRODUCTO': str_prod, 'PRODUCTO_CLEAN': str_prod.replace(" ", ""), 'PRECIO_PROM': sum(vals)/len(vals)})
-            df_precios = pd.DataFrame(precios_consolidados)
-        except: pass
-
-        # 💥 LA DIETA ESTRICTA: Solo pide 3 columnas a Google Sheets para evitar el colapso (OOM)
-        try:
-            ws_t1 = boveda_recetas.worksheet("TABLA 1")
-            headers = ws_t1.row_values(5) # Fila 5 tiene los encabezados
-            
-            # Coordenadas por defecto (C, H, T) -> base 1 para gspread
-            idx_f, idx_d, idx_c = 3, 8, 20 
-            
-            for i, h in enumerate(headers):
-                h_up = h.upper()
-                c_clean = h_up.replace(" ", "").replace("\n", "")
-                if "FINCA" in h_up or "PROPIEDAD" in h_up: idx_f = i + 1
-                if "FECHA" in h_up or "DATE" in h_up: idx_d = i + 1
-                if "COSTO" in h_up and "AVI" in h_up and "$/HA" in c_clean: idx_c = i + 1
-                
-            if idx_c == 20 and len(headers) > 19 and not ("COSTO" in headers[19].upper() and "AVI" in headers[19].upper()):
-                for i, h in enumerate(headers):
-                    c_clean = h.upper().replace(" ", "").replace("\n", "")
-                    if "COSTO" in h.upper() and "$/HA" in c_clean: 
-                        idx_c = i + 1
-                        break
-
-            # Solicitud minúscula a la API (Solo extrae las 3 columnas, ignora el resto)
-            col_fincas = ws_t1.col_values(idx_f)
-            col_fechas = ws_t1.col_values(idx_d)
-            col_costos = ws_t1.col_values(idx_c)
-            
-            # Nivelar listas si Google Sheets recorta columnas en blanco
-            max_len = max(len(col_fincas), len(col_fechas), len(col_costos))
-            col_fincas += [""] * (max_len - len(col_fincas))
-            col_fechas += [""] * (max_len - len(col_fechas))
-            col_costos += [""] * (max_len - len(col_costos))
+        if col_finca and col_costo:
+            df_t1 = df_t1[cols_to_keep].copy() 
             
             def limp_num_col(val):
                 if pd.isna(val): return 0.0
@@ -132,25 +139,15 @@ def cargar_bases_m17(url_boveda, url_precios):
                     return f_val
                 except: return 0.0
 
-            df_t1 = pd.DataFrame({
-                'F_RAW': col_fincas,
-                'FECHA_CLEAN': col_fechas,
-                'COSTO_RAW': col_costos
-            })
+            df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
+            df_t1['VAL_COSTO_HA'] = df_t1[col_costo].apply(limp_num_col)
+            if col_fecha: df_t1['FECHA_CLEAN'] = df_t1[col_fecha].astype(str).str.strip()
+            else: df_t1['FECHA_CLEAN'] = ""
             
-            # Descartamos los títulos y dejamos datos puros
-            df_t1 = df_t1.iloc[5:].reset_index(drop=True)
-            df_t1['F_CLEAN'] = df_t1['F_RAW'].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
-            df_t1['VAL_COSTO_HA'] = df_t1['COSTO_RAW'].apply(limp_num_col)
-            df_t1['FECHA_CLEAN'] = df_t1['FECHA_CLEAN'].astype(str).str.strip()
-            
-        except Exception as e:
-            st.error(f"Error procesando TABLA 1 (Dieta): {e}") 
-                            
-    except Exception as e: 
-        pass
-
-    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
+            return df_t1[['F_CLEAN', 'VAL_COSTO_HA', 'FECHA_CLEAN']]
+        return pd.DataFrame()
+    except Exception as e:
+        return pd.DataFrame()
 
 # =================================================================
 # 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE
@@ -283,17 +280,22 @@ def ejecutar():
         st.info("💡 Por favor, pega los enlaces arriba para comenzar a trabajar.")
         st.stop()
 
-    if st.button("🔄 Conectar y Descargar (Limpiar Caché)", type="primary"):
-        cargar_bases_m17.clear() 
-        with st.spinner("Aplicando la Dieta... extrayendo solo 3 columnas de Tabla 1"):
-            mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2)
+    if st.button("🔄 Conectar y Descargar (Modo Seguro)", type="primary"):
+        cargar_maestras_ligeras.clear() 
+        cargar_precios.clear()
+        cargar_tabla_1.clear()
+        with st.spinner("Descargando bases de datos separadas (Memoria Protegida)..."):
+            mez, conf, dicc, t2 = cargar_maestras_ligeras(url_1)
+            prec = cargar_precios(url_2)
+            t1 = cargar_tabla_1(url_1)
+            
             st.session_state['m17_mez'] = mez
             st.session_state['m17_conf'] = conf
             st.session_state['m17_dicc'] = dicc
             st.session_state['m17_t2'] = t2
             st.session_state['m17_prec'] = prec
             st.session_state['m17_t1'] = t1
-            st.success("¡Dieta aplicada! Servidor relajado y memoria purgada.")
+            st.success("¡Descarga y procesado perfecto!")
 
     df_mezclas = st.session_state.get('m17_mez', pd.DataFrame())
     df_conf = st.session_state.get('m17_conf', pd.DataFrame())
