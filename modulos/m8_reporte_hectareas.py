@@ -5,39 +5,18 @@ from datetime import datetime, date
 import io
 
 # =================================================================
-# 🛰️ BUCLE DE EXTRACCIÓN TOTAL DE LA OPERACIÓN
-# =================================================================
-def descargar_todo_supabase(_cliente_supabase):
-    todos_los_datos = []
-    inicio = 0
-    paso = 1000
-    
-    while True:
-        respuesta = _cliente_supabase.table("TABLA_1").select("*").range(inicio, inicio + paso - 1).execute()
-        chunk = respuesta.data
-        if not chunk:
-            break
-        todos_los_datos.extend(chunk)
-        if len(chunk) < paso:
-            break
-        inicio += paso
-        if inicio >= 40000: 
-            break
-            
-    return todos_los_datos
-
-# =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V20 (VERSIÓN FINAL PULIDA)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V21 (CONEXIÓN DIRECTA A EXCEL/SHEETS)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
     st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
+    # --- 🔴 BOTÓN DE EMERGENCIA PARA FORZAR LA LECTURA DEL EXCEL ---
     col_emergencia, col_vacia = st.columns([2, 2])
-    if col_emergencia.button("⚠️ LIMPIAR MEMORIA Y TRAER DATOS 2026", type="primary", use_container_width=True):
+    if col_emergencia.button("⚠️ LIMPIAR MEMORIA Y TRAER CAMBIOS DEL EXCEL", type="primary", use_container_width=True):
         if 'm8_datos_crudos' in st.session_state:
             del st.session_state['m8_datos_crudos']
-        st.toast("Memoria RAM de la pestaña vaciada. Recargando Bóveda...", icon="🔄")
+        st.toast("Memoria vaciada. Extrayendo datos frescos de Google Sheets...", icon="🔄")
         st.rerun()
 
     def extraer_numero(val):
@@ -64,21 +43,51 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         try: return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except: return str(val) if val is not None else ""
 
-    if supabase_client is None:
-        st.error("🚨 Sin conexión a Supabase.")
+    if descargar_matriz_rapida is None:
+        st.error("🚨 Error técnico: No se detecta el motor de lectura de Google Sheets.")
         return
 
+    # --- 🛰️ EXTRACCIÓN DIRECTA DESDE TU ENLACE MAESTRO DE GOOGLE SHEETS ---
     if 'm8_datos_crudos' not in st.session_state:
-        with st.spinner("🛰️ Extrayendo todo el historial Cloud..."):
-            st.session_state['m8_datos_crudos'] = descargar_todo_supabase(supabase_client)
+        with st.spinner("🛰️ Conectando al satélite de Google Sheets (Leyendo tu Excel en vivo)..."):
+            try:
+                url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                filas_gspread = descargar_matriz_rapida(url_maestra, "TABLA 1")
+                
+                if filas_gspread:
+                    # Buscador inteligente de encabezados (Igual al de tu Módulo 3)
+                    idx_header = 4
+                    for i in range(min(12, len(filas_gspread))):
+                        if "FINCA" in [str(x).upper().strip() for x in filas_gspread[i]]:
+                            idx_header = i
+                            break
+                    
+                    if len(filas_gspread) > idx_header:
+                        columnas = [str(c).strip().upper() for c in filas_gspread[idx_header]]
+                        datos_dict = []
+                        for fila in filas_gspread[idx_header+1:]:
+                            if len(fila) < len(columnas):
+                                fila = fila + [""] * (len(columnas) - len(fila))
+                            elif len(fila) > len(columnas):
+                                fila = fila[:len(columnas)]
+                            datos_dict.append(dict(zip(columnas, fila)))
+                        st.session_state['m8_datos_crudos'] = datos_dict
+                    else:
+                        st.session_state['m8_datos_crudos'] = []
+                else:
+                    st.session_state['m8_datos_crudos'] = []
+            except Exception as e:
+                st.error(f"🚨 Error leyendo el archivo de Google Sheets: {e}")
+                return
 
     raw_data = st.session_state['m8_datos_crudos']
 
     try:
         if not raw_data:
-            st.warning("⚠️ No se encontraron registros en Supabase.")
+            st.warning("⚠️ No se pudieron procesar los registros de Google Sheets. Verifique la pestaña 'TABLA 1'.")
             return
 
+        # 🎯 PURIFICACIÓN GENERAL
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
@@ -104,35 +113,47 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         df_rep = pd.DataFrame(datos_limpios)
         
         if df_rep.empty:
-            st.warning("⚠️ Los datos de Supabase no tienen formatos de fecha válidos.")
+            st.warning("⚠️ No se encontraron registros con fechas procesables en el Excel.")
             return
 
+        # Sincronización automática de pistas mapeadas
+        mask_hk = df_rep['HK'] != ""
+        mapa_modelo = {}
+        if not df_rep[mask_hk].empty:
+            mapa_flota = df_rep[mask_hk].groupby('HK')['PISTA'].agg(lambda x: x.value_counts().index[0] if not x.empty else "").to_dict()
+            df_rep.loc[mask_hk, 'PISTA'] = df_rep.loc[mask_hk, 'HK'].map(mapa_flota).fillna(df_rep.loc[mask_hk, 'PISTA'])
+            mapa_modelo = df_rep[mask_hk].groupby('HK')['MODELO'].first().to_dict()
+        
+        df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
+        
+        min_fecha_real = df_rep['FECHA_REAL'].min()
+        max_fecha_real = df_rep['FECHA_REAL'].max()
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
         
         # --- 🎛️ PANEL DE CONTROL ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 1.4])
         
-        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_final_v4")
+        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_final_v5")
         
-        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v4")
-        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v4")
+        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v5")
+        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v5")
         
-        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v4")
+        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v5")
 
         cc1, cc2, cc3 = st.columns(3)
-        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v4")
-        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v4")
-        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v4")
+        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v5")
+        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v5")
+        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v5")
 
-        st.info(f"📊 **Auditoría de Datos:** Registros cargados en memoria: **{len(df_rep)}** | Historial desde **{df_rep['FECHA_REAL'].min().strftime('%d/%m/%Y')}** hasta **{df_rep['FECHA_REAL'].max().strftime('%d/%m/%Y')}**")
+        st.info(f"📊 **Auditoría Excel:** Registros activos acoplados: **{len(df_rep)}** | Datos desde el **{df_rep['FECHA_REAL'].min().strftime('%d/%m/%Y')}** al **{df_rep['FECHA_REAL'].max().strftime('%d/%m/%Y')}**")
 
         df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
         if pista_sel != "TODAS":
             df_filt = df_filt[df_filt['PISTA'] == pista_sel]
         
         if df_filt.empty:
-            st.warning(f"⚠️ No hay registros de vuelo en el rango del {fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}.")
+            st.warning(f"⚠️ No hay registros de vuelo para {pista_sel} en el rango del {fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}.")
             return
             
         meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
@@ -171,7 +192,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
-                        # 💥 CORREGIDO: Ahora calcula la división real de Ha/Hr para el consolidado de la aeronave
                         if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
@@ -220,7 +240,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # --- 🎨 ESTILOS ---
+            # --- 🎨 ESTILOS ORIGINALES ---
             df_visual = pd.DataFrame(tabla_final)
             
             def aplicar_estilos_originales(row):
