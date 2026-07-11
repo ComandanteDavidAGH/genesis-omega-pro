@@ -1,16 +1,19 @@
-import pandas as pd
+# 1. 🛡️ SILENCIADOR GRÁFICO (DEBE IR ANTES QUE CUALQUIER OTRA COSA)
+import matplotlib
+matplotlib.use('Agg')
+
+# 2. ⚙️ INICIO DEL MOTOR STREAMLIT Y CONFIGURACIÓN (REGLA DE ORO)
 import streamlit as st
+st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
+
+# 3. 📦 IMPORTACIÓN DE LIBRERÍAS PESADAS (AHORA QUE EL SERVIDOR ESTÁ SEGURO)
+import pandas as pd
 from datetime import datetime
 import gspread
 import time
 import base64
 import os
 from supabase import create_client, Client
-import matplotlib
-matplotlib.use('Agg')
-
-# ⚙️ REGLA DE ORO: Configuración de página primero
-st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
 # --- 🛰️ CONEXIÓN DE HANGARES MODULARES ---
 from modulos.utilidades import purificar_lote, quitar_tildes, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro, limpiar_val_dom, procesar_fecha_pesada
@@ -47,11 +50,7 @@ if 'usuario_rol' not in st.session_state: st.session_state['usuario_rol'] = None
 if 'usuario_nombre' not in st.session_state: st.session_state['usuario_nombre'] = None
 if 'modulo_actual' not in st.session_state: st.session_state['modulo_actual'] = "🏠 Centro de Mando"
 
-try: 
-    import matplotlib
-    HAS_MATPLOTLIB = True
-except ImportError: 
-    HAS_MATPLOTLIB = False
+HAS_MATPLOTLIB = True
 
 # --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA (4%) ---
 try:
@@ -99,7 +98,6 @@ button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !i
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 
-/* Agrupa el título de la caja y el control dentro de un borde sólido */
 div[data-testid="stTextInput"],
 div[data-testid="stSelectbox"],
 div[data-testid="stNumberInput"],
@@ -111,14 +109,12 @@ div[data-testid="stDateInput"] {
     box-shadow: 0px 3px 6px rgba(0,0,0,0.1) !important;
 }
 
-/* Borde interno suave para el recuadro donde se escribe directamente */
 div[data-baseweb="input"], 
 div[data-baseweb="select"] {
     border: 1px solid #cccccc !important; 
     background-color: #ffffff !important;
 }
 
-/* Color del texto interno SIEMPRE negro y fuerte para que destaque */
 .stTextInput input,
 .stSelectbox span,
 .stNumberInput input,
@@ -172,10 +168,9 @@ def descargar_matriz_rapida(url, pestaña):
             if i < 2: time.sleep(2); continue
             else: return []
 
-# ⚡ Inicialización Blindada del Motor Supabase (Código Nº 1 Conectado con st.secrets)
+# ⚡ Inicialización Blindada del Motor Supabase
 @st.cache_resource(show_spinner=False)
 def conectar_supabase() -> Client:
-    # Soporta estructura anidada ["supabase"]["url"] o plana ["SUPABASE_URL"] por seguridad
     url = st.secrets["supabase"]["url"] if "supabase" in st.secrets else st.secrets["SUPABASE_URL"]
     key = st.secrets["supabase"]["key"] if "supabase" in st.secrets else st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
