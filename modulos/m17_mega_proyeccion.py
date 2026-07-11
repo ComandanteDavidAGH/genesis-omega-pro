@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (HEREDADO EXACTAMENTE DEL MÓDULO 3)
+# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (CERCO GEOGRÁFICO ANTI-RAM)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -24,31 +24,31 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except: return None
 
-# 💥 SEPARACIÓN DE CACHÉ PARA EVITAR EXPLOSIÓN DE MEMORIA (OOM)
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_maestras_ligeras(url_boveda):
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     boveda = gc.open_by_url(url_boveda)
     
+    # Límite geográfico para evitar OOM
     try: 
-        m_vals = boveda.worksheet("DD_Mesclas").get_all_values()
+        m_vals = boveda.worksheet("DD_Mesclas").get("A1:Z1000")
         df_mezclas = pd.DataFrame(m_vals[1:], columns=m_vals[0])
         df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
     except: df_mezclas = pd.DataFrame()
 
     try: 
-        c_vals = boveda.worksheet("Configuración").get_all_values()
+        c_vals = boveda.worksheet("Configuración").get("A1:Z500")
         df_conf = pd.DataFrame(c_vals[1:], columns=c_vals[0])
     except: df_conf = pd.DataFrame()
     
     try: 
-        d_vals = boveda.worksheet("DICCIONARIO_SIGLAS").get_all_values()
+        d_vals = boveda.worksheet("DICCIONARIO_SIGLAS").get("A1:Z1000")
         df_dicc = pd.DataFrame(d_vals[1:], columns=d_vals[0])
     except: df_dicc = pd.DataFrame()
     
     try: 
-        t2_vals = boveda.worksheet("TABLA 2").get_all_values()
+        t2_vals = boveda.worksheet("TABLA 2").get("A1:Z2000")
         idx_t2 = 0
         for i, r in enumerate(t2_vals[:10]):
             if "FINCA" in [str(x).upper().strip() for x in r]:
@@ -64,7 +64,7 @@ def cargar_precios(url_precios):
     if not gc: return pd.DataFrame()
     sh_precios = gc.open_by_url(url_precios)
     try:
-        p_vals = sh_precios.worksheet("DATOS").get_all_values()
+        p_vals = sh_precios.worksheet("DATOS").get("A1:Z5000")
         precios_consolidados = []
         idx_header, col_anio, col_prod = -1, -1, -1
         for i in range(min(10, len(p_vals))):
@@ -89,63 +89,65 @@ def cargar_precios(url_precios):
         return pd.DataFrame(precios_consolidados)
     except: return pd.DataFrame()
 
-# 💥 EL CÓDIGO EXACTO DE TU MÓDULO 3
+# 💥 EL ESCUDO DE MEMORIA FINAL: Filtra en el aire, no guarda celdas vacías
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_tabla_1(url_boveda):
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame()
     boveda = gc.open_by_url(url_boveda)
     try:
-        t1 = boveda.worksheet("TABLA 1").get_all_values()
+        # Límite geográfico estricto: Destruye las 50,000 filas fantasma
+        t1 = boveda.worksheet("TABLA 1").get("A1:Z8000")
+        
         idx_t1 = 4
         for i in range(min(10, len(t1))):
             if "FINCA" in [str(x).upper() for x in t1[i]]:
                 idx_t1 = i
                 break
         
-        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
+        if len(t1) <= idx_t1: return pd.DataFrame()
         
-        # Filtramos para no ahogar la RAM
-        cols_to_keep = []
-        col_finca, col_fecha, col_costo = None, None, None
+        headers = [str(x).upper().replace('\n', '').strip().replace(" ", "") for x in t1[idx_t1]]
+        col_finca, col_fecha, col_costo = -1, -1, -1
         
-        for c in df_t1.columns:
-            c_up = str(c).upper().replace('\n', '').strip()
-            c_clean = c_up.replace(" ", "")
-            if "FINCA" in c_up or "PROPIEDAD" in c_up: col_finca = c; cols_to_keep.append(c)
-            elif "FECHA" in c_up or "DATE" in c_up: col_fecha = c; cols_to_keep.append(c)
-            elif "COSTO" in c_up and "AVI" in c_up and "$/HA" in c_clean: col_costo = c; cols_to_keep.append(c)
-            elif "COSTO" in c_up and "$/HA" in c_clean and not col_costo: col_costo = c; cols_to_keep.append(c)
+        for i, c in enumerate(headers):
+            if "FINCA" in c or "PROPIEDAD" in c: col_finca = i
+            elif "FECHA" in c or "DATE" in c: col_fecha = i
+            elif "COSTO" in c and "AVI" in c and "$/HA" in c: col_costo = i
             
-        if col_finca and col_costo:
-            df_t1 = df_t1[cols_to_keep].copy() 
-            
-            def limp_num_col(val):
-                if pd.isna(val): return 0.0
-                v = str(val).strip()
-                if not v or v == '-': return 0.0
-                v = re.sub(r'[^\d\.,\-]', '', v)
-                if not v: return 0.0
-                try:
-                    if v.count('.') == 1 and v.count(',') == 0:
-                        if len(v.split('.')[1]) == 3: v = v.replace('.', '')
-                    if '.' in v and ',' in v:
-                        if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-                        else: v = v.replace(',', '')
-                    elif ',' in v: v = v.replace(',', '.')
-                    f_val = float(v)
-                    if f_val < 1000 and '.' in str(val) and len(str(val).split('.')[-1]) == 3:
-                        f_val = f_val * 1000
-                    return f_val
-                except: return 0.0
-
-            df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
-            df_t1['VAL_COSTO_HA'] = df_t1[col_costo].apply(limp_num_col)
-            if col_fecha: df_t1['FECHA_CLEAN'] = df_t1[col_fecha].astype(str).str.strip()
-            else: df_t1['FECHA_CLEAN'] = ""
-            
-            return df_t1[['F_CLEAN', 'VAL_COSTO_HA', 'FECHA_CLEAN']]
-        return pd.DataFrame()
+        if col_costo == -1:
+            for i, c in enumerate(headers):
+                if "COSTO" in c and "$/HA" in c: col_costo = i; break
+                
+        if col_finca == -1 or col_costo == -1: return pd.DataFrame()
+        
+        valid_rows = []
+        
+        for row in t1[idx_t1+1:]:
+            if len(row) > max(col_finca, col_costo):
+                f_val = re.sub(r'[^A-Z0-9]', '', str(row[col_finca]).upper().strip())
+                c_val = str(row[col_costo]).strip()
+                d_val = str(row[col_fecha]).strip() if col_fecha != -1 and col_fecha < len(row) else ""
+                
+                if f_val and c_val and c_val != '-':
+                    v = re.sub(r'[^\d\.,\-]', '', c_val)
+                    if v:
+                        try:
+                            if v.count('.') == 1 and v.count(',') == 0:
+                                if len(v.split('.')[1]) == 3: v = v.replace('.', '')
+                            if '.' in v and ',' in v:
+                                if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+                                else: v = v.replace(',', '')
+                            elif ',' in v: v = v.replace(',', '.')
+                            f_costo = float(v)
+                            if f_costo < 1000 and '.' in c_val and len(c_val.split('.')[-1]) == 3:
+                                f_costo *= 1000
+                            if f_costo > 1000:
+                                valid_rows.append({'F_CLEAN': f_val, 'FECHA_CLEAN': d_val, 'VAL_COSTO_HA': f_costo})
+                        except: pass
+        
+        # Devuelve un DataFrame miniatura y perfecto. Imposible agotar RAM.
+        return pd.DataFrame(valid_rows)
     except Exception as e:
         return pd.DataFrame()
 
@@ -280,11 +282,11 @@ def ejecutar():
         st.info("💡 Por favor, pega los enlaces arriba para comenzar a trabajar.")
         st.stop()
 
-    if st.button("🔄 Conectar y Descargar (Modo Seguro)", type="primary"):
+    if st.button("🔄 Conectar y Descargar (Cerco Geográfico Seguro)", type="primary"):
         cargar_maestras_ligeras.clear() 
         cargar_precios.clear()
         cargar_tabla_1.clear()
-        with st.spinner("Descargando bases de datos separadas (Memoria Protegida)..."):
+        with st.spinner("Conectando de forma segura... bloqueando filas en blanco infinitas."):
             mez, conf, dicc, t2 = cargar_maestras_ligeras(url_1)
             prec = cargar_precios(url_2)
             t1 = cargar_tabla_1(url_1)
@@ -295,7 +297,7 @@ def ejecutar():
             st.session_state['m17_t2'] = t2
             st.session_state['m17_prec'] = prec
             st.session_state['m17_t1'] = t1
-            st.success("¡Descarga y procesado perfecto!")
+            st.success("¡Datos descargados! La memoria RAM está a salvo y relajada.")
 
     df_mezclas = st.session_state.get('m17_mez', pd.DataFrame())
     df_conf = st.session_state.get('m17_conf', pd.DataFrame())
