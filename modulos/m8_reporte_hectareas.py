@@ -5,7 +5,30 @@ from datetime import datetime, date
 import io
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V16 (DOS SELECTORES Y COLORES MAESTROS)
+# 🛡️ EXTRACTOR MAESTRO DE PAGINACIÓN (SUDO LOOP ANTI-TECHO 1000)
+# =================================================================
+def descargar_todo_supabase(_cliente_supabase):
+    todos_los_datos = []
+    inicio = 0
+    paso = 1000
+    
+    # Bucle táctico para romper el límite del servidor de Supabase
+    while True:
+        respuesta = _cliente_supabase.table("TABLA_1").select("*").range(inicio, inicio + paso - 1).execute()
+        chunk = respuesta.data
+        if not chunk:
+            break
+        todos_los_datos.extend(chunk)
+        if len(chunk) < paso:
+            break
+        inicio += paso
+        if inicio >= 30000:  # Límite de seguridad para la RAM
+            break
+            
+    return todos_los_datos
+
+# =================================================================
+# 🚁 RADAR DE HECTÁREAS - OMEGA V17 (VERSION FINAL DE FACTURACIÓN)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
@@ -39,24 +62,19 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.error("🚨 Sin conexión a Supabase.")
         return
 
-    # --- ENLACE SEGURO A LA BÓVEDA (CUPO AMPLIADO A 50,000 FILAS) ---
+    # --- CARGA PROTEGIDA POR BOLSÓN DE SESIÓN ---
     if 'm8_datos_crudos' not in st.session_state:
-        with st.spinner("🛰️ Descargando base de datos completa de Supabase..."):
-            try:
-                respuesta = supabase_client.table("TABLA_1").select("*").limit(50000).execute()
-                st.session_state['m8_datos_crudos'] = respuesta.data
-            except Exception as e:
-                st.error(f"🚨 Error de comunicación Cloud: {e}")
-                return
+        with st.spinner("🛰️ Ejecutando bucle de paginación Cloud (Extrayendo 2025 y 2026)..."):
+            st.session_state['m8_datos_crudos'] = descargar_todo_supabase(supabase_client)
 
     raw_data = st.session_state['m8_datos_crudos']
 
     try:
         if not raw_data:
-            st.warning("⚠️ La base de datos operativa está vacía.")
+            st.warning("⚠️ No se pudieron recuperar registros de Supabase.")
             return
 
-        # 🎯 PURIFICACIÓN Y CONVERSIÓN DE REGISTROS
+        # 🎯 PURIFICACIÓN QUÍMICA DE DATOS
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
@@ -90,34 +108,38 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         
         df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
         
+        # Extremos reales detectados en la BD completa
         min_fecha_real = df_rep['FECHA_REAL'].min()
         max_fecha_real = df_rep['FECHA_REAL'].max()
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
         
-        # --- 🎛️ NUEVO PANEL DE CONTROL CON DOS SELECTORES ---
+        # --- 🎛️ PANEL DE CONTROL ORIGINAL CON DOS SELECTORES ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 1.4])
         
-        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_opt_v2")
+        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_final")
         
-        # 🔑 LIBERACIÓN DE AÑOS: Rango amplio de 2024 a 2030 para evitar bloqueos
-        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=min_fecha_real, min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_fecha_inicial_v2")
-        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=max_fecha_real, min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_fecha_final_v2")
+        # Dos selectores independientes totalmente liberados (Hasta 2030)
+        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=min_fecha_real, min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_ini_final")
+        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=max_fecha_real, min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_fin_final")
         
-        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_p_opt_v2")
+        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_final")
 
         cc1, cc2, cc3 = st.columns(3)
-        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_c_h_v2")
-        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_c_r_v2")
-        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_t_f_v2")
+        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_final")
+        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_final")
+        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_final")
 
-        # 🎯 FILTRADO REAL
+        # INFO TÁCTICA DE COBERTURA EN PANTALLA
+        st.caption(f"💡 **Información de Bóveda:** Total registros acoplados: {len(df_rep)} | Cobertura desde el **{min_fecha_real.strftime('%d/%m/%Y')}** hasta el **{max_fecha_real.strftime('%d/%m/%Y')}**")
+
+        # 🎯 FILTRADO DE FECHAS ESTRICTO
         df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
         if pista_sel != "TODAS":
             df_filt = df_filt[df_filt['PISTA'] == pista_sel]
         
         if df_filt.empty:
-            st.warning(f"⚠️ No hay registros de vuelo para {pista_sel} entre el {fecha_sel_ini.strftime('%d/%m/%Y')} y el {fecha_sel_fin.strftime('%d/%m/%Y')}.")
+            st.warning(f"⚠️ No se encontraron registros de vuelo para {pista_sel} en el rango del {fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}.")
             return
             
         meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
@@ -204,7 +226,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # --- 🎨 REGRESA EL DISEÑO DE COLORES CORPORATIVOS ORIGINALES ---
+            # --- 🎨 APLICACIÓN DE COLORES CORPORATIVOS ORIGINALES (PRESERVADOS) ---
             df_visual = pd.DataFrame(tabla_final)
             
             def aplicar_estilos_originales(row):
@@ -220,6 +242,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
             if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
             
+            # Pasamos el Styler directamente a Streamlit para pintar la pantalla con éxito
             st.dataframe(df_visual.style.apply(aplicar_estilos_originales, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
 
         else:
@@ -232,7 +255,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
             
-            # --- 🎨 REGRESA EL DEGRADADO DE CALOR VERDE ---
+            # --- 🎨 REGRESA EL MAPA DE CALOR VERDE ORIGINAL ---
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
             
             st.markdown("---")
