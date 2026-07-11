@@ -81,7 +81,7 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. EXTRAER TABLA 1 (A PRUEBA DE TILDES RARAS Y EXACTITUD)
+        # 3. EXTRAER TABLA 1 (CON RESPALDO DE COORDENADAS POR POSICIÓN)
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -89,11 +89,16 @@ def cargar_bases_m17(url_boveda, url_precios):
                 encabezados = [str(c).upper().strip() for c in t1_raw[idx_t1]]
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
                 
+                # Identificación inteligente de columnas clave
                 col_finca = next((c for c in encabezados if "FINCA" in c or "PROPIEDAD" in c), None)
-                col_fecha = next((c for c in encabezados if "FECHA" in c), None)
+                if not col_finca and len(encabezados) > 2: col_finca = encabezados[2] # Fallback Columna C
                 
-                # 💥 LA MIRA LÁSER: Busca 'COSTO', 'AVI', y '$/HA'. Falla imposible.
+                col_fecha = next((c for c in encabezados if "FECHA" in c or "DATE" in c), None)
+                if not col_fecha and len(encabezados) > 7: col_fecha = encabezados[7] # Fallback Columna H
+                
                 col_costo_ha = next((c for c in encabezados if "COSTO" in c and "AVI" in c and "$/HA" in c.replace(" ", "")), None)
+                if not col_costo_ha: col_costo_ha = next((c for c in encabezados if "COSTO" in c and "$/HA" in c.replace(" ", "")), None)
+                if not col_costo_ha and len(encabezados) > 19: col_costo_ha = encabezados[19] # Fallback Absoluto Columna T (Índice 19)
                 
                 if col_finca and col_costo_ha:
                     def limp_num_col(val):
@@ -114,7 +119,8 @@ def cargar_bases_m17(url_boveda, url_precios):
                             return f_val
                         except: return 0.0
                     
-                    df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).str.strip().str.upper()
+                    # Limpieza radical alfanumérica para la Base de Datos
+                    df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
                     df_t1['VAL_COSTO_HA'] = df_t1[col_costo_ha].apply(limp_num_col)
                     if col_fecha:
                         df_t1['FECHA_CLEAN'] = df_t1[col_fecha].astype(str).str.strip()
@@ -139,20 +145,20 @@ def limpiar_numero(val):
     except: return 0.0
 
 def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
-    if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns: 
+    if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0
     
-    finca_buscada = str(finca_usuario).strip().upper()
+    # 💥 EL ESCUDO ALFANUMÉRICO: Elimina espacios, saltos de línea (\n) y símbolos raras del usuario
+    finca_buscada = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
     
-    # 💥 BÚSQUEDA EXACTA: Nada de similitudes. Letra por letra.
+    # Búsqueda exacta indestructible
     df_finca = df_t1[df_t1['F_CLEAN'] == finca_buscada]
     
     if df_finca.empty: 
-        return 45000.0 # Si la finca nunca en la vida ha volado, arroja el freno de emergencia
+        return 45000.0 
         
     año_actual = str(datetime.now().year)
     
-    # 💥 BÚSQUEDA DE FECHA SENCILLA: Solo vuelos que contengan "2026"
     if 'FECHA_CLEAN' in df_finca.columns:
         df_finca_año = df_finca[df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False)]
         
@@ -161,7 +167,6 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
             if not df_valid_costos.empty:
                 return df_valid_costos['VAL_COSTO_HA'].mean()
     
-    # Fallback Justo: Si no ha volado ESTE AÑO, promedia su histórico anterior.
     df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
     if not df_valid_costos_hist.empty:
         return df_valid_costos_hist['VAL_COSTO_HA'].mean()
@@ -216,7 +221,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 dict_prods[p_fall] = dict_prods.get(p_fall, 0.0) + d_fall
 
     for p in list(dict_prods.keys()):
-        if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+        if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u =="ZN" or x in coctel_u =="BT" or x in coctel_u =="ZT" or x in coctel_u =="ZITRON" for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
         elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = 1.5 if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else 1.0
         if es_organico and "ADHERENTE" in p: del dict_prods[p]
     if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = 0.2
@@ -257,7 +262,7 @@ def ejecutar():
 
         if st.button("🔄 Conectar y Descargar", type="primary"):
             if url_1 and url_2:
-                with st.spinner("Descargando información (Modo Francotirador Exacto)..."):
+                with st.spinner("Descargando información (Modo Francotirador Indestructible)..."):
                     try:
                         mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2)
                         st.session_state['m17_mez'] = mez
@@ -360,7 +365,7 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
-                    # 💥 EXTRACCIÓN EXACTA: Si dejaste la celda de Precio Vuelo en blanco, el sistema lo busca
+                    # Cálculo del promedio dinámico blindado
                     if precio_vuelo_manual == 0:
                         precio_vuelo_final = calcular_promedio_vuelo_finca(finca_n, df_t1)
                     else:
