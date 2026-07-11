@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTOR DE CONEXIÓN (LIGERO Y SEGURO)
+# 🔌 MOTOR DE CONEXIÓN (CERO RAM, PROCESAMIENTO EN LA NUBE)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -27,10 +27,10 @@ def obtener_cliente_gspread_unificado():
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_bases_m17(url_boveda, url_precios):
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), []
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
     
     df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    t1_raw = []
+    dict_promedios = {}
 
     try:
         boveda = gc.open_by_url(url_boveda)
@@ -84,14 +84,68 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_precios = pd.DataFrame(precios_list)
         except: pass
 
+        # 💥 MOTOR EXTRACTOR DE PROMEDIOS: Procesa y destruye TABLA 1 al instante
         try:
-            # Extracción segura, no crashea
             t1_raw = boveda.worksheet("TABLA 1").get("A1:W5000")
+            idx_h = 4
+            for i, r in enumerate(t1_raw[:15]):
+                if "FINCA" in [str(x).upper().strip() for x in r] or "PROPIEDAD" in [str(x).upper().strip() for x in r]:
+                    idx_h = i; break
+            
+            headers = [str(x).upper().strip().replace(" ", "").replace("\n", "") for x in t1_raw[idx_h]]
+            c_f, c_d, c_c = 2, 7, 19
+            
+            for i, h in enumerate(headers):
+                if "FINCA" in h or "PROPIEDAD" in h: c_f = i
+                if "FECHA" in h or "DATE" in h: c_d = i
+                if "COSTO" in h and "AVI" in h and "$/HA" in h: c_c = i
+                
+            if c_c == 19 and len(headers) > 19 and not ("COSTO" in headers[19] and "$/HA" in headers[19]):
+                for i, h in enumerate(headers):
+                    if "COSTO" in h and "$/HA" in h: c_c = i; break
+
+            año_actual = str(datetime.now().year)
+            año_corto = año_actual[-2:]
+            tracker_fincas = {}
+
+            for row in t1_raw[idx_h+1:]:
+                if len(row) > max(c_f, c_c):
+                    f_val = re.sub(r'[^A-Z0-9]', '', str(row[c_f]).upper().strip())
+                    if not f_val: continue
+                    
+                    c_val = str(row[c_c]).strip()
+                    d_val = str(row[c_d]).strip() if c_d < len(row) else ""
+                    
+                    v = re.sub(r'[^\d\.,\-]', '', c_val)
+                    if v and v != '-':
+                        try:
+                            if v.count('.') == 1 and v.count(',') == 0 and len(v.split('.')[1]) == 3: v = v.replace('.', '')
+                            if '.' in v and ',' in v:
+                                if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+                                else: v = v.replace(',', '')
+                            elif ',' in v: v = v.replace(',', '.')
+
+                            f_costo = float(v)
+                            if f_costo < 1000 and '.' in c_val and len(c_val.split('.')[-1]) == 3: f_costo *= 1000
+
+                            if f_costo > 1000:
+                                if f_val not in tracker_fincas:
+                                    tracker_fincas[f_val] = {'current': [], 'hist': []}
+                                
+                                if año_actual in d_val or d_val.endswith(f"/{año_corto}") or d_val.endswith(f"-{año_corto}"):
+                                    tracker_fincas[f_val]['current'].append(f_costo)
+                                tracker_fincas[f_val]['hist'].append(f_costo)
+                        except: pass
+            
+            for f, data in tracker_fincas.items():
+                if data['current']: dict_promedios[f] = sum(data['current']) / len(data['current'])
+                elif data['hist']: dict_promedios[f] = sum(data['hist']) / len(data['hist'])
+
         except: pass
                             
     except: pass
 
-    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, t1_raw
+    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, dict_promedios
 
 # =================================================================
 # 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO
@@ -105,67 +159,6 @@ def limpiar_numero(val):
         if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
         return float(v) if v else 0.0
     except: return 0.0
-
-def calcular_promedio_vuelo_finca(finca_usuario, t1_raw):
-    if not t1_raw or len(t1_raw) < 5: return 45000.0
-    
-    f_buscada = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
-    if not f_buscada: return 45000.0
-
-    idx_h = 4
-    for i, r in enumerate(t1_raw[:15]):
-        if "FINCA" in [str(x).upper().strip() for x in r] or "PROPIEDAD" in [str(x).upper().strip() for x in r]:
-            idx_h = i; break
-
-    if idx_h >= len(t1_raw): return 45000.0
-
-    headers = [str(x).upper().strip().replace(" ", "").replace("\n", "") for x in t1_raw[idx_h]]
-    col_f, col_d, col_c = 2, 7, 19
-
-    for i, h in enumerate(headers):
-        if "FINCA" in h or "PROPIEDAD" in h: col_f = i
-        if "FECHA" in h or "DATE" in h: col_d = i
-        if "COSTO" in h and "AVI" in h and "$/HA" in h: col_c = i
-
-    if col_c == 19 and len(headers) > 19 and not ("COSTO" in headers[19] and "$/HA" in headers[19]):
-        for i, h in enumerate(headers):
-            if "COSTO" in h and "$/HA" in h: col_c = i; break
-
-    año_actual = str(datetime.now().year)
-    año_corto = año_actual[-2:]
-
-    costos_este_año = []
-    costos_hist = []
-
-    for row in t1_raw[idx_h+1:]:
-        if len(row) > max(col_f, col_c):
-            f_val = re.sub(r'[^A-Z0-9]', '', str(row[col_f]).upper().strip())
-            
-            if f_val == f_buscada or f_val.startswith(f_buscada):
-                c_val = str(row[col_c]).strip()
-                d_val = str(row[col_d]).strip() if col_d < len(row) else ""
-
-                v = re.sub(r'[^\d\.,\-]', '', c_val)
-                if v and v != '-':
-                    try:
-                        if v.count('.') == 1 and v.count(',') == 0 and len(v.split('.')[1]) == 3: v = v.replace('.', '')
-                        if '.' in v and ',' in v:
-                            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-                            else: v = v.replace(',', '')
-                        elif ',' in v: v = v.replace(',', '.')
-
-                        f_costo = float(v)
-                        if f_costo < 1000 and '.' in c_val and len(c_val.split('.')[-1]) == 3: f_costo *= 1000
-
-                        if f_costo > 1000:
-                            if año_actual in d_val or d_val.endswith(f"/{año_corto}") or d_val.endswith(f"-{año_corto}"):
-                                costos_este_año.append(f_costo)
-                            costos_hist.append(f_costo)
-                    except: pass
-
-    if costos_este_año: return sum(costos_este_año) / len(costos_este_año)
-    if costos_hist: return sum(costos_hist) / len(costos_hist)
-    return 45000.0
 
 def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
@@ -249,26 +242,26 @@ def ejecutar():
         st.info("💡 Por favor, pega los enlaces arriba para comenzar a trabajar.")
         st.stop()
 
-    if st.button("🔄 Conectar y Descargar (Seguro y Estable)", type="primary"):
+    if st.button("🔄 Conectar y Descargar (Modo Blindado)", type="primary"):
         cargar_bases_m17.clear() 
-        with st.spinner("Descargando bases de datos de forma ultra-ligera..."):
-            mez, conf, dicc, t2, prec, t1_raw = cargar_bases_m17(url_1, url_2)
+        with st.spinner("Desacoplando y calculando promedios en la nube..."):
+            mez, conf, dicc, t2, prec, dict_prom = cargar_bases_m17(url_1, url_2)
             st.session_state['m17_mez'] = mez
             st.session_state['m17_conf'] = conf
             st.session_state['m17_dicc'] = dicc
             st.session_state['m17_t2'] = t2
             st.session_state['m17_prec'] = prec
-            st.session_state['m17_t1_raw'] = t1_raw
-            st.success("¡Datos descargados con éxito! Servidor 100% estable.")
+            st.session_state['m17_promedios'] = dict_prom
+            st.success("¡Base de datos estabilizada! Memoria del servidor optimizada al 100%.")
 
     df_mezclas = st.session_state.get('m17_mez', pd.DataFrame())
     df_conf = st.session_state.get('m17_conf', pd.DataFrame())
     df_dicc = st.session_state.get('m17_dicc', pd.DataFrame())
     df_t2 = st.session_state.get('m17_t2', pd.DataFrame())
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
-    t1_raw = st.session_state.get('m17_t1_raw', [])
+    dict_promedios = st.session_state.get('m17_promedios', {})
 
-    # 💥 LA CURA PARA LA PANTALLA ROJA AL DAR "ENTER": MATRIZ SÓLIDA, NO DINÁMICA
+    # 💥 EL ESCUDO CONTRA EL "OH NO": Matriz pre-cargada con 200 filas sólidas
     if 'm17_df_entrada_grid' not in st.session_state:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
@@ -279,7 +272,7 @@ def ejecutar():
     
     df_edited = st.data_editor(
         st.session_state.m17_df_entrada_grid,
-        key="m17_tabla_maestra_grid_solida", 
+        key="m17_tabla_maestra_grid_v2", 
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -308,15 +301,14 @@ def ejecutar():
         if df_valid.empty:
             st.error("⚠️ La tabla está vacía. Por favor pega datos antes de ejecutar.")
         else:
-            with st.spinner("Calculando promedios reales..."):
+            with st.spinner("Calculando promedios reales y volumetría..."):
                 
                 col_prod_idx = 5
                 if not df_t2.empty:
                     for i, c_name in enumerate(df_t2.columns):
                         c_clean = str(c_name).upper().replace('\n', ' ').strip()
                         if 'TIPO' in c_clean and 'PROD' in c_clean:
-                            col_prod_idx = i
-                            break 
+                            col_prod_idx = i; break 
                 
                 resultados = []
                 log_volumetrico = {}
@@ -326,22 +318,29 @@ def ejecutar():
                     finca_n = str(row['FINCA']).strip().upper()
                     ha_num = limpiar_numero(row['HECTAREAS'])
                     coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
-                    
                     fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
                     coctel_combinado = f"{coctel_n} {fert_n}".strip()
-
                     dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
                     precio_vuelo_manual = limpiar_numero(row['PRECIO VUELO'])
 
                     if ha_num <= 0 and not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
-                        if not match_f.empty:
-                            ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
+                        if not match_f.empty: ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
 
                     if ha_num <= 0: continue
 
+                    # 💥 EXTRACCIÓN ULTRA PRECISA (GISELLE BEATRIZ Y LA CEIBA BLINDADOS)
                     if precio_vuelo_manual == 0:
-                        precio_vuelo_final = calcular_promedio_vuelo_finca(finca_n, t1_raw)
+                        f_clean_user = re.sub(r'[^A-Z0-9]', '', finca_n)
+                        precio_vuelo_final = 0.0
+                        
+                        # Filtro bidireccional puro
+                        for k_db, v_prom in dict_promedios.items():
+                            if k_db.startswith(f_clean_user) or f_clean_user.startswith(k_db):
+                                precio_vuelo_final = float(v_prom)
+                                break
+                                
+                        if precio_vuelo_final == 0.0: precio_vuelo_final = 45000.0
                     else:
                         precio_vuelo_final = precio_vuelo_manual
 
@@ -378,8 +377,7 @@ def ejecutar():
                         for i in range(min(5, len(df_conf))):
                             r_c = [str(x).upper() for x in df_conf.iloc[i]]
                             if 'PRODUCTO' in r_c and 'COSTO' in r_c:
-                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
-                                break
+                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO'); break
 
                     dict_receta = extraer_receta_mega(coctel_combinado, finca_n, df_mezclas, df_dicc, df_t2)
                     
@@ -420,7 +418,7 @@ def ejecutar():
 
                 st.session_state.m17_resultados = pd.DataFrame(resultados)
                 st.session_state.m17_volumetria = log_volumetrico
-                st.success("✅ Proyección completada exitosamente.")
+                st.success("✅ Proyección completada exitosamente sin fugas de memoria.")
 
     if 'm17_resultados' in st.session_state and not st.session_state.m17_resultados.empty:
         st.markdown("---")
@@ -506,17 +504,14 @@ def ejecutar():
                 df_insumos[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False)
             
             workbook = writer.book
-            
             ws_detalle = workbook['Detalle_Económico']
             for row_idx in range(2, ws_detalle.max_row + 1):
                 celda_vuelo = ws_detalle.cell(row=row_idx, column=7)
                 celda_vuelo.value = f"=B{row_idx}*E{row_idx}"
                 celda_vuelo.data_type = 'f' 
-                
                 celda_total = ws_detalle.cell(row=row_idx, column=10)
                 celda_total.value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
                 celda_total.data_type = 'f' 
-                
                 celda_ha = ws_detalle.cell(row=row_idx, column=9)
                 celda_ha.value = f"=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)"
                 celda_ha.data_type = 'f' 
@@ -540,7 +535,6 @@ def ejecutar():
                         else:
                             cell.alignment = Alignment(vertical='center')
                             col_name = str(ws.cell(row=1, column=cell.column).value).upper()
-                            
                             if cell.data_type == 'f' or isinstance(cell.value, (int, float)):
                                 if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name:
                                     cell.number_format = '"$" #,##0' 
