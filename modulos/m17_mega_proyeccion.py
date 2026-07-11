@@ -55,7 +55,6 @@ def cargar_bases_m17(url_boveda, url_precios):
             ws_datos = sh_precios.worksheet("DATOS") 
             datos_hoja = ws_datos.get_all_values()
             precios_consolidados = []
-            
             if datos_hoja:
                 idx_header, col_anio, col_prod = -1, -1, -1
                 for i in range(min(10, len(datos_hoja))):
@@ -80,19 +79,19 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
+        # 💥 SOLUCIÓN DEL ASESINO SILENCIOSO: Relleno automático de filas asimétricas
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
+                df_raw = pd.DataFrame(t1_raw) # Esto cuadra las filas largas y cortas sin colapsar
                 idx_t1 = 4
-                for i, r in enumerate(t1_raw[:20]):
-                    r_upper = [str(x).upper().strip() for x in r]
-                    if "FINCA" in r_upper or any("PROPIEDAD" in x for x in r_upper):
+                for i in range(min(20, len(df_raw))):
+                    r_upper = df_raw.iloc[i].astype(str).str.upper().str.strip().tolist()
+                    if "FINCA" in r_upper or any("PROPIEDAD" in str(x) for x in r_upper):
                         idx_t1 = i
                         break
                 
-                encabezados = [str(c).upper().strip() for c in t1_raw[idx_t1]]
-                df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
-                
+                encabezados = df_raw.iloc[idx_t1].astype(str).str.upper().str.strip().tolist()
                 idx_finca, idx_fecha, idx_costo = 2, 7, 19
                 
                 for i, c in enumerate(encabezados):
@@ -101,7 +100,7 @@ def cargar_bases_m17(url_boveda, url_precios):
                     if "FECHA" in c or "DATE" in c: idx_fecha = i
                     if "COSTO" in c and "AVI" in c and "$/HA" in c_clean: idx_costo = i
                 
-                if idx_costo == 19 and not ("COSTO" in encabezados[19] and "AVI" in encabezados[19]):
+                if idx_costo == 19 and len(encabezados) > 19 and not ("COSTO" in encabezados[19] and "AVI" in encabezados[19]):
                     for i, c in enumerate(encabezados):
                         c_clean = c.replace(" ", "").replace("\n", "")
                         if "COSTO" in c and "$/HA" in c_clean: 
@@ -109,6 +108,7 @@ def cargar_bases_m17(url_boveda, url_precios):
                             break
                             
                 def limp_num_col(val):
+                    if pd.isna(val): return 0.0
                     v = str(val).strip()
                     if not v or v == '-': return 0.0
                     v = re.sub(r'[^\d\.,\-]', '', v)
@@ -126,13 +126,18 @@ def cargar_bases_m17(url_boveda, url_precios):
                         return f_val
                     except: return 0.0
 
-                df_t1['F_CLEAN'] = df_t1.iloc[:, idx_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
-                df_t1['VAL_COSTO_HA'] = df_t1.iloc[:, idx_costo].apply(limp_num_col)
-                df_t1['FECHA_CLEAN'] = df_t1.iloc[:, idx_fecha].astype(str).str.strip()
-        except: pass
+                df_t1 = df_raw.iloc[idx_t1+1:].copy()
+                if idx_finca < len(df_t1.columns):
+                    df_t1['F_CLEAN'] = df_t1.iloc[:, idx_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
+                if idx_costo < len(df_t1.columns):
+                    df_t1['VAL_COSTO_HA'] = df_t1.iloc[:, idx_costo].apply(limp_num_col)
+                if idx_fecha < len(df_t1.columns):
+                    df_t1['FECHA_CLEAN'] = df_t1.iloc[:, idx_fecha].astype(str).str.strip()
+        except Exception as e:
+            st.error(f"Error procesando TABLA 1: {e}") 
                             
     except Exception as e: 
-        pass
+        st.error(f"Error General: {e}")
 
     return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
 
@@ -175,13 +180,11 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
             df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
             if not df_valid_costos.empty:
                 prom = df_valid_costos['VAL_COSTO_HA'].mean()
-                # 💥 Filtro Anti-NaN
                 return 45000.0 if pd.isna(prom) else float(prom)
     
     df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
     if not df_valid_costos_hist.empty:
         prom = df_valid_costos_hist['VAL_COSTO_HA'].mean()
-        # 💥 Filtro Anti-NaN
         return 45000.0 if pd.isna(prom) else float(prom)
             
     return 45000.0
@@ -268,8 +271,25 @@ def ejecutar():
         st.info("💡 Por favor, pega los enlaces arriba para comenzar a trabajar.")
         st.stop()
 
-    with st.spinner("Conectando con Google Drive (Modo Ligero y Seguro)..."):
-        df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1 = cargar_bases_m17(url_1, url_2)
+    # 💥 BOTÓN DE REFRESCO OBLIGATORIO: Fuerza la recarga del caché
+    if st.button("🔄 Conectar y Descargar (Limpiar Caché)", type="primary"):
+        cargar_bases_m17.clear() # Limpia la memoria ahogada de las versiones anteriores
+        with st.spinner("Conectando y rearmando filas recortadas..."):
+            mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2)
+            st.session_state['m17_mez'] = mez
+            st.session_state['m17_conf'] = conf
+            st.session_state['m17_dicc'] = dicc
+            st.session_state['m17_t2'] = t2
+            st.session_state['m17_prec'] = prec
+            st.session_state['m17_t1'] = t1
+            st.success("¡Base de datos estabilizada y reparada!")
+
+    df_mezclas = st.session_state.get('m17_mez', pd.DataFrame())
+    df_conf = st.session_state.get('m17_conf', pd.DataFrame())
+    df_dicc = st.session_state.get('m17_dicc', pd.DataFrame())
+    df_t2 = st.session_state.get('m17_t2', pd.DataFrame())
+    df_precios = st.session_state.get('m17_prec', pd.DataFrame())
+    df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     
@@ -311,7 +331,7 @@ def ejecutar():
         if df_valid.empty:
             st.error("⚠️ La tabla está vacía. Por favor pega datos antes de ejecutar.")
         else:
-            with st.spinner("Procesando matriz financiera y logística..."):
+            with st.spinner("Calculando promedios reales..."):
                 
                 col_prod_idx = 5
                 if not df_t2.empty:
@@ -348,7 +368,6 @@ def ejecutar():
                     else:
                         precio_vuelo_final = precio_vuelo_manual
 
-                    # 💥 Filtro Anti-NaN para el vuelo
                     precio_vuelo_final = 45000.0 if pd.isna(precio_vuelo_final) else float(precio_vuelo_final)
                     precio_vuelo_final = precio_vuelo_final * factor_inflacion
 
@@ -409,7 +428,6 @@ def ejecutar():
                     costo_st_fila = dias_c * st_base * ha_num
                     costo_vuelo_fila = precio_vuelo_final * ha_num 
                     
-                    # 💥 BLINDAJE FINAL ANTI-NaN (Protección contra el ValueError)
                     costo_mezcla_fila = 0.0 if pd.isna(costo_mezcla_fila) else float(costo_mezcla_fila)
                     costo_st_fila = 0.0 if pd.isna(costo_st_fila) else float(costo_st_fila)
                     costo_vuelo_fila = 0.0 if pd.isna(costo_vuelo_fila) else float(costo_vuelo_fila)
