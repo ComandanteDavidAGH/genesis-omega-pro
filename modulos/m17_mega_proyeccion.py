@@ -133,7 +133,7 @@ def cargar_bases_m17(url_boveda, url_precios):
     except Exception as e: 
         raise Exception(f"Error de conexión con Google Drive: {e}")
 
-    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, hist_vuelo
+    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, hist_vuelo_promedio
 
 # =================================================================
 # 🧠 MOTORES DE LÓGICA
