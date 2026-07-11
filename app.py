@@ -109,7 +109,7 @@ div[data-testid="stDateInput"] {
     border: 2px solid #0d1b2a !important;
     background-color: #ffffff !important;
     border-radius: 8px !important;
-    padding: 5px 10px !important; /* Respiro interno para que se vea elegante */
+    padding: 5px 10px !important;
     box-shadow: 0px 3px 6px rgba(0,0,0,0.1) !important;
 }
 
@@ -161,7 +161,7 @@ if not st.session_state['autenticado']:
                     st.error("🚨 Credenciales incorrectas.")
     st.stop() 
 
-# --- 4. CONEXIÓN SATELITAL GLOBAL ---
+# --- 4. 🛰️ HUB DE CONEXIONES GLOBALES (GOOGLE Y SUPABASE) ---
 @st.cache_resource(show_spinner=False)
 def conectar_satelite():
     return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
@@ -175,6 +175,19 @@ def descargar_matriz_rapida(url, pestaña):
         except:
             if i < 2: time.sleep(2); continue
             else: return []
+
+# ⚡ Inicialización Blindada del Motor Supabase
+@st.cache_resource(show_spinner=False)
+def conectar_supabase():
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
+
+try:
+    supabase_client = conectar_supabase()
+except Exception as e:
+    st.error(f"🚨 Falla crítica en el enlace a Supabase: {e}")
+    supabase_client = None
 
 # --- 5. MENÚ MAESTRO TÁCTICO ---
 with st.sidebar:
@@ -225,7 +238,6 @@ with st.sidebar:
         
     st.markdown("---")
     
-    # 💥 LA SOLUCIÓN AL ERROR: CALLBACK DE CERRAR SESIÓN 💥
     def apagar_motores():
         st.session_state['autenticado'] = False
         st.session_state['usuario_rol'] = None
@@ -254,4 +266,4 @@ elif menu == "🔮 13. El Oráculo (Inventarios)": m13.ejecutar(purificar_lote, 
 elif menu == "💰 14. Pronóstico Financiero": m14.ejecutar(purificar_lote, extraer_numero)
 elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lote, extraer_numero)
 elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar()
-elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar()
+elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar(supabase_client)
