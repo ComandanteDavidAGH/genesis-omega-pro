@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (FRANCOTIRADOR - CERO COLAPSOS DE RAM)
+# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (Modo Francotirador)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -25,43 +25,31 @@ def obtener_cliente_gspread_unificado():
     except: return None
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def cargar_boveda_mega_proyeccion():
+def cargar_datos_externos_ligeros():
+    """
+    Solo descarga lo que NO está en la memoria del Módulo 2.
+    Ignora pestañas pesadas y va directo al grano.
+    """
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+    if not gc: return pd.DataFrame(), pd.DataFrame(), {}
     
-    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    df_dicc = pd.DataFrame()
+    df_precios = pd.DataFrame()
     hist_vuelo_promedio = {}
 
     try:
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         
-        # 1. BÓVEDA DE RECETAS
-        try:
-            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-            df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-            df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-        except: pass
-
-        try:
-            d_conf = boveda_recetas.worksheet("Configuración").get_all_values()
-            df_conf = pd.DataFrame(d_conf[1:], columns=d_conf[0])
-        except: pass
-        
+        # 1. DICCIONARIO (Es muy pequeño, 0 impacto en RAM)
         try:
             d_dicc = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
             df_dicc = pd.DataFrame(d_dicc[1:], columns=d_dicc[0])
         except: pass
-        
-        try: 
-            t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
-            idx_t2 = next((i for i, r in enumerate(t2_raw) if "FINCA" in [str(x).upper().strip() for x in r]), 0)
-            df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
-        except: pass
 
-        # 🎯 2. EXTRACCIÓN FRANCOTIRADOR DE PRECIOS (SOLO PESTAÑA "DATOS")
+        # 🎯 2. PRECIOS: SOLO PESTAÑA "DATOS" (Ignora dashboards)
         try:
-            ws_datos = sh_precios.worksheet("DATOS") # Va directo a la yugular, ignora las otras 3 pestañas pesadas
+            ws_datos = sh_precios.worksheet("DATOS") 
             datos_hoja = ws_datos.get_all_values()
             precios_consolidados = []
             
@@ -89,7 +77,7 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 🎯 3. EXTRACCIÓN EXPLÍCITA TABLA 1 ("COSTO AVIÓN ($/ha)")
+        # 🎯 3. VUELOS: BÚSQUEDA EXPLÍCITA DE "COSTO AVIÓN ($/ha)" EN TABLA 1
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -101,8 +89,8 @@ def cargar_boveda_mega_proyeccion():
                 col_finca = next((c for i, c in enumerate(encabezados) if "FINCA" in encabezados_limpios[i] or "PROPIEDAD" in encabezados_limpios[i]), None)
                 col_fecha = next((c for i, c in enumerate(encabezados) if "FECHA" in encabezados_limpios[i]), None)
                 
-                # BÚSQUEDA EXPLÍCITA DE LA COLUMNA DE COSTO POR HECTÁREA
-                col_costo_ha = next((c for i, c in enumerate(encabezados) if "COSTO" in encabezados_limpios[i] and "AVIO" in encabezados_limpios[i] and "$/HA" in encabezados_limpios[i]), None)
+                # LA MIRA LÁSER DE LA QUE HABLAMOS:
+                col_costo_ha = next((c for i, c in enumerate(encabezados) if "COSTO" in encabezados_limpios[i] and "AVION" in encabezados_limpios[i] and "$/HA" in encabezados_limpios[i]), None)
                 
                 if col_finca and col_costo_ha:
                     def limp_num_col(val):
@@ -111,7 +99,7 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # CORRECCIÓN DE MILES (42.704 -> 42704) Y DECIMALES
+                            # 💥 CORRECCIÓN MATEMÁTICA EXACTA PARA COLOMBIA ($42.704 -> 42704)
                             if v.count('.') == 1 and v.count(',') == 0:
                                 if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
@@ -120,7 +108,6 @@ def cargar_boveda_mega_proyeccion():
                             elif ',' in v: v = v.replace(',', '.')
                             
                             f_val = float(v)
-                            # Si detecta formato 42.704 lo multiplica x 1000
                             if f_val < 1000 and '.' in str(val) and len(str(val).split('.')[-1]) == 3:
                                 f_val = f_val * 1000
                             return f_val
@@ -142,9 +129,9 @@ def cargar_boveda_mega_proyeccion():
                             hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
         except: pass
                             
-    except Exception as e: st.error(f"Error cargando bases: {e}")
+    except Exception as e: st.error(f"Error extrayendo datos satelitales: {e}")
 
-    return df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo_promedio
+    return df_dicc, df_precios, hist_vuelo_promedio
 
 # =================================================================
 # 🧠 MOTORES DE LÓGICA
@@ -215,7 +202,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA Y AISLADA
+# 👑 RENDERIZADO VISUAL - 100% ESTABLE Y RECICLADOR
 # =================================================================
 
 def ejecutar():
@@ -231,8 +218,18 @@ def ejecutar():
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
-    with st.spinner("Conectando con la Bóveda Maestra (Extracción Directa)..."):
-        df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
+    # 🛑 FRENO DE EMERGENCIA INTELIGENTE (COMO EL MÓDULO 3)
+    df_mezclas = st.session_state.get('df_mezclas', pd.DataFrame())
+    df_conf = st.session_state.get('df_config_base', pd.DataFrame())
+    df_t2 = st.session_state.get('df_config', pd.DataFrame())
+
+    if df_mezclas.empty or df_conf.empty or df_t2.empty:
+        st.warning("🚨 No se detectan las matrices principales en el puente de mando.")
+        st.info("💡 Por favor, cargue los tres archivos fuente en el **Módulo 2** (Validación de Misión) y vuelva aquí para proyectar.")
+        st.stop()
+
+    with st.spinner("Conectando satélite para extraer precios y vuelos (Cero Colapsos)..."):
+        df_dicc, df_precios, hist_vuelo = cargar_datos_externos_ligeros()
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     if 'memoria_df_seguro' not in st.session_state:
@@ -240,7 +237,7 @@ def ejecutar():
 
     st.markdown("### 📥 1. Pista de Aterrizaje Inquebrantable")
     
-    tab_pegar, tab_subir = st.tabs(["📋 Pegar desde Excel", "📁 Subir Archivo Excel"])
+    tab_pegar, tab_subir = st.tabs(["📋 Pegar desde Excel (Recomendado)", "📁 Subir Archivo Excel"])
     
     with tab_pegar:
         texto_crudo = st.text_area("Selecciona tus datos en Excel, haz Ctrl+C y pégalos (Ctrl+V) dentro de esta caja:", height=150, placeholder="FINCA | HECTAREAS | COCTEL | FERTILIZANTE | DIAS CICLO | PRECIO VUELO")
@@ -261,7 +258,7 @@ def ejecutar():
                         df_limpio = df_limpio.iloc[1:].reset_index(drop=True)
 
                     st.session_state.memoria_df_seguro = df_limpio
-                    st.success(f"✅ Se cargaron {len(df_limpio)} filas de forma segura.")
+                    st.success(f"✅ Se cargaron {len(df_limpio)} filas de forma segura en la memoria interna.")
                 except Exception as e:
                     st.error(f"Error procesando el texto: {e}")
             else:
@@ -276,7 +273,7 @@ def ejecutar():
                     for c in columnas_base:
                         if c not in df_up.columns: df_up[c] = ""
                     st.session_state.memoria_df_seguro = df_up[columnas_base].fillna("").astype(str)
-                    st.success("✅ Archivo cargado correctamente.")
+                    st.success("✅ Archivo cargado correctamente en memoria.")
                 except Exception as e:
                     st.error(f"Error al leer Excel: {e}")
 
@@ -331,6 +328,7 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
+                    # BÚSQUEDA DEL PRECIO DE VUELO EN LA MEMORIA HISTÓRICA
                     if precio_vuelo == 0:
                         precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
 
@@ -401,7 +399,7 @@ def ejecutar():
 
                 st.session_state.mega_resultados = pd.DataFrame(resultados)
                 st.session_state.mega_volumetria = log_volumetrico
-                st.success("✅ Proyección completada exitosamente.")
+                st.success("✅ Proyección completada con velocidad turbo.")
 
     if 'mega_resultados' in st.session_state and not st.session_state.mega_resultados.empty:
         st.markdown("---")
