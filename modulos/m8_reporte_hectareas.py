@@ -5,21 +5,31 @@ from datetime import datetime
 import io
 
 # =================================================================
-# 🛡️ MEMORIA RAM BLINDADA (CACHÉ TÁCTICO)
-# El guión bajo en _cliente_supabase evita que Streamlit colapse al leerlo
+# 🛡️ MEMORIA CACHÉ ANTI-COLAPSOS
 # =================================================================
 @st.cache_data(ttl=600, show_spinner=False)
 def descargar_datos_boveda(_cliente_supabase):
-    respuesta = _cliente_supabase.table("TABLA_1").select("*").limit(15000).execute()
-    return respuesta.data
+    try:
+        respuesta = _cliente_supabase.table("TABLA_1").select("*").limit(15000).execute()
+        return respuesta.data
+    except:
+        return []
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V12 FINAL
+# 🚁 RADAR DE HECTÁREAS - OMEGA V12 (RENDERIZADO HTML PREMIUM)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
+    # --- ESTILOS CSS PREMIUM ---
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
+    
+    /* CSS para nuestras tablas HTML personalizadas */
+    .tabla-genesis { width: 100%; border-collapse: collapse; font-family: 'Arial', sans-serif; font-size: 14px; margin-top: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+    .tabla-genesis th { background-color: #0d1b2a !important; color: #d4af37 !important; padding: 12px 15px; text-align: left; font-weight: bold; text-transform: uppercase; border: none; }
+    .tabla-genesis td { padding: 10px 15px; border-bottom: 1px solid #e0e0e0; color: #333; }
+    .tabla-genesis tbody tr:hover { background-color: #f5f5f5 !important; transition: 0.2s; }
+    .tabla-genesis tbody tr:last-child td { border-bottom: none; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -54,15 +64,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         return
 
     try:
-        with st.spinner("🛰️ Accediendo a la Bóveda de Supabase (Memoria Caché Activada)..."):
-            # 🎯 LLAMADA PROTEGIDA POR CACHÉ: Solo descarga 1 vez cada 10 minutos
+        with st.spinner("🛰️ Extrayendo y purificando datos de la Bóveda Cloud..."):
             raw_data = descargar_datos_boveda(supabase_client)
             
         if not raw_data:
             st.warning("⚠️ La TABLA_1 está vacía en Supabase.")
             return
 
-        # 🎯 PURIFICACIÓN EXTREMA: Sin saltos de línea ni NoneTypes
+        # 🎯 PURIFICACIÓN
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
@@ -72,7 +81,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             llave_sem = next((k for k in r_norm.keys() if k == "SEM" or k == "SEMANA"), None)
             
             datos_limpios.append({
-                "OS": r_norm.get("Nº ORDEN", ""),
                 "PISTA": r_norm.get("PISTA", "").upper(),
                 "HK": r_norm.get("HK", "").upper(),
                 "MODELO": r_norm.get("MODELO", "").upper(),
@@ -212,13 +220,23 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # TABLA NATIVA SEGURA
             df_visual = pd.DataFrame(tabla_final)
-            for col in ['ÁREA FUMIG (ha)', 'REND (hr)', 'PROMEDIO (Ha/Hr)']:
-                if col in df_visual.columns:
-                    df_visual[col] = df_visual[col].apply(fmt_latino)
             
-            st.dataframe(df_visual.astype(str), use_container_width=True, hide_index=True)
+            # 🎯 EL SECRETO: Aplicar el estilo con HTML puro, esquivando PyArrow
+            def custom_css_classes(row):
+                if "BASE:" in str(row['NIVEL']): return ['background-color: #d1ecf1 !important; font-weight: bold; color: #0c5460 !important;'] * len(row)
+                elif "TOTAL GENERAL" in str(row['NIVEL']): return ['background-color: #c3e6cb !important; font-weight: bold; color: #155724 !important; font-size: 15px;'] * len(row)
+                elif 'AVIÓN (HK)' in row and ("✈️" in str(row.get('AVIÓN (HK)','')) or "🚁" in str(row.get('AVIÓN (HK)',''))): return ['background-color: #e2e3e5 !important; font-weight: bold; color: #212529 !important;'] * len(row)
+                return [''] * len(row)
+                
+            fmt_cols = {'ÁREA FUMIG (ha)': fmt_latino}
+            if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
+            if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
+            
+            # Convertimos a HTML hermoso
+            html_table = df_visual.style.apply(custom_css_classes, axis=1).format(fmt_cols).hide(axis="index").to_html()
+            html_table = html_table.replace('<table', '<table class="tabla-genesis"')
+            st.markdown(html_table, unsafe_allow_html=True)
 
         else:
             matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
@@ -231,10 +249,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
             
-            df_matriz_str = matriz.copy()
-            for col in df_matriz_str.columns:
-                df_matriz_str[col] = df_matriz_str[col].apply(fmt_latino)
-            st.dataframe(df_matriz_str.astype(str), use_container_width=True)
+            # 🎯 DEGRADADO VERDE CON HTML (100% Inmune a colapsos)
+            html_matriz = matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None).to_html()
+            html_matriz = html_matriz.replace('<table', '<table class="tabla-genesis"')
+            st.markdown(html_matriz, unsafe_allow_html=True)
             
             st.markdown("---")
             df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
@@ -245,7 +263,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 fig.update_layout(xaxis_title="Mes", showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-        # 🎯 EXPORTACIÓN EXCEL ULTRA-LIGERA
+        # 🎯 EXPORTACIÓN EXCEL
         st.markdown("---")
         buffer_rep = io.BytesIO()
         nombre_hoja = 'Reporte'
