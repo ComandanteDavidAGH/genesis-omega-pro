@@ -60,18 +60,24 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
-        st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
+        st.info("💡 Obtenga la lista de precios exactos multiplicados por el margin de cada perfil, listos para copiar y pegar en SAP.")
         
         if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
             with st.spinner("📡 Descargando arsenal de precios desde Supabase Cloud..."):
                 try:
-                    # 🎯 JUGADA MAESTRA: Se extraen los datos directo de la nueva base de datos relacional
+                    # 🎯 Consulta a la base de datos
                     respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                     raw_config = respuesta.data
                     
+                    # 🔍 ESCÁNER DE DIAGNÓSTICO EN VIVO
+                    if not raw_config:
+                        st.warning("⚠️ LA TABLA ESTÁ VACÍA: Supabase conectó, pero no hay filas dentro de PRECIOS_INSUMOS. Verifica si el CSV se guardó correctamente.")
+                    else:
+                        st.info(f"📋 ESCÁNER: Columnas encontradas en Supabase: {list(raw_config[0].keys())}")
+                        st.write("👀 Muestra del primer registro recibido:", raw_config[0])
+                    
                     lista_precios = []
                     for row in raw_config:
-                        # Buscamos las columnas tolerando mayúsculas o minúsculas por seguridad
                         prod = str(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
                         
                         es_cero_basura = False
@@ -96,9 +102,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado desde Supabase: {len(lista_precios)} productos.")
-                    else:
-                        st.warning("⚠️ No se encontraron registros válidos en la tabla PRECIOS_INSUMOS.")
+                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos.")
                 except Exception as e:
                     st.error(f"🚨 Error al consultar Supabase: {e}")
                     
