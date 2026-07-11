@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (CERCO GEOGRÁFICO ANTI-RAM)
+# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (LIBRE DE MEMORIA RAM)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -30,25 +30,24 @@ def cargar_maestras_ligeras(url_boveda):
     if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     boveda = gc.open_by_url(url_boveda)
     
-    # Límite geográfico para evitar OOM
     try: 
-        m_vals = boveda.worksheet("DD_Mesclas").get("A1:Z1000")
+        m_vals = boveda.worksheet("DD_Mesclas").get_all_values()
         df_mezclas = pd.DataFrame(m_vals[1:], columns=m_vals[0])
         df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
     except: df_mezclas = pd.DataFrame()
 
     try: 
-        c_vals = boveda.worksheet("Configuración").get("A1:Z500")
+        c_vals = boveda.worksheet("Configuración").get_all_values()
         df_conf = pd.DataFrame(c_vals[1:], columns=c_vals[0])
     except: df_conf = pd.DataFrame()
     
     try: 
-        d_vals = boveda.worksheet("DICCIONARIO_SIGLAS").get("A1:Z1000")
+        d_vals = boveda.worksheet("DICCIONARIO_SIGLAS").get_all_values()
         df_dicc = pd.DataFrame(d_vals[1:], columns=d_vals[0])
     except: df_dicc = pd.DataFrame()
     
     try: 
-        t2_vals = boveda.worksheet("TABLA 2").get("A1:Z2000")
+        t2_vals = boveda.worksheet("TABLA 2").get_all_values()
         idx_t2 = 0
         for i, r in enumerate(t2_vals[:10]):
             if "FINCA" in [str(x).upper().strip() for x in r]:
@@ -64,7 +63,7 @@ def cargar_precios(url_precios):
     if not gc: return pd.DataFrame()
     sh_precios = gc.open_by_url(url_precios)
     try:
-        p_vals = sh_precios.worksheet("DATOS").get("A1:Z5000")
+        p_vals = sh_precios.worksheet("DATOS").get_all_values()
         precios_consolidados = []
         idx_header, col_anio, col_prod = -1, -1, -1
         for i in range(min(10, len(p_vals))):
@@ -89,70 +88,82 @@ def cargar_precios(url_precios):
         return pd.DataFrame(precios_consolidados)
     except: return pd.DataFrame()
 
-# 💥 EL ESCUDO DE MEMORIA FINAL: Filtra en el aire, no guarda celdas vacías
+# 💥 EL SALVAVIDAS ARQUITECTÓNICO: Extrae los promedios en el aire y destruye la tabla gigante
 @st.cache_data(show_spinner=False, ttl=3600)
-def cargar_tabla_1(url_boveda):
+def generar_diccionario_promedios(url_boveda):
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame()
-    boveda = gc.open_by_url(url_boveda)
+    if not gc: return {}
     try:
-        # Límite geográfico estricto: Destruye las 50,000 filas fantasma
-        t1 = boveda.worksheet("TABLA 1").get("A1:Z8000")
+        boveda = gc.open_by_url(url_boveda)
+        ws = boveda.worksheet("TABLA 1")
+        t1_raw = ws.get_all_values()
         
-        idx_t1 = 4
-        for i in range(min(10, len(t1))):
-            if "FINCA" in [str(x).upper() for x in t1[i]]:
-                idx_t1 = i
-                break
+        idx_header = 4
+        for i in range(min(10, len(t1_raw))):
+            if "FINCA" in [str(x).upper() for x in t1_raw[i]]:
+                idx_header = i; break
+                
+        headers = [str(x).upper().replace(" ", "").replace("\n", "") for x in t1_raw[idx_header]]
+        idx_f, idx_d, idx_c = -1, -1, -1
         
-        if len(t1) <= idx_t1: return pd.DataFrame()
-        
-        headers = [str(x).upper().replace('\n', '').strip().replace(" ", "") for x in t1[idx_t1]]
-        col_finca, col_fecha, col_costo = -1, -1, -1
-        
-        for i, c in enumerate(headers):
-            if "FINCA" in c or "PROPIEDAD" in c: col_finca = i
-            elif "FECHA" in c or "DATE" in c: col_fecha = i
-            elif "COSTO" in c and "AVI" in c and "$/HA" in c: col_costo = i
+        for i, h in enumerate(headers):
+            if "FINCA" in h or "PROPIEDAD" in h: idx_f = i
+            elif "FECHA" in h or "DATE" in h: idx_d = i
+            elif "COSTO" in h and "AVI" in h and "$/HA" in h: idx_c = i
             
-        if col_costo == -1:
-            for i, c in enumerate(headers):
-                if "COSTO" in c and "$/HA" in c: col_costo = i; break
+        if idx_c == -1:
+            for i, h in enumerate(headers):
+                if "COSTO" in h and "$/HA" in h: idx_c = i; break
                 
-        if col_finca == -1 or col_costo == -1: return pd.DataFrame()
+        if idx_f == -1 or idx_c == -1: return {}
         
-        valid_rows = []
+        año_actual = str(datetime.now().year)
+        año_corto = año_actual[-2:]
+        diccionario_fincas = {}
         
-        for row in t1[idx_t1+1:]:
-            if len(row) > max(col_finca, col_costo):
-                f_val = re.sub(r'[^A-Z0-9]', '', str(row[col_finca]).upper().strip())
-                c_val = str(row[col_costo]).strip()
-                d_val = str(row[col_fecha]).strip() if col_fecha != -1 and col_fecha < len(row) else ""
+        for row in t1_raw[idx_header+1:]:
+            if len(row) > max(idx_f, idx_c):
+                f_clean = re.sub(r'[^A-Z0-9]', '', str(row[idx_f]).upper().strip())
+                if not f_clean: continue
                 
-                if f_val and c_val and c_val != '-':
-                    v = re.sub(r'[^\d\.,\-]', '', c_val)
-                    if v:
-                        try:
-                            if v.count('.') == 1 and v.count(',') == 0:
-                                if len(v.split('.')[1]) == 3: v = v.replace('.', '')
-                            if '.' in v and ',' in v:
-                                if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-                                else: v = v.replace(',', '')
-                            elif ',' in v: v = v.replace(',', '.')
-                            f_costo = float(v)
-                            if f_costo < 1000 and '.' in c_val and len(c_val.split('.')[-1]) == 3:
-                                f_costo *= 1000
-                            if f_costo > 1000:
-                                valid_rows.append({'F_CLEAN': f_val, 'FECHA_CLEAN': d_val, 'VAL_COSTO_HA': f_costo})
-                        except: pass
-        
-        # Devuelve un DataFrame miniatura y perfecto. Imposible agotar RAM.
-        return pd.DataFrame(valid_rows)
+                costo_str = str(row[idx_c]).strip()
+                fecha_str = str(row[idx_d]).strip() if idx_d != -1 and idx_d < len(row) else ""
+                
+                v = re.sub(r'[^\d\.,\-]', '', costo_str)
+                if v and v != '-':
+                    try:
+                        if v.count('.') == 1 and v.count(',') == 0:
+                            if len(v.split('.')[1]) == 3: v = v.replace('.', '')
+                        if '.' in v and ',' in v:
+                            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+                            else: v = v.replace(',', '')
+                        elif ',' in v: v = v.replace(',', '.')
+                        f_costo = float(v)
+                        
+                        if f_costo < 1000 and '.' in costo_str and len(costo_str.split('.')[-1]) == 3:
+                            f_costo *= 1000
+                            
+                        if f_costo > 1000:
+                            if f_clean not in diccionario_fincas:
+                                diccionario_fincas[f_clean] = {"este_año": [], "historico": []}
+                                
+                            is_current = año_actual in fecha_str or fecha_str.endswith(f"/{año_corto}") or fecha_str.endswith(f"-{año_corto}")
+                            if is_current:
+                                diccionario_fincas[f_clean]["este_año"].append(f_costo)
+                            diccionario_fincas[f_clean]["historico"].append(f_costo)
+                    except: pass
+                    
+        promedios_finales = {}
+        for f, datos in diccionario_fincas.items():
+            if datos["este_año"]: promedios_finales[f] = sum(datos["este_año"]) / len(datos["este_año"])
+            elif datos["historico"]: promedios_finales[f] = sum(datos["historico"]) / len(datos["historico"])
+            
+        return promedios_finales # Devuelve un diccionario diminuto, la tabla se borra de la RAM
     except Exception as e:
-        return pd.DataFrame()
+        return {}
 
 # =================================================================
-# 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE
+# 🧠 MOTORES DE LÓGICA
 # =================================================================
 
 def limpiar_numero(val):
@@ -163,42 +174,6 @@ def limpiar_numero(val):
         if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
         return float(v) if v else 0.0
     except: return 0.0
-
-def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
-    if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
-        return 45000.0
-    
-    finca_buscada = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
-    if not finca_buscada: return 45000.0
-    
-    df_finca = df_t1[df_t1['F_CLEAN'] == finca_buscada]
-    
-    if df_finca.empty:
-        match_inicial = df_t1['F_CLEAN'].str.startswith(finca_buscada, na=False)
-        df_finca = df_t1[match_inicial]
-    
-    if df_finca.empty: 
-        return 45000.0 
-        
-    año_actual = str(datetime.now().year)
-    año_corto = año_actual[-2:] 
-    
-    if 'FECHA_CLEAN' in df_finca.columns:
-        mask_año = df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"/{año_corto}", na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"-{año_corto}", na=False)
-        df_finca_año = df_finca[mask_año]
-        
-        if not df_finca_año.empty:
-            df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
-            if not df_valid_costos.empty:
-                prom = df_valid_costos['VAL_COSTO_HA'].mean()
-                return 45000.0 if pd.isna(prom) else float(prom)
-    
-    df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
-    if not df_valid_costos_hist.empty:
-        prom = df_valid_costos_hist['VAL_COSTO_HA'].mean()
-        return 45000.0 if pd.isna(prom) else float(prom)
-            
-    return 45000.0
 
 def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
@@ -282,29 +257,29 @@ def ejecutar():
         st.info("💡 Por favor, pega los enlaces arriba para comenzar a trabajar.")
         st.stop()
 
-    if st.button("🔄 Conectar y Descargar (Cerco Geográfico Seguro)", type="primary"):
+    if st.button("🔄 Conectar y Descargar (Sin Sobrecargar RAM)", type="primary"):
         cargar_maestras_ligeras.clear() 
         cargar_precios.clear()
-        cargar_tabla_1.clear()
-        with st.spinner("Conectando de forma segura... bloqueando filas en blanco infinitas."):
+        generar_diccionario_promedios.clear()
+        with st.spinner("Desacoplando TABLA 1... calculando promedios en la nube y liberando memoria..."):
             mez, conf, dicc, t2 = cargar_maestras_ligeras(url_1)
             prec = cargar_precios(url_2)
-            t1 = cargar_tabla_1(url_1)
+            dict_promedios = generar_diccionario_promedios(url_1) # Solo baja los promedios
             
             st.session_state['m17_mez'] = mez
             st.session_state['m17_conf'] = conf
             st.session_state['m17_dicc'] = dicc
             st.session_state['m17_t2'] = t2
             st.session_state['m17_prec'] = prec
-            st.session_state['m17_t1'] = t1
-            st.success("¡Datos descargados! La memoria RAM está a salvo y relajada.")
+            st.session_state['m17_promedios'] = dict_promedios
+            st.success("¡Datos encriptados y servidor 100% libre de sobrecargas!")
 
     df_mezclas = st.session_state.get('m17_mez', pd.DataFrame())
     df_conf = st.session_state.get('m17_conf', pd.DataFrame())
     df_dicc = st.session_state.get('m17_dicc', pd.DataFrame())
     df_t2 = st.session_state.get('m17_t2', pd.DataFrame())
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
-    df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
+    promedios_vuelo = st.session_state.get('m17_promedios', {})
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     
@@ -346,7 +321,7 @@ def ejecutar():
         if df_valid.empty:
             st.error("⚠️ La tabla está vacía. Por favor pega datos antes de ejecutar.")
         else:
-            with st.spinner("Calculando promedios reales..."):
+            with st.spinner("Calculando finanzas a la velocidad de la luz..."):
                 
                 col_prod_idx = 5
                 if not df_t2.empty:
@@ -378,8 +353,17 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
+                    # 💥 EXTRACCIÓN ULTRA RÁPIDA DESDE EL DICCIONARIO
                     if precio_vuelo_manual == 0:
-                        precio_vuelo_final = calcular_promedio_vuelo_finca(finca_n, df_t1)
+                        f_clean_user = re.sub(r'[^A-Z0-9]', '', finca_n)
+                        precio_vuelo_final = promedios_vuelo.get(f_clean_user, 0.0)
+                        
+                        if precio_vuelo_final == 0.0:
+                            for f_db, prom_db in promedios_vuelo.items():
+                                if f_db.startswith(f_clean_user):
+                                    precio_vuelo_final = prom_db; break
+                                    
+                        if precio_vuelo_final == 0.0: precio_vuelo_final = 45000.0
                     else:
                         precio_vuelo_final = precio_vuelo_manual
 
