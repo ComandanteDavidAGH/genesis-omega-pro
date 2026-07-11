@@ -23,7 +23,7 @@ def inicializar_cliente_gspread():
 # 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
 # =================================================================
 
-def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
+def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -51,10 +51,11 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
 
     st.markdown("<h1 class='titulo-principal'>Sincronización de Precios y Tarifas</h1>", unsafe_allow_html=True)
     
-    gc = inicializar_cliente_gspread()
-    if gc is None:
-        st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
+    if supabase_client is None:
+        st.error("🚨 El enlace principal con la base de datos Supabase no está inicializado.")
         return
+
+    gc = inicializar_cliente_gspread()
 
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
@@ -62,43 +63,44 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
         st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
         
         if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
-            with st.spinner("📡 Conectando con la Bóveda de Configuración a alta velocidad..."):
+            with st.spinner("📡 Descargando arsenal de precios desde Supabase Cloud..."):
                 try:
-                    url_gen = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                    sh_gen = gc.open_by_url(url_gen)
-                    raw_config = sh_gen.worksheet("Configuración").get_all_values()
+                    # 🎯 JUGADA MAESTRA: Se extraen los datos directo de la nueva base de datos relacional
+                    respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
+                    raw_config = respuesta.data
                     
                     lista_precios = []
                     for row in raw_config:
-                        if len(row) > 9:
-                            prod = str(row[8]).upper().strip()
+                        # Buscamos las columnas tolerando mayúsculas o minúsculas por seguridad
+                        prod = str(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
+                        
+                        es_cero_basura = False
+                        try:
+                            if float(prod) == 0: es_cero_basura = True
+                        except ValueError:
+                            pass
                             
-                            es_cero_basura = False
-                            try:
-                                if float(prod) == 0: es_cero_basura = True
-                            except ValueError:
-                                pass
-                                
-                            if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
-                                costo_base = extraer_numero(row[9])
-                                if costo_base > 0:
-                                    lista_precios.append({
-                                        "PRODUCTO": prod,
-                                        "COSTO BASE": costo_base,
-                                        "TERCERO (+45.1%)": round(costo_base * 1.451, 0),
-                                        "AFILIADO (+16.4%)": round(costo_base * 1.164, 0),
-                                        "COOPERATIVA / SOCIO (+11.2%)": round(costo_base * 1.112, 0),
-                                        "ORGÁNICO (+1.1%)": round(costo_base * 1.011, 0)
-                                    })
+                        if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
+                            val_costo = row.get('COSTO BASE', row.get('COSTO_BASE', row.get('costo_base', 0)))
+                            costo_base = extraer_numero(str(val_costo))
+                            if costo_base > 0:
+                                lista_precios.append({
+                                    "PRODUCTO": prod,
+                                    "COSTO BASE": costo_base,
+                                    "TERCERO (+45.1%)": round(costo_base * 1.451, 0),
+                                    "AFILIADO (+16.4%)": round(costo_base * 1.164, 0),
+                                    "COOPERATIVA / SOCIO (+11.2%)": round(costo_base * 1.112, 0),
+                                    "ORGÁNICO (+1.1%)": round(costo_base * 1.011, 0)
+                                })
                     
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado en la caché local: {len(lista_precios)} productos.")
+                        st.success(f"✅ Tarifario cargado desde Supabase: {len(lista_precios)} productos.")
                     else:
-                        st.warning("⚠️ El escáner no encontró productos con precios válidos en la hoja.")
+                        st.warning("⚠️ No se encontraron registros válidos en la tabla PRECIOS_INSUMOS.")
                 except Exception as e:
-                    st.error(f"🚨 Error al generar tarifario: {e}")
+                    st.error(f"🚨 Error al consultar Supabase: {e}")
                     
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
@@ -157,8 +159,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     
             with t3:
                 st.markdown("#### Búsqueda Rápida Individual")
-                
-                # 🎨 INYECCIÓN CSS: Bordes negros para las casillas de resultados
                 st.markdown("""
                 <style>
                 div[data-testid="stCodeBlock"] {
@@ -175,7 +175,6 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     st.info(f"🎯 Valores calculados para: **{prod_sel}**")
                     c1, c2, c3, c4, c5 = st.columns(5)
                     
-                    # 📏 Estructura de altura fija para absorber saltos de línea sin desalinear
                     caja_titulo = "height: 45px; display: flex; align-items: flex-end; margin-bottom: 5px;"
                     estilo_etiqueta = "font-size: 11px; font-weight: 900; color: #0d1b2a; margin: 0; line-height: 1.2;"
                     
@@ -200,33 +199,33 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
     
     c_url1, c_url2 = st.columns(2)
     with c_url1:
-        url_ori = st.text_input("🔗 1. URL de Bóveda Origen (GÉNESIS_CONFIG):", value="https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        st.text_input("🔗 1. Base de Origen Activa:", value="DATABASE: Supabase Cloud [PRECIOS_INSUMOS]", disabled=True)
     with c_url2:
         url_dest = st.text_input("🎯 2. URL de Sábana Destino (Google Sheets Nativo convertido):", placeholder="Pegue aquí el enlace completo de 44 caracteres...")
     
     semana_target = st.number_input("🔢 Digite la Semana a actualizar (1 a 53):", min_value=1, max_value=53, value=24, step=1)
 
     if st.button("🚀 EJECUTAR OMEGA V12", use_container_width=True):
-        if not url_ori or not url_dest or "http" not in url_dest:
-            st.error("❌ Por favor, asegúrese de ingresar ambas URLs válidas en la pantalla antes de disparar.")
+        if gc is None:
+            st.error("🚨 Enlace satelital roto con Google Cloud (gspread).")
+            return
+        if not url_dest or "http" not in url_dest:
+            st.error("❌ Por favor, ingrese una URL de destino válida para inyectar los datos.")
             return
             
         try:
-            with st.status("🕵️‍♂️ ANALIZANDO CONEXIÓN PERIMETRAL EN VIVO...", expanded=True) as status:
+            with st.status("🕵️‍♂️ CONECTANDO CON CÉLULA SUPABASE Y DESTINO...", expanded=True) as status:
                 
-                sh_gen = gc.open_by_url(url_ori)
-                raw_config = sh_gen.worksheet("Configuración").get_all_values(value_render_option='UNFORMATTED_VALUE')
-                
+                respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                 dict_precios = {}
-                for row in raw_config:
-                    if len(row) > 9:
-                        prod = limpiar_texto_vba(row[8]).upper().strip()
-                        if prod and prod != "PRODUCTO":
-                            dict_precios[prod] = val_seguro(row[9])
+                for row in respuesta.data:
+                    prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
+                    val_costo = row.get('COSTO BASE', row.get('COSTO_BASE', row.get('costo_base', 0)))
+                    if prod:
+                        dict_precios[prod] = val_seguro(str(val_costo))
                 
-                st.write(f"📊 **Origen:** `{len(dict_precios)}` precios leídos de Configuración.")
+                st.write(f"📊 **Supabase:** `{len(dict_precios)}` precios maestros mapeados.")
 
-                # Conexión directa a la sábana destino
                 sh_dest = gc.open_by_url(url_dest)
                 ws_datos = sh_dest.worksheet("DATOS")
                 datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
@@ -267,16 +266,10 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
                     if producto_dest in dict_precios:
                         precio_unitario = dict_precios[producto_dest]
                         
-                        # 🎯 LA JUGADA MAESTRA: Si pertenece a la tabla de dosis por hectárea
                         if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
-                            # Extraemos el factor numérico directamente de la Columna A (índice 0) de la misma fila
                             dosis_valor = extraer_numero(row_padded[0])
-                            if dosis_valor > 0:
-                                valor_final = precio_unitario * dosis_valor
-                            else:
-                                valor_final = 0 # Imita fielmente tu =SI.ERROR(..., 0) si la celda de dosis está vacía o es texto
+                            valor_final = precio_unitario * dosis_valor if dosis_valor > 0 else 0
                         else:
-                            # Primera tabla: Precio por Litro puro
                             valor_final = precio_unitario
                             
                         updates.append({
@@ -286,8 +279,8 @@ def ejecutar(extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
 
                 if len(updates) > 1:
                     ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                    status.update(label="🎯 ¡MÓDULO DE DOSIS AJUSTADO AL 100%!", state="complete")
-                    st.success(f"🎉 Los precios unitarios y por dosis calculados desde la Columna A han impactado en la columna {col_semana}.")
+                    status.update(label="🎯 ¡MÓDULO DE DOSIS AJUSTADO DESDE SUPABASE!", state="complete")
+                    st.success(f"🎉 Precios impactados con éxito en la columna {col_semana}.")
                     st.balloons()
                 else:
                     status.update(label="❌ OPERACIÓN SIN COINCIDENCIAS", state="error")
