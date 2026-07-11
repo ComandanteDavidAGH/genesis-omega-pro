@@ -27,8 +27,13 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
     def procesar_fecha_pesada(val):
         if pd.isna(val) or val is None or str(val).strip() == "": return None
-        for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%Y-%m-%dT%H:%M:%S'):
-            try: return datetime.strptime(str(val).strip().split(" ")[0], fmt.split(" ")[0])
+        texto = str(val).strip().split(" ")[0]
+        # Manejo de fechas seriales (por si Supabase lo lee como número de Excel)
+        if texto.isdigit():
+            try: return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(texto), unit='D')
+            except: pass
+        for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y'):
+            try: return datetime.strptime(texto, fmt)
             except: pass
         return None
 
@@ -49,23 +54,33 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ La TABLA_1 está vacía en Supabase.")
             return
 
-        # 🎯 PURIFICADOR: Eliminamos el veneno "NoneType" y traducimos los nombres exactos de Supabase
+        # 🎯 PURIFICADOR DINÁMICO: Caza de datos a prueba de espacios ocultos
         datos_limpios = []
         for row in raw_data:
+            # 1. Normalizamos las llaves (quitamos espacios de los extremos y pasamos a mayúscula)
+            r_norm = {str(k).strip().upper(): v for k, v in row.items()}
+            
+            # 2. Buscamos las hectáreas dinámicamente
+            llave_ha = next((k for k in r_norm.keys() if "FUMIG" in k or "NETA" in k), None)
+            val_ha = r_norm[llave_ha] if llave_ha else 0
+            
+            # 3. Buscamos las horas dinámicamente
+            llave_hr = next((k for k in r_norm.keys() if "RENDIMIENTO" in k and "HORA" in k), None)
+            val_hr = r_norm[llave_hr] if llave_hr else 0
+            
             datos_limpios.append({
-                "OS": str(row.get("Nº ORDEN", "") or ""),
-                "PISTA": str(row.get("PISTA", "") or "").strip().upper(),
-                "HK": str(row.get("HK", "") or "").strip().upper(),
-                "MODELO": str(row.get("MODELO", "") or "").strip().upper(),
-                "FECHA": str(row.get("FECHA", "") or ""),
-                "SEMANA": str(row.get("SEM", "") or "").strip(),
-                "HA_NETAS": extraer_numero(row.get("ÁREA FUMIG.(ha)", 0)),
-                "H_PROPORCIONAL": extraer_numero(row.get("RENDIMIENTO (horas)", 0))
+                "OS": str(r_norm.get("Nº ORDEN", r_norm.get("ORDEN", ""))),
+                "PISTA": str(r_norm.get("PISTA", "")).strip().upper(),
+                "HK": str(r_norm.get("HK", "")).strip().upper(),
+                "MODELO": str(r_norm.get("MODELO", "")).strip().upper(),
+                "FECHA": str(r_norm.get("FECHA", "")).strip(),
+                "SEMANA": str(r_norm.get("SEM", r_norm.get("SEMANA", ""))).strip(),
+                "HA_NETAS": extraer_numero(val_ha),
+                "H_PROPORCIONAL": extraer_numero(val_hr)
             })
 
         df_rep = pd.DataFrame(datos_limpios)
         
-        # 🎯 Mapeo de Modelos (Dron vs Avión) basado en HK
         mask_hk = df_rep['HK'] != ""
         mapa_modelo = {}
         if not df_rep[mask_hk].empty:
@@ -73,7 +88,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_rep.loc[mask_hk, 'PISTA'] = df_rep.loc[mask_hk, 'HK'].map(mapa_flota).fillna(df_rep.loc[mask_hk, 'PISTA'])
             mapa_modelo = df_rep[mask_hk].groupby('HK')['MODELO'].first().to_dict()
         
-        # Limpieza de registros inválidos
         df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
         df_rep['FECHA_DT'] = df_rep['FECHA'].apply(procesar_fecha_pesada)
         df_rep = df_rep.dropna(subset=['FECHA_DT'])
@@ -86,7 +100,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         min_fecha_real = df_rep['FECHA_DT'].min().date()
         max_fecha_real = df_rep['FECHA_DT'].max().date()
         
-        st.success("✅ ¡Base de datos sincronizada y purificada!")
+        st.success(f"✅ ¡Base de datos sincronizada! {len(df_rep)} vuelos procesados a la perfección.")
 
         # --- 🎛️ PANEL DE CONTROL ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
