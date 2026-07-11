@@ -10,3 +10,4 @@ pillow
 folium
 requests
 supabase
+pyarrow==24.0.0
