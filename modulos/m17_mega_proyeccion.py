@@ -535,6 +535,8 @@ def ejecutar():
 
         st.markdown("<br>", unsafe_allow_html=True)
         buffer = io.BytesIO()
+        
+        # 1. Exportamos los datos estáticos sin fórmulas para garantizar que el total coincida 100% con el panel
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False)
             df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
@@ -543,20 +545,6 @@ def ejecutar():
             
             workbook = writer.book
             
-            ws_detalle = workbook['Detalle_Económico']
-            for row_idx in range(2, ws_detalle.max_row + 1):
-                celda_vuelo = ws_detalle.cell(row=row_idx, column=7)
-                celda_vuelo.value = f"=B{row_idx}*E{row_idx}"
-                celda_vuelo.data_type = 'f' 
-                
-                celda_total = ws_detalle.cell(row=row_idx, column=10)
-                celda_total.value = f"=F{row_idx}+G{row_idx}+H{row_idx}"
-                celda_total.data_type = 'f' 
-                
-                celda_ha = ws_detalle.cell(row=row_idx, column=9)
-                celda_ha.value = f"=IF(B{row_idx}>0, J{row_idx}/B{row_idx}, 0)"
-                celda_ha.data_type = 'f' 
-
             borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
             header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
             header_font = Font(color="FFFFFF", bold=True)
@@ -564,9 +552,20 @@ def ejecutar():
             for sheet_name in workbook.sheetnames:
                 ws = workbook[sheet_name]
                 ws.sheet_view.showGridLines = False
-                for col_idx in range(1, ws.max_column + 1):
+                
+                # Definir límites exactos para evitar el bucle infinito que causa el "Oh no"
+                max_r = ws.max_row
+                max_c = ws.max_column
+                
+                # Extraemos los nombres de las columnas UNA SOLA VEZ (Evita saturar la memoria RAM)
+                column_headers = {}
+                for col_idx in range(1, max_c + 1):
                     ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = 20
-                for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+                    header_val = ws.cell(row=1, column=col_idx).value
+                    column_headers[col_idx] = str(header_val).upper() if header_val else ""
+
+                # Iteración segura y ultra rápida
+                for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
                     for cell in row:
                         cell.border = borde
                         if cell.row == 1:
@@ -575,9 +574,11 @@ def ejecutar():
                             cell.alignment = Alignment(horizontal='center', vertical='center')
                         else:
                             cell.alignment = Alignment(vertical='center')
-                            col_name = str(ws.cell(row=1, column=cell.column).value).upper()
                             
-                            if cell.data_type == 'f' or isinstance(cell.value, (int, float)):
+                            # Usamos el diccionario en lugar de consultar la celda múltiples veces
+                            col_name = column_headers.get(cell.column, "")
+                            
+                            if isinstance(cell.value, (int, float)):
                                 if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name:
                                     cell.number_format = '"$" #,##0' 
                                 elif "HECTAREAS" in col_name or "VOLUMEN" in col_name:
