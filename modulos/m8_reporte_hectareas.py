@@ -5,7 +5,7 @@ from datetime import datetime
 import io
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V12 (FILTRO ANTI-SALTOS DE LÍNEA)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V12 (TABLAS NATIVAS ANTI-CORTOCIRCUITO)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     st.markdown("""
@@ -53,13 +53,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ La TABLA_1 está vacía en Supabase.")
             return
 
-        # 🎯 EL ANTÍDOTO: Destruye los "\n" y los "NULL" de raíz antes de dárselos a Pandas
+        # 🎯 PURIFICACIÓN EXTREMA DE DATOS
         datos_limpios = []
         for row in raw_data:
-            # Reemplazamos los saltos de línea (\n) por espacios y convertimos las llaves a mayúsculas
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
             
-            # Buscamos las columnas exactas (ahora limpias)
             llave_ha = next((k for k in r_norm.keys() if "FUMIG" in k), None)
             llave_hr = next((k for k in r_norm.keys() if "RENDIMIENTO (HORAS)" in k or "RENDIMIENTO  (HORAS)" in k), None)
             llave_sem = next((k for k in r_norm.keys() if k == "SEM" or k == "SEMANA"), None)
@@ -75,7 +73,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 "H_PROPORCIONAL": extraer_numero(r_norm.get(llave_hr, "0") if llave_hr else "0")
             })
 
-        # Ahora sí, Pandas recibe una tabla 100% pura y segura
         df_rep = pd.DataFrame(datos_limpios)
         
         mask_hk = df_rep['HK'] != ""
@@ -206,19 +203,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
+            # 🎯 ARMADURA VISUAL: Convertimos a texto seguro ANTES de mostrar. SIN ESTILOS DE COLORES.
             df_visual = pd.DataFrame(tabla_final)
+            for col in ['ÁREA FUMIG (ha)', 'REND (hr)', 'PROMEDIO (Ha/Hr)']:
+                if col in df_visual.columns:
+                    df_visual[col] = df_visual[col].apply(fmt_latino)
             
-            def stylize_rows(row):
-                if "BASE:" in str(row['NIVEL']): return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
-                elif "TOTAL GENERAL" in str(row['NIVEL']): return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
-                elif 'AVIÓN (HK)' in row and ("✈️" in str(row.get('AVIÓN (HK)','')) or "🚁" in str(row.get('AVIÓN (HK)',''))): return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
-                return [''] * len(row)
-                
-            fmt_cols = {'ÁREA FUMIG (ha)': fmt_latino}
-            if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
-            if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
-            
-            st.dataframe(df_visual.style.apply(stylize_rows, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
+            # Tabla 100% nativa. Imposible que sufra cortocircuito.
+            st.dataframe(df_visual, use_container_width=True, hide_index=True)
 
         else:
             matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
@@ -230,7 +222,12 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
             
             st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
-            st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
+            
+            # 🎯 ARMADURA VISUAL: Sin colores de fondo (background_gradient) que tumban la app.
+            df_matriz_str = matriz.copy()
+            for col in df_matriz_str.columns:
+                df_matriz_str[col] = df_matriz_str[col].apply(fmt_latino)
+            st.dataframe(df_matriz_str, use_container_width=True)
             
             st.markdown("---")
             df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
@@ -241,6 +238,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 fig.update_layout(xaxis_title="Mes", showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
 
+        # 🎯 EXPORTACIÓN EXCEL ULTRA-LIGERA
         st.markdown("---")
         buffer_rep = io.BytesIO()
         nombre_hoja = 'Reporte'
