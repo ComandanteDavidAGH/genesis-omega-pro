@@ -148,28 +148,39 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0
     
-    # 💥 EL ESCUDO ALFANUMÉRICO: Elimina espacios, saltos de línea (\n) y símbolos raras del usuario
+    # 💥 EL ESCUDO ALFANUMÉRICO: Elimina espacios y símbolos raros del usuario
     finca_buscada = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
     
     # Búsqueda exacta indestructible
     df_finca = df_t1[df_t1['F_CLEAN'] == finca_buscada]
     
+    # 💥 SOLUCIÓN GISELLE BEATRIZ: Si no encuentra exacta, busca si el nombre es el inicio (Ej: GISELLEB)
+    if df_finca.empty and finca_buscada:
+        match_inicial = df_t1['F_CLEAN'].str.startswith(finca_buscada, na=False)
+        df_finca = df_t1[match_inicial]
+    
     if df_finca.empty: 
         return 45000.0 
         
     año_actual = str(datetime.now().year)
+    año_corto = año_actual[-2:]
     
     if 'FECHA_CLEAN' in df_finca.columns:
-        df_finca_año = df_finca[df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False)]
+        # Filtro estricto que admite año 2026 completo o abreviado (/26 o -26)
+        mask_año = df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"/{año_corto}", na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"-{año_corto}", na=False)
+        df_finca_año = df_finca[mask_año]
         
         if not df_finca_año.empty:
             df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
             if not df_valid_costos.empty:
-                return df_valid_costos['VAL_COSTO_HA'].mean()
+                prom = df_valid_costos['VAL_COSTO_HA'].mean()
+                # 💥 Filtro Anti-NaN para evitar colapso de pantalla roja
+                return 45000.0 if pd.isna(prom) else float(prom)
     
     df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
     if not df_valid_costos_hist.empty:
-        return df_valid_costos_hist['VAL_COSTO_HA'].mean()
+        prom = df_valid_costos_hist['VAL_COSTO_HA'].mean()
+        return 45000.0 if pd.isna(prom) else float(prom)
             
     return 45000.0
 
@@ -221,7 +232,8 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 dict_prods[p_fall] = dict_prods.get(p_fall, 0.0) + d_fall
 
     for p in list(dict_prods.keys()):
-        if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u =="ZN" or x in coctel_u =="BT" or x in coctel_u =="ZT" or x in coctel_u =="ZITRON" for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+        # Se corrigió sintaxis silenciosa en lista
+        if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
         elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = 1.5 if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else 1.0
         if es_organico and "ADHERENTE" in p: del dict_prods[p]
     if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = 0.2
@@ -262,7 +274,7 @@ def ejecutar():
 
         if st.button("🔄 Conectar y Descargar", type="primary"):
             if url_1 and url_2:
-                with st.spinner("Descargando información (Modo Francotirador Indestructible)..."):
+                with st.spinner("Descargando información (Modo Original Protegido)..."):
                     try:
                         mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2)
                         st.session_state['m17_mez'] = mez
@@ -365,7 +377,7 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
-                    # Cálculo del promedio dinámico blindado
+                    # Cálculo del promedio dinámico
                     if precio_vuelo_manual == 0:
                         precio_vuelo_final = calcular_promedio_vuelo_finca(finca_n, df_t1)
                     else:
@@ -427,6 +439,12 @@ def ejecutar():
 
                     costo_st_fila = dias_c * st_base * ha_num
                     costo_vuelo_fila = precio_vuelo_final * ha_num 
+
+                    # 💥 ESCUDO ANTI-COLAPSO: Convierte NaN en ceros para evitar la pantalla roja de ValueError
+                    costo_mezcla_fila = 0.0 if pd.isna(costo_mezcla_fila) else float(costo_mezcla_fila)
+                    costo_st_fila = 0.0 if pd.isna(costo_st_fila) else float(costo_st_fila)
+                    costo_vuelo_fila = 0.0 if pd.isna(costo_vuelo_fila) else float(costo_vuelo_fila)
+
                     gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + 0.5)
                     costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
 
