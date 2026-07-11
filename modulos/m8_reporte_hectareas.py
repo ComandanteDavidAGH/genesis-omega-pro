@@ -1,49 +1,38 @@
 import streamlit as st
-import pandas as pd
 
 # =================================================================
-# 🎣 CÓDIGO CEBO PARA DETECTAR LA MUERTE SÚBITA
+# 🕵️‍♂️ ESCÁNER FORENSE (SIN PANDAS / SIN PYARROW)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
-    st.markdown("<h1>Radar de Hectáreas - MODO RASTREO</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>Radar - MODO FORENSE</h1>", unsafe_allow_html=True)
     
-    st.warning("🕵️‍♂️ INICIANDO OPERACIÓN DE RASTREO...")
-    
-    # --- CEBO 1 ---
-    st.info("🎣 CEBO 1: El enrutador funcionó y entramos al Módulo 8 correctamente.")
-
     if supabase_client is None:
-        st.error("🚨 CEBO FALLIDO: El cliente de Supabase llegó vacío desde app.py.")
+        st.error("🚨 Sin conexión a Supabase.")
         return
 
     try:
-        # --- CEBO 2 ---
-        st.info("🎣 CEBO 2: Tocando la puerta de Supabase para pedir solo 5 filas...")
-        respuesta = supabase_client.table("TABLA_1").select("*").limit(5).execute()
-        raw_data = respuesta.data
+        st.info("🔍 PASO 1: Pidiendo 1 sola fila a Supabase...")
+        respuesta = supabase_client.table("TABLA_1").select("*").limit(1).execute()
+        datos = respuesta.data
         
-        # --- CEBO 3 ---
-        st.info(f"🎣 CEBO 3: Supabase respondió. Se recibieron {len(raw_data)} filas.")
+        st.info("🔍 PASO 2: Fila recibida. Desarmando columna por columna (Sin Pandas)...")
         
-        if not raw_data:
-            st.warning("⚠️ La TABLA_1 está vacía. Fin de la prueba.")
+        if not datos:
+            st.warning("La tabla está vacía.")
             return
             
-        # --- CEBO 4 ---
-        st.info("🎣 CEBO 4: Convirtiendo datos a Pandas DataFrame...")
-        df_raw = pd.DataFrame(raw_data)
+        fila = datos[0]
         
-        # --- CEBO 5 ---
-        st.info("🎣 CEBO 5: Forzando a texto puro para evitar colapsos gráficos y mostrando en pantalla:")
-        
-        # Burlamos a PyArrow forzando todo a texto
-        st.write(df_raw.astype(str))
-        
-        # --- CEBO 6 ---
-        st.success("🎉 CEBO 6: ¡Misión Cumplida! Si ves este mensaje verde, la conexión, la memoria y la tabla funcionan perfectamente.")
+        st.markdown("### ☢️ Radiografía de la Fila 1:")
+        # Imprimimos cada columna como texto puro para evitar colapsos
+        for nombre_columna, valor_celda in fila.items():
+            tipo_dato = type(valor_celda).__name__
+            st.code(f"COLUMNA: {nombre_columna} | VALOR: {valor_celda} | TIPO: {tipo_dato}", language="text")
+            
+        st.success("✅ PASO 3: ¡SUPERVIVENCIA CONFIRMADA! Si ves este mensaje verde, el problema es 100% una incompatibilidad de PyArrow.")
 
     except Exception as e:
-        st.error(f"🚨 EL CEBO ATRAPÓ UN ERROR FATAL: {e}")
+        st.error(f"🚨 EL ESCÁNER DETECTÓ UN ERROR: {e}")
 
 if __name__ == "__main__":
     pass
