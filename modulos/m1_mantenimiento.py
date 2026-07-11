@@ -77,7 +77,7 @@ def ejecutar(extraer_numero):
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
                      
                     df = df.dropna(subset=[df.columns[0]])
-                    df = df[~df.iloc[:, 0].astype(str).str.contains('\*')]
+                    df = df[~df.iloc[:, 0].astype(str).str.contains(r'\*')]
                     if len(df.columns) >= 11:
                         df = df.sort_values(by=df.columns[10], ascending=True)
                      
