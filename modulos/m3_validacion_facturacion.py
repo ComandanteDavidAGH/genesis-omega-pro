@@ -114,7 +114,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
         puntaje = 0
         es_valido = True
         
-        # 1. VALIDACIÓN DEL LÍDER (Solo si la receta exige un líder con 'X')
+        # 1. VALIDACIÓN DEL LÍDER
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -123,13 +123,12 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_lider = True
                     break
             if not match_lider:
-                es_valido = False # Si pide líder y no está en SAP, se descarta.
+                es_valido = False 
         
         if not es_valido:
             continue
 
-        # 2. ANÁLISIS QUÍMICO RIGUROSO (SAP vs Receta)
-        # A. Revisar qué pide la receta vs qué hay en SAP
+        # 2. ANÁLISIS QUÍMICO RIGUROSO
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
@@ -141,15 +140,14 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     break
             
             if match_receta:
-                puntaje += 100  # +100 por cada producto que coincide
+                puntaje += 100
                 if dose_matched: 
-                    puntaje += 50  # 💥 CORRECCIÓN: Sube a 50 para que la Dosis Exacta sea la que mande.
+                    puntaje += 50 
                 else:
-                    puntaje -= 50  # 💥 CORRECCIÓN: Castigo si la dosis no cuadra.
+                    puntaje -= 50
             else:
-                puntaje -= 100  # -100 si la receta exige un producto que SAP NO trajo
+                puntaje -= 100 
 
-        # B. Revisar qué trajo SAP vs qué pide la receta (Penalizar productos invasores)
         for k_sap in sap_dict_pista.keys():
             sap_en_receta = False
             for p_receta in receta.keys():
@@ -158,7 +156,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     break
             
             if not sap_en_receta:
-                # Si el producto extra de SAP es un fertilizante, no penalizamos al cóctel base
                 is_fert = False
                 for f_name in dict_fertilizantes.keys():
                     if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
@@ -166,19 +163,16 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                         break
                 
                 if not is_fert:
-                    puntaje -= 100  # -100 si SAP trajo un producto invasor
+                    puntaje -= 100 
 
-        # 3. EL PILOTO YA NO ES DIOS (Bono de desempate en lugar de dominio absoluto)
         if iter_id == coctel_piloto_base: 
-            puntaje += 10  # 💥 CORRECCIÓN: Reducido a 10. Solo desempata si dos recetas son idénticas.
+            puntaje += 10
 
-        # 4. CORONAR AL GANADOR
         if puntaje > max_p:
             max_p = puntaje
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
-    # ---------------------------------------------------------
     # AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
@@ -212,7 +206,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
         def f_h(val): return f"{val:,.0f}".replace(",", ".")
-        # 💥 AJUSTE 1: Se agrega 'user-select: all;' a las etiquetas de los valores para permitir el doble clic fácil
         return f"""
         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
             <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -536,10 +529,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
                 
                 st.markdown("---")
-                # 💥 AJUSTE 2: Se agrega 'user-select: all;' al título del Total Operación
                 st.markdown(f"<h3 style='text-align: center; color: #0d1b2a; font-weight: 900; user-select: all;' title='Doble clic para copiar'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h3>".replace(",", "."), unsafe_allow_html=True)
                 
-                # 💥 AJUSTE 3: Bloque Inteligente de Copiado Rápido Individual
                 st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
                 cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
                 with cc1:
@@ -1149,17 +1140,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
                 costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
-                def colorear_matriz(row):
-                    global_sap = df_matriz[df_matriz["A: Producto"] == row["A: Producto"]]["I: Sugerido SAP (Total)"].sum()
-                    diferencia = abs(global_sap - row["D: Dosis Total (Sistema)"])
-                    if diferencia <= 0.5: c = 'background-color: #d4edda; color: #155724;' 
-                    elif diferencia <= 5.0: c = 'background-color: #fff3cd; color: #856404;' 
-                    elif diferencia <= 20.0: c = 'background-color: #f8d7da; color: #721c24;' 
-                    else: c = 'background-color: #8b0000; color: white; font-weight: bold;' 
-                    return [c] * len(row)
-
+                # 🛡️ TABLA NATIVA SEGURA: Se elimina el colorear_matriz para evitar Segment Fault de PyArrow
                 edited_df = st.data_editor(
-                    df_matriz.style.apply(colorear_matriz, axis=1),
+                    df_matriz,
                     key=llave_editor_casilla,
                     column_config={
                         "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
@@ -1256,7 +1239,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             """.replace(",", ".")
             st.markdown(html_totales, unsafe_allow_html=True)
             
-            # 💥 AJUSTE 3: Bloque Inteligente de Copiado Rápido Individual (OPERATIVO REAL)
             st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
             cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
             with cc1:
@@ -1320,7 +1302,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                         ha_f = float(ha_dosis_final)
                         
-                        # 💥 PARCHE DE AUTOCOMPLETADO 💥
                         if pd.isna(ha_bruta_f) or str(ha_bruta_f).strip() == "":
                             ha_bruta_f = ha_f
                         
@@ -1386,7 +1367,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                     filas_memoria.append(fila_m)
                         
-                        # 💥 FILTRO ANTI-NAN (Limpieza para que JSON no se queje) 💥
                         def limpiar_json(val):
                             if pd.isna(val) or (isinstance(val, float) and math.isnan(val)):
                                 return ""
@@ -1395,7 +1375,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         row_azul = [limpiar_json(x) for x in row_azul]
                         fila_apoyo = [limpiar_json(x) for x in fila_apoyo]
                         filas_memoria = [[limpiar_json(x) for x in fila] for fila in filas_memoria]
-                        # ---------------------------------------------------------
 
                         hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
