@@ -81,7 +81,7 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. ENVIAMOS LA TABLA 1 COMPLETA PARA EL ANÁLISIS EN CALIENTE
+        # 3. EXTRAER TABLA 1 CON COSTO POR HECTÁREA DETECTADO
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -119,7 +119,7 @@ def cargar_bases_m17(url_boveda, url_precios):
     return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
 
 # =================================================================
-# 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE (CEREBRO M3)
+# 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE
 # =================================================================
 
 def limpiar_numero(val):
@@ -132,10 +132,6 @@ def limpiar_numero(val):
     except: return 0.0
 
 def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
-    """
-    Algoritmo Maestro heredado del Módulo 3 para buscar y promediar
-    estrictamente los vuelos de la finca seleccionada en el año actual.
-    """
     if df_t1 is None or df_t1.empty: return 45000.0
     
     encabezados = [str(c).upper().replace('\n', ' ').strip() for c in df_t1.columns]
@@ -146,7 +142,6 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
     
     if not col_f: return 45000.0
         
-    # 💥 PASO 1: Normalización Alfanumérica Avanzada (Módulo 3)
     f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
     fincas_alpha = df_t1[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
     
@@ -159,9 +154,8 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
         mask = fincas_alpha.str.contains(clave, regex=False, na=False)
         
     df_finca = df_t1[mask]
-    if df_finca.empty: return 45000.0 # Si no existe la finca en la DB entera
+    if df_finca.empty: return 45000.0 
         
-    # 💥 PASO 2: Segmentación Estricta por Año Actual (2026) con Parseador Robusto
     año_actual = datetime.now().year
     
     def parsear_fecha_robusta(val):
@@ -183,9 +177,8 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
         if not df_finca_año.empty and 'VAL_COSTO_HA' in df_finca_año.columns:
             df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
             if not df_valid_costos.empty:
-                return df_valid_costos['VAL_COSTO_HA'].mean() # Retorna el promedio exacto de ESTE AÑO
+                return df_valid_costos['VAL_COSTO_HA'].mean()
     
-    # Fallback Justo: Si no voló este año, toma su propio histórico (No el de otras fincas)
     if 'VAL_COSTO_HA' in df_finca.columns:
         df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
         if not df_valid_costos_hist.empty:
@@ -249,7 +242,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL
+# 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
 def ejecutar():
@@ -265,19 +258,24 @@ def ejecutar():
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
-    # PANEL DE CONEXIÓN DE ENLACES
+    # 🔗 PANEL DE CONEXIÓN DE ENLACES
     db_cargada = st.session_state.get('m17_db_cargada', False)
     
+    # 🛡️ ESCUDO SÚPER-EFECTIVO ANTI-FANTASMAS DE MEMORIA
+    if db_cargada and 'm17_t1' not in st.session_state:
+        st.session_state['m17_db_cargada'] = False
+        db_cargada = False
+
     with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE", expanded=not db_cargada):
         if db_cargada:
-            st.success("¼️ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
+            st.success("✅ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
         else:
             st.info("💡 Pega los enlaces de tus archivos de Google Sheets para alimentar la proyección.")
             
         url_1 = st.text_input("🔗 Link Bóveda (Recetas, Fincas, Tabla 1):", value=st.session_state.get('m17_url1', ''))
         url_2 = st.text_input("🔗 Link Comparativo de Precios:", value=st.session_state.get('m17_url2', ''))
 
-        if st.button("¼️ Conectar y Descargar", type="primary"):
+        if st.button("🔄 Conectar y Descargar", type="primary"):
             if url_1 and url_2:
                 with st.spinner("Descargando información (Modo Francotirador)..."):
                     try:
@@ -302,13 +300,13 @@ def ejecutar():
     if not db_cargada:
         st.stop() 
 
-    # Rescatar variables de la memoria
-    df_mezclas = st.session_state['m17_mez']
-    df_conf = st.session_state['m17_conf']
-    df_dicc = st.session_state['m17_dicc']
-    df_t2 = st.session_state['m17_t2']
-    df_precios = st.session_state['m17_prec']
-    df_t1 = st.session_state['m17_t1']
+    # Rescatar variables de la memoria de forma totalmente protegida
+    df_mezclas = st.session_state.get('m17_mez', pd.DataFrame())
+    df_conf = st.session_state.get('m17_conf', pd.DataFrame())
+    df_dicc = st.session_state.get('m17_dicc', pd.DataFrame())
+    df_t2 = st.session_state.get('m17_t2', pd.DataFrame())
+    df_precios = st.session_state.get('m17_prec', pd.DataFrame())
+    df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     
@@ -338,7 +336,7 @@ def ejecutar():
     st.markdown("---")
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
     col_r1, col_r2 = st.columns(2)
-    inflacion_proyectada = col_r1.number_input("📊 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
     colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
 
     factor_inflacion = 1 + (inflacion_proyectada / 100)
@@ -383,7 +381,7 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
-                    # 💥 EXTRACCIÓN ALINEADA: Llama al Cerebro M3 para calcular por FINCA y AÑO
+                    # Cálculo ultra-preciso filtrado por finca y año
                     if precio_vuelo == 0:
                         precio_vuelo = calcular_promedio_vuelo_finca(finca_n, df_t1)
 
