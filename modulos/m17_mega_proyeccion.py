@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (SECUENCIAL Y SEGURO)
+# 🔌 MOTORES DE CONEXIÓN Y DESCARGA (FRANCOTIRADOR - CERO COLAPSOS DE RAM)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -36,7 +36,7 @@ def cargar_boveda_mega_proyeccion():
         boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         
-        # 💥 DESCARGA SECUENCIAL (LENTA PERO 100% SEGURA CONTRA COLAPSOS DE RAM)
+        # 1. BÓVEDA DE RECETAS
         try:
             data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
             df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
@@ -59,16 +59,19 @@ def cargar_boveda_mega_proyeccion():
             df_t2 = pd.DataFrame(t2_raw[idx_t2+1:], columns=[str(c).strip() for c in t2_raw[idx_t2]])
         except: pass
 
+        # 🎯 2. EXTRACCIÓN FRANCOTIRADOR DE PRECIOS (SOLO PESTAÑA "DATOS")
         try:
+            ws_datos = sh_precios.worksheet("DATOS") # Va directo a la yugular, ignora las otras 3 pestañas pesadas
+            datos_hoja = ws_datos.get_all_values()
             precios_consolidados = []
-            for ws in sh_precios.worksheets():
-                datos_hoja = ws.get_all_values()
-                if not datos_hoja: continue
+            
+            if datos_hoja:
                 idx_header, col_anio, col_prod = -1, -1, -1
                 for i in range(min(10, len(datos_hoja))):
                     fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
                     if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
                         idx_header, col_anio, col_prod = i, fila_upper.index('AÑO'), fila_upper.index('PRODUCTO'); break
+                
                 if idx_header != -1:
                     for row in datos_hoja[idx_header+1:]:
                         if len(row) > max(col_anio, col_prod):
@@ -86,6 +89,7 @@ def cargar_boveda_mega_proyeccion():
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
+        # 🎯 3. EXTRACCIÓN EXPLÍCITA TABLA 1 ("COSTO AVIÓN ($/ha)")
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -95,8 +99,10 @@ def cargar_boveda_mega_proyeccion():
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
                 
                 col_finca = next((c for i, c in enumerate(encabezados) if "FINCA" in encabezados_limpios[i] or "PROPIEDAD" in encabezados_limpios[i]), None)
-                col_costo_ha = next((c for i, c in enumerate(encabezados) if "COSTO" in encabezados_limpios[i] and "AVI" in encabezados_limpios[i] and "$/HA" in encabezados_limpios[i]), None)
                 col_fecha = next((c for i, c in enumerate(encabezados) if "FECHA" in encabezados_limpios[i]), None)
+                
+                # BÚSQUEDA EXPLÍCITA DE LA COLUMNA DE COSTO POR HECTÁREA
+                col_costo_ha = next((c for i, c in enumerate(encabezados) if "COSTO" in encabezados_limpios[i] and "AVIO" in encabezados_limpios[i] and "$/HA" in encabezados_limpios[i]), None)
                 
                 if col_finca and col_costo_ha:
                     def limp_num_col(val):
@@ -105,7 +111,7 @@ def cargar_boveda_mega_proyeccion():
                         v = re.sub(r'[^\d\.,\-]', '', v)
                         if not v: return 0.0
                         try:
-                            # CORRECCIÓN DE MILES (42.704 -> 42704)
+                            # CORRECCIÓN DE MILES (42.704 -> 42704) Y DECIMALES
                             if v.count('.') == 1 and v.count(',') == 0:
                                 if len(v.split('.')[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
@@ -114,6 +120,7 @@ def cargar_boveda_mega_proyeccion():
                             elif ',' in v: v = v.replace(',', '.')
                             
                             f_val = float(v)
+                            # Si detecta formato 42.704 lo multiplica x 1000
                             if f_val < 1000 and '.' in str(val) and len(str(val).split('.')[-1]) == 3:
                                 f_val = f_val * 1000
                             return f_val
@@ -208,7 +215,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     return dict_prods
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA
+# 👑 RENDERIZADO VISUAL - VERSIÓN BLINDADA Y AISLADA
 # =================================================================
 
 def ejecutar():
@@ -224,7 +231,7 @@ def ejecutar():
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
-    with st.spinner("Conectando con la Bóveda Maestra (Modo Seguro y Secuencial)..."):
+    with st.spinner("Conectando con la Bóveda Maestra (Extracción Directa)..."):
         df_mezclas, df_conf, df_dicc, df_precios, df_t2, hist_vuelo = cargar_boveda_mega_proyeccion()
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
