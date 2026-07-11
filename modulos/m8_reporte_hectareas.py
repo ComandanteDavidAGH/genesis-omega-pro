@@ -5,7 +5,7 @@ from datetime import datetime
 import io
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V12 (CACHÉ DE BOLSILLO)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V12 (ESTRUCTURA ORIGINAL COORDINADA)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     st.markdown("""
@@ -44,12 +44,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.error("🚨 Sin conexión a Supabase.")
         return
 
-    # 🎯 EL TRUCO MAESTRO: Caché de Bolsillo (Cero colapsos de servidor)
+    # --- DESCARGA A MEMORIA SEGURA ---
     if 'm8_datos_crudos' not in st.session_state:
-        with st.spinner("🛰️ Descargando datos desde la Bóveda a la Memoria Principal..."):
+        with st.spinner("🛰️ Descargando base de datos operativa..."):
             try:
-                # Bajamos el límite a 8000 para proteger el contenedor
-                respuesta = supabase_client.table("TABLA_1").select("*").limit(8000).execute()
+                respuesta = supabase_client.table("TABLA_1").select("*").limit(10000).execute()
                 st.session_state['m8_datos_crudos'] = respuesta.data
             except Exception as e:
                 st.error(f"🚨 Falla en la descarga: {e}")
@@ -57,8 +56,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
     raw_data = st.session_state['m8_datos_crudos']
     
-    col_ref = st.columns([4, 1])
-    if col_ref[1].button("🔄 Sincronizar Bóveda", use_container_width=True):
+    # Botón de refresco manual
+    c_ref1, c_ref2 = st.columns([4, 1])
+    if c_ref2.button("🔄 Refrescar Datos", key="btn_ref_m8"):
         del st.session_state['m8_datos_crudos']
         st.rerun()
 
@@ -67,7 +67,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ La TABLA_1 está vacía en Supabase.")
             return
 
-        # 🎯 PURIFICACIÓN EXTREMA: Sin saltos de línea ni NoneTypes
+        # 🎯 PURIFICACIÓN
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
@@ -77,9 +77,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             llave_sem = next((k for k in r_norm.keys() if k == "SEM" or k == "SEMANA"), None)
             
             datos_limpios.append({
-                "PISTA": r_norm.get("PISTA", "").upper(),
-                "HK": r_norm.get("HK", "").upper(),
-                "MODELO": r_norm.get("MODELO", "").upper(),
+                "PISTA": r_norm.get("PISTA", "").strip().upper(),
+                "HK": r_norm.get("HK", "").strip().upper(),
+                "MODELO": r_norm.get("MODELO", "").strip().upper(),
                 "FECHA": r_norm.get("FECHA", ""),
                 "SEMANA": r_norm.get(llave_sem, "") if llave_sem else "",
                 "HA_NETAS": extraer_numero(r_norm.get(llave_ha, "0") if llave_ha else "0"),
@@ -100,39 +100,50 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         df_rep = df_rep.dropna(subset=['FECHA_DT'])
         
         if df_rep.empty:
-            st.warning("⚠️ No se encontraron vuelos con Hectáreas y Fechas válidas. Revise la tabla.")
+            st.warning("⚠️ No se encontraron vuelos con Hectáreas y Fechas válidas.")
             return
 
+        min_fecha_real = df_rep['FECHA_DT'].dt.date.min()
+        max_fecha_real = df_rep['FECHA_DT'].dt.date.max()
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
-        min_fecha_real = df_rep['FECHA_DT'].min().date()
-        max_fecha_real = df_rep['FECHA_DT'].max().date()
         
-        # --- 🎛️ PANEL DE CONTROL ---
+        # --- 🎛️ PANEL DE CONTROL COORDINADO ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
-        c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1])
+        c1, c2, c3 = st.columns([1.5, 2, 1.5])
         
-        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True)
-        fecha_sel_ini = c2.date_input("📅 Inicial:", value=min_fecha_real)
-        fecha_sel_fin = c3.date_input("📅 Final:", value=max_fecha_real)
-        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp)
+        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_rad_vista")
         
-        mostrar_horas, calcular_rend_prom, agrupar_avion = False, False, False
+        # 1. Calendario de Rango Único (Imposible que se desincronice)
+        fechas_sel = c2.date_input("📅 Rango de Fechas:", value=(min_fecha_real, max_fecha_real), min_value=pd.to_datetime('2020-01-01').date(), max_value=pd.to_datetime('2030-12-31').date(), key="m8_date_rango")
+        
+        # Extracción segura de la fecha inicial y final
+        if isinstance(fechas_sel, tuple) and len(fechas_sel) == 2:
+            fecha_sel_ini, fecha_sel_fin = fechas_sel
+        elif isinstance(fechas_sel, tuple) and len(fechas_sel) == 1:
+            fecha_sel_ini = fecha_sel_fin = fechas_sel[0]
+        else:
+            fecha_sel_ini = min_fecha_real
+            fecha_sel_fin = max_fecha_real
 
-        if vista_seleccionada == "📊 Resumen Gerencial":
-            cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True)
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True)
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False)
+        # 2. Pista blindada con llave
+        pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_sel_pista")
 
-        df_filt = df_rep[(df_rep['FECHA_DT'].dt.date >= fecha_sel_ini) & (df_rep['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
-        if pista_sel != "TODAS":
-            df_filt = df_filt[df_filt['PISTA'] == pista_sel]
+        cc1, cc2, cc3 = st.columns(3)
+        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_chk_hr")
+        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_chk_rend")
+        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_tog_flota")
+
+        # 3. APLICACIÓN DE FILTROS REAL
+        mask_fechas = (df_rep['FECHA_DT'].dt.date >= fecha_sel_ini) & (df_rep['FECHA_DT'].dt.date <= fecha_sel_fin)
+        mask_pista = (df_rep['PISTA'] == pista_sel) if pista_sel != "TODAS" else True
+        
+        df_filt = df_rep[mask_fechas & mask_pista].copy()
         
         if df_filt.empty:
-            st.warning("⚠️ No hay datos en este rango.")
+            st.warning("⚠️ No hay datos operativos en los filtros seleccionados.")
             return
             
-        meses_nom = {1:"01-ene", 2:"02-feb", 3:"03-mar", 4:"04-abr", 5:"05-may", 6:"06-jun", 7:"07-jul", 8:"08-ago", 9:"09-sep", 10:"10-oct", 11:"11-nov", 12:"12-dic"}
+        meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
         df_filt['MES'] = df_filt['FECHA_DT'].dt.month.map(meses_nom)
         
         st.markdown("---")
@@ -165,14 +176,15 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         es_dron = "DRON" in modelo or "DR" in hk
                         emoji = "🚁 DRON:" if es_dron else "✈️ AVION:"
                         
-                        fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
+                        fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f" {emoji} {hk}", 'MES': 'Total Flota'}
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
                         if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
                         for _, row in datos_hk.iterrows():
-                            fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'MES': row['MES']}
+                            # Jerarquía con flecha para los meses
+                            fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'MES': f"↳ {row['MES']}"}
                             if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                             fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
                             if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
@@ -201,7 +213,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                     tabla_final.append(fila_sub)
                     
                     for _, row in datos_pista.iterrows():
-                        fila_mes = {'NIVEL': '', 'MES': row['MES']}
+                        # Jerarquía con flecha para los meses
+                        fila_mes = {'NIVEL': '', 'MES': f"↳ {row['MES']}"}
                         if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                         fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
                         if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
@@ -216,7 +229,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # TABLA PLANA SEGURA (Evitando bloqueos de CSS/PyArrow)
+            # TABLA NATIVA SEGURA PERO ORDENADA
             df_visual = pd.DataFrame(tabla_final)
             for col in ['ÁREA FUMIG (ha)', 'REND (hr)', 'PROMEDIO (Ha/Hr)']:
                 if col in df_visual.columns:
