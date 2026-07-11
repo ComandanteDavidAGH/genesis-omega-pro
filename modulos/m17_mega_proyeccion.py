@@ -24,7 +24,6 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except: return None
 
-# 💥 EL ESCUDO QUE FALTABA: Esto evita que el servidor muera por falta de RAM
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_bases_m17(url_boveda, url_precios):
     gc = obtener_cliente_gspread_unificado()
@@ -175,11 +174,15 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
         if not df_finca_año.empty:
             df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
             if not df_valid_costos.empty:
-                return df_valid_costos['VAL_COSTO_HA'].mean()
+                prom = df_valid_costos['VAL_COSTO_HA'].mean()
+                # 💥 Filtro Anti-NaN
+                return 45000.0 if pd.isna(prom) else float(prom)
     
     df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
     if not df_valid_costos_hist.empty:
-        return df_valid_costos_hist['VAL_COSTO_HA'].mean()
+        prom = df_valid_costos_hist['VAL_COSTO_HA'].mean()
+        # 💥 Filtro Anti-NaN
+        return 45000.0 if pd.isna(prom) else float(prom)
             
     return 45000.0
 
@@ -265,8 +268,8 @@ def ejecutar():
         st.info("💡 Por favor, pega los enlaces arriba para comenzar a trabajar.")
         st.stop()
 
-    with st.spinner("Conectando con Google Drive (Modo Ligero)..."):
-        df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1 = cargar_datos_m17(url_1, url_2)
+    with st.spinner("Conectando con Google Drive (Modo Ligero y Seguro)..."):
+        df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1 = cargar_bases_m17(url_1, url_2)
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     
@@ -276,7 +279,6 @@ def ejecutar():
     st.markdown("### 📥 1. Pista de Aterrizaje Segura")
     st.caption("📋 Selecciona tus columnas en Excel, haz Ctrl+C, párate en la primera celda vacía y presiona **Ctrl+V**.")
     
-    # 💥 TABLA DINÁMICA: Ya no hay 500 filas estáticas que pesen. Crecerá cuando pegues.
     df_edited = st.data_editor(
         st.session_state.m17_df_entrada_grid,
         num_rows="dynamic",
@@ -334,7 +336,7 @@ def ejecutar():
                     dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
                     precio_vuelo_manual = limpiar_numero(row['PRECIO VUELO'])
 
-                    if ha_num == 0 and not df_t2.empty:
+                    if ha_num <= 0 and not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
                         if not match_f.empty:
                             ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
@@ -346,6 +348,8 @@ def ejecutar():
                     else:
                         precio_vuelo_final = precio_vuelo_manual
 
+                    # 💥 Filtro Anti-NaN para el vuelo
+                    precio_vuelo_final = 45000.0 if pd.isna(precio_vuelo_final) else float(precio_vuelo_final)
                     precio_vuelo_final = precio_vuelo_final * factor_inflacion
 
                     tipo_prod = "TERCERO"
@@ -395,13 +399,21 @@ def ejecutar():
                         
                         if precio_unitario == 0.0 and not df_precios.empty:
                             match_p = df_precios[(df_precios['AÑO'] == año_actual) & (df_precios['PRODUCTO_CLEAN'] == p.replace(" ",""))]
-                            if not match_p.empty: precio_unitario = match_p['PRECIO_PROM'].mean()
+                            if not match_p.empty: 
+                                prom_p = match_p['PRECIO_PROM'].mean()
+                                precio_unitario = 0.0 if pd.isna(prom_p) else float(prom_p)
 
                         precio_unitario = precio_unitario * factor_inflacion
                         costo_mezcla_fila += (d * ha_num * precio_unitario * mult_m)
 
                     costo_st_fila = dias_c * st_base * ha_num
                     costo_vuelo_fila = precio_vuelo_final * ha_num 
+                    
+                    # 💥 BLINDAJE FINAL ANTI-NaN (Protección contra el ValueError)
+                    costo_mezcla_fila = 0.0 if pd.isna(costo_mezcla_fila) else float(costo_mezcla_fila)
+                    costo_st_fila = 0.0 if pd.isna(costo_st_fila) else float(costo_st_fila)
+                    costo_vuelo_fila = 0.0 if pd.isna(costo_vuelo_fila) else float(costo_vuelo_fila)
+
                     gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + 0.5)
                     costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
 
@@ -547,9 +559,6 @@ def ejecutar():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-
-# ALIAS PARA QUE EL CÓDIGO NO FALLE AL SER LLAMADO
-cargar_datos_m17 = cargar_bases_m17
 
 if __name__ == "__main__":
     pass
