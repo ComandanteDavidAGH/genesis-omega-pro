@@ -5,7 +5,16 @@ from datetime import datetime
 import io
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V12 (SISTEMA DESCONTAMINADO)
+# 🛡️ MEMORIA RAM BLINDADA (CACHÉ TÁCTICO)
+# El guión bajo en _cliente_supabase evita que Streamlit colapse al leerlo
+# =================================================================
+@st.cache_data(ttl=600, show_spinner=False)
+def descargar_datos_boveda(_cliente_supabase):
+    respuesta = _cliente_supabase.table("TABLA_1").select("*").limit(15000).execute()
+    return respuesta.data
+
+# =================================================================
+# 🚁 RADAR DE HECTÁREAS - OMEGA V12 FINAL
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     st.markdown("""
@@ -45,9 +54,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         return
 
     try:
-        with st.spinner("🛰️ Extrayendo y purificando datos de la Bóveda Cloud..."):
-            respuesta = supabase_client.table("TABLA_1").select("*").limit(15000).execute()
-            raw_data = respuesta.data
+        with st.spinner("🛰️ Accediendo a la Bóveda de Supabase (Memoria Caché Activada)..."):
+            # 🎯 LLAMADA PROTEGIDA POR CACHÉ: Solo descarga 1 vez cada 10 minutos
+            raw_data = descargar_datos_boveda(supabase_client)
             
         if not raw_data:
             st.warning("⚠️ La TABLA_1 está vacía en Supabase.")
@@ -209,7 +218,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if col in df_visual.columns:
                     df_visual[col] = df_visual[col].apply(fmt_latino)
             
-            st.dataframe(df_visual, use_container_width=True, hide_index=True)
+            st.dataframe(df_visual.astype(str), use_container_width=True, hide_index=True)
 
         else:
             matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
@@ -225,7 +234,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_matriz_str = matriz.copy()
             for col in df_matriz_str.columns:
                 df_matriz_str[col] = df_matriz_str[col].apply(fmt_latino)
-            st.dataframe(df_matriz_str, use_container_width=True)
+            st.dataframe(df_matriz_str.astype(str), use_container_width=True)
             
             st.markdown("---")
             df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
