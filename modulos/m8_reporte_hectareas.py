@@ -27,7 +27,7 @@ def descargar_todo_supabase(_cliente_supabase):
     return todos_los_datos
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V19 (EDICIÓN DRON CORREGIDO)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V20 (VERSIÓN FINAL PULIDA)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
@@ -109,21 +109,21 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
         
-        # --- 🎛️ SELECTORES INDEPENDIENTES ---
+        # --- 🎛️ PANEL DE CONTROL ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 1.4])
         
-        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_final_v3")
+        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_final_v4")
         
-        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v3")
-        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v3")
+        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v4")
+        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v4")
         
-        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v3")
+        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v4")
 
         cc1, cc2, cc3 = st.columns(3)
-        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v3")
-        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v3")
-        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v3")
+        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v4")
+        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v4")
+        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v4")
 
         st.info(f"📊 **Auditoría de Datos:** Registros cargados en memoria: **{len(df_rep)}** | Historial desde **{df_rep['FECHA_REAL'].min().strftime('%d/%m/%Y')}** hasta **{df_rep['FECHA_REAL'].max().strftime('%d/%m/%Y')}**")
 
@@ -166,14 +166,13 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         
                         modelo = str(mapa_modelo.get(hk, "")).upper()
                         es_dron = "DRON" in modelo or "DR" in hk
-                        
-                        # 🎯 SE CORRIGE AQUÍ: "🛸" representa el Drone de forma tecnológica
                         emoji = "🛸 DRON:" if es_dron else "✈️ AVION:"
                         
                         fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
-                        if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_hr_hk # Ajuste
+                        # 💥 CORREGIDO: Ahora calcula la división real de Ha/Hr para el consolidado de la aeronave
+                        if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
                         for _, row in datos_hk.iterrows():
