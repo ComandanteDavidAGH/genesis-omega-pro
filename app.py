@@ -5,7 +5,7 @@ import gspread
 import time
 import base64
 import os
-from supabase import create_client
+from supabase import create_client, Client
 
 # ⚙️ REGLA DE ORO: Configuración de página primero
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
@@ -97,10 +97,6 @@ button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !i
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 
-/* ========================================================================= */
-/* 💥 LA ARQUITECTURA DEL CEBO (QUE SÍ FUNCIONÓ) PERO EN AZUL Y BLANCO 💥 */
-/* ========================================================================= */
-
 /* Agrupa el título de la caja y el control dentro de un borde sólido */
 div[data-testid="stTextInput"],
 div[data-testid="stSelectbox"],
@@ -128,8 +124,6 @@ div[data-baseweb="select"] {
     color: #000000 !important;
     font-weight: 900 !important;
 }
-
-/* ========================================================================= */
 </style>
 """, unsafe_allow_html=True)
 
@@ -176,11 +170,12 @@ def descargar_matriz_rapida(url, pestaña):
             if i < 2: time.sleep(2); continue
             else: return []
 
-# ⚡ Inicialización Blindada del Motor Supabase
+# ⚡ Inicialización Blindada del Motor Supabase (Código Nº 1 Conectado con st.secrets)
 @st.cache_resource(show_spinner=False)
-def conectar_supabase():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
+def conectar_supabase() -> Client:
+    # Soporta estructura anidada ["supabase"]["url"] o plana ["SUPABASE_URL"] por seguridad
+    url = st.secrets["supabase"]["url"] if "supabase" in st.secrets else st.secrets["SUPABASE_URL"]
+    key = st.secrets["supabase"]["key"] if "supabase" in st.secrets else st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 try:
