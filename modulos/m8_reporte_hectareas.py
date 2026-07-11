@@ -5,7 +5,7 @@ from datetime import datetime, date
 import io
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V15 (RESTAURACIÓN ESTÉTICA Y FILTROS)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V16 (DOS SELECTORES Y COLORES MAESTROS)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
@@ -39,11 +39,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.error("🚨 Sin conexión a Supabase.")
         return
 
-    # --- ENLACE SEGURO A LA BÓVEDA ---
+    # --- ENLACE SEGURO A LA BÓVEDA (CUPO AMPLIADO A 50,000 FILAS) ---
     if 'm8_datos_crudos' not in st.session_state:
-        with st.spinner("🛰️ Sincronizando registros de vuelo de la Bóveda..."):
+        with st.spinner("🛰️ Descargando base de datos completa de Supabase..."):
             try:
-                respuesta = supabase_client.table("TABLA_1").select("*").limit(12000).execute()
+                respuesta = supabase_client.table("TABLA_1").select("*").limit(50000).execute()
                 st.session_state['m8_datos_crudos'] = respuesta.data
             except Exception as e:
                 st.error(f"🚨 Error de comunicación Cloud: {e}")
@@ -56,7 +56,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ La base de datos operativa está vacía.")
             return
 
-        # 🎯 PURIFICACIÓN RIGUROSA Y CONVERSIÓN DE FECHAS
+        # 🎯 PURIFICACIÓN Y CONVERSIÓN DE REGISTROS
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
@@ -81,7 +81,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
         df_rep = pd.DataFrame(datos_limpios)
         
-        # Sincronización de flotas vacías
         mask_hk = df_rep['HK'] != ""
         mapa_modelo = {}
         if not df_rep[mask_hk].empty:
@@ -91,44 +90,37 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         
         df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
         
-        # Límites reales de la BD
         min_fecha_real = df_rep['FECHA_REAL'].min()
         max_fecha_real = df_rep['FECHA_REAL'].max()
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
         
-        # --- 🎛️ PANEL DE CONTROL ORIGINAL ---
+        # --- 🎛️ NUEVO PANEL DE CONTROL CON DOS SELECTORES ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
-        c1, c2, c3 = st.columns([1.5, 2, 1.5])
+        c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 1.4])
         
-        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_opt")
+        vista_seleccionada = c1.radio("👁️ Vista:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="m8_v_opt_v2")
         
-        # Rango unificado corregido
-        fechas_sel = c2.date_input("📅 Rango de Fechas:", value=(min_fecha_real, max_fecha_real), min_value=min_fecha_real, max_value=max_fecha_real, key="m8_f_opt")
+        # 🔑 LIBERACIÓN DE AÑOS: Rango amplio de 2024 a 2030 para evitar bloqueos
+        fecha_sel_ini = c2.date_input("📅 Fecha Inicial:", value=min_fecha_real, min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_fecha_inicial_v2")
+        fecha_sel_fin = c3.date_input("📅 Fecha Final:", value=max_fecha_real, min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_fecha_final_v2")
         
-        if isinstance(fechas_sel, tuple) and len(fechas_sel) == 2:
-            fecha_sel_ini, fecha_sel_fin = fechas_sel
-        elif isinstance(fechas_sel, tuple) and len(fechas_sel) == 1:
-            fecha_sel_ini = fecha_sel_fin = fechas_sel[0]
-        else:
-            fecha_sel_ini, fecha_sel_fin = min_fecha_real, max_fecha_real
-
-        pista_sel = c3.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_p_opt")
+        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_p_opt_v2")
 
         cc1, cc2, cc3 = st.columns(3)
-        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_c_h")
-        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_c_r")
-        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_t_f")
+        mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_c_h_v2")
+        calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_c_r_v2")
+        agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_t_f_v2")
 
-        # 🎯 FILTRADO MATEMÁTICO ESTRICTO (Date vs Date)
+        # 🎯 FILTRADO REAL
         df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
         if pista_sel != "TODAS":
             df_filt = df_filt[df_filt['PISTA'] == pista_sel]
         
         if df_filt.empty:
-            st.warning(f"⚠️ No hay datos registrados para la Pista {pista_sel} en el rango del {fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}.")
+            st.warning(f"⚠️ No hay registros de vuelo para {pista_sel} entre el {fecha_sel_ini.strftime('%d/%m/%Y')} y el {fecha_sel_fin.strftime('%d/%m/%Y')}.")
             return
             
-        meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
+        meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
         df_filt['MES'] = df_filt['FECHA_REAL'].apply(lambda x: meses_nom.get(x.month, "Desconocido"))
         
         st.markdown("---")
@@ -212,7 +204,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # --- 🎨 RETORNO DEL ESTILO ORIGINAL SEGURO ANTE CORE DUMPS ---
+            # --- 🎨 REGRESA EL DISEÑO DE COLORES CORPORATIVOS ORIGINALES ---
             df_visual = pd.DataFrame(tabla_final)
             
             def aplicar_estilos_originales(row):
@@ -240,7 +232,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
             
-            # --- 🎨 REGRESA EL DEGRADADO VERDE MAESTRO ---
+            # --- 🎨 REGRESA EL DEGRADADO DE CALOR VERDE ---
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
             
             st.markdown("---")
