@@ -5,6 +5,7 @@ import gspread
 import time
 import base64
 import os
+from supabase import create_client
 
 # ⚙️ REGLA DE ORO: Configuración de página primero
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
