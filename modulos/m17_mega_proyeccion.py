@@ -48,7 +48,6 @@ def cargar_bases_m17(url_boveda, url_precios, supabase_client=None):
                 res = supabase_client.table("DICCIONARIO_SIGLAS").select("*").execute()
                 if res.data:
                     df_dicc = pd.DataFrame(res.data)
-                    # Normalizamos los nombres de las columnas a mayúsculas para compatibilidad 
                     df_dicc.columns = [str(c).upper().strip() for c in df_dicc.columns]
             except:
                 pass
@@ -106,17 +105,15 @@ def cargar_bases_m17(url_boveda, url_precios, supabase_client=None):
                 encabezados = [str(c).upper().strip() for c in t1_raw[idx_t1]]
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
                 
-                # Identificación inteligente de columnas clave
                 col_finca = next((c for c in encabezados if "FINCA" in c or "PROPIEDAD" in c), None)
-                if not col_finca and len(encabezados) > 2: col_finca = encabezados[2] # Fallback Columna C
+                if not col_finca and len(encabezados) > 2: col_finca = encabezados[2]
                 
-                # Modificado para admitir el año 2026 de forma nativa
                 col_fecha = next((c for c in encabezados if "FECHA" in c or "DATE" in c), None)
-                if not col_fecha and len(encabezados) > 7: col_fecha = encabezados[7] # Fallback Columna H
+                if not col_fecha and len(encabezados) > 7: col_fecha = encabezados[7]
                 
                 col_costo_ha = next((c for c in encabezados if "COSTO" in c and "AVI" in c and "$/HA" in c.replace(" ", "")), None)
                 if not col_costo_ha: col_costo_ha = next((c for c in encabezados if "COSTO" in c and "$/HA" in c.replace(" ", "")), None)
-                if not col_costo_ha and len(encabezados) > 19: col_costo_ha = encabezados[19] # Fallback Absoluto Columna T (Índice 19)
+                if not col_costo_ha and len(encabezados) > 19: col_costo_ha = encabezados[19]
                 
                 if col_finca and col_costo_ha:
                     def limp_num_col(val):
@@ -137,7 +134,6 @@ def cargar_bases_m17(url_boveda, url_precios, supabase_client=None):
                             return f_val
                         except: return 0.0
                     
-                    # Limpieza radical alfanumérica para la Base de Datos
                     df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
                     df_t1['VAL_COSTO_HA'] = df_t1[col_costo_ha].apply(limp_num_col)
                     if col_fecha:
@@ -166,13 +162,9 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0
     
-    # 💥 EL ESCUDO ALFANUMÉRICO: Elimina espacios y símbolos raros del usuario
     finca_buscada = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
-    
-    # Búsqueda exacta indestructible
     df_finca = df_t1[df_t1['F_CLEAN'] == finca_buscada]
     
-    # 💥 SOLUCIÓN GISELLE BEATRIZ: Si no encuentra exacta, busca si el nombre es el inicio (Ej: GISELLEB)
     if df_finca.empty and finca_buscada:
         match_inicial = df_t1['F_CLEAN'].str.startswith(finca_buscada, na=False)
         df_finca = df_t1[match_inicial]
@@ -184,7 +176,6 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
     año_corto = año_actual[-2:]
     
     if 'FECHA_CLEAN' in df_finca.columns:
-        # Filtro estricto que admite año 2026 completo o abreviado (/26 o -26)
         mask_año = df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"/{año_corto}", na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"-{año_corto}", na=False)
         df_finca_año = df_finca[mask_año]
         
@@ -192,7 +183,6 @@ def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
             df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
             if not df_valid_costos.empty:
                 prom = df_valid_costos['VAL_COSTO_HA'].mean()
-                # 💥 Filtro Anti-NaN para evitar colapso de pantalla roja
                 return 45000.0 if pd.isna(prom) else float(prom)
     
     df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
@@ -293,7 +283,6 @@ def ejecutar(supabase_client=None):
             if url_1 and url_2:
                 with st.spinner("Descargando información (Modo Original Protegido)..."):
                     try:
-                        # Pasamos el cliente de Supabase directamente al descargador de datos
                         mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2, supabase_client)
                         st.session_state['m17_mez'] = mez
                         st.session_state['m17_conf'] = conf
@@ -375,7 +364,6 @@ def ejecutar(supabase_client=None):
                 
                 resultados = []
                 log_volumetrico = {}
-                año_actual = str(datetime.now().year)
 
                 for idx, row in df_valid.iterrows():
                     finca_n = str(row['FINCA']).strip().upper()
@@ -448,7 +436,8 @@ def ejecutar(supabase_client=None):
                             if mask_cfg.any(): precio_unitario = limpiar_numero(df_conf[mask_cfg].iloc[0, c_c_i])
                         
                         if precio_unitario == 0.0 and not df_precios.empty:
-                            match_p = df_precios[(df_precios['AÑO'] == año_actual) & (df_precios['PRODUCTO_CLEAN'] == p.replace(" ",""))]
+                            # Se eliminó la dependencia estricta del año actual para ampliar compatibilidad
+                            match_p = df_precios[df_precios['PRODUCTO_CLEAN'] == p.replace(" ","")]
                             if not match_p.empty: precio_unitario = match_p['PRECIO_PROM'].mean()
 
                         precio_unitario = precio_unitario * factor_inflacion
@@ -598,7 +587,6 @@ def ejecutar(supabase_client=None):
         st.download_button(
             label="💾 DESCARGAR REPORTE GERENCIAL (EXCEL)",
             data=buffer.getvalue(),
-            file_name=f"MegaProyeccion_Operativa.xlsx",
             file_name=f"MegaProyeccion_Operativa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
