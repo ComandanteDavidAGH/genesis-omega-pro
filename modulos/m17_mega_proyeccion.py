@@ -26,10 +26,9 @@ def obtener_cliente_gspread_unificado():
 
 def cargar_bases_m17(url_boveda, url_precios):
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return None, None, None, None, None, {}
+    if not gc: return None, None, None, None, None, pd.DataFrame()
     
-    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    hist_vuelo_promedio = {}
+    df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     try:
         boveda_recetas = gc.open_by_url(url_boveda)
@@ -82,7 +81,7 @@ def cargar_bases_m17(url_boveda, url_precios):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. FRANCOTIRADOR TABLA 1 (Buscando "COSTO AVIÓN ($/ha)")
+        # 3. ENVIAMOS LA TABLA 1 COMPLETA PARA EL ANÁLISIS EN CALIENTE
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -91,11 +90,9 @@ def cargar_bases_m17(url_boveda, url_precios):
                 encabezados_limpios = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in encabezados]
                 df_t1 = pd.DataFrame(t1_raw[idx_t1+1:], columns=encabezados)
                 
-                col_finca = next((c for i, c in enumerate(encabezados) if "FINCA" in encabezados_limpios[i] or "PROPIEDAD" in encabezados_limpios[i]), None)
-                col_fecha = next((c for i, c in enumerate(encabezados) if "FECHA" in encabezados_limpios[i]), None)
                 col_costo_ha = next((c for i, c in enumerate(encabezados) if "COSTO" in encabezados_limpios[i] and "AVION" in encabezados_limpios[i] and "$/HA" in encabezados_limpios[i]), None)
                 
-                if col_finca and col_costo_ha:
+                if col_costo_ha:
                     def limp_num_col(val):
                         v = str(val).strip()
                         if not v or v == '-': return 0.0
@@ -113,29 +110,16 @@ def cargar_bases_m17(url_boveda, url_precios):
                                 f_val = f_val * 1000
                             return f_val
                         except: return 0.0
-                        
-                    df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).str.strip().str.upper()
                     df_t1['VAL_COSTO_HA'] = df_t1[col_costo_ha].apply(limp_num_col)
-                    df_calc = df_t1[df_t1['VAL_COSTO_HA'] > 1000] 
-                    año_actual = str(datetime.now().year) 
-                    año_corto = año_actual[-2:] 
-                    
-                    for finca, grp in df_calc.groupby('F_CLEAN'):
-                        if col_fecha:
-                            grp_actual = grp[grp[col_fecha].astype(str).str.contains(año_actual) | grp[col_fecha].astype(str).str.endswith(f"/{año_corto}")]
-                            if not grp_actual.empty: hist_vuelo_promedio[finca] = grp_actual['VAL_COSTO_HA'].mean()
-                            else: hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
-                        else:
-                            hist_vuelo_promedio[finca] = grp['VAL_COSTO_HA'].mean()
         except: pass
                             
     except Exception as e: 
         raise Exception(f"Error de conexión con Google Drive: {e}")
 
-    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, hist_vuelo_promedio
+    return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
 
 # =================================================================
-# 🧠 MOTORES DE LÓGICA
+# 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE (CEREBRO M3)
 # =================================================================
 
 def limpiar_numero(val):
@@ -146,6 +130,68 @@ def limpiar_numero(val):
         if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
         return float(v) if v else 0.0
     except: return 0.0
+
+def calcular_promedio_vuelo_finca(finca_usuario, df_t1):
+    """
+    Algoritmo Maestro heredado del Módulo 3 para buscar y promediar
+    estrictamente los vuelos de la finca seleccionada en el año actual.
+    """
+    if df_t1 is None or df_t1.empty: return 45000.0
+    
+    encabezados = [str(c).upper().replace('\n', ' ').strip() for c in df_t1.columns]
+    encabezados_limpios = [c.replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U') for c in encabezados]
+    
+    col_f = next((c for i, c in enumerate(df_t1.columns) if "FINCA" in encabezados_limpios[i] or "PROPIEDAD" in encabezados_limpios[i]), None)
+    col_d = next((c for i, c in enumerate(df_t1.columns) if "FECHA" in encabezados_limpios[i] or "DATE" in encabezados_limpios[i]), None)
+    
+    if not col_f: return 45000.0
+        
+    # 💥 PASO 1: Normalización Alfanumérica Avanzada (Módulo 3)
+    f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
+    fincas_alpha = df_t1[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+    
+    mask = fincas_alpha == f_obj_alpha
+    if not mask.any(): 
+        mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
+    if not mask.any():
+        partes = f_obj_alpha.replace("COOP", "").replace("BANAFRU", "").replace("ASO", "").replace("COOBAMAG", "").strip()
+        clave = partes[:8] if len(partes) > 8 else partes
+        mask = fincas_alpha.str.contains(clave, regex=False, na=False)
+        
+    df_finca = df_t1[mask]
+    if df_finca.empty: return 45000.0 # Si no existe la finca en la DB entera
+        
+    # 💥 PASO 2: Segmentación Estricta por Año Actual (2026) con Parseador Robusto
+    año_actual = datetime.now().year
+    
+    def parsear_fecha_robusta(val):
+        if pd.isna(val) or str(val).strip() == "": return pd.NaT
+        s = str(val).strip().lower()
+        if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+        meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
+        match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+        if match1:
+            dia_str, mes_str, anio_str = match1.groups()
+            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+        try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+        except: return pd.NaT
+
+    if col_d:
+        fechas_parsed = df_finca[col_d].apply(parsear_fecha_robusta)
+        df_finca_año = df_finca[fechas_parsed.apply(lambda x: getattr(x, 'year', None) == año_actual)]
+        
+        if not df_finca_año.empty and 'VAL_COSTO_HA' in df_finca_año.columns:
+            df_valid_costos = df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000]
+            if not df_valid_costos.empty:
+                return df_valid_costos['VAL_COSTO_HA'].mean() # Retorna el promedio exacto de ESTE AÑO
+    
+    # Fallback Justo: Si no voló este año, toma su propio histórico (No el de otras fincas)
+    if 'VAL_COSTO_HA' in df_finca.columns:
+        df_valid_costos_hist = df_finca[df_finca['VAL_COSTO_HA'] > 1000]
+        if not df_valid_costos_hist.empty:
+            return df_valid_costos_hist['VAL_COSTO_HA'].mean()
+            
+    return 45000.0
 
 def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
@@ -224,24 +270,24 @@ def ejecutar():
     
     with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE", expanded=not db_cargada):
         if db_cargada:
-            st.success("✅ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
+            st.success("¼️ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
         else:
             st.info("💡 Pega los enlaces de tus archivos de Google Sheets para alimentar la proyección.")
             
         url_1 = st.text_input("🔗 Link Bóveda (Recetas, Fincas, Tabla 1):", value=st.session_state.get('m17_url1', ''))
         url_2 = st.text_input("🔗 Link Comparativo de Precios:", value=st.session_state.get('m17_url2', ''))
 
-        if st.button("🔄 Conectar y Descargar", type="primary"):
+        if st.button("¼️ Conectar y Descargar", type="primary"):
             if url_1 and url_2:
                 with st.spinner("Descargando información (Modo Francotirador)..."):
                     try:
-                        mez, conf, dicc, t2, prec, hist = cargar_bases_m17(url_1, url_2)
+                        mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2)
                         st.session_state['m17_mez'] = mez
                         st.session_state['m17_conf'] = conf
                         st.session_state['m17_dicc'] = dicc
                         st.session_state['m17_t2'] = t2
                         st.session_state['m17_prec'] = prec
-                        st.session_state['m17_hist'] = hist
+                        st.session_state['m17_t1'] = t1
                         st.session_state['m17_url1'] = url_1
                         st.session_state['m17_url2'] = url_2
                         st.session_state['m17_db_cargada'] = True
@@ -262,11 +308,10 @@ def ejecutar():
     df_dicc = st.session_state['m17_dicc']
     df_t2 = st.session_state['m17_t2']
     df_precios = st.session_state['m17_prec']
-    hist_vuelo = st.session_state['m17_hist']
+    df_t1 = st.session_state['m17_t1']
 
     columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     
-    # 💥 RESTAURADO: Inicialización de la matriz con 500 filas vacías, pero de verdad
     if 'm17_df_entrada_grid' not in st.session_state:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
@@ -275,7 +320,6 @@ def ejecutar():
     st.markdown("### 📥 1. Pista de Aterrizaje Segura (Spreadsheet)")
     st.caption("📋 Selecciona tus columnas en Excel, haz Ctrl+C, párate en la primera celda de abajo y presiona **Ctrl+V**.")
     
-    # 💥 RESTAURADO: El editor de datos visual, elegante e inmune a colapsos
     df_edited = st.data_editor(
         st.session_state.m17_df_entrada_grid,
         key="m17_tabla_maestra_grid", 
@@ -294,14 +338,13 @@ def ejecutar():
     st.markdown("---")
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
     col_r1, col_r2 = st.columns(2)
-    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+    inflacion_proyectada = col_r1.number_input("📊 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
     colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
 
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
     if st.button("🔥 EJECUTAR MEGA-PROYECCIÓN", type="primary", use_container_width=True):
         
-        # Filtrar las filas en blanco de la cuadrícula
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
         
@@ -340,8 +383,9 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
+                    # 💥 EXTRACCIÓN ALINEADA: Llama al Cerebro M3 para calcular por FINCA y AÑO
                     if precio_vuelo == 0:
-                        precio_vuelo = hist_vuelo.get(finca_n, 45000.0)
+                        precio_vuelo = calcular_promedio_vuelo_finca(finca_n, df_t1)
 
                     precio_vuelo = precio_vuelo * factor_inflacion
 
