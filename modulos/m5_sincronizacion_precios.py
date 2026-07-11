@@ -80,7 +80,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             pass
                             
                         if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
-                            val_costo = row.get('PRECIOS', row.get('COSTO', row.get('costo', 0)))
+                            # 🎯 RADAR CORREGIDO: Apunta estrictamente a la columna COSTO de Supabase
+                            val_costo = row.get('COSTO', row.get('costo', 0))
                             txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
                             try:
                                 costo_base = float(txt_costo)
@@ -100,9 +101,9 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos extraídos de Supabase.")
+                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos extraídos de la columna COSTO.")
                     else:
-                        st.warning("⚠️ Supabase respondió, pero los filtros matemáticos no pudieron procesar los valores de costo.")
+                        st.warning("⚠️ No se pudieron procesar los valores numéricos de la columna COSTO.")
                 except Exception as e:
                     st.error(f"🚨 Error al consultar Supabase: {e}")
                     
@@ -226,7 +227,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             dict_precios = {}
                             for row in respuesta.data:
                                 prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                                val_costo = row.get('PRECIOS', row.get('COSTO', row.get('costo', 0)))
+                                # 🎯 RADAR CORREGIDO: Apunta estrictamente a COSTO
+                                val_costo = row.get('COSTO', row.get('costo', 0))
                                 txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
                                 try:
                                     precio_final = float(txt_costo)
@@ -308,7 +310,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         dict_precios = {}
                         for row in respuesta.data:
                             prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                            val_costo = row.get('PRECIOS', row.get('COSTO', row.get('costo', 0)))
+                            # 🎯 RADAR CORREGIDO: Apunta estrictamente a COSTO
+                            val_costo = row.get('COSTO', row.get('costo', 0))
                             txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
                             try:
                                 precio_final = float(txt_costo)
