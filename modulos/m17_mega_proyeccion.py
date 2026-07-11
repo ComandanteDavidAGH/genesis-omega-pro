@@ -24,7 +24,7 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except: return None
 
-def cargar_bases_m17(url_boveda, url_precios):
+def cargar_bases_m17(url_boveda, url_precios, supabase_client=None):
     gc = obtener_cliente_gspread_unificado()
     if not gc: return None, None, None, None, None, pd.DataFrame()
     
@@ -42,8 +42,25 @@ def cargar_bases_m17(url_boveda, url_precios):
         try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         except: pass
         
-        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
-        except: pass
+        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS (SUPABASE FIRST)
+        if supabase_client:
+            try:
+                res = supabase_client.table("DICCIONARIO_SIGLAS").select("*").execute()
+                if res.data:
+                    df_dicc = pd.DataFrame(res.data)
+                    # Normalizamos los nombres de las columnas a mayúsculas para compatibilidad 
+                    df_dicc.columns = [str(c).upper().strip() for c in df_dicc.columns]
+            except:
+                pass
+
+        # Fallback de respaldo a Google Sheets si Supabase no devolvió datos
+        if df_dicc.empty:
+            try: 
+                dicc_raw = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
+                if dicc_raw:
+                    df_dicc = pd.DataFrame(dicc_raw[1:], columns=[str(c).upper().strip() for c in dicc_raw[0]])
+            except: 
+                pass
         
         try: 
             t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
@@ -93,6 +110,7 @@ def cargar_bases_m17(url_boveda, url_precios):
                 col_finca = next((c for c in encabezados if "FINCA" in c or "PROPIEDAD" in c), None)
                 if not col_finca and len(encabezados) > 2: col_finca = encabezados[2] # Fallback Columna C
                 
+                # Modificado para admitir el año 2026 de forma nativa
                 col_fecha = next((c for c in encabezados if "FECHA" in c or "DATE" in c), None)
                 if not col_fecha and len(encabezados) > 7: col_fecha = encabezados[7] # Fallback Columna H
                 
@@ -232,7 +250,6 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 dict_prods[p_fall] = dict_prods.get(p_fall, 0.0) + d_fall
 
     for p in list(dict_prods.keys()):
-        # Se corrigió sintaxis silenciosa en lista
         if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
         elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = 1.5 if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else 1.0
         if es_organico and "ADHERENTE" in p: del dict_prods[p]
@@ -244,7 +261,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-def ejecutar():
+def ejecutar(supabase_client=None):
     st.markdown("""
     <style>
     .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
@@ -263,7 +280,7 @@ def ejecutar():
         st.session_state['m17_db_cargada'] = False
         db_cargada = False
 
-    with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE", expanded=not db_cargada):
+    with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE Y BASE DE DATOS", expanded=not db_cargada):
         if db_cargada:
             st.success("✅ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
         else:
@@ -276,7 +293,8 @@ def ejecutar():
             if url_1 and url_2:
                 with st.spinner("Descargando información (Modo Original Protegido)..."):
                     try:
-                        mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2)
+                        # Pasamos el cliente de Supabase directamente al descargador de datos
+                        mez, conf, dicc, t2, prec, t1 = cargar_bases_m17(url_1, url_2, supabase_client)
                         st.session_state['m17_mez'] = mez
                         st.session_state['m17_conf'] = conf
                         st.session_state['m17_dicc'] = dicc
@@ -286,7 +304,7 @@ def ejecutar():
                         st.session_state['m17_url1'] = url_1
                         st.session_state['m17_url2'] = url_2
                         st.session_state['m17_db_cargada'] = True
-                        st.success("¡Extracción perfecta! Memoria cargada.")
+                        st.success("¡Extracción perfecta! Memoria cargada híbrida realizada.")
                         if hasattr(st, 'rerun'): st.rerun()
                         else: st.experimental_rerun()
                     except Exception as e:
@@ -377,7 +395,6 @@ def ejecutar():
 
                     if ha_num <= 0: continue
 
-                    # Cálculo del promedio dinámico
                     if precio_vuelo_manual == 0:
                         precio_vuelo_final = calcular_promedio_vuelo_finca(finca_n, df_t1)
                     else:
@@ -440,7 +457,6 @@ def ejecutar():
                     costo_st_fila = dias_c * st_base * ha_num
                     costo_vuelo_fila = precio_vuelo_final * ha_num 
 
-                    # 💥 ESCUDO ANTI-COLAPSO: Convierte NaN en ceros para evitar la pantalla roja de ValueError
                     costo_mezcla_fila = 0.0 if pd.isna(costo_mezcla_fila) else float(costo_mezcla_fila)
                     costo_st_fila = 0.0 if pd.isna(costo_st_fila) else float(costo_st_fila)
                     costo_vuelo_fila = 0.0 if pd.isna(costo_vuelo_fila) else float(costo_vuelo_fila)
@@ -536,7 +552,6 @@ def ejecutar():
         st.markdown("<br>", unsafe_allow_html=True)
         buffer = io.BytesIO()
         
-        # 1. Exportamos los datos estáticos sin fórmulas para garantizar que el total coincida 100% con el panel
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False)
             df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
@@ -553,18 +568,15 @@ def ejecutar():
                 ws = workbook[sheet_name]
                 ws.sheet_view.showGridLines = False
                 
-                # Definir límites exactos para evitar el bucle infinito que causa el "Oh no"
                 max_r = ws.max_row
                 max_c = ws.max_column
                 
-                # Extraemos los nombres de las columnas UNA SOLA VEZ (Evita saturar la memoria RAM)
                 column_headers = {}
                 for col_idx in range(1, max_c + 1):
                     ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = 20
                     header_val = ws.cell(row=1, column=col_idx).value
                     column_headers[col_idx] = str(header_val).upper() if header_val else ""
 
-                # Iteración segura y ultra rápida
                 for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
                     for cell in row:
                         cell.border = borde
@@ -575,7 +587,6 @@ def ejecutar():
                         else:
                             cell.alignment = Alignment(vertical='center')
                             
-                            # Usamos el diccionario en lugar de consultar la celda múltiples veces
                             col_name = column_headers.get(cell.column, "")
                             
                             if isinstance(cell.value, (int, float)):
@@ -588,6 +599,7 @@ def ejecutar():
             label="💾 DESCARGAR REPORTE GERENCIAL (EXCEL)",
             data=buffer.getvalue(),
             file_name=f"MegaProyeccion_Operativa.xlsx",
+            file_name=f"MegaProyeccion_Operativa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
