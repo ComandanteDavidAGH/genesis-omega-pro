@@ -54,10 +54,25 @@ def renderizar():
     # --- 🚨 RADAR LOGÍSTICO DE ALERTA TEMPRANA ---
     st.markdown("### 🚨 Radar Logístico: Alerta Temprana de Inventarios")
     
+    # Intentar obtener los datos del estado de sesión actual
     df_sabana = st.session_state.get('df_sabana', pd.DataFrame())
     
+    # INTEGRACIÓN SUPABASE: Si la sesión está vacía, intentamos recuperar el estado persistente de forma segura
+    if df_sabana.empty and 'supabase' in st.session_state:
+        try:
+            supabase_client = st.session_state['supabase']
+            # Traemos los registros de la tabla centralizada de inventarios
+            respuesta = supabase_client.table("inventario_sap").select("*").execute()
+            if respuesta.data and len(respuesta.data) > 0:
+                df_sabana = pd.DataFrame(respuesta.data)
+                # Resguardamos en la sesión local para mantener la compatibilidad con el resto de módulos
+                st.session_state['df_sabana'] = df_sabana
+        except Exception:
+            # Fallback seguro: Si falla la conexión o la tabla no existe aún, el sistema continúa sin romperse
+            pass
+    
     if df_sabana.empty:
-        st.warning("⚠️ **Radar en Modo Espera:** El sistema no detecta un inventario activo en la memoria. Para encender el radar, por favor cargue la **Sábana SAP** actualizada en el **📥 Módulo 2 (Carga Facturación)**.")
+        st.warning("⚠️ **Radar en Modo Espera:** El sistema no detecta un inventario activo en la memoria ni en la nube. Para encender el radar, por favor cargue la **Sábana SAP** actualizada en el **📥 Módulo 2 (Carga Facturación)**.")
     else:
         with st.spinner("Sincronizando existencias de pistas y consolidando lotes..."):
             
@@ -74,7 +89,7 @@ def renderizar():
             if not col_desc: col_desc = next((c for c in df_sabana.columns if 'DESC' in str(c).upper() or 'TEXTO' in str(c).upper()), None)
 
             if not col_cod or not col_pista or not col_saldo:
-                st.error("❌ Error de Radar: No se pudieron mapear las columnas. Verifique que el archivo corresponda a la Sábana Estándar.")
+                st.error("❌ Error de Radar: No se pudieron mapear las columnas. Verifique que el archivo corresponda a la Sábana Estándar o estructura de Supabase.")
             else:
                 # 2. Copia y Limpieza Vectorial de Registros Activos
                 df_temp = df_sabana.copy()
@@ -132,9 +147,14 @@ def renderizar():
                 })
                 
                 columnas_finales = ["📍 PISTA / ALMACÉN", "🧪 CÓDIGO | NOMBRE DEL PRODUCTO", "⚠️ SALDO ACTUAL", "🛡️ LÍMITE DE SEGURIDAD", "📋 REGLA APLICADA"]
-                df_alertas_render = df_alertas[columnas_finales].sort_values(by="📍 PISTA / ALMACÉN")
                 
-                # 6. HUD TÁCTICO CORREGIDO (Ahora sí leerá las 5 pistas por separado)
+                # Asegurar inicialización vacía si no hay registros para evitar fallos de ordenamiento
+                if not df_alertas.empty:
+                    df_alertas_render = df_alertas[columnas_finales].sort_values(by="📍 PISTA / ALMACÉN")
+                else:
+                    df_alertas_render = pd.DataFrame(columns=columnas_finales)
+                
+                # 6. HUD TÁCTICO CORREGIDO (Leera las pistas de forma consolidada)
                 total_almacenes = inventario_agrupado[col_pista].nunique()
                 total_insumos = inventario_agrupado['PRODUCTO_RADAR'].nunique()
                 conteo_alertas = len(df_alertas_render)
