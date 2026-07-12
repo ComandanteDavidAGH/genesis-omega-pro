@@ -55,7 +55,6 @@ def parsear_precio_colombia(val):
     except:
         return None
 
-# 💥 SE AGREGÓ TTL=600 (Auto refresco cada 10 minutos) 💥
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     gc_nuevo = obtener_cliente_gspread_unificado()
@@ -95,7 +94,6 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
 
     return df_vivos, df_historico
 
-# 💥 SE AGREGÓ TTL=600 (Auto refresco cada 10 minutos) 💥
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_boveda_recetas_y_precios():
     gc = obtener_cliente_gspread_unificado()
@@ -295,6 +293,8 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 # --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.header("", anchor="inicio_modulo")
+    
+    # 🚀 REFORZAMIENTO ESTÉTICO ANTI-PALIDEZ: Inyección quirúrgica para inmovilizar BaseWeb
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -302,6 +302,30 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     .hud-bi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    
+    /* 💥 CONTROLES RESALTADOS: Contornos Verde Intenso de 3px sólidos contra la opacidad gris traslúcida */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
+        border: 3px solid #143521 !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    }
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border: none !important;
+    }
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] div,
+    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input,
+    div[data-testid="stSelectbox"] span {
+        color: #000000 !important;
+        font-weight: 900 !important;
+    }
+    div[data-testid="stMainBlockContainer"] label p {
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -333,6 +357,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
+        super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA_DT'])
         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
@@ -350,8 +375,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
         hb1, hb2, hb3 = st.columns(3)
         with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
-        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {costo_medio_historico:,.0f}</p></div>", unsafe_allow_html=True)
-        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
+        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
+        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {formato_ordenes:=total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
@@ -417,15 +442,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
         k1, k2, k3 = st.columns(3)
-        k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {costo_a:,.0f}")
-        k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {costo_b:,.0f}")
+        k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {formato_latino(costo_a, 0)}")
+        k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {formato_latino(costo_b, 0)}")
         k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
         
         st.markdown("#### 🚜 Volumen Operativo (Hectáreas Aplicadas)")
         var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
         h1, h2, h3 = st.columns(3)
-        h1.metric(f"Total Hectáreas ({año_base})", f"{area_a:,.1f} Ha")
-        h2.metric(f"Total Hectáreas ({año_comp})", f"{area_b:,.1f} Ha")
+        h1.metric(f"Total Hectáreas ({año_base})", f"{formato_latino(area_a, 1)} Ha")
+        h2.metric(f"Total Hectáreas ({año_comp})", f"{formato_latino(area_b, 1)} Ha")
         h3.metric("Variación de Área", f"{var_area:+.1f} %" if area_a > 0 else "N/A", delta=f"{var_area:+.1f}%" if area_a > 0 else None)
         
         st.markdown("<br>", unsafe_allow_html=True)
@@ -439,8 +464,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_a} ciclos")
         c2.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
-        c3.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{int_a:.1f} días" if int_a > 0 else "N/A")
-        c4.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{int_b:.1f} días" if int_b > 0 else "N/A", delta=f"{int_b - int_a:+.1f} días" if (int_a > 0 and int_b > 0) else None)
+        c3.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_a, 1)} días" if int_a > 0 else "N/A")
+        c4.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A", delta=f"{int_b - int_a:+.1f} días" if (int_a > 0 and int_b > 0) else None)
         
         st.markdown("---")
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
@@ -506,7 +531,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     textfont=dict(color='white', size=12, family='Arial Black')
                 )
             ])
-            fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.")
+            fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest")
             st.plotly_chart(fig_unit, use_container_width=True)
             
         with tab_glob:
@@ -533,7 +558,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     textfont=dict(color='white', size=11, family='Arial Black')
                 )
             ])
-            fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.")
+            fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
             st.plotly_chart(fig_glob, use_container_width=True)
         
         col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -561,9 +586,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tabla_autopsia.rename(columns=dicc_renombres, inplace=True)
             
             df_vista = tabla_autopsia.copy()
-            df_vista[nombre_base] = df_vista[nombre_base].map("$ {:,.0f}".format)
-            df_vista[nombre_comp] = df_vista[nombre_comp].map("$ {:,.0f}".format)
-            df_vista['Variación ($)'] = df_vista['Variación ($)'].map("$ {:,.0f}".format)
+            df_vista[nombre_base] = df_vista[nombre_base].apply(lambda x: f"$ {formato_latino(x, 0)}")
+            df_vista[nombre_comp] = df_vista[nombre_comp].apply(lambda x: f"$ {formato_latino(x, 0)}")
+            df_vista['Variación ($)'] = df_vista['Variación ($)'].apply(lambda x: f"$ {formato_latino(x, 0)}")
             st.dataframe(df_vista, use_container_width=True, hide_index=True)
             
             csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
@@ -598,22 +623,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         precio_a, precio_b = obtener_precio_promedio(prod, año_base), obtener_precio_promedio(prod, año_comp)
                         costo_ha_a, costo_ha_b = dosis * precio_a, dosis * precio_b
                         costo_total_a += costo_ha_a; costo_total_b += costo_ha_b
-                        matriz_mol.append({"INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}", f"P. Prom. ({año_base})": f"$ {precio_a:,.0f}", f"P. Prom. ({año_comp})": f"$ {precio_b:,.0f}", f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a})
+                        matriz_mol.append({"INSUMO QUÍMICO": prod, "DOSIS/HA": f"{dosis:.3f}", f"P. Prom. ({año_base})": f"$ {formato_latino(precio_a, 0)}", f"P. Prom. ({año_comp})": f"$ {formato_latino(precio_b, 0)}", f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a})
 
                     df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
                     df_vista_mol_print = df_vista_mol.copy()
-                    df_vista_mol_print[f"Costo/Ha ({año_base})"] = df_vista_mol_print[f"Costo/Ha ({año_base})"].map("$ {:,.0f}".format)
-                    df_vista_mol_print[f"Costo/Ha ({año_comp})"] = df_vista_mol_print[f"Costo/Ha ({año_comp})"].map("$ {:,.0f}".format)
-                    df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].map("$ {:,.0f}".format)
+                    df_vista_mol_print[f"Costo/Ha ({año_base})"] = df_vista_mol_print[f"Costo/Ha ({año_base})"].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                    df_vista_mol_print[f"Costo/Ha ({año_comp})"] = df_vista_mol_print[f"Costo/Ha ({año_comp})"].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                    df_vista_mol_print["Variación ($)"] = df_vista_mol_print["Variación ($)"].apply(lambda x: f"$ {formato_latino(x, 0)}")
                     st.dataframe(df_vista_mol_print, use_container_width=True, hide_index=True)
                     
                     csv_n2 = df_vista_mol_print.to_csv(index=False).encode('utf-8')
                     st.download_button(label="📄 Exportar Receta vs Año (CSV)", data=csv_n2, file_name=f"Comparativo_{coctel_sel}.csv", mime="text/csv", key="btn_down_n2")
                     
                     c1, c2, c3 = st.columns(3)
-                    c1.metric(f"Total Teórico ({año_base})", f"$ {costo_total_a:,.0f}")
-                    c2.metric(f"Total Teórico ({año_comp})", f"$ {costo_total_b:,.0f}")
-                    c3.metric("Variación Cóctel", f"$ {costo_total_b - costo_total_a:,.0f}", delta=f"$ {costo_total_b - costo_total_a:,.0f}", delta_color="inverse")
+                    c1.metric(f"Total Teórico ({año_base})", f"$ {formato_latino(costo_total_a, 0)}")
+                    c2.metric(f"Total Teórico ({año_comp})", f"$ {formato_latino(costo_total_b, 0)}")
+                    c3.metric("Variación Cóctel", f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", delta=f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", delta_color="inverse")
 
         # =====================================================================
         # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA Y AUDITORÍA DE INVENTARIOS
@@ -642,7 +667,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         area_inv = df_inventario['AREA_NUM'].sum() if not df_inventario.empty else 0.0
 
-        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({area_inv:,.1f} Ha)** contra la matriz de **DD_Mesclas**.")
+        st.info(f"Cálculo volumétrico cruzando las hectáreas aplicadas en la **TABLA 1 ({formato_latino(area_inv, 1)} Ha)** contra la matriz de **DD_Mesclas**.")
 
         c_coctel = next((c for c in df_inventario.columns if 'COCTEL' in str(c).upper()), None)
 
@@ -708,7 +733,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                         title=f"Top 15 Insumos - Pista: {pista_inv_sel}"
                                     )
                                     fig.update_traces(textposition='outside', textfont_size=11)
-                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100), separators=",.")
+                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100), separators=",.", hovermode="closest")
                                     st.plotly_chart(fig, use_container_width=True)
                             else:
                                 vol_especifico = consumo_log[insumo_filtrado]
@@ -768,11 +793,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         if os_val in ["", "nan"]: continue
                         tar_avion_raw = limpiar_dinero(row['AVION_MAESTRO'])
                         tar_dom_raw = limpiar_dinero(row['DOMINIC_MAESTRO'])
-                        tarifa_unitaria_actual = tar_avion_raw + tar_dom_raw
+                        tarita_unitaria_actual = tar_avion_raw + tar_dom_raw
 
-                        if tarifa_unitaria_actual > 0 and row['AREA_NUM'] > 0:
-                            t_act_red = red_excel(tarifa_unitaria_actual)
-                            t_nue_red = red_excel((tarifa_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
+                        if tarita_unitaria_actual > 0 and row['AREA_NUM'] > 0:
+                            t_act_red = red_excel(tarita_unitaria_actual)
+                            t_nue_red = red_excel((tarita_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
                             matriz_simulacion.append({
                                 "Nº OS": os_val, "FECHA": row['FECHA_DT'].strftime('%d/%m/%Y'), "SEMANA": int((row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]),
                                 "FINCA": str(row['FINCA_MAESTRA']).upper().strip(), "PISTA": str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A", "HECTÁREAS": row['AREA_NUM'],
@@ -786,18 +811,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         st.markdown("### 🎯 Impacto Financiero Real de la Simulación")
                         
                         k1, k2, k3 = st.columns(3)
-                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {df_resultados['TOTAL ACTUAL ($)'].sum():,.0f}")
-                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {df_resultados['NUEVO TOTAL ($)'].sum():,.0f}")
-                        k3.metric("⚖️ Dinero Real en Juego", f"$ {abs(df_resultados['DIFERENCIA ($)'].sum()):,.0f}", delta=f"$ {df_resultados['DIFERENCIA ($)'].sum():,.0f}")
+                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {formato_latino(df_resultados['TOTAL ACTUAL ($)'].sum(), 0)}")
+                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {formato_latino(df_resultados['NUEVO TOTAL ($)'].sum(), 0)}")
+                        k3.metric("⚖️ Dinero Real en Juego", f"$ {formato_latino(abs(df_resultados['DIFERENCIA ($)'].sum()), 0)}", delta=f"$ {formato_latino(df_resultados['DIFERENCIA ($)'].sum(), 0)}")
 
                         tab_resumen, tab_detalle = st.tabs(["📊 Resumen", "📋 Desglose"])
                         with tab_resumen:
                             df_sem_vista = df_semanal.copy()
-                            for col in ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_sem_vista[col] = df_sem_vista[col].map("$ {:,.0f}".format)
+                            df_sem_vista['HECTÁREAS'] = df_sem_vista['HECTÁREAS'].apply(lambda x: formato_latino(x, 2))
+                            for col in ["TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: 
+                                df_sem_vista[col] = df_sem_vista[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
                             st.dataframe(df_sem_vista, use_container_width=True, hide_index=True)
                         with tab_detalle:
                             df_vista = df_resultados.copy()
-                            for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: df_vista[col] = df_vista[col].map("$ {:,.0f}".format)
+                            df_vista['HECTÁREAS'] = df_vista['HECTÁREAS'].apply(lambda x: formato_latino(x, 2))
+                            for col in [f"TARIFA ACTUAL / Ha ({margen_actual}%)", f"NUEVA TARIFA / Ha ({margen_nuevo}%)", "TOTAL ACTUAL ($)", "NUEVO TOTAL ($)", "DIFERENCIA ($)"]: 
+                                df_vista[col] = df_vista[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
                             st.dataframe(df_vista, use_container_width=True, hide_index=True)
                             
                         buffer_sim = io.BytesIO()
