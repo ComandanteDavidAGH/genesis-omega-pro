@@ -3,16 +3,20 @@ import pandas as pd
 import gspread
 from datetime import datetime, timedelta
 import re
+import io
 import requests
 import folium
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
+@st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
-    except: return None
+    except: 
+        return None
 
 def a_numero_limpio(val):
     try:
@@ -109,18 +113,38 @@ def cargar_historico_t1():
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
-    st.markdown("""
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
+
+    # 🚀 TRATAMIENTO ESTÉTICO DE CONTRASTE INDUSTRIAL: Contornos sólidos de 3px e inputs opacos
+    st.markdown(f"""
     <style>
-    .titulo-agronomo { color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }
-    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    .titulo-agronomo {{ color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }}
+    div[data-testid="stDataFrame"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    
+    /* 💥 CONTROLES BLINDADOS M15: Enmarcar cargadores de archivos KML con Verde Intenso de 3px */
+    div[data-testid="stFileUploader"] > div {{
+        background-color: #ffffff !important;
+        border: 3px solid {VERDE_INTENSO} !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    }}
+    div[data-testid="stFileUploader"] * {{
+        color: #000000 !important;
+        font-weight: bold !important;
+    }}
+    div[data-testid="stMainBlockContainer"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Mapa de Calor Agronómico</h1>", unsafe_allow_html=True)
     st.write("Análisis de ciclos biológicos por FINCA sobre terreno satelital y lluvia trimestral.")
 
-    # --- 💥 GESTOR DE CARGA BLINDADO (Sin columnas) 💥 ---
-    st.markdown("### 📂 1. Inyección de Polígonos de Precisión")
+    st.markdown("### 📂 1. Inyección de Polígonos de Precision")
     
     if "kml_reset_key" not in st.session_state:
         st.session_state.kml_reset_key = 0
@@ -353,3 +377,6 @@ def ejecutar(purificar_lote, extraer_numero):
             df_resumen['LLUVIA 30D (mm)'] = df_resumen['LLUVIA 30D (mm)'].apply(lambda x: f"{x:.1f} mm")
 
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+
+if __name__ == "__main__":
+    pass
