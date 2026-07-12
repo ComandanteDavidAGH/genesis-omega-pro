@@ -67,6 +67,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
+    # 🚀 INTEGRACIÓN SUPABASE BRIDGE: Si Drive se satura, el Dashboard se alimenta de la Nube en milisegundos
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -157,7 +158,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 REFORZAMIENTO VISUAL VIP EXTREMO: Fin de las casillas pálidas e invisibles
+    # 🚀 RECOMPOSICIÓN ESTÉTICA VIP MARCA: Bordes Sólidos de 2.5px Verde Intenso y Fondo Opaco
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -166,34 +167,32 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 CRISTALIZACIÓN DE SELECTORES: Bordes gruesos Verde Intenso de 2.5px y fondo blanco 100% opaco */
+    /* 💥 PROTECCIÓN ULTRA-CONTRASTE: Forzar visibilidad y eliminar palidez en combos del bloque central */
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
         border: 2.5px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.08) !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }}
     
-    /* Forzar el nodo interno de BaseWeb para destruir el fondo gris translúcido original */
+    /* Perforación del nodo interno BaseWeb para fulminar la transparencia translúcida */
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
         background-color: #ffffff !important;
         border: none !important;
     }}
     
-    /* Legibilidad del texto seleccionado */
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] div {{
         color: #000000 !important;
         font-weight: 900 !important;
         font-size: 14px !important;
     }}
     
-    /* Darle realce a las etiquetas de los filtros arriba de cada combo */
+    /* Títulos superiores de los combos resaltados */
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         font-size: 12px !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -247,7 +246,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         return
 
     meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
-    df_filtrado['MES'] = df_filtrado['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
+    df_filtrado['MES'] = df_filtrado['MES_NUM'].map(meses_nom).fillna("Desconocido")
 
     total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
@@ -364,7 +363,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
         
         fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
-        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial").update(textfont_weight="bold"))
+        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
         fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
         fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
         st.plotly_chart(fig4, use_container_width=True)
@@ -390,26 +389,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', 
                       color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
         
-        fig5.update_traces(
-            textposition='outside', 
-            textfont=dict(size=14, color='black', family="Arial").update(textfont_weight="bold"), 
-            cliponaxis=False
-        )
-        
-        fig5.update_layout(
-            xaxis_title="Semana Operativa", 
-            yaxis_title="Total Recargos ($ COP)", 
-            plot_bgcolor='rgba(0,0,0,0)', 
-            legend_title_text='Año Fiscal',
-            bargap=0.1,        
-            bargroupgap=0.0    
-        )
+        fig5.update_traces(textposition='outside', textfont=dict(size=14, color='black', family="Arial"), cliponaxis=False)
+        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0)
         fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
         st.plotly_chart(fig5, use_container_width=True)
     else:
         st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
 
-    # 🎯 EXPORTACIÓN EXCEL MAESTRA DIRECTA DESDE EL REGISTRO CONSOLIDADO
+    # 🎯 EXPORTACIÓN EXCEL MAESTRA DIRECTA DESDE EL CONSOLIDADO EN RAM
     st.markdown("---")
     buffer_rep = io.BytesIO()
     nombre_hoja = 'Reporte'
