@@ -67,7 +67,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
-    # 🚀 INTEGRACIÓN SUPABASE BRIDGE: Si Drive falla, se activa la réplica de datos de la nube
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -158,7 +157,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 RECONSTITUCIÓN ESTÉTI_CO CORPORATIVA: Bordes Fuertes de Marca Verde e Inputs Impecables
+    # 🚀 REFORZAMIENTO VISUAL VIP EXTREMO: Fin de las casillas pálidas e invisibles
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -167,19 +166,34 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 REINSTALACIÓN DE BORDES FUERTES VERDES SOLICITADOS */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input {{
-        border: 2px solid {VERDE_INTENSO} !important;
+    /* 💥 CRISTALIZACIÓN DE SELECTORES: Bordes gruesos Verde Intenso de 2.5px y fondo blanco 100% opaco */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
+        border: 2.5px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        box-shadow: 0px 3px 6px rgba(0,0,0,0.06) !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.08) !important;
     }}
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] *,
-    div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input {{
+    
+    /* Forzar el nodo interno de BaseWeb para destruir el fondo gris translúcido original */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
+        background-color: #ffffff !important;
+        border: none !important;
+    }}
+    
+    /* Legibilidad del texto seleccionado */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] div {{
         color: #000000 !important;
         font-weight: 900 !important;
         font-size: 14px !important;
+    }}
+    
+    /* Darle realce a las etiquetas de los filtros arriba de cada combo */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 12px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -213,7 +227,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    # --- PIPELINE DE FILTRADO HISTÓRICO UNIFICADO ---
+    # Controles secundarios nativos de visualización
+    cc1, cc2, cc3 = st.columns(3)
+    mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m9_h_v6")
+    calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m9_r_v6")
+    agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m9_f_v6")
+
+    # --- 🛰️ PIPELINE DE FILTRADO HISTÓRICO UNIFICADO ---
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS (Comparativa Anual)": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
     if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
@@ -226,9 +246,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.warning("⚠️ El Escuadrón no registró operaciones con los filtros seleccionados.")
         return
 
-    if not df_filtrado.empty: total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
-    else: total_area = 0.0
-    
+    meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
+    df_filtrado['MES'] = df_filtrado['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
+
+    total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
     total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
     
@@ -388,17 +409,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     else:
         st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
 
-    # 🎯 EXPORTACIÓN EXCEL MAESTRA DIRECTA DESDE DF_FILTRADO ORIGINAL
+    # 🎯 EXPORTACIÓN EXCEL MAESTRA DIRECTA DESDE EL REGISTRO CONSOLIDADO
     st.markdown("---")
     buffer_rep = io.BytesIO()
     nombre_hoja = 'Reporte'
     
-    # El verdadero Módulo 9 exporta limpiamente el set transaccional consolidado en pantalla
     df_filtrado.drop(columns=['FECHA_DT'], errors='ignore').to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
         
     rango_label = f"{df_filtrado['FECHA_DT'].min().strftime('%Y%m%d')}_{df_filtrado['FECHA_DT'].max().strftime('%Y%m%d')}"
     st.download_button(
-        label="💾 DESCARGAR REPORTE EN EXCEL",
+        label="📥 DESCARGAR REPORTE EN EXCEL",
         data=buffer_rep.getvalue(),
         file_name=f"Reporte_Hectareas_{rango_label}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
