@@ -74,9 +74,13 @@ def limpiar_moneda(val):
         else:
             sep = "." if "." in texto else ("," if "," in texto else None)
             if sep:
-                if len(texto.split(sep)[-1]) == 3: texto = texto.replace(sep, "")
-                else: texto = texto.replace(sep, ".")
-        return float(texto)
+                if texto.count(sep) > 1:
+                    texto = texto.replace(sep, "")
+                elif len(texto.split(sep)[-1]) == 3: 
+                    texto = texto.replace(sep, "")
+                else: 
+                    texto = texto.replace(sep, ".")
+        return float(texto) if texto else 0.0
     except:
         return 0.0
 
@@ -210,9 +214,36 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 # 🚁 MOTOR DEL SIMULADOR PRINCIPAL
 # =================================================================
 def ejecutar(procesar_fecha_pesada, extraer_numero):
-    st.markdown("""
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
+    
+    # 🚀 CEBO MAESTRO ANTI-PALIDEZ: Fuerza Bruta de Contornos e Inputs Opacos para el M12
+    st.markdown(f"""
     <style>
-    .titulo-simulador { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
+    
+    /* Enmarcar selectores y text inputs con contorno sólido de 3px e interior blanco opaco */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stTextInput"] input {{
+        background-color: #ffffff !important;
+        border: 3px solid {VERDE_INTENSO} !important;
+        border-radius: 6px !important;
+    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+        background-color: transparent !important;
+        border: none !important;
+    }}
+    div[data-testid="stSelectbox"] *, div[data-testid="stDateInput"] *, div[data-testid="stTextInput"] * {{
+        color: #000000 !important;
+        font-weight: bold !important;
+    }}
+    div[data-testid="stSelectbox"] label p, div[data-testid="stDateInput"] label p, div[data-testid="stTextInput"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -261,7 +292,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
 
-    df_sim[["Equipo", "Pista"]] = df_sim.apply(lambda r: pd.Series(purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])), axis=1)
+    df_sim["Equipo"] = df_sim.apply(lambda r: purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])[0], axis=1)
+    df_sim["Pista"] = df_sim.apply(lambda r: purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])[1], axis=1)
+    
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
@@ -270,7 +303,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
 
     if df_sim.empty:
-        st.warning("📭 No hay registros matemáticamente válidos en la TABLA 1.")
+        st.warning("⚠️ No hay registros matemáticamente válidos en la TABLA 1.")
         return
 
     min_date = df_sim['Fecha_DT'].min().date()
@@ -320,7 +353,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         modo_calculo = f6.selectbox("🧮 Analizar Contra:", ["Venta Ideal (+Margen Inteligente)", "Costo Puro Operativo"])
 
         st.markdown("---")
-        st.markdown(f"#### ✈️ Gestor de Tarifas Base de Aeronaves")
+        st.markdown("#### ✈️ Gestor de Tarifas Base de Aeronaves")
         
         equipos_a_mostrar = [av for av in lista_aviones_dinamica if av != "✈️ TODOS LOS EQUIPOS"]
         if not equipos_a_mostrar:
@@ -385,12 +418,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             cobro_real    = float(row["CobroReal"])          if pd.notna(row["CobroReal"])          else 0.0
 
             if hectareas_os == 0: return cobro_real
-
-            # Lógica matemática plana: (Tarifa hora × Horas totales OS) ÷ Hectáreas totales OS
             precio_simulado = (valor_hora * horas_os) / hectareas_os
-
             if cobro_real >= precio_simulado: return cobro_real
-
             return precio_simulado
         except:
             return 0.0
@@ -472,7 +501,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     )
 
     # =================================================================
-    # 📈 GRÁFICOS HIGH-END PREMIUM (Estilo Corporativo - CORREGIDOS)
+    # 📈 GRÁFICOS HIGH-END PREMIUM (Efecto Hover de Aumento Activo)
     # =================================================================
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
@@ -490,7 +519,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         title="<b>Evolución Cronológica: Tarifa Cobrada vs Costo OS Calculado</b>"
     )
     
-    # 🌟 CORRECCIÓN TÉCNICA: Reemplazo de marker_border_width por marker_line_width nativo
     fig_tarifas.update_traces(marker_line_width=0)
     
     if len(fig_tarifas.data) >= 2:
@@ -505,7 +533,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         xaxis=dict(showgrid=False, tickangle=-45, title=None),
         yaxis=dict(showgrid=True, gridcolor="#EAEAEA", zeroline=True, zerolinecolor="#CCCCCC", title="Valor por Hectárea ($)"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=30, t=70, b=70)
+        margin=dict(l=50, r=30, t=70, b=70),
+        hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
 
@@ -519,14 +548,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         title="<b>Fuga Operativa Consolidada Semanal (Lucro Cesante Puro)</b>"
     )
     
-    # 🌟 CORRECCIÓN TÉCNICA: Reemplazo de marker_border_width por marker_line_width nativo
     fig_lucro.update_traces(marker_color="#A31D1D", marker_line_width=0)
     fig_lucro.update_layout(
         plot_bgcolor="white", paper_bgcolor="white",
         font=dict(family="Segoe UI, Arial", size=12, color="#333333"),
         xaxis=dict(showgrid=False, title=None),
         yaxis=dict(showgrid=True, gridcolor="#EAEAEA", title="Monto de Fuga ($)"),
-        margin=dict(l=50, r=30, t=70, b=50)
+        margin=dict(l=50, r=30, t=70, b=50),
+        hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
     )
     st.plotly_chart(fig_lucro, use_container_width=True)
 
