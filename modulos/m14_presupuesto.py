@@ -4,14 +4,17 @@ import gspread
 from datetime import datetime, timedelta
 import re
 import io
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
+@st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
-    except: return None
+    except: 
+        return None
 
 def a_numero_limpio(val):
     try:
@@ -42,6 +45,7 @@ def parsear_precio(val):
             if v.count('.') > 1: v = v.replace('.', '')
             else:
                 if len(v.split('.')[1]) == 3: v = v.replace('.', '') 
+                return float(v)
         return float(v)
     except: return 0.0
 
@@ -60,7 +64,7 @@ def fmt_latino(val, decimales=1):
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
-# 💥 PURIFICADOR DE ADITIVOS (Elimina "O", "ONM", etc) 💥
+# 💥 PURIFICADOR DE ADITIVOS (Elimina "O", "ONM", etc)
 def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fertilizantes_dinamico):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
     partes = coctel_u.split()
@@ -84,7 +88,6 @@ def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fert
                 dict_prods["ZINTRAC X LITRO SV"] = dict_prods.get("ZINTRAC X LITRO SV", 0.0) + 0.5
             elif "BT" in aditivo:
                 dict_prods["BANATREL SC"] = dict_prods.get("BANATREL SC", 0.0) + 0.5
-            # Si no hace match con las siglas salvavidas, SE IGNORA TOTALMENTE. No más químicos fantasma.
     
     if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
     if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
@@ -212,13 +215,39 @@ def extraer_precios_maestros(df_cfg):
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
-    st.markdown("""
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
+
+    # 🚀 TRATAMIENTO ESTÉ_TICO DE CONTRASTE INDUSTRIAL: Contornos sólidos de 3px e inputs opacos
+    st.markdown(f"""
     <style>
-    .titulo-presupuesto { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
-    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    .kpi-presupuesto { background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px;}
-    .kpi-titulo { color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }
-    .kpi-valor { font-size: 32px; font-weight: 900; margin: 0; }
+    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }}
+    div[data-testid="stDataFrame"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px;}}
+    .kpi-titulo {{ color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }}
+    .kpi-valor {{ font-size: 32px; font-weight: 900; margin: 0; }}
+    
+    /* 💥 CONTROLES BLINDADOS M14: Acabado en Verde Intenso puro contra transparencias de BaseWeb */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stNumberInput"] input {{
+        background-color: #ffffff !important;
+        border: 3px solid {VERDE_INTENSO} !important;
+        border-radius: 8px !important;
+    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+        background-color: transparent !important;
+        border: none !important;
+    }}
+    div[data-testid="stSelectbox"] *, div[data-testid="stNumberInput"] * {{
+        color: #000000 !important;
+        font-weight: bold !important;
+    }}
+    div[data-testid="stMainBlockContainer"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -411,8 +440,8 @@ def ejecutar(purificar_lote, extraer_numero):
                     
                     try:
                         buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer) as writer:
-                            df_vista.to_excel(writer, sheet_name='Presupuesto', index=False)
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            df_presupuesto.to_excel(writer, sheet_name='Presupuesto', index=False)
                         
                         col_down1.download_button(
                             label="📊 Exportar a Excel (Recomendado)",
@@ -435,3 +464,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     
             except Exception as e:
                 st.error(f"🚨 Falla en los cálculos financieros: {e}")
+
+if __name__ == "__main__":
+    pass
