@@ -48,7 +48,7 @@ def limpiar_dinero(val):
         return 0.0
 
 @st.cache_data(show_spinner=False)
-def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
+def cargar_y_preprocesar_boveda_mando_direct_v2(_procesar_fecha_pesada, _extraer_numero):
     gc = inicializar_cliente_gspread_propio()
     datos_brutos = []
     
@@ -153,7 +153,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 RESTAURACIÓN DE IDENTIDAD VISUAL DE PRECIOS Y ENTORNO MAESTRO
+    # 🚀 RECOMPOSICIÓN ESTÉTI_CO CORPORATIVA VIP (Bordes Verdes y Dorado Oficiales)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -161,12 +161,23 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-item {{ text-align: center; flex: 1; }}
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
+    
+    /* 💥 RESTAURACIÓN DE BORDES FUERTES Y COLORES DE MARCA SOLICITADOS */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {{
+        border: 2px solid {VERDE_INTENSO} !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        color: {VERDE_INTENSO} !important;
+        font-weight: 900 !important;
+        box-shadow: 0px 3px 6px rgba(0,0,0,0.08) !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    df_dash = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
+    df_dash = cargar_y_preprocesar_boveda_mando_direct_v2(procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1 o Supabase Cloud.")
@@ -193,6 +204,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
+    # --- CONTROLES SECUNDARIOS NATIVOS ---
+    cc1, cc2, cc3 = st.columns(3)
+    mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m9_h_v6")
+    calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m9_r_v6")
+    agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m9_f_v6")
+
+    # --- 🛰️ FILTRADO UNIFICADO SOBRE DF_FILTRADO (Cerebro Corregido) ---
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS (Comparativa Anual)": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
     if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
@@ -201,9 +219,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
 
-    if not df_filtrado.empty: total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
-    else: total_area = 0.0
-    
+    if df_filtrado.empty:
+        st.warning("⚠️ El Escuadrón no registró operaciones con los filtros seleccionados.")
+        return
+
+    meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
+    df_filtrado['MES'] = df_filtrado['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
+
+    total_area = df_filtrado.groupby('FINCA')['AREA_FUMIG'].max().sum()
     total_facturacion = float(df_filtrado['COSTO_TOTAL'].sum())
     total_dominical = float(df_filtrado['DOMINICAL_HA'].sum())
     
@@ -226,178 +249,192 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<hr>", unsafe_allow_html=True)
     
-    if df_filtrado.empty:
-        st.warning("⚠️ El Escuadrón no registró operaciones con los filtros actuales.")
-    else:
-        titulo_finca = f" ({finca_filtro})" if finca_filtro != "TODAS" else " (TODAS LAS FINCAS)"
-        g1, g2 = st.columns(2)
+    titulo_finca = f" ({finca_filtro})" if finca_filtro != "TODAS" else " (TODAS LAS FINCAS)"
+    g1, g2 = st.columns(2)
+    rango_txt = f"{df_filtrado['FECHA_DT'].min().strftime('%d/%m/%Y')} al {df_filtrado['FECHA_DT'].max().strftime('%d/%m/%Y')}"
 
-        # -----------------------------------------------------
-        # GRÁFICO 1: ÁREA ASPERJADA
-        # -----------------------------------------------------
-        with g1:
-            st.markdown(f"<h4 style='text-align:center;'>✈️ ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
-            df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
-            df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
-            df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
-            df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)}<br>ha")
-            
-            fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
-            fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-            fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
-            fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
-            st.plotly_chart(fig1, use_container_width=True)
+    # Pestaña de decisión visual unificada para evitar NameErrors en cascada
+    vista_seleccionada = st.radio("👁️ Seleccionar Métrica del Tablero:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="radio_vista_m9")
 
-        # -----------------------------------------------------
-        # GRÁFICO 2: FACTURACIÓN vs LÍMITE
-        # -----------------------------------------------------
-        with g2:
-            st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
-            df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
-            df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
-            
-            limite_real = df_filtrado[df_filtrado['LIMITE'] > 0]['LIMITE'].max()
-            if pd.isna(limite_real) or limite_real == 0: limite_real = 200000 
-            df_costo['LIMITE'] = df_costo['LIMITE'].apply(lambda x: limite_real if x == 0 else x)
-            
-            def acortar_fecha(txt):
-                try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
-                except: return txt
+    # -----------------------------------------------------
+    # LÓGICA DE RENDERIZADO SEGÚN SELECCIÓN DE VISTA
+    # -----------------------------------------------------
+    tabla_final = []
+    matriz = pd.DataFrame()
+    df_visual = pd.DataFrame()
+
+    if vista_seleccionada == "📊 Resumen Gerencial":
+        st.markdown(f"#### 📑 Consolidado Operativo ({rango_txt})")
+        total_hr_gral, total_ha_gral = 0.0, 0.0
+
+        if agrupar_avion:
+            df_gerencia = df_filtrado.groupby(['PISTA', 'HK', 'MES']).agg(REND_HR=('REND_HR', 'sum'), AREA_FUMIG=('AREA_FUMIG', 'sum')).reset_index()
+            for pista in sorted(df_gerencia['PISTA'].unique()):
+                df_pista = df_gerencia[df_gerencia['PISTA'] == pista]
+                sum_hr_pista = df_pista['REND_HR'].sum()
+                sum_ha_pista = df_pista['AREA_FUMIG'].sum()
                 
-            df_costo['FECHA_CORTA'] = df_costo['MES_ORDEN'].apply(acortar_fecha)
-            df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:10] + '..' if len(str(x)) > 10 else str(x))
-            df_costo['ETIQUETA_X'] = df_costo['COCTEL_CORTO'] + "<br>(" + df_costo['FECHA_CORTA'] + ")"
+                fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': '', 'MES': 'TOTAL BASE'}
+                if mostrar_horas or calcular_rend_prom: fila_pista['REND (hr)'] = sum_hr_pista
+                fila_pista['ÁREA FUMIG (ha)'] = sum_ha_pista
+                if calcular_rend_prom: fila_pista['PROMEDIO (Ha/Hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
+                tabla_final.append(fila_pista)
+                
+                for hk in sorted(df_pista['HK'].unique()):
+                    datos_hk = df_pista[df_pista['HK'] == hk].sort_values(by='MES')
+                    sum_hr_hk = datos_hk['REND_HR'].sum()
+                    sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
+                    
+                    emoji = "🛸 DRON:" if "DR" in str(hk).upper() else "✈️ AVION:"
+                    
+                    fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
+                    if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
+                    fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
+                    if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
+                    tabla_final.append(fila_hk)
+                    
+                    for _, row in datos_hk.iterrows():
+                        fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'MES': f"  ↳ {row['MES']}"}
+                        if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
+                        fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
+                        if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                        tabla_final.append(fila_mes)
+                        
+                total_hr_gral += sum_hr_pista
+                total_ha_gral += sum_ha_pista
+                
+            fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'MES': ''}
+            if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
+            fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
+            if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
+            tabla_final.append(fila_tot)
             
-            df_costo['HOVER_FACT'] = df_costo['VALOR_FACTURAR'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
-            df_costo['HOVER_LIMITE'] = df_costo['LIMITE'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
-
-            go_fig = go.Figure()
-            go_fig.add_trace(go.Bar(
-                x=df_costo['ETIQUETA_X'], y=df_costo['VALOR_FACTURAR'], name="Facturación/ha",
-                marker_color=VERDE_INTENSO,
-                hovertext=df_costo['COCTEL'], 
-                customdata=df_costo['HOVER_FACT'],
-                hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> %{customdata}<extra></extra>'
-            ))
-            go_fig.add_trace(go.Scatter(
-                x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Finca",
-                mode='lines+markers', line=dict(color='#ff0000', width=3), marker=dict(size=6),
-                customdata=df_costo['HOVER_LIMITE'],
-                hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
-            ))
-            
-            go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
-            go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
-            st.plotly_chart(go_fig, use_container_width=True)
-            
-        st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
-
-        # -----------------------------------------------------
-        # GRÁFICO 3: RENDIMIENTO/HORA
-        # -----------------------------------------------------
-        with g3:
-            st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO/Hora<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
-            
-            df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
-            df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
-            df_rend['SEMANA'] = df_rend['SEMANA'].astype(str).str.replace(".0", "", regex=False)
-            df_rend['EJE_Y'] = df_rend['HK'] + " | Sem " + df_rend['SEMANA']
-            df_rend = df_rend.sort_values(by=['HK', 'SEMANA'], ascending=[True, False])
-            
-            df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
-            altura_dinamica = max(400, len(df_rend) * 22)
-            
-            fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO])
-            fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
-            fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
-            fig3.update_yaxes(type='category')
-            fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
-            st.plotly_chart(fig3, use_container_width=True)
-            
-        # -----------------------------------------------------
-        # GRÁFICO 4: FACTURACIÓN MENSUAL 
-        # -----------------------------------------------------
-        with g4:
-            st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL BASE<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
-            df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
-            df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
-            df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
-            df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
-            
-            fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
-            fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial").update(textfont_weight="bold"))
-            fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
-            fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
-            st.plotly_chart(fig4, use_container_width=True)
-
-        # -----------------------------------------------------
-        # GRÁFICO 5: DOMINICALES
-        # -----------------------------------------------------
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown(f"<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
-        
-        df_dom = df_filtrado[df_filtrado['DOMINICAL_HA'] > 0].copy()
-        
-        if not df_dom.empty:
-            df_dom['SEMANA_NUM'] = pd.to_numeric(df_dom['SEMANA'].astype(str).str.extract(r'(\d+)')[0], errors='coerce').fillna(0).astype(int)
-            
-            df_dom = df_dom.groupby(['AÑO', 'MES_NOMBRE', 'SEMANA_NUM'])['DOMINICAL_HA'].sum().reset_index()
-            df_dom = df_dom.sort_values(by=['AÑO', 'SEMANA_NUM'])
-            df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
-            df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['MES_NOMBRE'] + ")"
-            
-            df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
-            
-            fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', 
-                          color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
-            
-            fig5.update_traces(
-                textposition='outside', 
-                textfont=dict(size=14, color='black', family="Arial").update(textfont_weight="bold"), 
-                cliponaxis=False
-            )
-            
-            fig5.update_layout(
-                xaxis_title="Semana Operativa", 
-                yaxis_title="Total Recargos ($ COP)", 
-                plot_bgcolor='rgba(0,0,0,0)', 
-                legend_title_text='Año Fiscal',
-                bargap=0.1,        
-                bargroupgap=0.0    
-            )
-            fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
-            st.plotly_chart(fig5, use_container_width=True)
         else:
-            st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
+            df_gerencia = df_filtrado.groupby(['PISTA', 'MES']).agg(REND_HR=('REND_HR', 'sum'), AREA_FUMIG=('AREA_FUMIG', 'sum')).reset_index()
+            for pista in sorted(df_gerencia['PISTA'].unique()):
+                datos_pista = df_gerencia[df_gerencia['PISTA'] == pista].sort_values(by='MES')
+                sum_hr = datos_pista['REND_HR'].sum()
+                sum_ha = datos_pista['AREA_FUMIG'].sum()
+                
+                fila_sub = {'NIVEL': f"📍 BASE: {pista}", 'MES': 'TOTAL BASE'}
+                if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
+                fila_sub['ÁREA FUMIG (ha)'] = sum_ha
+                if calcular_rend_prom: fila_sub['PROMEDIO (Ha/Hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
+                tabla_final.append(fila_sub)
+                
+                for _, row in datos_pista.iterrows():
+                    fila_mes = {'NIVEL': '', 'MES': f"  ↳ {row['MES']}"}
+                    if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
+                    fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
+                    if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                    tabla_final.append(fila_mes)
+                    
+                total_hr_gral += sum_hr
+                total_ha_gral += sum_ha
+                
+            fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'MES': ''}
+            if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
+            fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
+            if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
+            tabla_final.append(fila_tot)
 
-        # 🎯 EXPORTACIÓN EXCEL
-        st.markdown("---")
-        buffer_rep = io.BytesIO()
-        nombre_hoja = 'Reporte'
+        df_visual = pd.DataFrame(tabla_final)
         
-        # Validación segura de la existencia del dataframe de visualización según el radio de control
-        if vista_seleccionada == "📊 Resumen Gerencial":
-            # Si la grilla visual no se ha instanciado en este hilo, se compila un snapshot estructurado de control
-            if 'df_visual' not in locals():
-                df_area_rep = df_filtrado.groupby(['PISTA', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
-                df_area_rep.columns = ['PISTA / BASE', 'MES OPERATIVO', 'AÑO FISCAL', 'ÁREA TOTAL (HA)']
-                df_area_rep.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
-            else:
-                df_visual.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
-        else:
-            if 'matriz' in locals():
-                matriz.to_excel(buffer_rep, sheet_name=nombre_hoja)
-            else:
-                st.error("Error al consolidar la matriz de datos para Excel.")
+        def aplicar_estilos_originales(row):
+            if "BASE:" in str(row['NIVEL']):
+                return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
+            elif "TOTAL GENERAL" in str(row['NIVEL']):
+                return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
+            elif 'AVIÓN (HK)' in row and ("✈️" in str(row.get('AVIÓN (HK)','')) or "🛸" in str(row.get('AVIÓN (HK)',''))):
+                return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
+            return [''] * len(row)
             
-        rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
-        st.download_button(
-            label="💾 DESCARGAR REPORTE EN EXCEL",
-            data=buffer_rep.getvalue(),
-            file_name=f"Reporte_Hectareas_{rango_label}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )                        
+        fmt_cols = {'ÁREA FUMIG (ha)': fmt_latino}
+        if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
+        if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
+        
+        st.dataframe(df_visual.style.apply(aplicar_estilos_originales, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
+
+    else:
+        # Pestaña de Mapa Semanal Pivot
+        matriz = pd.pivot_table(df_filtrado, values='AREA_FUMIG', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
+        matriz = matriz.sort_index()
+        cols_ordenadas = sorted(matriz.columns, key=lambda x: int(float(x)) if str(x).replace('.0','').isdigit() else 999)
+        matriz = matriz[cols_ordenadas]
+        matriz['TOTAL MES'] = matriz.sum(axis=1)
+        matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
+        
+        st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
+        st.dataframe(matriz.style.format(formato_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
+
+    # Renderizado fijo de gráficos cruzados inferiores
+    with g1:
+        st.markdown(f"<h4 style='text-align:center;'>✈️ ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+        df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
+        df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
+        df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
+        df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)}<br>ha")
+        
+        fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
+        fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
+        fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
+        fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
+        st.plotly_chart(fig1, use_container_width=True)
+
+    with g2:
+        st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+        df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
+        df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
+        
+        limite_real = df_filtrado[df_filtrado['LIMITE'] > 0]['LIMITE'].max()
+        if pd.isna(limite_real) or limite_real == 0: limite_real = 200000 
+        df_costo['LIMITE'] = df_costo['LIMITE'].apply(lambda x: limite_real if x == 0 else x)
+        
+        df_costo['FECHA_CORTA'] = df_costo['MES_ORDEN'].apply(acortar_fecha)
+        df_costo['COCTEL_CORTO'] = df_costo['COCTEL'].apply(lambda x: str(x)[:10] + '..' if len(str(x)) > 10 else str(x))
+        df_costo['ETIQUETA_X'] = df_costo['COCTEL_CORTO'] + "<br>(" + df_costo['FECHA_CORTA'] + ")"
+        
+        df_costo['HOVER_FACT'] = df_costo['VALOR_FACTURAR'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
+        df_costo['HOVER_LIMITE'] = df_costo['LIMITE'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
+
+        go_fig = go.Figure()
+        go_fig.add_trace(go.Bar(
+            x=df_costo['ETIQUETA_X'], y=df_costo['VALOR_FACTURAR'], name="Facturación/ha",
+            marker_color=VERDE_INTENSO,
+            hovertext=df_costo['COCTEL'], 
+            customdata=df_costo['HOVER_FACT'],
+            hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> %{customdata}<extra></extra>'
+        ))
+        go_fig.add_trace(go.Scatter(
+            x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Finca",
+            mode='lines+markers', line=dict(color='#ff0000', width=3), marker=dict(size=6),
+            customdata=df_costo['HOVER_LIMITE'],
+            hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
+        ))
+        
+        go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
+        st.plotly_chart(go_fig, use_container_width=True)
+
+    # 🎯 EXPORTACIÓN EXCEL BIEN ENLAZADA SIN INTERRUPCIONES
+    st.markdown("---")
+    buffer_rep = io.BytesIO()
+    nombre_hoja = 'Reporte'
+    
+    if vista_seleccionada == "📊 Resumen Gerencial" and not df_visual.empty:
+        df_visual.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
+    elif not matriz.empty:
+        matriz.to_excel(buffer_rep, sheet_name=nombre_hoja)
+    else:
+        df_filtrado[['FINCA', 'AREA_FUMIG', 'COSTO_TOTAL', 'SEMANA']].to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
+        
+    rango_label = f"{df_filtrado['FECHA_DT'].min().strftime('%Y%m%d')}_{df_filtrado['FECHA_DT'].max().strftime('%Y%m%d')}"
+    st.download_button(
+        label="💾 DESCARGAR REPORTE EN EXCEL",
+        data=buffer_rep.getvalue(),
+        file_name=f"Reporte_Hectareas_{rango_label}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )                        
 
 if __name__ == "__main__":
     pass
