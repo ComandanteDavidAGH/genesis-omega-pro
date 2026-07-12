@@ -24,6 +24,7 @@ def inicializar_cliente_gspread():
 # =================================================================
 
 def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Destrucción de Casillas Pálidas en Inputs y Códigos
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -46,6 +47,38 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
     .hud-tarifas-item { text-align: center; flex: 1; }
     .hud-recargos-title, .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-tarifas-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    
+    /* 💥 DETONACIÓN DE CONTROLES PÁLIDOS: Forzar visibilidad extrema en campos interactivos */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 6px !important;
+        background-color: #ffffff !important;
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+    }
+    
+    /* Casillas de Copiado Rápido de alto impacto visual y contraste */
+    div[data-testid="stCodeBlock"], 
+    div[data-testid="stCodeBlock"] pre, 
+    div[data-testid="stCodeBlock"] pre code {
+        background-color: #ffffff !important;
+        border: 3px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
+        overflow: hidden !important;
+        padding: 2px 5px !important;
+    }
+    div[data-testid="stCodeBlock"] code,
+    div[data-testid="stCodeBlock"] code span,
+    div[data-testid="stCodeBlock"] pre span {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 17px !important;
+        font-family: 'Arial Black', monospace !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -164,15 +197,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
             with t3:
                 st.markdown("#### Búsqueda Rápida Individual")
-                st.markdown("""
-                <style>
-                div[data-testid="stCodeBlock"] {
-                    border: 2px solid #000000 !important;
-                    border-radius: 6px !important;
-                    background-color: #f8f9fa !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
+                # Se eliminó el CSS palido local heredando el estilo endurecido global de st.code
 
                 prod_sel = st.selectbox("🔍 Buscar Producto Específico:", df_t["PRODUCTO"].tolist())
                 if prod_sel:
@@ -291,7 +316,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                 st.dataframe(df_vis, use_container_width=True, hide_index=True)
                                 st.success(f"📋 Análisis completo: {len(df_comp)} registros listos para inyección.")
                             else:
-                                st.warning("⚠️ No se encontraron coincidencias entre los productos de Supabase y las filas de la Sábana.")
+                                st.warning("⚠️ No se encontraronconcoincidencias entre los productos de Supabase y las filas de la Sábana.")
                     except Exception as e:
                         st.error(f"🚨 Falla en el análisis de comportamiento: {e}")
 
@@ -385,7 +410,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             st.error("No se generaron actualizaciones.")
 
                 except Exception as e:
-                    st.error(f"🚨 FALLA TRANSACCIONAL: {e}")
+                    st.error(f"🚨 FALLA EN LA INYECCIÓN: {e}")
 
 if __name__ == "__main__":
     pass
