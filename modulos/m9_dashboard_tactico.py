@@ -67,7 +67,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
-    # 🚀 INTEGRACIÓN SUPABASE BRIDGE: Si Drive se satura, el Dashboard se alimenta de la Nube en milisegundos
+    # INTEGRACIÓN SUPABASE BRIDGE: Respaldo automático de datos relacionales en la nube
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -158,7 +158,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 RECOMPOSICIÓN ESTÉTICA VIP MARCA: Bordes Sólidos de 2.5px Verde Intenso y Fondo Opaco
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP MARCA: Intercepción dominante de nodos BaseWeb
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -167,32 +167,38 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 PROTECCIÓN ULTRA-CONTRASTE: Forzar visibilidad y eliminar palidez en combos del bloque central */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] > div[data-baseweb="select"] {{
+    /* 💥 EXTERMINACIÓN DE PALIDEZ: Contorno sólido Verde de 2.5px y Fondo Blanco 100% Opaco */
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"],
+    .main [data-baseweb="select"] {{
         border: 2.5px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.08) !important;
     }}
     
-    /* Perforación del nodo interno BaseWeb para fulminar la transparencia translúcida */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
+    /* Perforar el sub-nodo interno de Streamlit para liquidar la opacidad gris del 4% */
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] > div,
+    .main [data-baseweb="select"] > div {{
         background-color: #ffffff !important;
         border: none !important;
     }}
     
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] div {{
+    /* Visibilidad tipográfica extrema del texto seleccionado (Negro Puro) */
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] div,
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] span,
+    .main [data-baseweb="select"] * {{
         color: #000000 !important;
         font-weight: 900 !important;
         font-size: 14px !important;
     }}
     
-    /* Títulos superiores de los combos resaltados */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] label p {{
+    /* Resaltar las etiquetas de título arriba de cada combo dropdown */
+    div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         font-size: 12px !important;
         text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -278,11 +284,11 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # GRÁFICO 1: ÁREA ASPERJADA
     # -----------------------------------------------------
     with g1:
-        st.markdown(f"<h4 style='text-align:center;'>✈️ ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+        st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
-        df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)}<br>ha")
+        df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
         fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
@@ -294,7 +300,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # GRÁFICO 2: FACTURACIÓN vs LÍMITE
     # -----------------------------------------------------
     with g2:
-        st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+        st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
         df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
         df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
         
@@ -334,7 +340,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # GRÁFICO 3: RENDIMIENTO/HORA
     # -----------------------------------------------------
     with g3:
-        st.markdown(f"<h4 style='text-align:center;'>⏱️ RENDIMIENTO/Hora<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+        st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
         
         df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
         df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
@@ -356,14 +362,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # GRÁFICO 4: FACTURACIÓN MENSUAL 
     # -----------------------------------------------------
     with g4:
-        st.markdown(f"<h4 style='text-align:center;'>💵 FACTURACIÓN MENSUAL BASE<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+        st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
         df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
         df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
         df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
         df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
         
         fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
-        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
+        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial").update(textfont_weight="bold"))
         fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
         fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
         st.plotly_chart(fig4, use_container_width=True)
@@ -372,7 +378,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # GRÁFICO 5: DOMINICALES
     # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown(f"<h4 style='text-align:center;'>⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
+    st.markdown(f"#### ⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
     
     df_dom = df_filtrado[df_filtrado['DOMINICAL_HA'] > 0].copy()
     
