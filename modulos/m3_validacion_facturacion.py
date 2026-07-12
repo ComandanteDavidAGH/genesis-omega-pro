@@ -201,7 +201,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     
-    /* 💥 INTERFAZ HARDENED: Forzado de contornos en tablas, inputs de fecha, texto, números, dropdowns y data editors */
     div[data-testid="stDataEditor"],
     div[data-testid="stDataFrame"] {
         border: 3px solid #143521 !important; 
@@ -360,7 +359,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if pd.isna(p_precio): 
                         p_precio = 0
                     texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
-                    if texto_tope not in pistes_con_tope: 
+                    if texto_tope not in pistas_con_tope: 
                         pistas_con_tope.append(texto_tope)
         except: 
             pass
@@ -665,9 +664,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if df_t2_nueva is not None:
                 st.session_state['df_config'] = df_t2_nueva
                 st.session_state['df_config_base'] = df_cfg_nueva
-                st.session_state.m17_df_entrada_grid = pd.DataFrame([{
-                    "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
-                } for _ in range(500)])
                 st.toast("✅ Base de Datos Sanada y Restaurada al 100%.", icon="🛠️")
             else:
                 st.error("🚨 No se pudo restaurar la base de datos.") 
@@ -886,7 +882,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
-            c_sup1.info(f"🧑‍RX Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
             mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
@@ -1020,7 +1016,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str and idx_saldo == -1: idx_saldo = j
                         
                 sap_dict_pista = {}
-                datos_extraidos_sap = []
+                agrupador_sap = {} # <--- NUEVO DICCIONARIO AGRUPADOR PARA SUMAR CANTIDADES
 
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
@@ -1050,9 +1046,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if col_nombre_sab: 
                                 nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
 
-                    nombre_limpio = text_clean_sub = nombre_p.split('*')[0].strip().replace(" ", "")
+                    nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
+                    
+                    # Sumar Dosis para la Inteligencia Artificial (Ya estaba correcto)
                     sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
-                    datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
+                    
+                    # 💥 CONSOLIDADOR ACTIVO: Sumar Cantidades Totales para la Tabla Visual
+                    if cod_item in agrupador_sap:
+                        agrupador_sap[cod_item]['cant_total'] += cant_total
+                    else:
+                        agrupador_sap[cod_item] = {
+                            "cod": cod_item, 
+                            "nombre": nombre_p, 
+                            "nombre_limpio": nombre_limpio, 
+                            "cant_total": cant_total
+                        }
+                
+                # Convertir el agrupador en la lista que espera el resto del código
+                datos_extraidos_sap = list(agrupador_sap.values())
                 
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
@@ -1099,7 +1110,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
                     cod_item = str(item_data['cod']).strip().upper().lstrip('0')
-                    nombre_p, nombre_limpio, cant_total_pedido = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
+                    nombre_p, nombre_limpio, cant_total_pedido = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total'] # Ahora viene unificado
                     costo_unit, lote_sap, saldo_sap = 0.0, "SIN LOTE EN PISTA", 0.0
 
                     if not df_sab.empty:
@@ -1168,7 +1179,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     except Exception as e:
                         pass
 
-                    total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                     dosis_teorica = None
                     for p_receta, d_oficial in dosis_oficiales_coctel.items():
                         if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
@@ -1181,7 +1191,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
                     if dosis_teorica is None: 
-                        dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
+                        dosis_teorica = cant_total_pedido / ha_dosis_final if ha_dosis_final > 0 else 0.0
                         
                     matriz_datos.append({
                         "A: Producto": nombre_p, "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), "C: X (Extra %)": 0.0,
@@ -1449,7 +1459,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
                             if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
                                 if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
-                                    fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], text_clean_sub, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
+                                    fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_limpio, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                     filas_memoria.append(fila_m)
                         
                         def limpiar_json(val):
