@@ -8,27 +8,67 @@ import re
 import math
 import io
 import openpyxl
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from datetime import datetime, date
 from oauth2client.service_account import ServiceAccountCredentials
 
 # 🛰️ ENLACES NATIVOS
 from modulos.utilidades import procesar_fecha_pesada
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
 # =================================================================
-# 🔌 MOTOR DE CONEXIÓN QUIRÚRGICO (INDEPENDIENTE CON URLs)
+# 🔌 CONEXIÓN Y MOTORES DE FORMATO REGIONAL BLINDADOS
 # =================================================================
+
+def formato_latino(numero, decimales=0):
+    if pd.isna(numero) or numero is None: return "0"
+    try:
+        num = float(numero)
+        if num == 0: return "0"
+        if decimales == 0: texto_us = f"{num:,.0f}"
+        else: texto_us = f"{num:,.{decimales}f}"
+        return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0"
 
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
+
+def limpiar_tarifa_excel(val):
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).strip().replace("$", "").replace(" ", "").upper()
+    if not v or v in ['-', 'NAN', 'NONE', '']: return 0.0
+    
+    s_clean = re.sub(r'[^\d\.,\-]', '', v)
+    try:
+        if '.' in s_clean and ',' in s_clean:
+            if s_clean.rfind(',') > s_clean.rfind('.'): s_clean = s_clean.replace('.', '').replace(',', '.')
+            else: s_clean = s_clean.replace(',', '')
+        elif ',' in s_clean:
+            if len(s_clean.split(',')[-1]) == 3: s_clean = s_clean.replace(',', '')
+            else: s_clean = s_clean.replace(',', '.')
+        elif '.' in s_clean:
+            if s_clean.count('.') > 1: s_clean = s_clean.replace('.', '')
+            elif len(s_clean.split('.')[-1]) == 3: s_clean = s_clean.replace('.', '')
+        return float(s_clean) if s_clean else 0.0
+    except:
+        return 0.0
+
+def normalizar_a_fecha_pura(val):
+    try:
+        res_nativo = procesar_fecha_pesada(val)
+        if isinstance(res_nativo, (datetime, pd.Timestamp)): return res_nativo.date()
+        if isinstance(res_nativo, date): return res_nativo
+        return pd.to_datetime(str(res_nativo)).date()
     except: return None
 
-# 💥 SE AGREGÓ EL GUION BAJO SUBAPASE_CLIENT PARA SOLUCIONAR EL ERROR DE HASH EN CACHÉ 💥
 @st.cache_data(show_spinner=False, ttl=60)
 def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
     gc = obtener_cliente_gspread_unificado()
@@ -258,15 +298,41 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
 # =================================================================
 
 def ejecutar(supabase_client=None):
-    st.markdown("""
+    VERDE_INTENSO = '#143521'
+
+    # 💥 BLOQUE CSS SANEADO (Sin f-strings para evitar SyntaxError)
+    css_maestro = """
     <style>
     .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid VERDE_HEX !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
     .tarjeta-kpi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
     .kpi-titulo { font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-    .kpi-valor { font-size: 26px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    .kpi-valor { font-size: 24px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {
+        background-color: #ffffff !important;
+        border: 3px solid VERDE_HEX !important;
+        border-radius: 6px !important;
+    }
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stMultiSelect"] * {
+        color: #000000 !important;
+        font-weight: bold !important;
+    }
+    div[data-testid="stMainBlockContainer"] label p {
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }
     </style>
-    """, unsafe_allow_html=True)
+    """.replace("VERDE_HEX", VERDE_INTENSO)
+    
+    st.markdown(css_maestro, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
@@ -463,9 +529,15 @@ def ejecutar(supabase_client=None):
                         "Costo x Ha ($)": costo_ha, "RESULTADO TOTAL ($)": gran_total
                     })
 
-                st.session_state.m17_resultados = pd.DataFrame(resultados)
+                df_resultados_final = pd.DataFrame(resultados)
+                
+                # 💥 APLICAR ORDENAMIENTO ALFABÉTICO POR FINCA PARA MEGAZORD 💥
+                if not df_resultados_final.empty:
+                    df_resultados_final = df_resultados_final.sort_values(by="FINCA", ascending=True).reset_index(drop=True)
+
+                st.session_state.m17_resultados = df_resultados_final
                 st.session_state.m17_volumetria = log_volumetrico
-                st.success("✅ Proyección completada exitosamente.")
+                st.success("✅ Proyección completada exitosamente. Datos ordenados alfabéticamente.")
 
     if 'm17_resultados' in st.session_state and not st.session_state.m17_resultados.empty:
         st.markdown("---")
@@ -495,10 +567,10 @@ def ejecutar(supabase_client=None):
         t_gr = df_filtro['RESULTADO TOTAL ($)'].sum()
 
         c1, c2, c3, c4 = st.columns(4)
-        with c1: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>👨‍🔬 Total Serv. Tec</p><p class='kpi-valor'>$ {t_st:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
-        with c2: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>✈️ Total Vuelo</p><p class='kpi-valor'>$ {t_vu:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
-        with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$ {t_mx:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
-        with c4: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$ {t_gr:,.0f}</p></div>".replace(",", "."), unsafe_allow_html=True)
+        with c1: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>👨‍🔬 Total Serv. Tec</p><p class='kpi-valor'>$ {formato_latino(t_st, 0)}</p></div>", unsafe_allow_html=True)
+        with c2: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>✈️ Total Vuelo</p><p class='kpi-valor'>$ {formato_latino(t_vu, 0)}</p></div>", unsafe_allow_html=True)
+        with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$ {formato_latino(t_mx, 0)}</p></div>", unsafe_allow_html=True)
+        with c4: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$ {formato_latino(t_gr, 0)}</p></div>", unsafe_allow_html=True)
 
         df_resumen_finca = df_filtro.groupby('FINCA', as_index=False)[
             ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
@@ -509,14 +581,14 @@ def ejecutar(supabase_client=None):
         with tab1:
             df_view = df_filtro.copy()
             for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
-                df_view[col] = df_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+                df_view[col] = df_view[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
             st.dataframe(df_view, use_container_width=True, hide_index=True)
 
         with tab2:
             if not df_resumen_finca.empty:
                 df_resumen_view = df_resumen_finca.copy()
                 for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
-                    df_resumen_view[col] = df_resumen_view[col].map("$ {:,.0f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+                    df_resumen_view[col] = df_resumen_view[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
                 st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
             else:
                 st.info("No hay datos para resumir.")
@@ -524,7 +596,7 @@ def ejecutar(supabase_client=None):
         with tab3:
             if cons_vol_agrupado:
                 df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
-                df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].map("{:,.1f}".format).str.replace(",", "X").str.replace(".", ",").str.replace("X", ".")
+                df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].apply(lambda x: formato_latino(x, 1))
                 
                 c_tbl, c_grf = st.columns([1, 1.2])
                 with c_tbl:
@@ -537,7 +609,11 @@ def ejecutar(supabase_client=None):
                         title=f"Top 15 Insumos Proyectados"
                     )
                     fig.update_traces(textposition='outside', textfont_size=12)
-                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100))
+                    fig.update_layout(
+                        yaxis={'categoryorder':'total ascending'}, 
+                        plot_bgcolor='rgba(0,0,0,0)', 
+                        margin=dict(r=100)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
