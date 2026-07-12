@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, date
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import re
@@ -48,15 +48,40 @@ def limpiar_dinero(val):
 @st.cache_data(show_spinner=False)
 def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
     gc = inicializar_cliente_gspread_propio()
-    if not gc: return pd.DataFrame()
-        
-    try:
-        url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-        sh = gc.open_by_url(url_maestra)
-        ws = sh.worksheet("TABLA 1")
-        datos_brutos = ws.get_all_values()
-    except Exception:
-        return pd.DataFrame()
+    datos_brutos = []
+    
+    # Intento Primario: Extracción desde Google Drive (Soberanía Excel del Usuario)
+    if gc:
+        try:
+            url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+            sh = gc.open_by_url(url_maestra)
+            ws = sh.worksheet("TABLA 1")
+            datos_brutos = ws.get_all_values()
+        except Exception:
+            datos_brutos = []
+            
+    columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+
+    # 🚀 INTEGRACIÓN SUPABASE BRIDGE: Si Drive falla o la cuota expira, se activa el puente relacional en milisegundos
+    if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
+        try:
+            supabase_client = st.session_state['supabase']
+            respuesta_cloud = supabase_client.table("sap_tabla_1_maestro").select("*").execute()
+            if respuesta_cloud.data:
+                datos_brutos_supa = []
+                for row in respuesta_cloud.data:
+                    row_upper = {str(k).upper().strip(): v for k, v in row.items()}
+                    fila_estructurada = []
+                    for col in columnas_obj:
+                        # Extraer los datos mapeados respetando el índice estricto del vector de 34 columnas
+                        fila_estructurada.append(row_upper.get(col, ""))
+                    datos_brutos_supa.append(fila_estructurada)
+                
+                if datos_brutos_supa:
+                    # Inyectamos una réplica de matriz simulada para que el pipeline descendente procese con Zero Regression
+                    datos_brutos = [[""] * 30] * 5 + [columnas_obj] + datos_brutos_supa
+        except Exception:
+            pass
     
     if not datos_brutos or len(datos_brutos) <= 2: return pd.DataFrame()
         
@@ -66,9 +91,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "VALOR A FACTURAR" in "".join(row_clean):
             idx_headers = i
             break
-
-    columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
-    
+        
     filas_datos = datos_brutos[idx_headers + 1:]
     lista_limpia = []
     
@@ -89,6 +112,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     
     if df.empty: return pd.DataFrame()
     
+    df['FECHA_DT'] = pd.to_datetime(df['FECHA_DT'])
     df['AÑO'] = df['FECHA_DT'].dt.year.astype(int)
     df['TRIMESTRE'] = df['FECHA_DT'].dt.quarter.astype(int)
     df['MES_NUM'] = df['FECHA_DT'].dt.month.astype(int)
@@ -132,6 +156,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP ANTI-PALIDEZ: Forzar visibilidad y opacidad en selectores centrales
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -139,6 +164,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-item {{ text-align: center; flex: 1; }}
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
+    
+    /* 💥 ELIMINACIÓN DE CONTROLES PÁLIDOS: Contorno robusto y fondo blanco puro en selectores tácticos */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] {{
+        border: 2px solid #0d1b2a !important;
+        border-radius: 6px !important;
+        background-color: #ffffff !important;
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -147,7 +182,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     df_dash = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
-        st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1.")
+        st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1 o Supabase Cloud.")
         return
 
     st.markdown("### 🎛️ Filtros de Operación y Tiempo")
@@ -303,7 +338,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
             
             fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
-            fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial Black"))
+            fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial").update(textfont_weight="bold"))
             fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
             fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
             st.plotly_chart(fig4, use_container_width=True)
@@ -332,7 +367,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             
             fig5.update_traces(
                 textposition='outside', 
-                textfont=dict(size=18, color='black', family="Arial Black"), 
+                textfont=dict(size=14, color='black', family="Arial").update(textfont_weight="bold"), 
                 cliponaxis=False
             )
             
@@ -348,6 +383,24 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             st.plotly_chart(fig5, use_container_width=True)
         else:
             st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
+
+        # 🎯 EXPORTACIÓN EXCEL
+        st.markdown("---")
+        buffer_rep = io.BytesIO()
+        nombre_hoja = 'Reporte'
+        if vista_seleccionada == "📊 Resumen Gerencial":
+            df_visual.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
+        else:
+            matriz.to_excel(buffer_rep, sheet_name=nombre_hoja)
+            
+        rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
+        st.download_button(
+            label="💾 DESCARGAR REPORTE EN EXCEL",
+            data=buffer_rep.getvalue(),
+            file_name=f"Reporte_Hectareas_{rango_label}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )                        
 
 if __name__ == "__main__":
     pass
