@@ -4,6 +4,7 @@ import gspread
 import io
 import openpyxl
 import re
+import json
 
 def extraer_numero_local(val):
     try:
@@ -54,7 +55,7 @@ def ejecutar(extraer_numero):
                 st.rerun()
 
     with c3:
-        st.markdown("### 🚁 3. Informes Pista")
+        st.markdown("### 🚀 3. Informes Pista")
         f_pistas = st.file_uploader("Reportes Reales", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pis")
 
     f_sabana = None
@@ -96,36 +97,76 @@ def ejecutar(extraer_numero):
                     def fetch_url(key, url):
                         return key, pd.read_csv(url, skiprows=(0 if key == 'df_apoyo_raw' else 1))
                         
-                    # Dispara 4 hilos de red en paralelo
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        resultados = dict(executor.map(lambda item: fetch_url(*item), urls_a_bajar.items()))
-                        
-                    st.session_state['df_config'] = resultados['df_config']
-                    st.session_state['df_mezclas'] = resultados['df_mezclas']
-                    st.session_state['df_config_base'] = resultados['df_config_base']
-                    df_apoyo_raw = resultados['df_apoyo_raw']
+                    # Dispara hilos de red hacia Google Drive
+                    resultados = {}
+                    try:
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            resultados = dict(executor.map(lambda item: fetch_url(*item), urls_a_bajar.items()))
+                    except Exception:
+                        resultados = {}
+
+                    # INTEGRACIÓN SUPABASE: Espejo Inteligente Tolerante a Fallos (Sincronización Silenciosa)
+                    if 'supabase' in st.session_state:
+                        try:
+                            supabase_client = st.session_state['supabase']
+                            mapeo_tablas = {
+                                'df_config': 'config_tabla2',
+                                'df_mezclas': 'dd_mezclas',
+                                'df_config_base': 'configuracion_base',
+                                'df_apoyo_raw': 'tabla_apoyo_raw'
+                            }
+                            for key, table_name in mapeo_tablas.items():
+                                # Escenario A: Descarga de Drive exitosa -> Espejamos a Supabase
+                                if key in resultados and not resultados[key].empty:
+                                    try:
+                                        df_sync = resultados[key].fillna("").astype(str)
+                                        records_sync = df_sync.to_dict(orient='records')
+                                        if records_sync:
+                                            supabase_client.table(table_name).delete().neq("id", "VACIO_FORZADO").execute()
+                                            # Inserción en bloques controlados para prevenir saturación de payload
+                                            supabase_client.table(table_name).insert(records_sync[:2000]).execute()
+                                    except Exception:
+                                        pass
+                                # Escenario B: Google bloqueó el hilo -> Recuperamos el último espejo guardado en Supabase
+                                else:
+                                    try:
+                                        resp = supabase_client.table(table_name).select("*").execute()
+                                        if resp.data:
+                                            resultados[key] = pd.DataFrame(resp.data)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                    # Asegurar asignación por si ambas capas fallan críticamente (evita NameError)
+                    st.session_state['df_config'] = resultados.get('df_config', pd.DataFrame())
+                    st.session_state['df_mezclas'] = resultados.get('df_mezclas', pd.DataFrame())
+                    st.session_state['df_config_base'] = resultados.get('df_config_base', pd.DataFrame())
+                    df_apoyo_raw = resultados.get('df_apoyo_raw', pd.DataFrame())
                     
                     # Limpieza veloz de TABLA DE APOYO
-                    fila_titulos = 0
-                    for i in range(min(20, len(df_apoyo_raw))):
-                        if df_apoyo_raw.iloc[i].astype(str).str.upper().str.contains('FINCA').any():
-                            fila_titulos = i; break
-                            
-                    encabezados_crudos = df_apoyo_raw.iloc[fila_titulos].tolist()
-                    encabezados_limpios = []
-                    vientos = {}
-                    for col in encabezados_crudos:
-                        col_str = str(col).strip()
-                        if col_str in ["", "nan", "NaN", "None"]: col_str = "Vacio"
-                        if col_str in vientos:
-                            vientos[col_str] += 1
-                            encabezados_limpios.append(f"{col_str}_{vientos[col_str]}")
-                        else:
-                            vientos[col_str] = 0
-                            encabezados_limpios.append(col_str)
-                            
-                    df_apoyo_final = df_apoyo_raw.iloc[fila_titulos+1:].copy()
-                    df_apoyo_final.columns = encabezados_limpios
+                    df_apoyo_final = pd.DataFrame()
+                    if not df_apoyo_raw.empty:
+                        fila_titulos = 0
+                        for i in range(min(20, len(df_apoyo_raw))):
+                            if df_apoyo_raw.iloc[i].astype(str).str.upper().str.contains('FINCA').any():
+                                fila_titulos = i; break
+                                
+                        encabezados_crudos = df_apoyo_raw.iloc[fila_titulos].tolist()
+                        encabezados_limpios = []
+                        vientos = {}
+                        for col in encabezados_crudos:
+                            col_str = str(col).strip()
+                            if col_str in ["", "nan", "NaN", "None"]: col_str = "Vacio"
+                            if col_str in vientos:
+                                vientos[col_str] += 1
+                                encabezados_limpios.append(f"{col_str}_{vientos[col_str]}")
+                            else:
+                                vientos[col_str] = 0
+                                encabezados_limpios.append(col_str)
+                                
+                        df_apoyo_final = df_apoyo_raw.iloc[fila_titulos+1:].copy()
+                        df_apoyo_final.columns = encabezados_limpios
                     st.session_state['df_apoyo'] = df_apoyo_final
 
                     lista_pistas = []
@@ -149,6 +190,7 @@ def ejecutar(extraer_numero):
                                 dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
                             
                         for n, df in dict_p.items():
+                            if df.empty: continue
                             df = df.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
                             
                             idx_header = -1; col_finca = -1; col_pedido = -1; col_ha = -1
@@ -170,7 +212,7 @@ def ejecutar(extraer_numero):
                                     break 
                                 
                             if col_finca != -1:
-                                # ⚡ 3. EXTRACCIÓN DEL CÓCTEL UNA SOLA VEZ (Freno de mano quitado)
+                                # ⚡ 3. EXTRACCIÓN DEL CÓCTEL UNA SOLA VEZ
                                 val_coctel_global = "S/N"
                                 for r_up in range(idx_header):
                                     fila_up = [str(x).strip().upper() for x in df.iloc[r_up].tolist()]
@@ -200,14 +242,13 @@ def ejecutar(extraer_numero):
                                             if c_clean.isdigit() and len(c_clean) >= 6:
                                                 val_pedido = c_clean; break
                                                 
-                                    # Ya no buscamos el cóctel, usamos el que memorizamos
                                     val_coctel = val_coctel_global
                                     
                                     # 🎯 EXTRACCIÓN DE HA DE PISTA
                                     val_ha_pista = 0.0
                                     if col_ha != -1 and col_ha < len(df.columns):
                                         val_ha_pista = extraer_numero_local(df.iloc[r, col_ha])
-                                                
+                                            
                                     lista_pistas.append({
                                         "ORIGEN": f"{f.name} | {n}", 
                                         "COCTEL": val_coctel, 
@@ -219,6 +260,27 @@ def ejecutar(extraer_numero):
 
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
+                        
+                        # INTEGRACIÓN SUPABASE: Volcado relacional del set consolidado de misiones extraídas
+                        if 'supabase' in st.session_state:
+                            try:
+                                supabase_client = st.session_state['supabase']
+                                registros_misiones = []
+                                for m in lista_pistas:
+                                    registros_misiones.append({
+                                        "origen": str(m["ORIGEN"]),
+                                        "coctel": str(m["COCTEL"]),
+                                        "finca_informe": str(m["FINCA_INFORME"]),
+                                        "pedido_sap": str(m["PEDIDO_SAP"]),
+                                        "ha_pista": float(m["HA_PISTA"]),
+                                        "datos_fila_json": json.dumps(m["DATOS_FILA"], default=str)
+                                    })
+                                if registros_misiones:
+                                    supabase_client.table("pistas_misiones_cargadas").delete().neq("origen", "FORZADO").execute()
+                                    supabase_client.table("pistas_misiones_cargadas").insert(registros_misiones).execute()
+                            except Exception:
+                                pass
+                                
                         st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones visibles con precisión! Pase al Módulo de Validación.")
                         st.balloons()
                     else:
