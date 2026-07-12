@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import px = plotly.express as px
+import plotly.express as px
 from datetime import datetime, date
 import io
 
@@ -17,7 +17,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     <style>
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 CONTROLES ENDURECEDOS: Forzar visibilidad extrema en radios, selectores y calendarios de la pantalla central */
+    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios de la pantalla central */
     div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
     div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
