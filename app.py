@@ -35,6 +35,7 @@ import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
+import modulos.m18_desglose_facturacion as m18  # <--- INYECTAR AQUÍ
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
     "usernames": {
@@ -245,7 +246,9 @@ with st.sidebar:
             "💰 14. Pronóstico Financiero",
             "🗺️ 15. Mapa de Calor Agronómico",
             "💼 16. Comparativo Gerencial (Dron vs Avión)",
-            "🚀 17. Mega-Proyección Operativa"
+            "🚀 17. Mega-Proyección Operativa",  # <--- ¡ESTA COMA ES VITAL!
+            "🔍 18. Auditoría y Desglose Financiero"
+            
         ], key="modulo_actual")
     else: 
         st.info("🛰️ Modo Consulta Gerencial Activado.")
@@ -286,3 +289,4 @@ elif menu == "💰 14. Pronóstico Financiero": m14.ejecutar(purificar_lote, ext
 elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lote, extraer_numero)
 elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar()
 elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar(supabase_client)
+elif menu == "🔍 18. Auditoría y Desglose Financiero": m18.ejecutar()
