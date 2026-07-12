@@ -194,7 +194,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
-    # 🚀 ACTUALIZACIÓN MAESTRA DE BORDES Y CONTENEDORES VIP (Imagen 1)
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"],
@@ -204,7 +203,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     
-    /* Inyección de Bordes Fuertes y Visibilidad para bloques de código de Copia Rápida */
     div[data-testid="stCodeBlock"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 6px !important;
@@ -219,7 +217,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     </style>
     """, unsafe_allow_html=True)
 
-    # Reestilización robusta de las tarjetas principales con bordes perimetrales oscuros y marcados
     def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
         def f_h(val): return f"{val:,.0f}".replace(",", ".")
         return f"""
@@ -551,22 +548,22 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
                 with cc1:
                     st.write("👨‍🔬 Serv. Tec")
-                    st.code(f"$ {subtotal_st:,.0f}".replace(",", "."), language="text")
+                    st.code(f"{subtotal_st:,.0f}".replace(",", "."), language="text")
                 with cc2:
                     st.write("✈️ Vuelo")
-                    st.code(f"$ {subtotal_vuelo:,.0f}".replace(",", "."), language="text")
+                    st.code(f"{subtotal_vuelo:,.0f}".replace(",", "."), language="text")
                 with cc3:
                     st.write("🧪 Mezcla")
-                    st.code(f"$ {mezcla_total:,.0f}".replace(",", "."), language="text")
+                    st.code(f"{mezcla_total:,.0f}".replace(",", "."), language="text")
                 with cc4:
                     st.write("⚠️ Recargo")
-                    st.code(f"$ {valor_recargo_t:,.0f}".replace(",", "."), language="text")
+                    st.code(f"{valor_recargo_t:,.0f}".replace(",", "."), language="text")
                 with cc5:
                     st.write("💰 Costo x Ha")
-                    st.code(f"$ {costo_ha:,.0f}".replace(",", "."), language="text")
+                    st.code(f"{costo_ha:,.0f}".replace(",", "."), language="text")
                 with cc6:
                     st.write("🔥 TOTAL")
-                    st.code(f"$ {total_finca:,.0f}".replace(",", "."), language="text")
+                    st.code(f"{total_finca:,.0f}".replace(",", "."), language="text")
 
             except Exception as e: 
                 st.error(f"Error: {e}")
@@ -691,7 +688,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
         if finca_sel == "---" or vuelo_ref == "---":
-            st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
+            st.info("⚠️ Seleccione Finca and Pedido para rugir motores.")
             st.stop()
 
         mult_material = 1.112
@@ -897,7 +894,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}
             }
             
-            # Modificación Segura: Se preserva la lógica de topes unificados
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
             val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
@@ -1156,7 +1152,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
                 
-                # 🚦 ALGORITMO CEREBRO DEL SEMÁFORO (Imagen 2) - Totalmente PyArrow-Safe
                 def calcular_semaforo_misiones(row):
                     sistema = float(row["D: Dosis Total (Sistema)"])
                     sugerido = float(row["I: Sugerido SAP (Total)"])
@@ -1169,13 +1164,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     else:
                         return f"🔴 FUERA RANGO ({'+++' if desviacion > 0 else '---'})"
 
-                df_matriz["🚦 Alerta Rango"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
+                df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
                 costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
-                # Reordenamos columnas para posicionar el semáforo junto a los campos clave
                 columnas_ordenadas = [
                     "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
-                    "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "🚦 Alerta Rango",
+                    "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
                     "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
@@ -1188,11 +1182,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         "C: X (Extra %)" : st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
                         "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                         "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
-                        "🚦 Alerta Rango": st.column_config.TextColumn("🚦 Alerta Rango"),
+                        "📊 Ajuste de Campo": st.column_config.TextColumn("📊 Ajuste de Campo"),
                         "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
                     },
-                    disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "🚦 Alerta Rango"],
+                    disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo"],
                     use_container_width=True, hide_index=True
                 )
 
@@ -1225,7 +1219,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP)")
             m1, m2, m3, m4, m5 = st.columns(5)
             
-            # Reestilización de mini metric con el borde perimetral reforzado solicitado
             def mini_metric(i, t, v): 
                 return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06);'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
             
@@ -1250,6 +1243,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             st.markdown("<br>", unsafe_allow_html=True)
             c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
+            
+            # 🚀 FILA 1 DE COPIADO RÁPIDO (Valores Unitarios Puros - Sin símbolos de texto)
             with c_sap1:
                 st.caption("👨‍🔬 UNITARIO ST (459)")
                 st.code(fmt_sap(unitario_st), language="text")
@@ -1260,7 +1255,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.caption("🧪 TOTAL Mezcla")
                 st.code(fmt_sap(costo_mezcla_total), language="text")
             with c_sap4:
-                st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white; font-weight:900;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
             html_totales = f"""
             <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
@@ -1280,26 +1275,27 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             """.replace(",", ".")
             st.markdown(html_totales, unsafe_allow_html=True)
             
+            # 🚀 FILA 2 DE COPIADO RÁPIDA TOTAL (Corregida: Sin '$' para pegado atómico en SAP)
             st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
             cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
             with cc1:
                 st.write("👨‍🔬 Serv. Tec")
-                st.code(f"$ {subtotal_st_finca:,.0f}".replace(",", "."), language="text")
+                st.code(fmt_sap(subtotal_st_finca), language="text")
             with cc2:
                 st.write("✈️ Vuelo")
-                st.code(f"$ {subtotal_vuelo_finca:,.0f}".replace(",", "."), language="text")
+                st.code(fmt_sap(subtotal_vuelo_finca), language="text")
             with cc3:
                 st.write("🧪 Mezcla")
-                st.code(f"$ {costo_mezcla_total:,.0f}".replace(",", "."), language="text")
+                st.code(fmt_sap(costo_mezcla_total), language="text")
             with cc4:
                 st.write("⚠️ Recargo")
-                st.code(f"$ 0", language="text")
+                st.code(fmt_sap(0), language="text")
             with cc5:
                 st.write("💰 Costo x Ha")
-                st.code(f"$ {costo_por_ha:,.0f}".replace(",", "."), language="text")
+                st.code(fmt_sap(costo_por_ha), language="text")
             with cc6:
                 st.write("🔥 TOTAL")
-                st.code(f"$ {gran_total:,.0f}".replace(",", "."), language="text")
+                st.code(fmt_sap(gran_total), language="text")
 
             st.markdown("---")
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
@@ -1417,13 +1413,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         fila_apoyo = [limpiar_json(x) for x in fila_apoyo]
                         filas_memoria = [[limpiar_json(x) for x in fila] for fila in filas_memoria]
 
-                        # Guardado en Google Sheets
                         hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                         if filas_memoria: 
                             hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
 
-                        # INTEGRACIÓN SUPABASE: Réplica relacional en caliente de la orden detonada
                         if 'supabase' in st.session_state:
                             try:
                                 supabase_client = st.session_state['supabase']
@@ -1439,7 +1433,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 }
                                 supabase_client.table("facturas_detonadas").insert(payload_orden).execute()
                             except Exception:
-                                pass # Mitigación contra caídas de red para evitar interferir con Google Sheets
+                                pass
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive y replicado en la bóveda relacional.")
