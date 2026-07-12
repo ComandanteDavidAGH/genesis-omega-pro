@@ -67,7 +67,7 @@ try:
     """, unsafe_allow_html=True)
 except: pass
 
-# --- 🎯 ARTILLERÍA VISUAL: EL CÓDIGO DEL CEBO CON COLORES CORPORATIVOS 🎯 ---
+# --- 🎯 ARTILLERÍA VISUAL CENTRALIZADA: PROTECCIÓN GLOBAL ANTI-PALIDEZ 🎯 ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -98,21 +98,41 @@ button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !i
 th { background-color: #f0f2f6 !important; color: black !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 
-div[data-testid="stTextInput"],
-div[data-testid="stSelectbox"],
-div[data-testid="stNumberInput"],
-div[data-testid="stDateInput"] {
+/* 💥 SOLUCIÓN MAESTRA UNIFICADA PARA CONTROLES PÁLIDOS (Aislado de la barra lateral) */
+div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input,
+div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
+div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
+div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
     border: 2px solid #0d1b2a !important;
     background-color: #ffffff !important;
     border-radius: 8px !important;
-    padding: 5px 10px !important;
-    box-shadow: 0px 3px 6px rgba(0,0,0,0.1) !important;
+    color: #0d1b2a !important;
+    font-weight: 900 !important;
+    font-size: 15px !important;
 }
 
-div[data-baseweb="input"], 
-div[data-baseweb="select"] {
-    border: 1px solid #cccccc !important; 
+/* Formateo opaco de alta pureza para las áreas de arrastre de cargadores de archivos */
+div[data-testid="stMainBlockContainer"] div[data-testid="stFileUploader"] section {
     background-color: #ffffff !important;
+    border: 2px dashed #0d1b2a !important;
+    border-radius: 8px !important;
+}
+
+/* Formateo de alto contraste para las cajas de copiado rápido (st.code) de toda la app */
+div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"],
+div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] pre,
+div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] pre code {
+    background-color: #ffffff !important;
+    border: 3px solid #0d1b2a !important;
+    border-radius: 8px !important;
+}
+div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] code,
+div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] code span,
+div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] pre span {
+    color: #0d1b2a !important;
+    font-weight: 900 !important;
+    font-size: 16px !important;
+    font-family: 'Arial Black', monospace !important;
 }
 
 .stTextInput input,
@@ -156,7 +176,12 @@ if not st.session_state['autenticado']:
 # --- 4. 🛰️ HUB DE CONEXIONES GLOBALES (GOOGLE Y SUPABASE) ---
 @st.cache_resource(show_spinner=False)
 def conectar_satelite():
-    return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"])) if "gcp_credentials" in st.secrets else gspread.service_account(filename='credenciales.json')
+    # Compatibilidad tolerante para ambas variantes de nombres de llaves de secretos de Google
+    if "gcp_service_account" in st.secrets:
+        return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+    elif "gcp_credentials" in st.secrets:
+        return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+    return gspread.service_account(filename='credenciales.json')
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def descargar_matriz_rapida(url, pestaña):
@@ -168,7 +193,7 @@ def descargar_matriz_rapida(url, pestaña):
             if i < 2: time.sleep(2); continue
             else: return []
 
-# ⚡ Inicialización Blindada del Motor Supabase
+# ⚡ Inicialización Blindada del Motor Supabase con Sincronización de Sesión Cohesiva
 @st.cache_resource(show_spinner=False)
 def conectar_supabase() -> Client:
     url = st.secrets["supabase"]["url"] if "supabase" in st.secrets else st.secrets["SUPABASE_URL"]
@@ -177,9 +202,12 @@ def conectar_supabase() -> Client:
 
 try:
     supabase_client = conectar_supabase()
+    # Inyectamos el cliente en la memoria compartida del hilo para disponibilidad de subcomponentes
+    st.session_state['supabase'] = supabase_client
 except Exception as e:
     st.error(f"🚨 Falla crítica en el enlace a Supabase: {e}")
     supabase_client = None
+    if 'supabase' in st.session_state: del st.session_state['supabase']
 
 # --- 5. MENÚ MAESTRO TÁCTICO ---
 with st.sidebar:
