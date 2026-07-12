@@ -117,7 +117,7 @@ def cargar_bases_m18():
 def ejecutar(*args, **kwargs):
     VERDE_INTENSO = '#143521'
 
-    # 💥 BLOQUE CSS SANEADO (Sin f-strings para evitar SyntaxError)
+    # 💥 BLOQUE CSS SANEADO
     css_maestro = """
     <style>
     .titulo-desglose { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
@@ -154,7 +154,6 @@ def ejecutar(*args, **kwargs):
     st.write("Ingeniería inversa sobre la TABLA 1: Desglosa facturas ya ejecutadas para revelar el costo real de la mezcla química.")
 
     with st.spinner("Conectando con la Bóveda Maestra y calculando intervalos..."):
-        # 💥 SOLUCIÓN APLICADA: Ahora llama correctamente a cargar_bases_m18()
         df_t1, df_t2, df_cfg = cargar_bases_m18()
 
     if df_t1.empty:
@@ -174,35 +173,41 @@ def ejecutar(*args, **kwargs):
         st.error("🚨 Faltan columnas críticas en la TABLA 1. Verifique los nombres (FINCA, FECHA, ÁREA FUMIG, COSTO AVIÓN ($/ha), COSTO AVIÓN ($/finca), VALOR A FACTURAR).")
         return
 
-    # 2. PREPROCESAMIENTO Y CÁLCULO DE DÍAS CICLO
+    # 2. PREPROCESAMIENTO Y CÁLCULO DE DÍAS CICLO INTELIGENTE
     df_t1['FECHA_PURA'] = df_t1[col_fecha].apply(normalizar_a_fecha_pura)
     df_t1 = df_t1.dropna(subset=['FECHA_PURA']).copy()
     df_t1['FINCA_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
     
-    # Ordenar chronológicamente para calcular ciclos
-    df_t1 = df_t1.sort_values(by=['FINCA_CLEAN', 'FECHA_PURA'])
-    df_t1['FECHA_PREVIA'] = df_t1.groupby('FINCA_CLEAN')['FECHA_PURA'].shift(1)
+    # 💥 MEJORA TÁCTICA: Calcular ciclos basados en fechas ÚNICAS de vuelo por finca
+    # Esto evita que dos sectores volados el mismo día arrojen "0 días" de ciclo, protegiendo el cobro ST.
+    df_fechas = df_t1[['FINCA_CLEAN', 'FECHA_PURA']].drop_duplicates().sort_values(by=['FINCA_CLEAN', 'FECHA_PURA'])
+    df_fechas['FECHA_PREVIA'] = df_fechas.groupby('FINCA_CLEAN')['FECHA_PURA'].shift(1)
+    df_fechas['DIAS_CICLO_REAL'] = (pd.to_datetime(df_fechas['FECHA_PURA']) - pd.to_datetime(df_fechas['FECHA_PREVIA'])).dt.days
     
-    # Calcular días ciclo (Si es el primer vuelo, asume 14 días por defecto)
-    df_t1['DIAS_CICLO'] = (pd.to_datetime(df_t1['FECHA_PURA']) - pd.to_datetime(df_t1['FECHA_PREVIA'])).dt.days
-    df_t1['DIAS_CICLO'] = df_t1['DIAS_CICLO'].fillna(14).astype(int)
+    # Fusionar el ciclo real de vuelta a la tabla maestra
+    df_t1 = df_t1.merge(df_fechas, on=['FINCA_CLEAN', 'FECHA_PURA'], how='left')
+    df_t1['DIAS_CICLO'] = df_t1['DIAS_CICLO_REAL'].fillna(14).astype(int)
 
     # 3. INTERFAZ DE FILTROS
     with st.container(border=True):
         st.markdown("#### 🎛️ Rango de Búsqueda y Selección")
         c1, c2 = st.columns(2)
-        fecha_ini = c1.date_input("📅 Fecha Inicial", value=date(2026, 7, 1))
+        
+        # 💥 CORRECCIÓN CRÍTICA: La fecha inicial ahora arranca el 1 de Enero del año actual
+        año_actual = datetime.now().year
+        fecha_ini = c1.date_input("📅 Fecha Inicial", value=date(año_actual, 1, 1))
         fecha_fin = c2.date_input("📆 Fecha Final", value=date.today())
 
-        # Filtrar solo para mostrar las fincas operadas en ese rango
-        mask_fechas = (df_t1['FECHA_PURA'] >= fecha_ini) & (df_t1['FECHA_PURA'] <= fecha_fin)
-        fincas_disponibles = sorted(df_t1[mask_fechas][col_finca].astype(str).str.upper().str.strip().unique().tolist())
+        # 💥 CORRECCIÓN CRÍTICA: Las fincas disponibles se extraen de TODO el histórico, no del rango filtrado
+        fincas_disponibles = sorted([f for f in df_t1[col_finca].astype(str).str.upper().str.strip().unique().tolist() if f not in ['NAN', 'NONE', '']])
         
         fincas_sel = st.multiselect("📍 Seleccione las Fincas a desglosar (Deje vacío para analizarlas TODAS):", fincas_disponibles)
 
     if st.button("🔥 EJECUTAR DESGLOSE FINANCIERO", type="primary", use_container_width=True):
         
+        mask_fechas = (df_t1['FECHA_PURA'] >= fecha_ini) & (df_t1['FECHA_PURA'] <= fecha_fin)
         df_operacion = df_t1[mask_fechas].copy()
+        
         if fincas_sel:
             df_operacion = df_operacion[df_operacion[col_finca].astype(str).str.upper().str.strip().isin(fincas_sel)]
 
