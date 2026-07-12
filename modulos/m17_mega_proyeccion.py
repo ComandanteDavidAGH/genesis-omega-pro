@@ -301,7 +301,6 @@ def ejecutar(supabase_client=None):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
 
-    # 🚀 CEBO DE CONTRASTE INDUSTRIAL EXTREMO: Bordes sólidos de 3px e inputs opacos (Evita cortes numéricos)
     st.markdown(f"""
     <style>
     .titulo-mega {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}}
@@ -310,7 +309,6 @@ def ejecutar(supabase_client=None):
     .kpi-titulo {{ font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .kpi-valor {{ font-size: 24px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 INTERFAZ HARDENED: Forzado absoluto contra la palidez gris de Streamlit BaseWeb */
     div[data-testid="stTextInput"] input,
     div[data-testid="stNumberInput"] input,
     div[data-testid="stMultiSelect"] div[data-baseweb="select"] {{
@@ -344,7 +342,7 @@ def ejecutar(supabase_client=None):
 
     with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE Y BASE DE DATOS", expanded=not db_cargada):
         if db_cargada:
-            st.success("✅ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
+            st.success("✅ Bases de Datos conectadas and en Memoria RAM del Módulo 17.")
         else:
             st.info("💡 Pega los enlaces de tus archivos de Google Sheets para alimentar la proyección.")
             
@@ -588,7 +586,7 @@ def ejecutar(supabase_client=None):
                 st.info("No hay datos para resumir.")
 
         with tab3:
-            if considerando_insumos:=cons_vol_agrupado:
+            if cons_vol_agrupado:
                 df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
                 df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].apply(lambda x: formato_latino(x, 1))
                 
@@ -607,7 +605,7 @@ def ejecutar(supabase_client=None):
                         yaxis={'categoryorder':'total ascending'}, 
                         plot_bgcolor='rgba(0,0,0,0)', 
                         margin=dict(r=100),
-                        hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
+                        hovermode="closest" 
                     )
                     st.plotly_chart(fig, use_container_width=True)
             else:
@@ -645,7 +643,7 @@ def ejecutar(supabase_client=None):
                     for cell in row:
                         cell.border = borde
                         if cell.row == 1:
-                            cell.fill = header_fill
+                            cell.fill = fill_header
                             cell.font = header_font
                             cell.alignment = Alignment(horizontal='center', vertical='center')
                         else:
