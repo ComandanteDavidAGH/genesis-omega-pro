@@ -67,7 +67,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
-    # INTEGRACIÓN SUPABASE BRIDGE: Respaldo automático de datos relacionales en la nube
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -104,9 +103,30 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
+    # 💥 EXTRACTOR PRO: Sanitización blindada contra errores regionales de moneda en SAP
+    def limpiar_moneda_pro(val):
+        if isinstance(val, (int, float)): return float(val)
+        s = str(val).strip().replace(" ", "")
+        if not s or s in ["-", "NAN", "NONE"]: return 0.0
+        s_clean = re.sub(r'[^\d\.,\-]', '', s)
+        try:
+            if '.' in s_clean and ',' in s_clean:
+                if s_clean.rfind(',') > s_clean.rfind('.'):
+                    s_clean = s_clean.replace('.', '').replace(',', '.')
+                else:
+                    s_clean = s_clean.replace(',', '')
+            elif ',' in s_clean:
+                s_clean = s_clean.replace(',', '.')
+            return float(s_clean) if s_clean else 0.0
+        except:
+            return 0.0
+
     cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
     for col in cols_numericas:
-        df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+        if col in ['COSTO_HA', 'VALOR_FACTURAR', 'COSTO_TOTAL']:
+            df[col] = df[col].apply(limpiar_moneda_pro)
+        else:
+            df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
     df['DOMINICAL_HA'] = df['DOMINICAL_HA'].apply(limpiar_dinero)
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
@@ -158,7 +178,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP MARCA: Intercepción dominante de nodos BaseWeb
+    # 🚀 CEBO MULTI-SELECTOR DE ALTA PENETRACIÓN (Bordes e Inputs Optimizados - Imagen 2)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -167,38 +187,37 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 EXTERMINACIÓN DE PALIDEZ: Contorno sólido Verde de 2.5px y Fondo Blanco 100% Opaco */
-    div[data-testid="stMainBlockContainer"] [data-baseweb="select"],
-    .main [data-baseweb="select"] {{
+    /* 💥 CEBO DEFINITIVO ANTI-PALIDEZ: Captura todos los estados DOM internos de BaseWeb */
+    .stSelectbox div[data-baseweb="select"],
+    div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-baseweb="select"] {{
         border: 2.5px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.08) !important;
     }}
     
-    /* Perforar el sub-nodo interno de Streamlit para liquidar la opacidad gris del 4% */
-    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] > div,
-    .main [data-baseweb="select"] > div {{
+    /* Forzar fondo blanco puro y eliminar el gris translúcido del subcontenedor hijo */
+    .stSelectbox div[data-baseweb="select"] > div,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
         background-color: #ffffff !important;
         border: none !important;
     }}
     
-    /* Visibilidad tipográfica extrema del texto seleccionado (Negro Puro) */
-    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] div,
-    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] span,
-    .main [data-baseweb="select"] * {{
+    /* Visibilidad tipográfica de las opciones seleccionadas */
+    .stSelectbox div[data-baseweb="select"] div,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] span {{
         color: #000000 !important;
         font-weight: 900 !important;
         font-size: 14px !important;
     }}
     
-    /* Resaltar las etiquetas de título arriba de cada combo dropdown */
+    /* Resaltar títulos superiores de los campos */
     div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         font-size: 12px !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -281,7 +300,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA
+    # GRÁFICO 1: ÁREA ASPERJADA (RESTAURACIÓN DE EFECTO "POP" INTERACTIVO)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -291,13 +310,26 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
-        fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
+        
+        # ⚡ INYECCIÓN DE RESALTE Y ACTIVACIÓN DE RESPUESTA HOVER (Imagen 1)
+        fig1.update_traces(
+            textposition='outside', 
+            textfont=dict(size=11, color='black', family="Arial"),
+            hoverinfo="all",
+            selector=dict(type='bar')
+        )
+        fig1.update_layout(
+            xaxis_title="Mes Operativo", 
+            yaxis_title="Hectáreas (ha)", 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            legend_title_text='Año Fiscal',
+            hovermode="closest"  # Restablece la sensibilidad nativa de Plotly al pasar el mouse
+        )
         fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SOLUCIÓN COMPLETA DE BARRA INVISIBLE - Imagen 1)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -330,7 +362,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
         ))
         
-        go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
+        # ⚡ RESTABLECIMIENTO DE INTERACTIVIDAD DINÁMICA DE CRECIMIENTO AL HOVER (Imagen 1)
+        go_fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), 
+            margin=dict(b=100),
+            hovermode="closest"  # Garantiza el efecto pop-up y resalte perimetral al cruzar el ratón
+        )
         go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
         st.plotly_chart(go_fig, use_container_width=True)
         
@@ -352,8 +391,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         altura_dinamica = max(400, len(df_rend) * 22)
         
         fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO])
-        fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
-        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
+        fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'), hoverinfo="all")
+        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)', hovermode="closest")
         fig3.update_yaxes(type='category')
         fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
         st.plotly_chart(fig3, use_container_width=True)
@@ -369,8 +408,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
         
         fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
-        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial").update(textfont_weight="bold"))
-        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
+        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"), hoverinfo="all")
+        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', hovermode="closest")
         fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
         st.plotly_chart(fig4, use_container_width=True)
 
@@ -395,8 +434,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', 
                       color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
         
-        fig5.update_traces(textposition='outside', textfont=dict(size=14, color='black', family="Arial"), cliponaxis=False)
-        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0)
+        fig5.update_traces(textposition='outside', textfont=dict(size=14, color='black', family="Arial"), cliponaxis=False, hoverinfo="all")
+        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0, hovermode="closest")
         fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
         st.plotly_chart(fig5, use_container_width=True)
     else:
