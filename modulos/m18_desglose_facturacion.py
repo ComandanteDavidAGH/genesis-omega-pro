@@ -154,7 +154,8 @@ def ejecutar(*args, **kwargs):
     st.write("Ingeniería inversa sobre la TABLA 1: Desglosa facturas ya ejecutadas para revelar el costo real de la mezcla química.")
 
     with st.spinner("Conectando con la Bóveda Maestra y calculando intervalos..."):
-        df_t1, df_t2, df_cfg = cargar_bases_m17()
+        # 💥 SOLUCIÓN APLICADA: Ahora llama correctamente a cargar_bases_m18()
+        df_t1, df_t2, df_cfg = cargar_bases_m18()
 
     if df_t1.empty:
         st.error("🚨 La Bóveda de Datos (TABLA 1) está vacía o inaccesible.")
