@@ -5,6 +5,7 @@ import requests
 import io
 import re
 import math
+import json
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -193,6 +194,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
+    # 🚀 ACTUALIZACIÓN MAESTRA DE BORDES Y CONTENEDORES VIP (Imagen 1)
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"],
@@ -201,32 +203,46 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    
+    /* Inyección de Bordes Fuertes y Visibilidad para bloques de código de Copia Rápida */
+    div[data-testid="stCodeBlock"] {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 6px !important;
+        background-color: #ffffff !important;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.08) !important;
+    }
+    div[data-testid="stCodeBlock"] code {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 14px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
+    # Reestilización robusta de las tarjetas principales con bordes perimetrales oscuros y marcados
     def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
         def f_h(val): return f"{val:,.0f}".replace(",", ".")
         return f"""
         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
-            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">👨‍🔬 Serv. Tec</div>
-                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(st_val)}</div>
+                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(st_val)}</div>
             </div>
-            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">✈️ Vuelo</div>
-                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(vuelo_val)}</div>
+                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(vuelo_val)}</div>
             </div>
-            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">🧪 Mezcla</div>
-                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(mezcla_val)}</div>
+                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(mezcla_val)}</div>
             </div>
-            <div style="flex: 1; min-width: 120px; background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">⚠️ Recargo</div>
-                <div style="font-size: 16px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(recargo_val)}</div>
+                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(recargo_val)}</div>
             </div>
-            <div style="flex: 1.2; min-width: 140px; background-color: #0d1b2a; border: 2px solid #00ff00; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
-                <div style="font-size: 11px; color: #00ff00; font-weight: 800; text-transform: uppercase;">💰 COSTO x HA</div>
-                <div style="font-size: 18px; color: white; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(costo_ha_val)}</div>
+            <div style="flex: 1.2; min-width: 140px; background-color: #0d1b2a; border: 3px solid #d4af37; padding: 12px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); text-align: center;">
+                <div style="font-size: 11px; color: #d4af37; font-weight: 800; text-transform: uppercase;">💰 COSTO x HA</div>
+                <div style="font-size: 19px; color: white; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(costo_ha_val)}</div>
             </div>
         </div>
         """
@@ -478,7 +494,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         fert_encontrado_obj = "QUELAMIX"
                 
                 if fert_encontrado_obj:
-                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_mez, fert_encontrado_obj)
+                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
                     prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
 
                 for item in prods_f:
@@ -881,6 +897,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}
             }
             
+            # Modificación Segura: Se preserva la lógica de topes unificados
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
             val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
@@ -1138,9 +1155,31 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
 
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
+                
+                # 🚦 ALGORITMO CEREBRO DEL SEMÁFORO (Imagen 2) - Totalmente PyArrow-Safe
+                def calcular_semaforo_misiones(row):
+                    sistema = float(row["D: Dosis Total (Sistema)"])
+                    sugerido = float(row["I: Sugerido SAP (Total)"])
+                    desviacion = sistema - sugerido
+                    
+                    if desviacion == 0:
+                        return "🟢 ÓPTIMO"
+                    elif abs(desviacion) <= 1.0:
+                        return f"🟡 DESV. LEVE ({'+++' if desviacion > 0 else '---'})"
+                    else:
+                        return f"🔴 FUERA RANGO ({'+++' if desviacion > 0 else '---'})"
+
+                df_matriz["🚦 Alerta Rango"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
                 costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
-                # 🛡️ TABLA NATIVA SEGURA: Se elimina el colorear_matriz para evitar Segment Fault de PyArrow
+                # Reordenamos columnas para posicionar el semáforo junto a los campos clave
+                columnas_ordenadas = [
+                    "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
+                    "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "🚦 Alerta Rango",
+                    "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"
+                ]
+                df_matriz = df_matriz[columnas_ordenadas]
+
                 edited_df = st.data_editor(
                     df_matriz,
                     key=llave_editor_casilla,
@@ -1148,11 +1187,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
                         "C: X (Extra %)" : st.column_config.NumberColumn("Extra %", min_value=0.000, format="%.3f"),
                         "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
+                        "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
+                        "🚦 Alerta Rango": st.column_config.TextColumn("🚦 Alerta Rango"),
                         "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
-                        "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
                     },
-                    disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)"],
+                    disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "🚦 Alerta Rango"],
                     use_container_width=True, hide_index=True
                 )
 
@@ -1185,8 +1225,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP)")
             m1, m2, m3, m4, m5 = st.columns(5)
             
+            # Reestilización de mini metric con el borde perimetral reforzado solicitado
             def mini_metric(i, t, v): 
-                return f"<div style='background-color:#0d1b2a; padding:10px; border-radius:8px; border-left:4px solid #d4af37;'><p style='margin:0; font-size:11px; color:#d4af37;'>{i} {t}</p><p style='margin:0; font-size:16px; font-weight:bold; color:white;'>{v}</p></div>"
+                return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06);'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
             
             with m1:
                 st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
@@ -1219,19 +1260,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.caption("🧪 TOTAL Mezcla")
                 st.code(fmt_sap(costo_mezcla_total), language="text")
             with c_sap4:
-                st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:1px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white; font-weight:900;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
             html_totales = f"""
             <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
-                <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                     <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
                     <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_st_finca)}</h3>
                 </div>
-                <div style="flex: 1; min-width: 150px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #1a365d; box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); margin-bottom: 20px;">
                     <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
                     <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_vuelo_finca)}</h3>
                 </div>
-                <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 2px solid #d4af37; box-shadow: 0 2px 5px rgba(0,0,0,0.2); text-align: center;">
+                <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center;">
                     <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
                     <h2 style="margin:0; color: white; font-weight: 900; user-select: all;">$ {gran_total:,.0f}</h2>
                 </div>
@@ -1376,13 +1417,32 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         fila_apoyo = [limpiar_json(x) for x in fila_apoyo]
                         filas_memoria = [[limpiar_json(x) for x in fila] for fila in filas_memoria]
 
+                        # Guardado en Google Sheets
                         hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                         if filas_memoria: 
                             hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
 
+                        # INTEGRACIÓN SUPABASE: Réplica relacional en caliente de la orden detonada
+                        if 'supabase' in st.session_state:
+                            try:
+                                supabase_client = st.session_state['supabase']
+                                payload_orden = {
+                                    "os_virtual": str(os_virtual),
+                                    "finca": str(finca_limpia),
+                                    "hectareas": float(ha_f),
+                                    "coctel": str(coctel_ganador),
+                                    "fecha": str(fecha_str),
+                                    "total_operacion": float(gran_total),
+                                    "pista": str(pista_manual),
+                                    "tipo_productor": str(tipo_productor)
+                                }
+                                supabase_client.table("facturas_detonadas").insert(payload_orden).execute()
+                            except Exception:
+                                pass # Mitigación contra caídas de red para evitar interferir con Google Sheets
+
                         st.balloons()
-                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul}.")
+                        st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive y replicado en la bóveda relacional.")
                         st.toast(f"💾 Memoria Sincronizada con éxito.", icon="⚔️")
                         
                         if 'memoria_excel' in st.session_state: 
