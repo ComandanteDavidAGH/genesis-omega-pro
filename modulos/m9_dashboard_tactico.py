@@ -6,6 +6,8 @@ from datetime import datetime, date
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import re
+import io
+import math
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN PROPIO (INTERCONEXIÓN DIRECTA EN RAM)
@@ -50,7 +52,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     gc = inicializar_cliente_gspread_propio()
     datos_brutos = []
     
-    # Intento Primario: Extracción desde Google Drive (Soberanía Excel del Usuario)
     if gc:
         try:
             url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
@@ -62,7 +63,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
-    # 🚀 INTEGRACIÓN SUPABASE BRIDGE: Si Drive falla o la cuota expira, se activa el puente relacional en milisegundos
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -73,12 +73,10 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
                     row_upper = {str(k).upper().strip(): v for k, v in row.items()}
                     fila_estructurada = []
                     for col in columnas_obj:
-                        # Extraer los datos mapeados respetando el índice estricto del vector de 34 columnas
                         fila_estructurada.append(row_upper.get(col, ""))
                     datos_brutos_supa.append(fila_estructurada)
                 
                 if datos_brutos_supa:
-                    # Inyectamos una réplica de matriz simulada para que el pipeline descendente procese con Zero Regression
                     datos_brutos = [[""] * 30] * 5 + [columnas_obj] + datos_brutos_supa
         except Exception:
             pass
@@ -106,7 +104,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
     df['DOMINICAL_HA'] = df['DOMINICAL_HA'].apply(limpiar_dinero)
-        
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
     
@@ -156,7 +153,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP ANTI-PALIDEZ: Forzar visibilidad y opacidad en selectores centrales
+    # 🚀 RESTAURACIÓN DE IDENTIDAD VISUAL DE PRECIOS Y ENTORNO MAESTRO
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -164,16 +161,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-item {{ text-align: center; flex: 1; }}
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
-    
-    /* 💥 ELIMINACIÓN DE CONTROLES PÁLIDOS: Contorno robusto y fondo blanco puro en selectores tácticos */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] {{
-        border: 2px solid #0d1b2a !important;
-        border-radius: 6px !important;
-        background-color: #ffffff !important;
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        font-size: 15px !important;
-    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -355,7 +342,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             df_dom['SEMANA_NUM'] = pd.to_numeric(df_dom['SEMANA'].astype(str).str.extract(r'(\d+)')[0], errors='coerce').fillna(0).astype(int)
             
             df_dom = df_dom.groupby(['AÑO', 'MES_NOMBRE', 'SEMANA_NUM'])['DOMINICAL_HA'].sum().reset_index()
-            
             df_dom = df_dom.sort_values(by=['AÑO', 'SEMANA_NUM'])
             df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
             df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['MES_NOMBRE'] + ")"
@@ -388,10 +374,21 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.markdown("---")
         buffer_rep = io.BytesIO()
         nombre_hoja = 'Reporte'
+        
+        # Validación segura de la existencia del dataframe de visualización según el radio de control
         if vista_seleccionada == "📊 Resumen Gerencial":
-            df_visual.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
+            # Si la grilla visual no se ha instanciado en este hilo, se compila un snapshot estructurado de control
+            if 'df_visual' not in locals():
+                df_area_rep = df_filtrado.groupby(['PISTA', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
+                df_area_rep.columns = ['PISTA / BASE', 'MES OPERATIVO', 'AÑO FISCAL', 'ÁREA TOTAL (HA)']
+                df_area_rep.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
+            else:
+                df_visual.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False)
         else:
-            matriz.to_excel(buffer_rep, sheet_name=nombre_hoja)
+            if 'matriz' in locals():
+                matriz.to_excel(buffer_rep, sheet_name=nombre_hoja)
+            else:
+                st.error("Error al consolidar la matriz de datos para Excel.")
             
         rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
         st.download_button(
