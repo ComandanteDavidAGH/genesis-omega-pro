@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
-import io
+import gspread
 import re
 import math
+import io
 import streamlit.components.v1 as components
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -130,10 +131,30 @@ def compilar_html_pdf(cruce_final, semana, css_vip):
 # =================================================================
 
 def ejecutar(quitar_tildes, purificar_lote):
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Extirpación de Casillas Pálidas y Translúcidas
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    
+    /* 💥 ENDURECIMIENTO DE CONTROLES: Eliminación de palidez en inputs y selectores */
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 6px !important;
+        background-color: #ffffff !important;
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+    }
+    
+    /* Personalización nítida y opaca para los File Uploaders */
+    div[data-testid="stFileUploader"] section {
+        background-color: #ffffff !important;
+        border: 2px dashed #0d1b2a !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+    }
     
     /* HUD de Control de Arqueos */
     .hud-arqueo {
@@ -183,10 +204,23 @@ def ejecutar(quitar_tildes, purificar_lote):
         cruce['ESTADO'] = cruce['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
         cruce['OBSERVACIONES'] = ""
         
+        # INTEGRACIÓN SUPABASE: Recuperación de comentarios históricos guardados en la nube para la semana
+        comentarios_cloud = {}
+        if 'supabase' in st.session_state and semana_obj:
+            try:
+                resp_obs = st.session_state['supabase'].table("arqueos_observaciones").select("lote_pista_key, observacion").eq("semana", str(semana_obj).strip()).execute()
+                if resp_obs.data:
+                    comentarios_cloud = {r["lote_pista_key"]: r["observacion"] for r in resp_obs.data}
+            except Exception:
+                pass
+
         for idx, row in cruce.iterrows():
             key = f"{row['PISTA']}_{row['LOTE_KEY']}"
             if key in st.session_state.observaciones_memoria: 
                 cruce.at[idx, 'OBSERVACIONES'] = st.session_state.observaciones_memoria[key]
+            elif key in comentarios_cloud:
+                cruce.at[idx, 'OBSERVACIONES'] = comentarios_cloud[key]
+                st.session_state.observaciones_memoria[key] = comentarios_cloud[key]
             elif row['SALDO_SAP'] > 0 and row['SALDO_FISICO'] == 0: 
                 cruce.at[idx, 'OBSERVACIONES'] = "SUGERIDO: Entrega / Traslado / Pendiente por Facturar"
                 
@@ -235,27 +269,17 @@ def ejecutar(quitar_tildes, purificar_lote):
                     # 🌟 FIX DEFINITIVO: LIMPIEZA REGIONAL Y RESPETO DE DECIMALES SAP
                     def limpiar_numeros_sap(x):
                         if pd.isna(x): return 0.0
-                        
-                        # 1. ESCUDO PRIMARIO: Si Excel ya lo entendió como número, no lo tocamos.
                         if isinstance(x, (int, float)):
                             return float(x)
-                            
-                        # 2. Si SAP lo envió como texto puro, procedemos a limpiarlo
                         s = str(x).strip().replace(' ', '')
                         if not s or s.lower() == 'nan': return 0.0
-                        
-                        # 3. Tratamiento de formatos europeos/latinos (Ej: 1.234,56)
                         if '.' in s and ',' in s:
-                            # Comparamos cuál está al final para saber cuál es el decimal real
                             if s.rfind(',') > s.rfind('.'):
                                 s = s.replace('.', '').replace(',', '.')
                             else:
                                 s = s.replace(',', '')
                         elif ',' in s:
-                            # En SAP LATAM, la coma solitaria siempre es el decimal (23,144 -> 23.144)
                             s = s.replace(',', '.')
-                            
-                        # 4. Conversión a matemática pura (sin la regla destructiva de los 3 ceros)
                         try: return float(s)
                         except: return 0.0
 
@@ -298,6 +322,25 @@ def ejecutar(quitar_tildes, purificar_lote):
                         st.session_state.semana_actual = semana_obj
                         generar_cruce()
                         st.session_state.arqueo_procesado = True
+                        
+                        # INTEGRACIÓN SUPABASE: Respaldo preventivo de la ejecución del cruce consolidado
+                        if 'supabase' in st.session_state:
+                            try:
+                                supa = st.session_state['supabase']
+                                payload_cruce = []
+                                for _, row_c in st.session_state.cruce_final.iterrows():
+                                    payload_cruce.append({
+                                        "semana": str(semana_obj).strip(), "pista": str(row_c["PISTA"]),
+                                        "item_codigo": str(row_c["ITEM"]), "producto": str(row_c["PRODUCTO"]),
+                                        "lote": str(row_c["LOTE"]), "saldo_sap": float(row_c["SALDO_SAP"]),
+                                        "saldo_fisico": float(row_c["SALDO_FISICO"]), "diferencia": float(row_c["DIFERENCIA"]),
+                                        "estado": str(row_c["ESTADO"])
+                                    })
+                                if payload_cruce:
+                                    supa.table("arqueos_inventario_maestro").delete().eq("semana", str(semana_obj).strip()).execute()
+                                    supa.table("arqueos_inventario_maestro").insert(payload_cruce).execute()
+                            except Exception:
+                                pass
                     else: 
                         st.error("❌ No se localizaron hojas que coincidan con la semana indicada en los reportes físicos.")
             except Exception as e: 
@@ -359,12 +402,30 @@ def ejecutar(quitar_tildes, purificar_lote):
                         "OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES (Editable)", width="large")
                     }
                 )
+                
+                payload_obs_cloud = []
                 for _, row in edited_df.iterrows():
-                    key = f"{row['PISTA']}_{purificar_lote(row['LOTE'])}"
+                    lote_purificado = purificar_lote(row['LOTE'])
+                    key = f"{row['PISTA']}_{lote_purificado}"
                     st.session_state.observaciones_memoria[key] = row['OBSERVACIONES']
-                    idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == purificar_lote(row['LOTE']))].index
+                    idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == lote_purificado)].index
                     if not idx_m.empty: 
                         st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
+                    
+                    # Estructurar guardado en caliente para Supabase
+                    payload_obs_cloud.append({
+                        "semana": str(st.session_state.semana_actual).strip(),
+                        "lote_pista_key": str(key),
+                        "observacion": str(row['OBSERVACIONES']),
+                        "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                
+                # INTEGRACIÓN SUPABASE: Upsert dinámico de observaciones editadas
+                if 'supabase' in st.session_state and payload_obs_cloud:
+                    try:
+                        st.session_state['supabase'].table("arqueos_observaciones").upsert(payload_obs_cloud, on_conflict="semana,lote_pista_key").execute()
+                    except Exception:
+                        pass
  
         with tab2:
             err_fantasmas = st.session_state.cruce_final[(st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & (st.session_state.cruce_final['SALDO_SAP'] == 0) & (st.session_state.cruce_final['SALDO_FISICO'] > 0)]
@@ -386,11 +447,31 @@ def ejecutar(quitar_tildes, purificar_lote):
                     if st.button("⚡ FUSIONAR Y CORREGIR LOTE", type="primary"):
                         prod_sap, lote_sap = lote_ok_str.split(" | Lote: ")[0].strip(), lote_ok_str.split(" | Lote: ")[1].strip()
                         mask = (st.session_state.df_sup_grouped['PISTA'] == row_s['PISTA']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == row_s['LOTE_KEY'])
-                        st.session_state.observaciones_memoria[f"{row_s['PISTA']}_{purificar_lote(lote_sap)}"] = f"Corrección unificada con SAP ({prod_sap} - {lote_sap})"
+                        
+                        txt_obs = f"Corrección unificada con SAP ({prod_sap} - {lote_sap})"
+                        key_obs = f"{row_s['PISTA']}_{purificar_lote(lote_sap)}"
+                        st.session_state.observaciones_memoria[key_obs] = txt_obs
+                        
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_sap
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
                         st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
                         st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        
+                        # INTEGRACIÓN SUPABASE: Log de control para trazar fusiones de lotes manuales
+                        if 'supabase' in st.session_state:
+                            try:
+                                log_fusion = {
+                                    "semana": str(st.session_state.semana_actual).strip(),
+                                    "pista": str(row_s['PISTA']),
+                                    "lote_erroneo": str(row_s['LOTE']),
+                                    "lote_corregido_sap": str(lote_sap),
+                                    "insumo": str(prod_sap),
+                                    "fecha_correccion": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }
+                                st.session_state['supabase'].table("arqueos_log_fusiones").insert(log_fusion).execute()
+                            except Exception:
+                                pass
+
                         generar_cruce()
                         st.rerun()
  
@@ -417,4 +498,4 @@ def ejecutar(quitar_tildes, purificar_lote):
                 components.html(html_reporte_masivo, height=600, scrolling=True)
 
 if __name__ == "__main__":
-    ejecutar(None, None)
+    pass
