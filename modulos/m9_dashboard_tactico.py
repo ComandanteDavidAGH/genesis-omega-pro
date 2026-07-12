@@ -47,6 +47,10 @@ def limpiar_dinero(val):
     except:
         return 0.0
 
+def acortar_fecha(txt):
+    try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
+    except: return txt
+
 @st.cache_data(show_spinner=False)
 def cargar_y_preprocesar_boveda_mando_direct_v2(_procesar_fecha_pesada, _extraer_numero):
     gc = inicializar_cliente_gspread_propio()
@@ -153,7 +157,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 RECOMPOSICIÓN ESTÉTI_CO CORPORATIVA VIP (Bordes Verdes y Dorado Oficiales)
+    # 🚀 RECOMPOSICIÓN ESTÉTICA COMPLETA: Bordes Fuertes de Marca y Combos Impecables
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -162,15 +166,19 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 RESTAURACIÓN DE BORDES FUERTES Y COLORES DE MARCA SOLICITADOS */
+    /* 💥 CONTROLES RESALTADOS: Bordes perimetrales Verde Intenso de 2px sólidos y tipografía pura */
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {{
+    div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input {{
         border: 2px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        color: {VERDE_INTENSO} !important;
+        box-shadow: 0px 3px 6px rgba(0,0,0,0.06) !important;
+    }}
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] *,
+    div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input {{
+        color: #000000 !important;
         font-weight: 900 !important;
-        box-shadow: 0px 3px 6px rgba(0,0,0,0.08) !important;
+        font-size: 14px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -204,13 +212,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    # --- CONTROLES SECUNDARIOS NATIVOS ---
+    # Controles secundarios nativos de visualización
     cc1, cc2, cc3 = st.columns(3)
     mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m9_h_v6")
     calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m9_r_v6")
     agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m9_f_v6")
 
-    # --- 🛰️ FILTRADO UNIFICADO SOBRE DF_FILTRADO (Cerebro Corregido) ---
+    # --- 🛰️ PIPELINE DE FILTRADO HISTÓRICO UNIFICADO ---
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS (Comparativa Anual)": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
     if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
@@ -253,12 +261,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
     rango_txt = f"{df_filtrado['FECHA_DT'].min().strftime('%d/%m/%Y')} al {df_filtrado['FECHA_DT'].max().strftime('%d/%m/%Y')}"
 
-    # Pestaña de decisión visual unificada para evitar NameErrors en cascada
+    # 🚀 Inicialización prioritaria del radio de control de vistas para eliminar el NameError
     vista_seleccionada = st.radio("👁️ Seleccionar Métrica del Tablero:", ["📊 Resumen Gerencial", "📅 Mapa Semanal"], horizontal=True, key="radio_vista_m9")
 
-    # -----------------------------------------------------
-    # LÓGICA DE RENDERIZADO SEGÚN SELECCIÓN DE VISTA
-    # -----------------------------------------------------
+    # Contenedores vacíos para prevenir fallas de referencia asíncronas
     tabla_final = []
     matriz = pd.DataFrame()
     df_visual = pd.DataFrame()
@@ -349,14 +355,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
             return [''] * len(row)
             
-        fmt_cols = {'ÁREA FUMIG (ha)': fmt_latino}
-        if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
-        if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
+        fmt_cols = {'ÁREA FUMIG (ha)': formato_latino}
+        if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = formato_latino
+        if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = formato_latino
         
         st.dataframe(df_visual.style.apply(aplicar_estilos_originales, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
 
     else:
-        # Pestaña de Mapa Semanal Pivot
+        # Pestaña de Mapa Semanal Pivot Table
         matriz = pd.pivot_table(df_filtrado, values='AREA_FUMIG', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
         matriz = matriz.sort_index()
         cols_ordenadas = sorted(matriz.columns, key=lambda x: int(float(x)) if str(x).replace('.0','').isdigit() else 999)
@@ -367,9 +373,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
         st.dataframe(matriz.style.format(formato_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
-    # Renderizado fijo de gráficos cruzados inferiores
+    # Renderizado estable de gráficos cruzados inferiores
     with g1:
-        st.markdown(f"<h4 style='text-align:center;'>✈️ ÁREA ASPERJADA POR MES<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
@@ -382,7 +387,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig1, use_container_width=True)
 
     with g2:
-        st.markdown(f"<h4 style='text-align:center;'>⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO<br><span style='font-size:14px; color:#555;'>{titulo_finca}</span></h4>", unsafe_allow_html=True)
         df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
         df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
         
@@ -415,8 +419,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
         st.plotly_chart(go_fig, use_container_width=True)
 
-    # 🎯 EXPORTACIÓN EXCEL BIEN ENLAZADA SIN INTERRUPCIONES
-    st.markdown("---")
+    # 🎯 EXPORTACIÓN EXCEL MAESTRA BLINDADA SÓLIDA
     buffer_rep = io.BytesIO()
     nombre_hoja = 'Reporte'
     
