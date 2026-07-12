@@ -28,18 +28,24 @@ def obtener_cliente_gspread_unificado():
     except:
         return None
 
+# 💥 TRANSLATOR PRO: Evita el colapso por puntos múltiples repetidos de SAP (Ej: 117.404.747)
 def limpiar_tarifa_excel(val):
     if isinstance(val, (int, float)): return float(val)
-    v = str(val).strip().replace("$", "").replace(" ", "")
-    if not v or v in ['-', 'NAN', 'NONE']: return 0.0
+    v = str(val).strip().replace("$", "").replace(" ", "").upper()
+    if not v or v in ['-', 'NAN', 'NONE', '']: return 0.0
+    
+    s_clean = re.sub(r'[^\d\.,\-]', '', v)
     try:
-        if '.' in v and ',' not in v:
-            partes = v.split('.')
-            if len(partes) == 2 and len(partes[1]) == 3:
-                v = v.replace('.', '')
-        elif ',' in v:
-            v = v.replace('.', '').replace(',', '.')
-        return float(v)
+        if '.' in s_clean and ',' in s_clean:
+            if s_clean.rfind(',') > s_clean.rfind('.'): s_clean = s_clean.replace('.', '').replace(',', '.')
+            else: s_clean = s_clean.replace(',', '')
+        elif ',' in s_clean:
+            if len(s_clean.split(',')[-1]) == 3: s_clean = s_clean.replace(',', '')
+            else: s_clean = s_clean.replace(',', '.')
+        elif '.' in s_clean:
+            if s_clean.count('.') > 1: s_clean = s_clean.replace('.', '')
+            elif len(s_clean.split('.')[-1]) == 3: s_clean = s_clean.replace('.', '')
+        return float(s_clean) if s_clean else 0.0
     except:
         return 0.0
 
@@ -98,9 +104,8 @@ def generar_excel_maestro(df_total, df_vuelo):
         header_font = Font(color="FFFFFF", bold=True)
         align_center = Alignment(horizontal='center', vertical='center')
         
-        # Colores para semaforización
-        font_rojo = Font(color="C00000", bold=True) # Rojo oscuro
-        font_verde = Font(color="00B050", bold=True) # Verde financiero
+        font_rojo = Font(color="C00000", bold=True) 
+        font_verde = Font(color="00B050", bold=True) 
         
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
@@ -127,7 +132,6 @@ def generar_excel_maestro(df_total, df_vuelo):
                 celda_dif.number_format = '"$"#,##0'
                 celda_efi.number_format = '0.0%' 
                 
-                # 💥 SEMAFORIZACIÓN EN EXCEL
                 if isinstance(celda_dif.value, (int, float)):
                     if celda_dif.value > 0:
                         celda_dif.font = font_verde
@@ -142,9 +146,37 @@ def generar_excel_maestro(df_total, df_vuelo):
 # 👑 RENDERIZADO VISUAL EN PANTALLA
 # =================================================================
 
-def ejecutar():
+def ejecutar(*args, **kwargs):
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
+
     st.header("", anchor="inicio_modulo")
-    st.markdown("<h1 style='color: #1a365d; font-family: Arial Black; border-bottom: 3px solid #d4af37;'>📊 Comparativo Financiero Detallado</h1>", unsafe_allow_html=True)
+    
+    # 🚀 CEBO DE HARDENING INDUSTRIAL: Contorno grueso perimetral de 3px Verde de Marca e Inputs Opacos
+    st.markdown(f"""
+    <style>
+    h1 {{ color: #1a365d; font-family: Arial Black; border-bottom: 3px solid {DORADO}; }}
+    div[data-testid="stDataFrame"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    
+    /* Enmarcar selectores de fecha con contorno sólido de 3px color Verde Intenso */
+    div[data-testid="stDateInput"] input {{
+        background-color: #ffffff !important;
+        border: 3px solid {VERDE_INTENSO} !important;
+        border-radius: 6px !important;
+    }}
+    div[data-testid="stDateInput"] * {{
+        color: #000000 !important;
+        font-weight: bold !important;
+    }}
+    div[data-testid="stMainBlockContainer"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<h1>📊 Comparativo Financiero Detallado</h1>", unsafe_allow_html=True)
 
     with st.container(border=True):
         st.markdown("#### 📅 Parámetros del Reporte")
@@ -206,16 +238,14 @@ def ejecutar():
 
     def formatear_pesos(val):
         if pd.isna(val) or val == 0: return "-"
-        # Se asegura de poner el negativo antes del símbolo del peso
         if val < 0: return f"-$ {abs(val):,.0f}".replace(",", ".")
         return f"$ {val:,.0f}".replace(",", ".")
 
-    # 💥 MOTOR DE SEMAFORIZACIÓN PARA LA PANTALLA
     def semaforo_financiero(val):
         if isinstance(val, str):
-            if '-' in val and val != '-': return 'color: #e53e3e; font-weight: bold;' # Rojo
-            elif val == '-': return 'color: #718096;' # Gris
-            else: return 'color: #27ae60; font-weight: bold;' # Verde
+            if '-' in val and val != '-': return 'color: #e53e3e; font-weight: bold;' 
+            elif val == '-': return 'color: #718096;' 
+            else: return 'color: #27ae60; font-weight: bold;' 
         return ''
 
     # ==========================================================
@@ -227,17 +257,22 @@ def ejecutar():
             df_print_v = m_comp_v.copy()
             df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
             df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
-            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
+            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($ Freeman)']=df_print_v['Diferencia ($)'].apply(formatear_pesos)
             df_print_v['Eficiencia (%)'] = (df_print_v['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
 
-            # Aplicamos los colores a la tabla
             st.dataframe(df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
             
             df_print_v['EJE_X'] = df_print_v['FINCA'].str[:12] + " (" + df_print_v['EQUIPO DRON'].str.split('-').str[0].str.strip() + ")"
             fig = go.Figure()
             fig.add_trace(go.Bar(x=df_print_v['EJE_X'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
             fig.add_trace(go.Bar(x=df_print_v['EJE_X'], y=m_comp_v['DRONE'], name='Dron', marker_color='#d4af37'))
-            fig.update_layout(title="Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)", barmode='group', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(tickangle=-45))
+            fig.update_layout(
+                title="Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)", 
+                barmode='group', 
+                plot_bgcolor='rgba(0,0,0,0)', 
+                xaxis=dict(tickangle=-45),
+                hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
+            )
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("📌 No hay datos cruzados en el rango.")
@@ -254,7 +289,9 @@ def ejecutar():
             df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
             df_print_t['Eficiencia (%)'] = (df_print_t['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
 
-            # Aplicamos los colores a la tabla
             st.dataframe(df_print_t.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
         else:
             st.warning("📌 No hay datos cruzados en el rango.")
+
+if __name__ == "__main__":
+    pass
