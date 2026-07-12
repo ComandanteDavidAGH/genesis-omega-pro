@@ -169,7 +169,7 @@ def cargar_bases_m17(url_boveda, url_precios, supabase_client=None):
                         if not v: return 0.0
                         try:
                             if v.count('.') == 1 and v.count(',') == 0:
-                                if len(v.split('.')[1]) == 3: v = v.replace('.', '')
+                                if len(v.split('.', 1)[1]) == 3: v = v.replace('.', '')
                             if '.' in v and ',' in v:
                                 if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
                                 else: v = v.replace(',', '')
@@ -301,36 +301,40 @@ def ejecutar(supabase_client=None):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
 
-    st.markdown(f"""
+    # 💥 PARCHEO TOTAL ANTI SYNTAXERROR DE PYTHON 3.14: 
+    # Usamos un bloque de texto estándar e inyectamos las variables con .replace() para inmunizar las llaves de CSS.
+    css_maestro = """
     <style>
-    .titulo-mega {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}}
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {{ border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }}
-    .tarjeta-kpi {{ background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
-    .kpi-titulo {{ font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
-    .kpi-valor {{ font-size: 24px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
+    .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid VERDE_HEX !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
+    .tarjeta-kpi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
+    .kpi-titulo { font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .kpi-valor { font-size: 24px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     
     div[data-testid="stTextInput"] input,
     div[data-testid="stNumberInput"] input,
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {{
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {
         background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
+        border: 3px solid VERDE_HEX !important;
         border-radius: 6px !important;
-    }}
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{
+    }
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
         background-color: transparent !important;
         border: none !important;
-    }}
-    div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stMultiSelect"] * {{
+    }
+    div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stMultiSelect"] * {
         color: #000000 !important;
         font-weight: bold !important;
-    }}
-    div[data-testid="stMainBlockContainer"] label p {{
+    }
+    div[data-testid="stMainBlockContainer"] label p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
-    }}
+    }
     </style>
-    """, unsafe_allow_html=True)
+    """.replace("VERDE_HEX", VERDE_INTENSO)
+    
+    st.markdown(css_maestro, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mega'>🚀 Módulo 17: Mega-Proyección Operativa</h1>", unsafe_allow_html=True)
 
@@ -342,7 +346,7 @@ def ejecutar(supabase_client=None):
 
     with st.expander("🔌 CONEXIÓN A LAS MAESTRAS DE GOOGLE DRIVE Y BASE DE DATOS", expanded=not db_cargada):
         if db_cargada:
-            st.success("✅ Bases de Datos conectadas and en Memoria RAM del Módulo 17.")
+            st.success("✅ Bases de Datos conectadas y en Memoria RAM del Módulo 17.")
         else:
             st.info("💡 Pega los enlaces de tus archivos de Google Sheets para alimentar la proyección.")
             
@@ -643,7 +647,7 @@ def ejecutar(supabase_client=None):
                     for cell in row:
                         cell.border = borde
                         if cell.row == 1:
-                            cell.fill = fill_header
+                            cell.fill = header_fill
                             cell.font = header_font
                             cell.alignment = Alignment(horizontal='center', vertical='center')
                         else:
