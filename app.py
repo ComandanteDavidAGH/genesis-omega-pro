@@ -35,7 +35,6 @@ import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
-
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
     "usernames": {
