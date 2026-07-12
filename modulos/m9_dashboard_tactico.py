@@ -28,23 +28,6 @@ def acortar_fecha(txt):
     try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
     except: return txt
 
-def limpiar_dinero(val):
-    if isinstance(val, (int, float)): return float(val)
-    v = str(val).strip()
-    if not v or v == '-': return 0.0
-    v = re.sub(r'[^\d\.,\-]', '', v)
-    if not v: return 0.0
-    try:
-        if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-            else: v = v.replace(',', '')
-        elif ',' in v: v = v.replace(',', '.')
-        num = float(v) if v else 0.0
-        if 0 < num < 2500: num = num * 1000
-        return num
-    except:
-        return 0.0
-
 @st.cache_data(show_spinner=False)
 def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
     gc = inicializar_cliente_gspread_propio()
@@ -76,7 +59,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         except Exception:
             pass
     
-    if not datos_brutos or len(datos_brutos) <= 2: return pd.DataFrame(), pd.DataFrame()
+    if not datos_brutos or len(datos_brutos) <= 2: return pd.DataFrame()
         
     idx_headers = 4
     for i in range(min(8, len(datos_brutos))):
@@ -88,14 +71,14 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     filas_datos = datos_brutos[idx_headers + 1:]
     lista_limpia = [r[:30] + [""] * max(0, 30 - len(r)) for r in filas_datos]
         
-    df_crudo = pd.DataFrame(lista_limpia, columns=columnas_obj)
-    df = df_crudo.copy()
+    df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    def sanear_numero_maestro(val):
+    # 💥 SANITIZADOR FINANCIERO ABSOLUTO: Resuelve desbordamientos de puntos y escala de miles
+    def sanear_valores_sap(val):
         if pd.isna(val) or val is None: return 0.0
         s = str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", "")
         s_clean = re.sub(r'[^\d\.,\-]', '', s)
-        if not s_clean: return 0.0
+        if not s_clean or s_clean == '-': return 0.0
         try:
             if '.' in s_clean and ',' in s_clean:
                 if s_clean.rfind(',') > s_clean.rfind('.'): s_clean = s_clean.replace('.', '').replace(',', '.')
@@ -106,19 +89,26 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             elif '.' in s_clean:
                 if s_clean.count('.') > 1: s_clean = s_clean.replace('.', '')
                 elif len(s_clean.split('.')[-1]) == 3: s_clean = s_clean.replace('.', '')
-            return float(s_clean) if s_clean else 0.0
+            
+            num = float(s_clean) if s_clean else 0.0
+            # Regla de Oro: Auto-inflado contable obligatorio para cifras en miles bajo el umbral 2500
+            if 0 < num < 2500:
+                num = num * 1000
+            return num
         except:
             return 0.0
 
-    cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'DOMINICAL_HA']
-    for col in cols_numericas:
-        if col in ['COSTO_HA', 'VALOR_FACTURAR', 'COSTO_TOTAL', 'LIMITE']: df[col] = df[col].apply(sanear_numero_maestro)
-        else: df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+    cols_monetarias = ['COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'DOMINICAL_HA']
+    for col in cols_monetarias:
+        df[col] = df[col].apply(sanear_valores_sap)
+        
+    df['AREA_FUMIG'] = df['AREA_FUMIG'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+    df['REND_HR'] = df['REND_HR'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
     
-    if df.empty: return pd.DataFrame(), pd.DataFrame()
+    if df.empty: return pd.DataFrame()
     
     df['FECHA_DT'] = pd.to_datetime(df['FECHA_DT'])
     df['AÑO'] = df['FECHA_DT'].dt.year.astype(int)
@@ -128,7 +118,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
     df['MES_NOMBRE'] = df['MES_NUM'].map(meses_dict)
     
-    return df[df['AREA_FUMIG'] > 0].reset_index(drop=True), df_crudo
+    return df[df['AREA_FUMIG'] > 0].reset_index(drop=True)
 
 # =================================================================
 # 👑 FUNCIONES DE FORMATO LATINO
@@ -155,7 +145,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, '#7ebc59'] 
     
-    # 💥 BLOQUE MAESTRO DE SELECTORES (Fijo y Funcional)
+    # 🚀 FIJACIÓN DE BORDES INDUSTRIALES (Imagen 2 Sanada al 100%)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -164,6 +154,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
+    /* Enmarcar selectores con contorno sólido de 3px e interior blanco puro */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {{
         background-color: #ffffff !important;
@@ -188,10 +179,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    df_dash, df_crudo_debug = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
+    df_dash = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
-        st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1.")
+        st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1 o Supabase Cloud.")
         return
 
     st.markdown("### 🎛️ Filtros de Operación y Tiempo")
@@ -215,22 +206,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    cc1, cc2, cc3 = st.columns(3)
-    mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m9_h_v6")
-    calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m9_r_v6")
-    agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m9_f_v6")
-
-    # 🚨🚨 CEBO DE INTERACTIVIDAD PARA DETECTAR EL EFECTO DE RESALTE (HOVER) 🚨🚨
-    st.markdown("<div style='background-color: #ffe3e3; padding: 10px; border-left: 5px solid red; border-radius: 4px; margin: 10px 0;'>", unsafe_allow_html=True)
-    cebo_hover_mode = st.radio(
-        "🎯 **CEBO DE DIAGNÓSTICO: FORZAR MODO DE RESALTE EN GRÁFICOS**", 
-        ["closest", "x unified", "x", "y"], 
-        index=0, 
-        horizontal=True,
-        help="Cambia este modo para forzar a Plotly a recalcular el efecto Pop y las cajas flotantes de información."
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-
+    # --- 🛰️ PIPELINE DE FILTRADO HISTÓRICO EXCLUSIVO M9 ---
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS (Comparativa Anual)": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
     if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
@@ -238,10 +214,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
     if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
-
-    if df_filtrado.empty:
-        st.warning("⚠️ El Escuadrón no registró operaciones con los filtros seleccionados.")
-        return
 
     meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
     df_filtrado['MES'] = df_filtrado['MES_NUM'].map(meses_nom).fillna("Desconocido")
@@ -283,17 +255,12 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
         fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        
-        # Inyección del Cebo en el layout del gráfico 1
-        fig1.update_layout(
-            xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal',
-            hovermode=cebo_hover_mode, hoverdistance=100
-        )
+        fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
         fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -324,12 +291,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
         ))
         
-        # Inyección del Cebo en el layout del gráfico 2
-        go_fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
-            yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100),
-            hovermode=cebo_hover_mode, hoverdistance=100
-        )
+        go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
         go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
         st.plotly_chart(go_fig, use_container_width=True)
         
@@ -350,15 +312,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO])
         fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
-        
-        # Inyección del Cebo en el layout del gráfico 3
-        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)', hovermode=cebo_hover_mode, hoverdistance=100)
+        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
         fig3.update_yaxes(type='category')
         fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL
+    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
@@ -369,12 +329,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
         fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        
-        # Inyección del Cebo en el layout del gráfico 4
-        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', hovermode=cebo_hover_mode, hoverdistance=100)
+        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
         fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
         st.plotly_chart(fig4, use_container_width=True)
 
+    # -----------------------------------------------------
+    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES (Imagen 1 Sanada en Miles)
+    # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"#### ⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
     df_dom = df_filtrado[df_filtrado['DOMINICAL_HA'] > 0].copy()
@@ -384,11 +345,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_dom = df_dom.sort_values(by=['AÑO', 'SEMANA_NUM'])
         df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
         df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['MES_NOMBRE'] + ")"
+        
+        # Saneamiento del multiplicador: Las etiquetas reflejan ahora los miles de pesos reales (Ej: $ 9.000)
         df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
         
         fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
-        fig5.update_traces(textposition='outside', textfont=dict(size=14, color='black', family="Arial"), cliponaxis=False)
-        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0, hovermode=cebo_hover_mode, hoverdistance=100)
+        fig5.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial Black"), cliponaxis=False)
+        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0)
         fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
         st.plotly_chart(fig5, use_container_width=True)
     else:
