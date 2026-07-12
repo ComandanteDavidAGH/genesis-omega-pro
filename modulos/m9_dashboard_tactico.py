@@ -1,4 +1,4 @@
-import streamlit st as st
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -67,7 +67,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
-    # 🛰️ CONTINGENCIA SUPABASE: Si Drive falla, el Dashboard se alimenta de la Nube al instante
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -177,7 +176,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 CEBO MULTI-SELECTOR DE ALTA VISIBILIDAD DE MARCA (Filtros de Alta Visibilidad - Imagen 2)
+    # 🚀 CEBO DE CONTRASTE MAESTRO: Forzado absoluto de bordes e inputs (Imagen 2)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -186,9 +185,9 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 INYECTOR DOMINANTE ANTI-PALIDEZ: Bordes gruesos de 3px Verde Intenso y Fondo 100% Opaco */
+    /* 💥 CEBO DEFINITIVO ANTI-PALIDEZ: Contorno sólido Verde de 3px y Fondo Blanco 100% Opaco */
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stMainBlockContainer"] div[data-baseweb="select"],
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"],
     .stSelectbox [data-baseweb="select"] {{
         border: 3px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
@@ -211,7 +210,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         font-size: 14px !important;
     }}
     
-    /* Títulos superiores de los combos resaltados */
+    /* Resaltar títulos superiores de los campos */
     div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
@@ -310,7 +309,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
         
-        # Activar el realce de Plotly nativo al pasar el mouse
         fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"), hoverinfo="all")
         fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', hovermode="closest")
         fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
@@ -347,10 +345,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Finca",
             mode='lines+markers', line=dict(color='#ff0000', width=3), marker=dict(size=6),
             customdata=df_costo['HOVER_LIMITE'],
+            hover_name=df_costo['COCTEL'],
             hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
         ))
         
-        # Sincronización del realce interactivo al cruzar el ratón
         go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100), hovermode="closest")
         go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
         st.plotly_chart(go_fig, use_container_width=True)
@@ -380,7 +378,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (Emerge con altura real - Imagen 1)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL 
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
