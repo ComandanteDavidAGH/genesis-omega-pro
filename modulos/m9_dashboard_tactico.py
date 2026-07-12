@@ -103,7 +103,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    # 💥 EXTRACTOR PRO: Sanitización blindada contra errores regionales de moneda en SAP
+    # 💥 ALGORITMO BLINDADO DE EXTRACCIÓN: Soporta formatos regionales complejos de múltiples puntos
     def limpiar_moneda_pro(val):
         if isinstance(val, (int, float)): return float(val)
         s = str(val).strip().replace(" ", "")
@@ -117,6 +117,9 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
                     s_clean = s_clean.replace(',', '')
             elif ',' in s_clean:
                 s_clean = s_clean.replace(',', '.')
+            elif '.' in s_clean:
+                if s_clean.count('.') > 1:
+                    s_clean = s_clean.replace('.', '') # Remueve puntos de miles repetidos
             return float(s_clean) if s_clean else 0.0
         except:
             return 0.0
@@ -178,7 +181,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 CEBO MULTI-SELECTOR DE ALTA PENETRACIÓN (Bordes e Inputs Optimizados - Imagen 2)
+    # 🚀 CEBO DE CONTRASTE MAESTRO: Forzado absoluto de bordes e inputs (Imagen 2)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -187,24 +190,24 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 CEBO DEFINITIVO ANTI-PALIDEZ: Captura todos los estados DOM internos de BaseWeb */
+    /* 💥 CEBO DEFINITIVO ANTI-PALIDEZ CONTRA EL ÁRBOL DOM DE BASEWEB */
     .stSelectbox div[data-baseweb="select"],
     div[data-testid="stSelectbox"] [data-baseweb="select"],
     div[data-baseweb="select"] {{
-        border: 2.5px solid {VERDE_INTENSO} !important;
+        border: 3px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.08) !important;
     }}
     
-    /* Forzar fondo blanco puro y eliminar el gris translúcido del subcontenedor hijo */
+    /* Perforación y liquidación del fondo gris pálido del subcontenedor hijo de Streamlit */
     .stSelectbox div[data-baseweb="select"] > div,
     div[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
         background-color: #ffffff !important;
         border: none !important;
     }}
     
-    /* Visibilidad tipográfica de las opciones seleccionadas */
+    /* Visibilidad tipográfica de las opciones seleccionadas (Negro Puro) */
     .stSelectbox div[data-baseweb="select"] div,
     div[data-testid="stSelectbox"] [data-baseweb="select"] span {{
         color: #000000 !important;
@@ -300,7 +303,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (RESTAURACIÓN DE EFECTO "POP" INTERACTIVO)
+    # GRÁFICO 1: ÁREA ASPERJADA (RESTAURACIÓN COMPLETA DE INTERACTIVIDAD - Imagen 1)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -311,7 +314,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
         
-        # ⚡ INYECCIÓN DE RESALTE Y ACTIVACIÓN DE RESPUESTA HOVER (Imagen 1)
+        # ⚡ ACTIVACIÓN DE RESPUESTA HOVER COMPLETA
         fig1.update_traces(
             textposition='outside', 
             textfont=dict(size=11, color='black', family="Arial"),
@@ -323,13 +326,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             yaxis_title="Hectáreas (ha)", 
             plot_bgcolor='rgba(0,0,0,0)', 
             legend_title_text='Año Fiscal',
-            hovermode="closest"  # Restablece la sensibilidad nativa de Plotly al pasar el mouse
+            hovermode="closest"  # Devuelve el resalte y crecimiento al pasar el ratón
         )
         fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SOLUCIÓN COMPLETA DE BARRA INVISIBLE - Imagen 1)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SOLUCIÓN DE LA BARRA INVISIBLE - Imagen 1)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -362,13 +365,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
         ))
         
-        # ⚡ RESTABLECIMIENTO DE INTERACTIVIDAD DINÁMICA DE CRECIMIENTO AL HOVER (Imagen 1)
+        # ⚡ RESTABLECIMIENTO DEL HOVER RESPONSIVO ORIGINAL (Imagen 1)
         go_fig.update_layout(
             plot_bgcolor='rgba(0,0,0,0)', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), 
             margin=dict(b=100),
-            hovermode="closest"  # Garantiza el efecto pop-up y resalte perimetral al cruzar el ratón
+            hovermode="closest"  # Devuelve el sombreado y dinamismo al cruzar el mouse
         )
         go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
         st.plotly_chart(go_fig, use_container_width=True)
@@ -376,7 +379,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO/HORA
+    # GRÁFICO 3: RENDIMIENTO/HORA (RESTAURADO EN SU TOTALIDAD - Imagen 1)
     # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
@@ -398,7 +401,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL 
+    # GRÁFICO 4: FACTURACIÓN MENSUAL (RESTAURADO CON BARRAS EMERGINENTES DESDE LA AUDITORÍA DE PUNTOS - Imagen 1)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
