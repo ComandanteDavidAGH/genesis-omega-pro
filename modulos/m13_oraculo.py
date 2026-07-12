@@ -8,22 +8,27 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
+    """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
-    except: return None
+    except: 
+        return None
 
 def a_numero_limpio(val):
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip().replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
+        v = re.sub(r'[^\d\.,\-]', '', v)
+        if not v: return 0.0
         if v.count('.') > 1:
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         return float(v) if v else 0.0
-    except: return 0.0
+    except: 
+        return 0.0
 
 def procesar_fecha_pesada(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
@@ -31,14 +36,20 @@ def procesar_fecha_pesada(val):
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
     for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y'):
-        try: return pd.to_datetime(s, format=fmt)
-        except: pass
-    try: return pd.to_datetime(s, errors='coerce')
-    except: return pd.NaT
+        try: 
+            return pd.to_datetime(s, format=fmt)
+        except: 
+            pass
+    try: 
+        return pd.to_datetime(s, errors='coerce')
+    except: 
+        return pd.NaT
 
 def fmt_latino(val, decimales=1):
-    try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except: return str(val)
+    try: 
+        return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except: 
+        return str(val)
 
 def obtener_dosis_fertilizante(df_mezclas, fert_name):
     try:
@@ -47,7 +58,8 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
             if mask.any():
                 val = pd.to_numeric(df_mezclas[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
-    except: pass
+    except: 
+        pass
     return None 
 
 # 🧠 CEREBRO QUÍMICO CALIBRADO (SIN INYECCIÓN FANTASMA DE ADITIVOS)
@@ -81,7 +93,7 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
             elif aditivo == "ZN": dict_prods["ZINTRAC X LITRO SV"] = 0.5
             elif aditivo == "BT": dict_prods["BANATREL SC"] = 0.5
     
-    # 3. Aditivos Universales Estrictos
+    # 3. Aditivos Universales Estricto
     if "SV" in coctel_u or "ACONDICIONADOR" in coctel_u:
         dict_prods["ACONDICIONADOR SV"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
         dict_prods["ADHERENTE SV"] = 0.13
@@ -93,13 +105,39 @@ def extraer_receta_completa(coctel_sel, df_mezclas, dict_fertilizantes_dinamico)
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
-    st.markdown("""
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
+
+    # 🚀 CAPA DE TRATAMIENTO DE CONTRASTE EXTREMO: Bordes perimetrales de 3px e inputs opacos
+    st.markdown(f"""
     <style>
-    .titulo-oraculo { color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }
-    .alerta-roja { background-color: #ffe6e6; color: #cc0000; padding: 15px; border-left: 8px solid #cc0000; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    .alerta-amarilla { background-color: #fff3cd; color: #856404; padding: 15px; border-left: 8px solid #ffc107; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    .alerta-verde { background-color: #d4edda; color: #155724; padding: 15px; border-left: 8px solid #28a745; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
-    div[data-testid="stDataFrame"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    .titulo-oraculo {{ color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }}
+    .alerta-roja {{ background-color: #ffe6e6; color: #cc0000; padding: 15px; border-left: 8px solid #cc0000; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}}
+    .alerta-amarilla {{ background-color: #fff3cd; color: #856404; padding: 15px; border-left: 8px solid #ffc107; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}}
+    .alerta-verde {{ background-color: #d4edda; color: #155724; padding: 15px; border-left: 8px solid #28a745; border-radius: 5px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}}
+    div[data-testid="stDataFrame"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    
+    /* 💥 CONTROLES ENDURECIDOS M13: Bordes sólidos de 3px e interior blanco puro contra la transparencia */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stFileUploader"] > div {{
+        background-color: #ffffff !important;
+        border: 3px solid {VERDE_INTENSO} !important;
+        border-radius: 8px !important;
+    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+        background-color: transparent !important;
+        border: none !important;
+    }}
+    div[data-testid="stSelectbox"] *, div[data-testid="stFileUploader"] * {{
+        color: #000000 !important;
+        font-weight: bold !important;
+    }}
+    div[data-testid="stMainBlockContainer"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -116,7 +154,7 @@ def ejecutar(purificar_lote, extraer_numero):
     mes_actual = datetime.now().month
     mes_proyeccion = col_mes.selectbox("Mes a Proyectar:", list(meses_dict.keys()), index=mes_actual-1, format_func=lambda x: meses_dict[x])
     
-    # 💥 LISTA PURGADA (Se eliminaron Z-1 y Z-2) 💥
+    # 💥 LISTA PURGADA (Se eliminaron Z-1 y Z-2)
     lista_pistas = ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
     pista_objetivo = col_pista.selectbox("📍 Base Operativa (SAP):", lista_pistas)
 
@@ -136,7 +174,8 @@ def ejecutar(purificar_lote, extraer_numero):
                 if archivo_sap.name.lower().endswith('.xlsx') or archivo_sap.name.lower().endswith('.xls'):
                     df_sap = pd.read_excel(archivo_sap)
                 else:
-                    try: df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='utf-8')
+                    try: 
+                        df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='utf-8')
                     except:
                         archivo_sap.seek(0)
                         df_sap = pd.read_csv(archivo_sap, sep=None, engine='python', encoding='latin1')
@@ -306,7 +345,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 if df_oraculo.empty:
                     st.info("No se hallaron productos en SAP para la pista seleccionada.")
                 else:
-                    # 💥 ORDENAMIENTO ALFABÉTICO PERFECTO 💥
+                    # 💥 ORDENAMIENTO ALFABÉTICO PERFECTO
                     def get_sort_weight(estado_str):
                         if "CRÍTICO" in estado_str: return 1
                         if "ALERTA" in estado_str: return 2
@@ -357,7 +396,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     df_vista['📈 PROYECCIÓN MES (L/Kg)'] = df_vista['📈 PROYECCIÓN MES (L/Kg)'].apply(lambda x: fmt_latino(x, 1))
                     df_vista['⏳ AUTONOMÍA'] = df_vista['⏳ AUTONOMÍA'].apply(lambda x: "∞ (Sin Consumo Histórico)" if x >= 9999 else f"{x:,.0f} Días")
 
-                    # 💥 REDERIZADO NATIVO PARA ALINEACIÓN PERFECTA DE COLUMNAS 💥
+                    # 💥 RENDERIZADO NATIVO PARA ALINEACIÓN PERFECTA DE COLUMNAS
                     st.dataframe(
                         df_vista.style.apply(pintar_oraculo, axis=1), 
                         use_container_width=True, 
@@ -374,3 +413,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     
             except Exception as e:
                 st.error(f"🚨 Falla en los cálculos predictivos o estructura de datos: {e}")
+
+if __name__ == "__main__":
+    pass
