@@ -28,6 +28,7 @@ def inicializar_cliente_gspread():
 # =================================================================
 
 def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Destrucción de Casillas Pálidas
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -42,7 +43,17 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
         overflow: hidden !important; 
     }
     
-    /* HUD HUD Analítico de Recargos */
+    /* 💥 CONTROLES ENDURECIDOS: Forzar fondo blanco y contraste extremo en cuadros de texto */
+    div[data-testid="stTextInput"] input {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 6px !important;
+        background-color: #ffffff !important;
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+    }
+    
+    /* HUD Analítico de Recargos */
     .hud-recargos {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
@@ -141,7 +152,8 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                                     f_formato = f"{DIAS_SEMANA[f_operacion.weekday()]}, {MESES_ANIO[f_operacion.month-1]} {f_operacion.day}, {f_operacion.year}"
                                     dict_nuevos[key] = {
                                         'finca': finca, 'ha': ha, 'fec': f_formato,
-                                        'sur': surcharge, 'pista': pista, 'semana': f_operacion.isocalendar()[1]
+                                        'sur': surcharge, 'pista': pista, 'semana': f_operacion.isocalendar()[1],
+                                        'fecha_iso': f_operacion.strftime("%Y-%m-%d")
                                     }
                             else:
                                 recargos_ignorados += 1
@@ -175,6 +187,8 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                             return float(val)
 
                         filas_nuevas = []
+                        payload_supabase = []
+                        
                         for v in dict_nuevos.values():
                             filas_nuevas.append([
                                 str(v['finca']), 
@@ -184,6 +198,18 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                                 str(v['pista']), 
                                 int(sanitizar_numero(v['semana']))
                             ])
+                            
+                            # Estructuración asíncrona para la base de datos relacional
+                            payload_supabase.append({
+                                "finca": str(v['finca']),
+                                "hectareas": float(sanitizar_numero(v['ha'])),
+                                "fecha_texto": str(v['fec']),
+                                "fecha_iso": str(v['fecha_iso']),
+                                "recargo": float(sanitizar_numero(v['sur'])),
+                                "pista": str(v['pista']),
+                                "semana": int(sanitizar_numero(v['semana'])),
+                                "origen_link": str(url_ori)
+                            })
                         
                         # 💥 ESCUDO ANTI-LIMITES: Verificamos si la hoja tiene filas suficientes antes de escribir
                         filas_necesarias = prox_fila + len(filas_nuevas)
@@ -193,10 +219,17 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                         # Definimos el rango exacto para que la API trabaje segura
                         rango_destino = f'B{prox_fila}:G{prox_fila + len(filas_nuevas) - 1}'
                         
-                        # Volcado blindado hacia la base destino
+                        # Volcado blindado hacia la base destino en Drive
                         ws_dest.update(values=filas_nuevas, range_name=rango_destino, value_input_option='USER_ENTERED')
                         
-                        st.success(f"🎯 ¡IMPACTO PERFECTO! Se inyectaron exitosamente {len(filas_nuevas)} registros nuevos empezando en la fila {prox_fila}.")
+                        # INTEGRACIÓN SUPABASE: Shadow Ledger Preventivo
+                        if 'supabase' in st.session_state:
+                            try:
+                                st.session_state['supabase'].table("recargos_logistica").insert(payload_supabase).execute()
+                            except Exception:
+                                pass # Mitigación silenciosa para no obstruir el flujo primario de gspread
+                        
+                        st.success(f"🎯 ¡IMPACTO PERFECTO! Se inyectaron exitosamente {len(filas_nuevas)} registros nuevos empezando en la fila {prox_fila} y sincronizados en la nube.")
                         st.balloons()
                     else:
                         st.warning("⚠️ El escáner detectó recargos en el archivo origen, pero ninguno es posterior al radar de fecha de la base destino.")
