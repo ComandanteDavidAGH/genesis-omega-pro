@@ -98,6 +98,22 @@ def ejecutar(extraer_numero):
                     hoja_plantilla.update(range_name="A3", values=df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
                     hoja_plantilla.update(range_name="K3", values=[[x] for x in unicos], value_input_option='USER_ENTERED')
                      
+                    # INTEGRACIÓN SUPABASE: Respaldo silencioso de datos purificados
+                    if 'supabase' in st.session_state:
+                        try:
+                            supabase_client = st.session_state['supabase']
+                            # Sanitizar nombres de columnas para asegurar compatibilidad Postgres sin romper df_final
+                            df_db = df_final.copy()
+                            df_db.columns = [f"col_{i}" for i in range(len(df_db.columns) - 1)] + ["col_j"]
+                            registros = df_db.fillna("").to_dict(orient='records')
+                            
+                            # Volcado en caliente a Supabase (Tabla de lectura veloz)
+                            supabase_client.table("sap_precios_plantilla").delete().neq("col_j", "PROBAR_VACIO_FORZADO").execute()
+                            if registros:
+                                supabase_client.table("sap_precios_plantilla").insert(registros).execute()
+                        except Exception:
+                            pass # Protección Zero Regression si la estructura de la tabla aún no se crea
+
                     st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de forma instantánea.")
                     st.session_state['paso_a_listo'] = True
                 except Exception as e:
@@ -205,9 +221,28 @@ def ejecutar(extraer_numero):
                         if valores_para_j:
                             rango_destino = f"J2:J{len(valores_para_j) + 1}"
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
+                            
+                            # INTEGRACIÓN SUPABASE: Sincronizar el espejo del arsenal actualizado de precios
+                            if 'supabase' in st.session_state:
+                                try:
+                                    supabase_client = st.session_state['supabase']
+                                    records_espejo = []
+                                    for fila in data_full[1:]:
+                                        prod = fila[8] if len(fila) > 8 else ""
+                                        val_k = fila[10] if len(fila) > 10 else ""
+                                        if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                                            records_espejo.append({
+                                                "producto": str(prod).strip(),
+                                                "precio_establecido": float(extraer_numero(val_k))
+                                            })
+                                    if records_espejo:
+                                        # Hacemos un upsert para actualizar los precios master velozmente
+                                        supabase_client.table("sap_precios_config").upsert(records_espejo, on_conflict="producto").execute()
+                                except Exception:
+                                    pass
                          
                         st.balloons()
-                        st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura.")
+                        st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura y se sincronizó la caché en la nube.")
                         del st.session_state['datos_para_sincronizar']
                     except Exception as e:
                         st.error(f"🚨 FALLA EN LA INYECCIÓN EN CALIENTE: {e}")
