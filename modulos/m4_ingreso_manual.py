@@ -37,10 +37,23 @@ def a_numero_limpio(val):
 # =================================================================
 
 def ejecutar(extraer_numero, purificar_lote):
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Eliminación definitiva de casillas pálidas
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    
+    /* 💥 DETONACIÓN DE CASILLAS PÁLIDAS: Forzar visibilidad extrema en Inputs y Selectboxes */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 6px !important;
+        background-color: #ffffff !important;
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+    }
     
     /* HUD de Legalización */
     .hud-legalizador {
@@ -152,6 +165,7 @@ def ejecutar(extraer_numero, purificar_lote):
                             mod_av, pist_av = match_av.iloc[0, 9], match_av.iloc[0, 10]
 
                         filas_finales = []
+                        payload_supabase = []
                         t_ha_os = sum(df_editado['hectareas'])
                         
                         h_tot = float(str(horo_val).replace(',','.'))
@@ -196,9 +210,26 @@ def ejecutar(extraer_numero, purificar_lote):
                             row[30] = '=INDIRECT("AE"&(ROW()-1))' 
                             
                             filas_finales.append(row)
-                        
+
+                            # Estructuración para Supabase
+                            payload_supabase.append({
+                                "numero_os": str(os_val), "finca": str(n_finca), "hectareas": float(ha_n),
+                                "coctel": str(coctel_final), "fecha_operacion": str(f_str), "piloto": str(piloto_val),
+                                "matricula": str(hk_val), "horometro_total": float(h_tot), "total_costo": float(costo_f),
+                                "tipo_mision": "MANUAL", "origen_registro": "GENESIS_M4_MANUAL"
+                            })
+                            
                         if filas_finales:
+                            # Escritura en Drive
                             hoja_maestra1.append_rows(filas_finales, value_input_option='USER_ENTERED')
+                            
+                            # INTEGRACIÓN SUPABASE: Shadow Writing Preventivo
+                            if 'supabase' in st.session_state:
+                                try:
+                                    st.session_state['supabase'].table("ordenes_servicio_os").insert(payload_supabase).execute()
+                                except Exception:
+                                    pass
+
                             st.balloons()
                             st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con Cóctel y Fórmulas Automáticas.")
                             st.session_state.pop('memoria_excel', None) 
@@ -294,7 +325,6 @@ def ejecutar(extraer_numero, purificar_lote):
                     costo_r = c4.number_input(f"$/Ha #{i+1}", value=float(costo_sugerido), key=f"c_r_{i}")
                     
                     rows_finales.append({"OS": os_r, "Finca": finca_r, "Ha": ha_r, "Costo": costo_r})
-                    if finca_r == vuelo_sel['finca']: total_ha_cobro_escuadron = ha_r 
                     total_ha_asignadas += ha_r
 
             st.markdown("---")
@@ -312,6 +342,7 @@ def ejecutar(extraer_numero, purificar_lote):
                         with st.spinner("Legalizando y respetando Fórmulas MAP de Excel..."):
                             r_idx = int(vuelo_sel['fila_real'])
                             Nuevas_Filas = []
+                            payload_supa_leg = []
                             
                             for r_f in rows_finales:
                                 fila_orig = datos_t1[r_idx - 1]
@@ -330,9 +361,29 @@ def ejecutar(extraer_numero, purificar_lote):
                                 
                                 Nuevas_Filas.append(nueva)
 
+                                # Preparar réplica relacional
+                                payload_supa_leg.append({
+                                    "numero_os": str(r_f["OS"]), "finca": str(r_f["Finca"]), "hectareas": float(r_f["Ha"]),
+                                    "coctel": str(nueva[6]), "fecha_operacion": str(nueva[7]), "piloto": str(nueva[15]),
+                                    "matricula": str(nueva[16]), "horometro_total": float(extraer_numero(nueva[10])),
+                                    "total_costo": float(nueva[18]), "tipo_mision": "LEGALIZADA", "origen_registro": str(vuelo_sel['os_virt'])
+                                })
+
+                            # Modificación física en Google Sheets
                             ws_t1_2.delete_rows(r_idx)
                             ws_t1_2.insert_rows(Nuevas_Filas, r_idx, value_input_option='USER_ENTERED')
                             
+                            # Sincronización en Supabase
+                            if 'supabase' in st.session_state:
+                                try:
+                                    supabase_client = st.session_state['supabase']
+                                    # Marcamos la orden virtual como legalizada o la eliminamos del espejo
+                                    supabase_client.table("ordenes_servicio_os").delete().eq("numero_os", str(vuelo_sel['os_virt'])).execute()
+                                    # Insertamos los nuevos desgloses reales
+                                    supabase_client.table("ordenes_servicio_os").insert(payload_supa_leg).execute()
+                                except Exception:
+                                    pass
+
                             st.balloons()
                             st.success(f"🎯 LEGALIZACIÓN PERFECTA. El registro virtual ha sido eliminado y reemplazado por misiones reales.")
                             
