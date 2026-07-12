@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -67,6 +67,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
+    # 🛰️ CONTINGENCIA SUPABASE: Si Drive falla, el Dashboard se alimenta de la Nube al instante
     if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
         try:
             supabase_client = st.session_state['supabase']
@@ -103,33 +104,28 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    # 💥 ALGORITMO BLINDADO DE EXTRACCIÓN: Soporta formatos regionales complejos de múltiples puntos
-    def limpiar_moneda_pro(val):
-        if isinstance(val, (int, float)): return float(val)
-        s = str(val).strip().replace(" ", "")
+    # 💥 SANITIZADOR NUMÉRICO MAESTRO: Rompe el bloqueo de puntos de miles repetidos de SAP (Imagen 1)
+    def sanear_numero_maestro(val):
+        if pd.isna(val) or val is None: return 0.0
+        s = str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", "")
         if not s or s in ["-", "NAN", "NONE"]: return 0.0
-        s_clean = re.sub(r'[^\d\.,\-]', '', s)
         try:
-            if '.' in s_clean and ',' in s_clean:
-                if s_clean.rfind(',') > s_clean.rfind('.'):
-                    s_clean = s_clean.replace('.', '').replace(',', '.')
-                else:
-                    s_clean = s_clean.replace(',', '')
-            elif ',' in s_clean:
-                s_clean = s_clean.replace(',', '.')
-            elif '.' in s_clean:
-                if s_clean.count('.') > 1:
-                    s_clean = s_clean.replace('.', '') # Remueve puntos de miles repetidos
-            return float(s_clean) if s_clean else 0.0
+            if '.' in s and ',' in s:
+                if s.rfind(',') > s.rfind('.'): s = s.replace('.', '').replace(',', '.')
+                else: s = s.replace(',', '')
+            elif ',' in s:
+                if s.count(',') == 1 and len(s.split(',')[1]) <= 2: s = s.replace(',', '.')
+                else: s = s.replace(',', '')
+            elif '.' in s:
+                if s.count('.') > 1: s = s.replace('.', '')
+                elif s.count('.') == 1 and len(s.split('.')[1]) == 3: s = s.replace('.', '')
+            return float(s) if s else 0.0
         except:
             return 0.0
 
     cols_numericas = ['AREA_FUMIG', 'REND_HR', 'COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION']
     for col in cols_numericas:
-        if col in ['COSTO_HA', 'VALOR_FACTURAR', 'COSTO_TOTAL']:
-            df[col] = df[col].apply(limpiar_moneda_pro)
-        else:
-            df[col] = df[col].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+        df[col] = df[col].apply(sanear_numero_maestro)
         
     df['DOMINICAL_HA'] = df['DOMINICAL_HA'].apply(limpiar_dinero)
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
@@ -181,7 +177,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, VERDE_CLARO] 
     
-    # 🚀 CEBO DE CONTRASTE MAESTRO: Forzado absoluto de bordes e inputs (Imagen 2)
+    # 🚀 CEBO MULTI-SELECTOR DE ALTA VISIBILIDAD DE MARCA (Filtros de Alta Visibilidad - Imagen 2)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -190,32 +186,32 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* 💥 CEBO DEFINITIVO ANTI-PALIDEZ CONTRA EL ÁRBOL DOM DE BASEWEB */
-    .stSelectbox div[data-baseweb="select"],
-    div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-baseweb="select"] {{
+    /* 💥 INYECTOR DOMINANTE ANTI-PALIDEZ: Bordes gruesos de 3px Verde Intenso y Fondo 100% Opaco */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stMainBlockContainer"] div[data-baseweb="select"],
+    .stSelectbox [data-baseweb="select"] {{
         border: 3px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.08) !important;
     }}
     
-    /* Perforación y liquidación del fondo gris pálido del subcontenedor hijo de Streamlit */
-    .stSelectbox div[data-baseweb="select"] > div,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
+    /* Perforar y liquidar el sub-nodo gris pálido interno de Streamlit */
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] > div,
+    .stSelectbox [data-baseweb="select"] > div {{
         background-color: #ffffff !important;
         border: none !important;
     }}
     
     /* Visibilidad tipográfica de las opciones seleccionadas (Negro Puro) */
-    .stSelectbox div[data-baseweb="select"] div,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] span {{
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] div,
+    div[data-testid="stMainBlockContainer"] [data-baseweb="select"] span {{
         color: #000000 !important;
         font-weight: 900 !important;
         font-size: 14px !important;
     }}
     
-    /* Resaltar títulos superiores de los campos */
+    /* Títulos superiores de los combos resaltados */
     div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
@@ -303,7 +299,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (RESTAURACIÓN COMPLETA DE INTERACTIVIDAD - Imagen 1)
+    # GRÁFICO 1: ÁREA ASPERJADA (RESTAURACIÓN DE EFECTO "POP" INTERACTIVO - Imagen 1)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -314,25 +310,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
         
-        # ⚡ ACTIVACIÓN DE RESPUESTA HOVER COMPLETA
-        fig1.update_traces(
-            textposition='outside', 
-            textfont=dict(size=11, color='black', family="Arial"),
-            hoverinfo="all",
-            selector=dict(type='bar')
-        )
-        fig1.update_layout(
-            xaxis_title="Mes Operativo", 
-            yaxis_title="Hectáreas (ha)", 
-            plot_bgcolor='rgba(0,0,0,0)', 
-            legend_title_text='Año Fiscal',
-            hovermode="closest"  # Devuelve el resalte y crecimiento al pasar el ratón
-        )
+        # Activar el realce de Plotly nativo al pasar el mouse
+        fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"), hoverinfo="all")
+        fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', hovermode="closest")
         fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SOLUCIÓN DE LA BARRA INVISIBLE - Imagen 1)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SOLUCIÓN DEFINITIVA DE BARRA INVISIBLE - Imagen 1)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -365,21 +350,15 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
         ))
         
-        # ⚡ RESTABLECIMIENTO DEL HOVER RESPONSIVO ORIGINAL (Imagen 1)
-        go_fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)', 
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
-            yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), 
-            margin=dict(b=100),
-            hovermode="closest"  # Devuelve el sombreado y dinamismo al cruzar el mouse
-        )
+        # Sincronización del realce interactivo al cruzar el ratón
+        go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100), hovermode="closest")
         go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
         st.plotly_chart(go_fig, use_container_width=True)
         
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO/HORA (RESTAURADO EN SU TOTALIDAD - Imagen 1)
+    # GRÁFICO 3: RENDIMIENTO/HORA
     # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
@@ -401,7 +380,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (RESTAURADO CON BARRAS EMERGINENTES DESDE LA AUDITORÍA DE PUNTOS - Imagen 1)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL (Emerge con altura real - Imagen 1)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
