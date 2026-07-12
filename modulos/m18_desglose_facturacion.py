@@ -117,7 +117,7 @@ def cargar_bases_m18():
 def ejecutar(*args, **kwargs):
     VERDE_INTENSO = '#143521'
 
-    # 💥 BLOQUE CSS SANEADO
+    # 💥 BLOQUE CSS SANEADO (Sin f-strings para evitar SyntaxError)
     css_maestro = """
     <style>
     .titulo-desglose { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
@@ -178,13 +178,10 @@ def ejecutar(*args, **kwargs):
     df_t1 = df_t1.dropna(subset=['FECHA_PURA']).copy()
     df_t1['FINCA_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
     
-    # 💥 MEJORA TÁCTICA: Calcular ciclos basados en fechas ÚNICAS de vuelo por finca
-    # Esto evita que dos sectores volados el mismo día arrojen "0 días" de ciclo, protegiendo el cobro ST.
     df_fechas = df_t1[['FINCA_CLEAN', 'FECHA_PURA']].drop_duplicates().sort_values(by=['FINCA_CLEAN', 'FECHA_PURA'])
     df_fechas['FECHA_PREVIA'] = df_fechas.groupby('FINCA_CLEAN')['FECHA_PURA'].shift(1)
     df_fechas['DIAS_CICLO_REAL'] = (pd.to_datetime(df_fechas['FECHA_PURA']) - pd.to_datetime(df_fechas['FECHA_PREVIA'])).dt.days
     
-    # Fusionar el ciclo real de vuelta a la tabla maestra
     df_t1 = df_t1.merge(df_fechas, on=['FINCA_CLEAN', 'FECHA_PURA'], how='left')
     df_t1['DIAS_CICLO'] = df_t1['DIAS_CICLO_REAL'].fillna(14).astype(int)
 
@@ -193,12 +190,10 @@ def ejecutar(*args, **kwargs):
         st.markdown("#### 🎛️ Rango de Búsqueda y Selección")
         c1, c2 = st.columns(2)
         
-        # 💥 CORRECCIÓN CRÍTICA: La fecha inicial ahora arranca el 1 de Enero del año actual
         año_actual = datetime.now().year
         fecha_ini = c1.date_input("📅 Fecha Inicial", value=date(año_actual, 1, 1))
         fecha_fin = c2.date_input("📆 Fecha Final", value=date.today())
 
-        # 💥 CORRECCIÓN CRÍTICA: Las fincas disponibles se extraen de TODO el histórico, no del rango filtrado
         fincas_disponibles = sorted([f for f in df_t1[col_finca].astype(str).str.upper().str.strip().unique().tolist() if f not in ['NAN', 'NONE', '']])
         
         fincas_sel = st.multiselect("📍 Seleccione las Fincas a desglosar (Deje vacío para analizarlas TODAS):", fincas_disponibles)
@@ -220,11 +215,16 @@ def ejecutar(*args, **kwargs):
                 for _, row in df_operacion.iterrows():
                     finca_raw = str(row[col_finca]).upper().strip()
                     finca_clean = row['FINCA_CLEAN']
+                    
+                    # 💥 EXTRACCIÓN DE FECHA PARA EL AUDITOR
+                    fecha_pura = row['FECHA_PURA']
+                    fecha_str = fecha_pura.strftime("%d/%m/%Y") if pd.notna(fecha_pura) else "S/F"
+                    
                     coctel = str(row[col_coctel]).upper().strip() if col_coctel else "S/N"
                     ha_num = limpiar_tarifa_excel(row[col_ha])
                     dias_ciclo = row['DIAS_CICLO']
 
-                    # 4. EXTRACCIÓN DE VALORES REALES DE LA TABLA 1
+                    # 4. EXTRACCIÓN DE VALORES REALES
                     costo_vuelo_ha = limpiar_tarifa_excel(row[col_precio_vuelo])
                     costo_vuelo_finca = limpiar_tarifa_excel(row[col_costo_vuelo_finca])
                     costo_x_ha_facturado = limpiar_tarifa_excel(row[col_valor_fact])
@@ -256,17 +256,15 @@ def ejecutar(*args, **kwargs):
                     # 6. INGENIERÍA INVERSA (El Desglose)
                     resultado_total = math.floor(costo_x_ha_facturado * ha_num)
                     
-                    # Costo de Vuelo (usamos directamente la columna V que la tabla ya calculó)
                     if costo_vuelo_finca == 0 and costo_vuelo_ha > 0:
                         costo_vuelo_finca = costo_vuelo_ha * ha_num
 
                     costo_st_total = math.floor(st_base * dias_ciclo * ha_num)
-                    
-                    # LO QUE QUEDA ES LA MEZCLA
                     costo_mezcla_total = resultado_total - costo_vuelo_finca - costo_st_total
 
                     resultados.append({
                         "FINCA": finca_raw,
+                        "FECHA": fecha_str,  # <--- SE INCLUYE LA FECHA PARA DIFERENCIAR CICLOS
                         "HECTAREAS": ha_num,
                         "COCTEL": coctel,
                         "DIAS CICLO": dias_ciclo,
@@ -275,7 +273,8 @@ def ejecutar(*args, **kwargs):
                         "Costo Vuelo ($)": costo_vuelo_finca,
                         "Costo Mezcla ($)": costo_mezcla_total,
                         "Costo x Ha ($)": costo_x_ha_facturado,
-                        "RESULTADO TOTAL ($)": resultado_total
+                        "RESULTADO TOTAL ($)": resultado_total,
+                        "_ORDEN_FECHA": fecha_pura # <--- COLUMNA FANTASMA PARA ORDENAR CRONOLÓGICAMENTE
                     })
 
                 df_resultados = pd.DataFrame(resultados)
@@ -283,6 +282,10 @@ def ejecutar(*args, **kwargs):
                 if df_resultados.empty:
                     st.warning("⚠️ No se pudieron generar datos válidos. Verifique que las hectáreas y valores a facturar no sean cero.")
                     return
+
+                # 💥 ORDENAMIENTO ALFABÉTICO Y CRONOLÓGICO OBLIGATORIO
+                # Ordena de la A-Z por Finca y de enero a diciembre por Fecha
+                df_resultados = df_resultados.sort_values(by=["FINCA", "_ORDEN_FECHA"], ascending=[True, True]).drop(columns=["_ORDEN_FECHA"]).reset_index(drop=True)
 
                 # 7. PRESENTACIÓN DE DATOS
                 t_st = df_resultados['Costo ST ($)'].sum()
@@ -299,6 +302,7 @@ def ejecutar(*args, **kwargs):
                 with k3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla Real</p><p class='kpi-valor'>$ {formato_latino(t_mx, 0)}</p></div>", unsafe_allow_html=True)
                 with k4: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 FACTURADO (SAP)</p><p class='kpi-valor'>$ {formato_latino(t_gr, 0)}</p></div>", unsafe_allow_html=True)
 
+                # Para el resumen por finca ya no necesitamos la fecha, así que la excluimos del groupby
                 df_resumen_finca = df_resultados.groupby('FINCA', as_index=False)[
                     ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
                 ].sum()
@@ -367,7 +371,7 @@ def ejecutar(*args, **kwargs):
                     use_container_width=True
                 )
                 
-                st.success("✅ Ingeniería Inversa completada. La estructura de costos ocultos ha sido revelada.")
+                st.success("✅ Ingeniería Inversa completada y ordenada alfabéticamente. La estructura de costos ocultos ha sido revelada.")
 
 if __name__ == "__main__":
     pass
