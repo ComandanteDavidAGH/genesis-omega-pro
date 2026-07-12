@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.express as px
 import gspread
 import requests
 import io
@@ -194,22 +196,56 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
-    # 🚀 PROTOCOLO SAMURÁI DE INYECCIÓN DE ALTO CONTRASTE (CORREGIDO PARA INTERCEPTAR PRE/CODE/SPAN)
+    # 🚀 PROTOCOLO SAMURÁI DE INYECCIÓN DE ALTO CONTRASTE MODIFICADO CON TU VERDE CORPORATIVO (#143521)
     st.markdown("""
     <style>
+    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    
+    /* 💥 INTERFAZ HARDENED: Forzado de contornos en tablas, inputs de fecha, texto, números, dropdowns y data editors */
     div[data-testid="stDataEditor"],
     div[data-testid="stDataFrame"] {
-        border: 3px solid #0d1b2a !important; border-radius: 8px !important;
-        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important;
+        border: 3px solid #143521 !important; 
+        border-radius: 8px !important;
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; 
+        overflow: hidden !important;
     }
-    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    
+    div[data-testid=\"stSelectbox\"] > div,
+    div[data-testid=\"stSelectbox\"] div[data-baseweb=\"select\"],
+    div[data-testid=\"stTextInput\"] input,
+    div[data-testid=\"stNumberInput\"] input,
+    div[data-testid=\"stDateInput\"] input {
+        background-color: #ffffff !important;
+        border: 3px solid #143521 !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    }
+    
+    div[data-testid=\"stSelectbox\"] div[data-baseweb=\"select\"] > div {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    
+    div[data-testid=\"stSelectbox\"] *, 
+    div[data-testid=\"stTextInput\"] *, 
+    div[data-testid=\"stNumberInput\"] *, 
+    div[data-testid=\"stDateInput\"] * {
+        color: #000000 !important;
+        font-weight: bold !important;
+    }
+    
+    div[data-testid=\"stMainBlockContainer\"] label p {
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }
     
     /* 💥 DETONACIÓN DE PALIDEZ EN CASILLAS DE COPIADO RAPIDO (st.code) */
     div[data-testid="stCodeBlock"], 
     div[data-testid="stCodeBlock"] pre, 
     div[data-testid="stCodeBlock"] pre code {
         background-color: #ffffff !important;
-        border: 3px solid #0d1b2a !important;
+        border: 3px solid #143521 !important;
         border-radius: 8px !important;
         box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
         overflow: hidden !important;
@@ -255,7 +291,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         </div>
         """
 
-    st.markdown("<h1 class='titulo-principal'>Núcleo de Validación y Facturación</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     dict_aviones, dict_drones = preprocesar_flota_gspread()
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
@@ -324,7 +360,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if pd.isna(p_precio): 
                         p_precio = 0
                     texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
-                    if texto_tope not in pistas_con_tope: 
+                    if texto_tope not in pistes_con_tope: 
                         pistas_con_tope.append(texto_tope)
         except: 
             pass
@@ -629,6 +665,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if df_t2_nueva is not None:
                 st.session_state['df_config'] = df_t2_nueva
                 st.session_state['df_config_base'] = df_cfg_nueva
+                st.session_state.m17_df_entrada_grid = pd.DataFrame([{
+                    "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
+                } for _ in range(500)])
                 st.toast("✅ Base de Datos Sanada y Restaurada al 100%.", icon="🛠️")
             else:
                 st.error("🚨 No se pudo restaurar la base de datos.") 
@@ -847,7 +886,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
-            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+            c_sup1.info(f"🧑‍RX Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
             mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
@@ -1011,7 +1050,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if col_nombre_sab: 
                                 nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
 
-                    nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
+                    nombre_limpio = text_clean_sub = nombre_p.split('*')[0].strip().replace(" ", "")
                     sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
                     datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
                 
@@ -1201,7 +1240,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     use_container_width=True, hide_index=True
                 )
 
-                st.markdown("<br>##### 📋 Copia Rápida para SAP (Costo Unitario)")
+                st.markdown("<br/>##### 📋 Copia Rápida para SAP (Costo Unitario)")
                 st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
             else:
                 st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
@@ -1253,19 +1292,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.markdown(mini_metric("🚁", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
-            c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
+            幕sap1, 幕sap2, 幕sap3, 幕sap4 = st.columns(4)
             
-            # 🚀 FILA 1 DE COPIADO RÁPIDO INTERCEPTADA CON CSS REFORZADO
-            with c_sap1:
+            with 幕sap1:
                 st.caption("👨‍🔬 UNITARIO ST (459)")
                 st.code(fmt_sap(unitario_st), language="text")
-            with c_sap2:
+            with 幕sap2:
                 st.caption("✈️ UNITARIO Vuelo (429)")
                 st.code(fmt_sap(unitario_vuelo), language="text")
-            with c_sap3:
+            with 幕sap3:
                 st.caption("🧪 TOTAL Mezcla")
                 st.code(fmt_sap(costo_mezcla_total), language="text")
-            with c_sap4:
+            with 幕sap4:
                 st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
             html_totales = f"""
@@ -1286,7 +1324,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             """.replace(",", ".")
             st.markdown(html_totales, unsafe_allow_html=True)
             
-            # 🚀 FILA 2 DE COPIADO RÁPIDA TOTAL INTERCEPTADA CON CSS REFORZADO
             st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
             cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
             with cc1:
@@ -1412,7 +1449,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
                             if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
                                 if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
-                                    fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
+                                    fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], text_clean_sub, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                     filas_memoria.append(fila_m)
                         
                         def limpiar_json(val):
