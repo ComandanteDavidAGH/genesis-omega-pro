@@ -5,6 +5,7 @@ import io
 import re
 from datetime import datetime, timedelta
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ESTILIZADO DE REPORTES (ALTA VELOCIDAD)
@@ -13,9 +14,12 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        if "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
     except:
         return None
@@ -244,3 +248,6 @@ def ejecutar(*args, **kwargs):
             mime="text/plain",
             use_container_width=True
         )
+
+if __name__ == "__main__":
+    pass
