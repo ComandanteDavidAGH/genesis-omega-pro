@@ -194,6 +194,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
+    # 🚀 PROTOCOLO SAMURÁI DE INYECCIÓN DE ALTO CONTRASTE (CORREGIDO PARA INTERCEPTAR PRE/CODE/SPAN)
     st.markdown("""
     <style>
     div[data-testid="stDataEditor"],
@@ -203,16 +204,26 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     }
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     
-    div[data-testid="stCodeBlock"] {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 6px !important;
+    /* 💥 DETONACIÓN DE PALIDEZ EN CASILLAS DE COPIADO RAPIDO (st.code) */
+    div[data-testid="stCodeBlock"], 
+    div[data-testid="stCodeBlock"] pre, 
+    div[data-testid="stCodeBlock"] pre code {
         background-color: #ffffff !important;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.08) !important;
+        border: 3px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
+        overflow: hidden !important;
+        padding: 2px 5px !important;
     }
-    div[data-testid="stCodeBlock"] code {
+    
+    /* Fuerza tipografía e impacto de color en el texto y sus tokens internos de Streamlit */
+    div[data-testid="stCodeBlock"] code,
+    div[data-testid="stCodeBlock"] code span,
+    div[data-testid="stCodeBlock"] pre span {
         color: #0d1b2a !important;
         font-weight: 900 !important;
-        font-size: 14px !important;
+        font-size: 17px !important;
+        font-family: 'Arial Black', monospace !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -688,7 +699,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
         if finca_sel == "---" or vuelo_ref == "---":
-            st.info("⚠️ Seleccione Finca and Pedido para rugir motores.")
+            st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
 
         mult_material = 1.112
@@ -1244,7 +1255,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("<br>", unsafe_allow_html=True)
             c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
             
-            # 🚀 FILA 1 DE COPIADO RÁPIDO (Valores Unitarios Puros - Sin símbolos de texto)
+            # 🚀 FILA 1 DE COPIADO RÁPIDO INTERCEPTADA CON CSS REFORZADO
             with c_sap1:
                 st.caption("👨‍🔬 UNITARIO ST (459)")
                 st.code(fmt_sap(unitario_st), language="text")
@@ -1275,7 +1286,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             """.replace(",", ".")
             st.markdown(html_totales, unsafe_allow_html=True)
             
-            # 🚀 FILA 2 DE COPIADO RÁPIDA TOTAL (Corregida: Sin '$' para pegado atómico en SAP)
+            # 🚀 FILA 2 DE COPIADO RÁPIDA TOTAL INTERCEPTADA CON CSS REFORZADO
             st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
             cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
             with cc1:
