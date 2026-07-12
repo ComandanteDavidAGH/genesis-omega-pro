@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import px = plotly.express as px
 from datetime import datetime, date
 import io
 
@@ -9,17 +9,19 @@ import io
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Destrucción absoluta de casillas pálidas en controles e inputs
+    # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL EN LA CÚSPIDE
+    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
+    
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO: No afecta al menú lateral
     st.markdown("""
     <style>
-    h1 { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: "Arial Black", sans-serif; text-transform: uppercase; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios */
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stDateInput"] input {
+    /* 💥 CONTROLES ENDURECEDOS: Forzar visibilidad extrema en radios, selectores y calendarios de la pantalla central */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
+    div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
+    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
         border: 2px solid #0d1b2a !important;
         border-radius: 6px !important;
         background-color: #ffffff !important;
@@ -28,8 +30,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         font-size: 15px !important;
     }
     
-    /* Acentuación de contraste para las etiquetas st.radio */
-    div[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
+    /* Acentuación de contraste para las etiquetas st.radio EXCLUSIVAMENTE en el bloque central */
+    div[data-testid="stMainBlockContainer"] div[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
     }
@@ -81,7 +83,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 filas_gspread = descargar_matriz_rapida(url_maestra, "TABLA 1")
                 
                 if filas_gspread:
-                    # Buscador inteligente de encabezados (Igual al de tu Módulo 3)
                     idx_header = 4
                     for i in range(min(12, len(filas_gspread))):
                         if "FINCA" in [str(x).upper().strip() for x in filas_gspread[i]]:
@@ -99,12 +100,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             except Exception:
                 datos_dict = []
 
-        # 🚀 INTEGRACIÓN SUPABASE BRIDGE: Si Google Sheets falla o viene vacío, recurre a la base Cloud
         if not datos_dict and supabase_client is not None:
             try:
                 respuesta_cloud = supabase_client.table("sap_tabla_1_maestro").select("*").execute()
                 if respuesta_cloud.data:
-                    # Mapea las claves en mayúsculas para mantener consistencia con el parseador de Drive
                     datos_dict = [{str(k).upper().strip(): v for k, v in row.items()} for row in respuesta_cloud.data]
                     st.toast("⚡ Contingencia Activada: Datos recuperados desde Supabase Cloud.", icon="📡")
             except Exception:
@@ -119,12 +118,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ **Alerta de Radar:** No se pudieron procesar los registros de Google Sheets ni de Supabase. Verifique la pestaña 'TABLA 1' o el estado de la base de datos relacional.")
             return
 
-        # 🎯 PURIFICACIÓN GENERAL CON FALLBACKS DINÁMICOS DE LLAVES
+        # 🎯 PURIFICACIÓN GENERAL
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
             
-            # Tolerancia robusta si los nombres de columnas vienen del Sheets original o de campos estructurados de la Base de Datos
             llave_ha = next((k for k in r_norm.keys() if "FUMIG" in k or "HA_NETAS" in k or "HECTAREAS" in k), None)
             llave_hr = next((k for k in r_norm.keys() if "RENDIMIENTO" in k or "HORAS" in k or "HOROMETRO" in k), None)
             llave_sem = next((k for k in r_norm.keys() if k in ["SEM", "SEMANA"]), None)
@@ -149,7 +147,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ No se encontraron registros con fechas procesables en el Excel ni en la nube.")
             return
 
-        # Sincronización automática de pistas mapeadas
         mask_hk = df_rep['HK'] != ""
         mapa_modelo = {}
         if not df_rep[mask_hk].empty:
@@ -229,7 +226,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
-                        if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_hr_hk # Respetando variable original
                         if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
@@ -278,7 +274,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # --- 🎨 ESTILOS ORIGINALES ---
             df_visual = pd.DataFrame(tabla_final)
             
             def aplicar_estilos_originales(row):
