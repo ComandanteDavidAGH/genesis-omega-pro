@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, date
 import gspread
 import re
 import math
@@ -13,8 +13,25 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# ⚡ MOTORES DE CACHÉ Y VELOCIDAD DE DATOS (Aislamiento en RAM)
+# ⚡ MOTORES DE CONEXIÓN Y FORMATO (Blindados contra NameErrors)
 # =================================================================
+
+def formato_latino(numero, decimales=0):
+    if pd.isna(numero) or numero is None: return "0"
+    try:
+        num = float(numero)
+        if num == 0: return "0"
+        if decimales == 0: texto_us = f"{num:,.0f}"
+        else: texto_us = f"{num:,.{decimales}f}"
+        return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0"
+
+def formato_gerencial_latino(numero):
+    if pd.isna(numero) or numero == 0: return "$ 0"
+    if numero >= 1_000_000: return f"$ {numero / 1_000_000:,.1f} M".replace(".", "X").replace(",", ".").replace("X", ",")
+    elif numero >= 1_000: return f"$ {numero / 1_000:,.0f} K".replace(",", ".")
+    else: return f"$ {formato_latino(numero, 0)}"
 
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -290,11 +307,13 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     promedio_intervalo = total_suma_dias / total_intervalos_contados if total_intervalos_contados > 0 else 0.0
     return promedio_ciclos, promedio_intervalo
 
-# --- 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO ---
+# =================================================================
+# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
+# =================================================================
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.header("", anchor="inicio_modulo")
     
-    # 🚀 REFORZAMIENTO ESTÉTICO ANTI-PALIDEZ: Inyección quirúrgica para inmovilizar BaseWeb
+    # 💥 INYECTOR CSS PARA BORDES VERDES INDUSTRIALES EN STREAMLIT
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -303,20 +322,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     
-    /* 💥 CONTROLES RESALTADOS: Contornos Verde Intenso de 3px sólidos contra la opacidad gris traslúcida */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
+    /* 💥 CONTROLES RESALTADOS: Contornos Verde Intenso de 3px contra la opacidad gris traslúcida */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stDateInput"] input {
         border: 3px solid #143521 !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         background-color: #ffffff !important;
         border: none !important;
     }
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] div,
-    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input,
+    div[data-testid="stSelectbox"] div,
+    div[data-testid="stDateInput"] input,
     div[data-testid="stSelectbox"] span {
         color: #000000 !important;
         font-weight: 900 !important;
@@ -329,7 +349,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    # 💥 BOTÓN DE SINCRONIZACIÓN DE LA NUBE EN LA CABECERA 💥
     c_tit, c_sync = st.columns([4, 1])
     with c_tit:
         st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
@@ -362,9 +381,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: limpiar_dinero(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else limpiar_dinero(r.get('COSTO_MAESTRO', 0)), axis=1)
+        # Corrección de la tipificación monetaria (Regla de Oro < 2500)
+        def sanear_valores_sap(val):
+            v = limpiar_dinero(val)
+            if 0 < v < 2500: return v * 1000
+            return v
+            
+        super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
-        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
+        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         super_base_bi['AVION_NUM'] = super_base_bi.apply(lambda r: r['AVION_NUM']/r['AREA_NUM'] if (r['AVION_NUM'] > 90000 and r['AREA_NUM'] > 0) else r['AVION_NUM'], axis=1)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_NUM'].apply(lambda v: 55000 if v > 90000 else v)
@@ -376,7 +401,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         hb1, hb2, hb3 = st.columns(3)
         with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
         with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
-        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {formato_ordenes:=total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
+        # Corrección del Typo que generaba el SyntaxError / NameError
+        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
