@@ -128,7 +128,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
     df['MES_NOMBRE'] = df['MES_NUM'].map(meses_dict)
     
-    # ⚠️ SE RETORNAN 2 MATRICES PARA EL CEBO: La procesada y la cruda
     return df[df['AREA_FUMIG'] > 0].reset_index(drop=True), df_crudo
 
 # =================================================================
@@ -156,7 +155,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     DORADO = '#d4af37'        
     PALETA_YOY = [VERDE_INTENSO, '#7ebc59'] 
     
-    # 🚀 CEBO CSS DE FUERZA BRUTA PARA SELECTORES (Aplica a todas las versiones de Streamlit)
+    # 💥 BLOQUE MAESTRO DE SELECTORES (Fijo y Funcional)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -165,24 +164,20 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* FUERZA BRUTA: Bordes Verdes Gruesos para cualquier widget Selectbox */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {{
         background-color: #ffffff !important;
         border: 3px solid {VERDE_INTENSO} !important;
         border-radius: 6px !important;
     }}
-    
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
         background-color: transparent !important;
         border: none !important;
     }}
-    
     div[data-testid="stSelectbox"] * {{
         color: #000000 !important;
         font-weight: bold !important;
     }}
-    
     div[data-testid="stSelectbox"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
@@ -193,12 +188,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    # Manejo seguro del caché (Si se desincroniza, se purga y recarga)
-    try:
-        df_dash, df_crudo_debug = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
-    except Exception:
-        st.cache_data.clear()
-        df_dash, df_crudo_debug = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
+    df_dash, df_crudo_debug = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
     
     if df_dash.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1.")
@@ -225,21 +215,21 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    # --- 🚨 CEBO DE AUDITORÍA ROJO PARA LA BARRA INVISIBLE XLBN4 ---
-    st.markdown("<hr style='border: 2px solid red;'>", unsafe_allow_html=True)
-    with st.expander("🚨 CEBO DE AUDITORÍA (HAZ CLIC AQUÍ PARA VER XLBN4) 🚨", expanded=False):
-        st.error("🕵️‍♂️ **RASTREO EN VIVO DEL PRODUCTO XLBN4**")
-        if not df_crudo_debug.empty:
-            df_x_crudo = df_crudo_debug[df_crudo_debug['COCTEL'].astype(str).str.contains('XLBN4', na=False, case=False)]
-            st.write("👉 **1. Valores Crudos directo del Excel (Antes de limpiar):**")
-            if df_x_crudo.empty: st.warning("XLBN4 no existe en el Excel crudo.")
-            else: st.dataframe(df_x_crudo[['FECHA', 'FINCA', 'COCTEL', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL']])
-            
-            df_x_limpio = df_dash[df_dash['COCTEL'].astype(str).str.contains('XLBN4', na=False, case=False)]
-            st.write("👉 **2. Valores Finales Convertidos (Lo que grafica Plotly):**")
-            if df_x_limpio.empty: st.warning("XLBN4 fue borrado por tener Cero Hectáreas o Fecha Inválida.")
-            else: st.dataframe(df_x_limpio[['FECHA_DT', 'FINCA', 'COCTEL', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL']])
-    st.markdown("<hr style='border: 2px solid red;'>", unsafe_allow_html=True)
+    cc1, cc2, cc3 = st.columns(3)
+    mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m9_h_v6")
+    calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m9_r_v6")
+    agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m9_f_v6")
+
+    # 🚨🚨 CEBO DE INTERACTIVIDAD PARA DETECTAR EL EFECTO DE RESALTE (HOVER) 🚨🚨
+    st.markdown("<div style='background-color: #ffe3e3; padding: 10px; border-left: 5px solid red; border-radius: 4px; margin: 10px 0;'>", unsafe_allow_html=True)
+    cebo_hover_mode = st.radio(
+        "🎯 **CEBO DE DIAGNÓSTICO: FORZAR MODO DE RESALTE EN GRÁFICOS**", 
+        ["closest", "x unified", "x", "y"], 
+        index=0, 
+        horizontal=True,
+        help="Cambia este modo para forzar a Plotly a recalcular el efecto Pop y las cajas flotantes de información."
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS (Comparativa Anual)": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
@@ -281,10 +271,9 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     titulo_finca = f" ({finca_filtro})" if finca_filtro != "TODAS" else " (TODAS LAS FINCAS)"
     g1, g2 = st.columns(2)
 
-    # =====================================================
-    # GRÁFICOS (RESTAURACIÓN DE EFECTO HOVER ORIGINAL DE PLOTLY)
-    # *Se eliminaron los hovermode/hoverinfo forzados para que crezcan al tocarlas*
-    # =====================================================
+    # -----------------------------------------------------
+    # GRÁFICO 1: ÁREA ASPERJADA
+    # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
@@ -294,10 +283,18 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig1 = px.bar(df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY)
         fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        fig1.update_layout(xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
+        
+        # Inyección del Cebo en el layout del gráfico 1
+        fig1.update_layout(
+            xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal',
+            hovermode=cebo_hover_mode, hoverdistance=100
+        )
         fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
         st.plotly_chart(fig1, use_container_width=True)
 
+    # -----------------------------------------------------
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE
+    # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
         df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
@@ -327,12 +324,20 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
         ))
         
-        go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
+        # Inyección del Cebo en el layout del gráfico 2
+        go_fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100),
+            hovermode=cebo_hover_mode, hoverdistance=100
+        )
         go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
         st.plotly_chart(go_fig, use_container_width=True)
         
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
+    # -----------------------------------------------------
+    # GRÁFICO 3: RENDIMIENTO/HORA
+    # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
         df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
@@ -345,11 +350,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig3 = px.bar(df_rend, y='EJE_Y', x='REND_HR', orientation='h', text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO])
         fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
-        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
+        
+        # Inyección del Cebo en el layout del gráfico 3
+        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)', hovermode=cebo_hover_mode, hoverdistance=100)
         fig3.update_yaxes(type='category')
         fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
         st.plotly_chart(fig3, use_container_width=True)
         
+    # -----------------------------------------------------
+    # GRÁFICO 4: FACTURACIÓN MENSUAL
+    # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
         df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
@@ -359,7 +369,9 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig4 = px.bar(df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY)
         fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal')
+        
+        # Inyección del Cebo en el layout del gráfico 4
+        fig4.update_layout(xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', hovermode=cebo_hover_mode, hoverdistance=100)
         fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
         st.plotly_chart(fig4, use_container_width=True)
 
@@ -376,7 +388,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
         fig5.update_traces(textposition='outside', textfont=dict(size=14, color='black', family="Arial"), cliponaxis=False)
-        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0)
+        fig5.update_layout(xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", plot_bgcolor='rgba(0,0,0,0)', legend_title_text='Año Fiscal', bargap=0.1, bargroupgap=0.0, hovermode=cebo_hover_mode, hoverdistance=100)
         fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
         st.plotly_chart(fig5, use_container_width=True)
     else:
