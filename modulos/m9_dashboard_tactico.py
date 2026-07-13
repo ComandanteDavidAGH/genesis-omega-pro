@@ -265,7 +265,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
         df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
-        df_costo = df_filtrado.groupby(['MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
+        
+        # 💥 AJUSTE 1: Inyectamos 'AÑO' al agrupador para no perder el rastro cronológico
+        df_costo = df_filtrado.groupby(['AÑO', 'MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
+        df_costo = df_costo.sort_values(by=['AÑO', 'MES_ORDEN'])
         
         limite_real = df_filtrado[df_filtrado['LIMITE'] > 0]['LIMITE'].max()
         if pd.isna(limite_real) or limite_real == 0: limite_real = 200000 
@@ -279,11 +282,24 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_costo['HOVER_LIMITE'] = df_costo['LIMITE'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
 
         go_fig = go.Figure()
-        go_fig.add_trace(go.Bar(
-            x=df_costo['ETIQUETA_X'], y=df_costo['VALOR_FACTURAR'], name="Facturación/ha", marker_color=VERDE_INTENSO,
-            hovertext=df_costo['COCTEL'], customdata=df_costo['HOVER_FACT'],
-            hovertemplate='<b>Cóctel:</b> %{hovertext}<br><b>Facturación:</b> %{customdata}<extra></extra>'
-        ))
+        
+        # 💥 AJUSTE 2: Bucle para separar barras por año, colorearlas e inyectar tooltip
+        años_presentes = sorted(df_costo['AÑO'].unique())
+        for i, año_map in enumerate(años_presentes):
+            df_año = df_costo[df_costo['AÑO'] == año_map]
+            color_asignado = PALETA_YOY[i % len(PALETA_YOY)]
+            
+            custom_data_hover = np.stack((df_año['COCTEL'], df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
+            
+            go_fig.add_trace(go.Bar(
+                x=df_año['ETIQUETA_X'], 
+                y=df_año['VALOR_FACTURAR'], 
+                name=f"Facturación ({año_map})", 
+                marker_color=color_asignado,
+                customdata=custom_data_hover,
+                hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Cóctel:</b> %{customdata[0]}<br><b>Facturación:</b> %{customdata[1]}<extra></extra>'
+            ))
+            
         go_fig.add_trace(go.Scatter(
             x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Finca",
             mode='lines+markers', line=dict(color='#ff0000', width=3), marker=dict(size=6),
@@ -292,7 +308,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         ))
         
         go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100))
-        go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10)) 
+        go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10), type='category') 
         st.plotly_chart(go_fig, use_container_width=True)
         
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
