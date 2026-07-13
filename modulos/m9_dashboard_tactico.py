@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date
@@ -7,6 +8,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import re
 import io
+
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN PROPIO (INTERCONEXIÓN DIRECTA EN RAM)
