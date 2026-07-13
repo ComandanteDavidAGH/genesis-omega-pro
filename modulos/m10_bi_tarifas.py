@@ -437,18 +437,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
 
+        # --- INICIO DE ZONA DE REEMPLAZO ---
         if tipo_periodo == "RANGO PERSONALIZADO":
-            f_ini_b = datetime(int(año_comp), fecha_inicial_libre.month, fecha_inicial_libre.day)
-            f_fin_b = datetime(int(año_comp), fecha_final_libre.month, fecha_final_libre.day)
-            df_periodo_b = df_finca[(df_finca['FECHA_DT'] >= f_ini_b) & (df_finca['FECHA_DT'] <= f_fin_b)].copy()
-            try:
-                f_ini_a = datetime(int(año_base), fecha_inicial_libre.month, fecha_inicial_libre.day)
-                f_fin_a = datetime(int(año_base), fecha_final_libre.month, fecha_final_libre.day)
-            except:
-                f_ini_a = datetime(int(año_base), fecha_inicial_libre.month, 28)
-                f_fin_a = datetime(int(año_base), fecha_final_libre.month, 28)
-            df_periodo_a = df_finca[(df_finca['FECHA_DT'] >= f_ini_a) & (df_finca['FECHA_DT'] <= f_fin_a)].copy()
+            # Filtro Absoluto Puro: Ignora Año Base y Año Comp
+            df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= fecha_inicial_libre) & (df_finca['FECHA_DT'].dt.date <= fecha_final_libre)].copy()
+            df_periodo_a = pd.DataFrame() # Vacío para anular la comparativa
         else:
+            # Filtro Comparativo Tradicional
             df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
             df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
             if tipo_periodo == "POR TRIMESTRE":
@@ -463,172 +458,219 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
         costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
         costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
-        delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
         
         st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
-        k1, k2, k3 = st.columns(3)
-        k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {formato_latino(costo_a, 0)}")
-        k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {formato_latino(costo_b, 0)}")
-        k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
         
-        st.markdown("#### 🚜 Volumen Operativo (Hectáreas Aplicadas)")
-        var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
-        h1, h2, h3 = st.columns(3)
-        h1.metric(f"Total Hectáreas ({año_base})", f"{formato_latino(area_a, 1)} Ha")
-        h2.metric(f"Total Hectáreas ({año_comp})", f"{formato_latino(area_b, 1)} Ha")
-        h3.metric("Variación de Área", f"{var_area:+.1f} %" if area_a > 0 else "N/A", delta=f"{var_area:+.1f}%" if area_a > 0 else None)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        if delta_pct > 10: st.error(f"⚠️ **ALERTA DE DESVIACIÓN:** El costo operativo presenta un incremento del **{delta_pct:.1f}%**.")
-        elif delta_pct < 0: st.success(f"✅ **EFICIENCIA:** Reducción detectada en el costo promedio del periodo.")
-        else: st.info(f"⚖️ **ESTABILIDAD:** Los márgenes se mantienen balanceados.")
+        if tipo_periodo == "RANGO PERSONALIZADO":
+            # --- MODO 1: MÉTRICAS ABSOLUTAS (RANGO PERSONALIZADO) ---
+            k1, k2 = st.columns(2)
+            k1.metric(label="Costo Promedio Ha", value=f"$ {formato_latino(costo_b, 0)}")
+            k2.metric(label="Total Operaciones (OS)", value=f"{df_periodo_b['OS_MAESTRA'].nunique()} OS")
             
-        st.markdown("#### ⏱️ Análisis de Frecuencia: Ciclos Reales e Intervalo Promedio")
-        ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
-        ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_a} ciclos")
-        c2.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
-        c3.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_a, 1)} días" if int_a > 0 else "N/A")
-        c4.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A", delta=f"{int_b - int_a:+.1f} días" if (int_a > 0 and int_b > 0) else None)
-        
-        st.markdown("---")
-        st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
-        df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
-        if not df_tendencia.empty:
+            st.markdown("#### 🗺️ Volumen Operativo (Hectáreas Aplicadas)")
+            h1, h2 = st.columns(2)
+            h1.metric("Total Hectáreas", f"{formato_latino(area_b, 1)} Ha")
+            h2.metric("Total Inversión Estimada", f"$ {formato_latino(costo_b * area_b, 0)}")
             
-            # 💥 CORRECCIÓN CRUCIAL DEL EJE X PARA EL "RANGO PERSONALIZADO" 💥
-            if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
-                tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
-                tendencia_agrupa = tendencia_agrupa.sort_values('MES')
-                titulo_x = "Meses Operativos"
-            elif tipo_periodo == "RANGO PERSONALIZADO":
-                # Convertimos a Mes-Día (MM-DD) para mantener el flujo del tiempo sin mezclar los meses
-                df_tendencia['MES_DIA'] = df_tendencia['FECHA_DT'].dt.strftime('%m-%d')
-                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES_DIA'])['COSTO_NUM'].mean().reset_index()
-                tendencia_agrupa = tendencia_agrupa.sort_values('MES_DIA')
-                # Mapeamos para que se lea visualmente bonito (DD/MM)
-                tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES_DIA'].apply(lambda x: f"{x.split('-')[1]}/{x.split('-')[0]}")
-                titulo_x = f"Línea de Tiempo ({etiq_periodo})"
-            else: # POR MES
-                df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
-                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
-                tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
-                tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
-                titulo_x = f"Días Operativos ({etiq_periodo})"
-            
-            tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
-            fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
-            fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
-            if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
-            fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center", hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>")
-            st.plotly_chart(fig_tendencia, use_container_width=True)
-            
-        st.markdown("<hr>", unsafe_allow_html=True)
-        vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
-        vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
-        costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
-        costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
-        vuelo_a = vuelo_tot_a / area_a if area_a > 0 else 0
-        vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
-        insumos_a = max(0, (costo_tot_a / area_a if area_a > 0 else 0) - vuelo_a)
-        insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
-        
-        categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
-        
-        def fmt_cop_vertical(val):
-            try:
-                return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return str(val)
-        
-        st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
-        tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
-        
-        with tab_unit:
-            fig_unit = go.Figure(data=[
-                go.Bar(
-                    name='Costo Avión / Ha', 
-                    x=categorias, 
-                    y=[vuelo_a, vuelo_b], 
-                    marker_color='#2F75B5',
-                    text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)],
-                    textposition='inside',
-                    textfont=dict(color='white', size=12, family='Arial Black')
-                ), 
-                go.Bar(
-                    name='Costo Insumos / Ha', 
-                    x=categorias, 
-                    y=[insumos_a, insumos_b], 
-                    marker_color='#27AE60',
-                    text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)],
-                    textposition='inside',
-                    textfont=dict(color='white', size=12, family='Arial Black')
-                )
-            ])
-            fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest")
-            st.plotly_chart(fig_unit, use_container_width=True)
-            
-        with tab_glob:
-            insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
-            insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-            
-            fig_glob = go.Figure(data=[
-                go.Bar(
-                    name='Total Avión', 
-                    x=categorias, 
-                    y=[vuelo_tot_a, vuelo_tot_b], 
-                    marker_color='#2F75B5',
-                    text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)],
-                    textposition='inside',
-                    textfont=dict(color='white', size=11, family='Arial Black')
-                ), 
-                go.Bar(
-                    name='Total Insumos', 
-                    x=categorias, 
-                    y=[insumos_tot_a, insumos_tot_b], 
-                    marker_color='#27AE60',
-                    text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)],
-                    textposition='inside',
-                    textfont=dict(color='white', size=11, family='Arial Black')
-                )
-            ])
-            fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
-            st.plotly_chart(fig_glob, use_container_width=True)
-        
-        col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
-        col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
-        
-        if col_coctel:
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
-            df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
-            df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
-            df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
-            df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
+            st.info("ℹ️ **MODO AUDITORÍA AISLADA:** Mostrando información absoluta del rango seleccionado.")
             
-            agg_dict = {'COSTO_NUM': 'mean'}
-            if col_gln: df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0); df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+            st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
+            ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
+            c1, c2 = st.columns(2)
+            c1.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos")
+            c2.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A")
             
-            g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
-            g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
-            tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL')).fillna(0)
-            tabla_autopsia['Variación ($)'] = tabla_autopsia['COSTO_NUM_ACTUAL'] - tabla_autopsia['COSTO_NUM_BASE']
-            nombre_base, nombre_comp = f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'
+            st.markdown("---")
+            st.markdown("### 🧬 Análisis de Causa Raíz: Tendencia Operativa")
+            if not df_periodo_b.empty:
+                df_tendencia = df_periodo_b.copy()
+                df_tendencia['FECHA_FORMAT'] = df_tendencia['FECHA_DT'].dt.strftime('%d/%m/%Y')
+                tendencia_agrupa = df_tendencia.groupby('FECHA_FORMAT', sort=False)['COSTO_NUM'].mean().reset_index()
+                tendencia_agrupa['FECHA_REAL'] = pd.to_datetime(tendencia_agrupa['FECHA_FORMAT'], format='%d/%m/%Y')
+                tendencia_agrupa = tendencia_agrupa.sort_values('FECHA_REAL')
+                
+                fig_tendencia = px.line(tendencia_agrupa, x='FECHA_FORMAT', y='COSTO_NUM', markers=True, color_discrete_sequence=['#2F75B5'])
+                fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title="Línea de Tiempo Exacta", plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
+                if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
+                fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center")
+                st.plotly_chart(fig_tendencia, use_container_width=True)
+                
+            st.markdown("<hr>", unsafe_allow_html=True)
+            vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
+            costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
+            vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
+            insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
+            insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
             
-            dicc_renombres = {col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM_BASE': nombre_base, 'COSTO_NUM_ACTUAL': nombre_comp}
-            if col_gln: dicc_renombres[f'{col_gln}_BASE'] = f'Gln/Ha ({año_base})'; dicc_renombres[f'{col_gln}_ACTUAL'] = f'Gln/Ha ({año_comp})'
-            tabla_autopsia.rename(columns=dicc_renombres, inplace=True)
+            def fmt_cop_vertical(val):
+                try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except: return str(val)
+                
+            st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
+            tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
+            with tab_unit:
+                fig_unit = go.Figure(data=[
+                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')),
+                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
+                ])
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", hovermode="closest")
+                st.plotly_chart(fig_unit, use_container_width=True)
+            with tab_glob:
+                fig_glob = go.Figure(data=[
+                    go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')),
+                    go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
+                ])
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", hovermode="closest")
+                st.plotly_chart(fig_glob, use_container_width=True)
+
+            col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
+            col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
             
-            df_vista = tabla_autopsia.copy()
-            df_vista[nombre_base] = df_vista[nombre_base].apply(lambda x: f"$ {formato_latino(x, 0)}")
-            df_vista[nombre_comp] = df_vista[nombre_comp].apply(lambda x: f"$ {formato_latino(x, 0)}")
-            df_vista['Variación ($)'] = df_vista['Variación ($)'].apply(lambda x: f"$ {formato_latino(x, 0)}")
-            st.dataframe(df_vista, use_container_width=True, hide_index=True)
+            if col_coctel:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("#### 📋 Desglose Operativo: Cócteles Aplicados")
+                df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+                df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
+                agg_dict = {'COSTO_NUM': 'mean', 'AREA_NUM': 'sum'}
+                if col_gln: df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+                
+                g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+                dicc_renombres = {col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM': 'Costo Promedio/Ha', 'AREA_NUM': 'Total Hectáreas'}
+                if col_gln: dicc_renombres[col_gln] = 'Gln/Ha Promedio'
+                g_b.rename(columns=dicc_renombres, inplace=True)
+                
+                df_vista = g_b.copy()
+                df_vista['Costo Promedio/Ha'] = df_vista['Costo Promedio/Ha'].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                df_vista['Total Hectáreas'] = df_vista['Total Hectáreas'].apply(lambda x: formato_latino(x, 1))
+                st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                
+                csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
+                st.download_button(label="📄 Exportar Cócteles (CSV)", data=csv_n1, file_name="Cocteles_Rango_Personalizado.csv", mime="text/csv", key="btn_down_n1")
+
+        else:
+            # --- MODO 2: MÉTRICAS COMPARATIVAS (AÑO VS AÑO ORIGINAL) ---
+            delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
+            k1, k2, k3 = st.columns(3)
+            k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {formato_latino(costo_a, 0)}")
+            k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {formato_latino(costo_b, 0)}")
+            k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
             
-            csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📄 Exportar Variación de Cócteles (CSV)", data=csv_n1, file_name="Variacion_Cocteles.csv", mime="text/csv", key="btn_down_n1")
+            st.markdown("#### 🗺️ Volumen Operativo (Hectáreas Aplicadas)")
+            var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
+            h1, h2, h3 = st.columns(3)
+            h1.metric(f"Total Hectáreas ({año_base})", f"{formato_latino(area_a, 1)} Ha")
+            h2.metric(f"Total Hectáreas ({año_comp})", f"{formato_latino(area_b, 1)} Ha")
+            h3.metric("Variación de Área", f"{var_area:+.1f} %" if area_a > 0 else "N/A", delta=f"{var_area:+.1f}%" if area_a > 0 else None)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if delta_pct > 10: st.error(f"⚠️ **ALERTA DE DESVIACIÓN:** El costo operativo presenta un incremento del **{delta_pct:.1f}%**.")
+            elif delta_pct < 0: st.success(f"✅ **EFICIENCIA:** Reducción detectada en el costo promedio del periodo.")
+            else: st.info(f"⚖️ **ESTABILIDAD:** Los márgenes se mantienen balanceados.")
+                
+            st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
+            ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
+            ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_a} ciclos")
+            c2.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
+            c3.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_a, 1)} días" if int_a > 0 else "N/A")
+            c4.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A", delta=f"{int_b - int_a:+.1f} días" if (int_a > 0 and int_b > 0) else None)
+            
+            st.markdown("---")
+            st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
+            df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
+            if not df_tendencia.empty:
+                if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                    tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
+                    tendencia_agrupa = tendencia_agrupa.sort_values('MES')
+                    titulo_x = "Meses Operativos"
+                else:
+                    df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+                    tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
+                    tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
+                    titulo_x = f"Días Operativos ({etiq_periodo})"
+                
+                tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
+                fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
+                fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
+                if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
+                fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center", hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>")
+                st.plotly_chart(fig_tendencia, use_container_width=True)
+                
+            st.markdown("<hr>", unsafe_allow_html=True)
+            vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
+            vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
+            costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
+            costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
+            vuelo_a = vuelo_tot_a / area_a if area_a > 0 else 0
+            vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
+            insumos_a = max(0, (costo_tot_a / area_a if area_a > 0 else 0) - vuelo_a)
+            insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
+            
+            categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
+            
+            def fmt_cop_vertical(val):
+                try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except: return str(val)
+            
+            st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
+            tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
+            
+            with tab_unit:
+                fig_unit = go.Figure(data=[
+                    go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')), 
+                    go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
+                ])
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest")
+                st.plotly_chart(fig_unit, use_container_width=True)
+                
+            with tab_glob:
+                insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
+                insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
+                
+                fig_glob = go.Figure(data=[
+                    go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')), 
+                    go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
+                ])
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
+                st.plotly_chart(fig_glob, use_container_width=True)
+            
+            col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
+            col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
+            
+            if col_coctel:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
+                df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
+                df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
+                df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
+                df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
+                
+                agg_dict = {'COSTO_NUM': 'mean'}
+                if col_gln: df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0); df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+                
+                g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
+                g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+                tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL')).fillna(0)
+                tabla_autopsia['Variación ($)'] = tabla_autopsia['COSTO_NUM_ACTUAL'] - tabla_autopsia['COSTO_NUM_BASE']
+                nombre_base, nombre_comp = f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'
+                
+                dicc_renombres = {col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM_BASE': nombre_base, 'COSTO_NUM_ACTUAL': nombre_comp}
+                if col_gln: dicc_renombres[f'{col_gln}_BASE'] = f'Gln/Ha ({año_base})'; dicc_renombres[f'{col_gln}_ACTUAL'] = f'Gln/Ha ({año_comp})'
+                tabla_autopsia.rename(columns=dicc_renombres, inplace=True)
+                
+                df_vista = tabla_autopsia.copy()
+                df_vista[nombre_base] = df_vista[nombre_base].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                df_vista[nombre_comp] = df_vista[nombre_comp].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                df_vista['Variación ($)'] = df_vista['Variación ($)'].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                st.dataframe(df_vista, use_container_width=True, hide_index=True)
+                
+                csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
+                st.download_button(label="📄 Exportar Variación de Cócteles (CSV)", data=csv_n1, file_name="Variacion_Cocteles.csv", mime="text/csv", key="btn_down_n1")
+        # --- FIN DE ZONA DE REEMPLAZO ---
             
             # =====================================================================
             # 🔬 NIVEL 2: CACHÉ ABSOLUTA DE BÓVEDA DE RECETAS
