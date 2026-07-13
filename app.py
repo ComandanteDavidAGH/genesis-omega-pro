@@ -222,11 +222,17 @@ with st.sidebar:
     st.markdown("---")
     
     if st.session_state['usuario_rol'] == "ADMIN":
-        def purgar_ram():
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            
-        st.button("🔄 Cargar Cócteles / Refrescar BD", type="primary", use_container_width=True, on_click=purgar_ram)
+        # ---------------------------------------------------------
+        # 🔄 BOTÓN DE SINCRONIZACIÓN GLOBAL (Destructor de Caché)
+        # ---------------------------------------------------------
+        if st.button("🔄 Sincronizar Nube", type="primary", use_container_width=True):
+            with st.spinner("Vaciando memoria y conectando con Google Drive..."):
+                st.cache_data.clear()
+                st.cache_resource.clear()
+                time.sleep(1) # Pausa táctica de 1 segundo para asegurar la desconexión
+            st.success("✅ Base de datos purgada y actualizada.")
+            time.sleep(0.5)
+            st.rerun()
             
         st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
