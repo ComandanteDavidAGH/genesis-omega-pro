@@ -177,17 +177,17 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         text-transform: uppercase !important;
     }}
     /* 💥 EFECTO LUPA / POP-OUT 3D EN GRÁFICOS 💥 */
-    div[data-testid="stPlotlyChart"] {
+    div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out !important;
         border-radius: 10px !important;
         padding: 5px !important;
         background-color: #ffffff !important;
-    }
-    div[data-testid="stPlotlyChart"]:hover {
+    }}
+    div[data-testid="stPlotlyChart"]:hover {{
         transform: scale(1.04) !important; /* Aumenta el tamaño un 4% */
         box-shadow: 0px 15px 30px rgba(20, 53, 33, 0.4), 0px 0px 15px rgba(212, 175, 55, 0.3) !important; /* Sombra Verde/Dorado */
         z-index: 999 !important; /* Lo trae al frente de la pantalla */
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
