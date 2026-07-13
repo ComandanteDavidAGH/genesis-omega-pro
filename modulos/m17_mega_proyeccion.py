@@ -88,21 +88,23 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
         try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         except: pass
         
-        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS
+        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS (SUPABASE FIRST)
         if _supabase_client:
             try:
                 res = _supabase_client.table("DICCIONARIO_SIGLAS").select("*").execute()
                 if res.data:
                     df_dicc = pd.DataFrame(res.data)
                     df_dicc.columns = [str(c).upper().strip() for c in df_dicc.columns]
-            except: pass
+            except:
+                pass
 
         if df_dicc.empty:
             try: 
                 dicc_raw = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
                 if dicc_raw:
                     df_dicc = pd.DataFrame(dicc_raw[1:], columns=[str(c).upper().strip() for c in dicc_raw[0]])
-            except: pass
+            except: 
+                pass
         
         try: 
             t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
@@ -139,7 +141,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. EXTRAER TABLA 1 (VUELO + RECARGO HISTÓRICO)
+        # 3. EXTRAER TABLA 1 (CON RECARGOS HISTÓRICOS)
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -155,7 +157,6 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
                 col_costo_ha = next((c for c in encabezados if "COSTO" in c and "AVI" in c and "$/HA" in c.replace(" ", "")), None)
                 if not col_costo_ha: col_costo_ha = next((c for c in encabezados if "COSTO" in c and "$/HA" in c.replace(" ", "")), None)
                 
-                # 💥 NUEVO RADAR: Cazar la columna de Recargo Dominical / Cargo Terrestre
                 col_recargo = next((c for c in encabezados if "DOMINIC" in c or "RECARGO" in c), None)
                 
                 if col_finca and col_costo_ha:
@@ -180,7 +181,6 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
                     df_t1['F_CLEAN'] = df_t1[col_finca].astype(str).apply(lambda x: re.sub(r'[^A-Z0-9]', '', x.upper().strip()))
                     df_t1['VAL_COSTO_HA'] = df_t1[col_costo_ha].apply(limp_num_col)
                     
-                    # Extraer Recargo
                     if col_recargo:
                         df_t1['VAL_RECARGO_HA'] = df_t1[col_recargo].apply(limp_num_col)
                     else:
@@ -208,7 +208,6 @@ def limpiar_numero(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 NUEVO MOTOR: Extrae Promedio de Vuelo Y Promedio de Recargo
 def calcular_historicos_finca(finca_usuario, df_t1):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0, 0.0
@@ -241,9 +240,12 @@ def calcular_historicos_finca(finca_usuario, df_t1):
         prom_vuelo = float(df_valid_costos['VAL_COSTO_HA'].mean())
         if pd.isna(prom_vuelo): prom_vuelo = 45000.0
 
+    # 💥 FILTRO FORENSE: Calcula el promedio SOLO entre los vuelos que sí tuvieron recargo (>100 pesos)
     if 'VAL_RECARGO_HA' in df_evaluar.columns:
-        prom_recargo = float(df_evaluar['VAL_RECARGO_HA'].mean())
-        if pd.isna(prom_recargo): prom_recargo = 0.0
+        df_recargos_validos = df_evaluar[df_evaluar['VAL_RECARGO_HA'] > 100]
+        if not df_recargos_validos.empty:
+            prom_recargo = float(df_recargos_validos['VAL_RECARGO_HA'].mean())
+            if pd.isna(prom_recargo): prom_recargo = 0.0
             
     return prom_vuelo, prom_recargo
 
@@ -309,7 +311,7 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
 def ejecutar(supabase_client=None):
     VERDE_INTENSO = '#143521'
 
-    # 💥 BLOQUE CSS SANEADO (Sin f-strings para evitar SyntaxError)
+    # 💥 BLOQUE CSS SANEADO
     css_maestro = """
     <style>
     .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
@@ -390,12 +392,11 @@ def ejecutar(supabase_client=None):
     df_t2 = st.session_state.get('m17_t2', pd.DataFrame())
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
     df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
-
-    columnas_base = ["FINCA", "HECTAREAS", "COCTEL", "FERTILIZANTE", "DIAS CICLO", "PRECIO VUELO"]
     
-    if 'm17_df_entrada_grid' not in st.session_state:
+    # 💥 NUEVA COLUMNA EN LA MEMORIA DE LA GRILLA
+    if 'm17_df_entrada_grid' not in st.session_state or 'DOMINICAL' not in st.session_state.m17_df_entrada_grid.columns:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
-            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": ""
+            "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": "", "DOMINICAL": False
         } for _ in range(500)])
 
     st.markdown("### 📥 1. Pista de Aterrizaje Segura")
@@ -413,6 +414,7 @@ def ejecutar(supabase_client=None):
             "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
             "DIAS CICLO": st.column_config.TextColumn("Días Ciclo"),
             "PRECIO VUELO": st.column_config.TextColumn("Precio Vuelo Manual (Opcional)"),
+            "DOMINICAL": st.column_config.CheckboxColumn("¿Dom/Fest?", default=False), # 💥 EL INTERRUPTOR TÁCTICO
         }
     )
 
@@ -455,6 +457,7 @@ def ejecutar(supabase_client=None):
 
                     dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
                     precio_vuelo_manual = limpiar_numero(row['PRECIO VUELO'])
+                    aplica_dominical = bool(row.get('DOMINICAL', False)) # 💥 CAPTURAR EL ESTADO DEL INTERRUPTOR
 
                     if ha_num == 0 and not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
@@ -463,7 +466,7 @@ def ejecutar(supabase_client=None):
 
                     if ha_num <= 0: continue
 
-                    # 💥 MÁQUINA DEL TIEMPO: Extraer Vuelo Histórico Y RECARGO HISTÓRICO
+                    # 💥 MÁQUINA DEL TIEMPO (AHORA PURIFICADA)
                     precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1)
 
                     if precio_vuelo_manual == 0:
@@ -471,9 +474,14 @@ def ejecutar(supabase_client=None):
                     else:
                         precio_vuelo_final = precio_vuelo_manual
 
-                    # APLICAR INFLACIÓN A AMBOS
+                    # APLICAR INFLACIÓN AL VUELO
                     precio_vuelo_final = precio_vuelo_final * factor_inflacion
-                    recargo_final_ha = recargo_historico * factor_inflacion
+                    
+                    # 💥 APLICAR INFLACIÓN AL RECARGO SOLO SI EL INTERRUPTOR ESTÁ PRENDIDO
+                    if aplica_dominical:
+                        recargo_final_ha = recargo_historico * factor_inflacion
+                    else:
+                        recargo_final_ha = 0.0
 
                     tipo_prod = "TERCERO"
                     if not df_t2.empty:
@@ -529,7 +537,7 @@ def ejecutar(supabase_client=None):
 
                     costo_st_fila = dias_c * st_base * ha_num
                     costo_vuelo_fila = precio_vuelo_final * ha_num 
-                    costo_recargo_fila = recargo_final_ha * ha_num # 💥 CÁLCULO DE RECARGO DE LA MÁQUINA DEL TIEMPO
+                    costo_recargo_fila = recargo_final_ha * ha_num 
 
                     costo_mezcla_fila = 0.0 if pd.isna(costo_mezcla_fila) else float(costo_mezcla_fila)
                     costo_st_fila = 0.0 if pd.isna(costo_st_fila) else float(costo_st_fila)
@@ -550,13 +558,13 @@ def ejecutar(supabase_client=None):
 
                 df_resultados_final = pd.DataFrame(resultados)
                 
-                # 💥 APLICAR ORDENAMIENTO ALFABÉTICO POR FINCA PARA MEGAZORD 💥
+                # 💥 ORDENAMIENTO ALFABÉTICO MANTENIDO 💥
                 if not df_resultados_final.empty:
                     df_resultados_final = df_resultados_final.sort_values(by="FINCA", ascending=True).reset_index(drop=True)
 
                 st.session_state.m17_resultados = df_resultados_final
                 st.session_state.m17_volumetria = log_volumetrico
-                st.success("✅ Proyección completada exitosamente. Datos ordenados alfabéticamente y Recargos calculados.")
+                st.success("✅ Proyección completada exitosamente. Recargos aplicados bajo control táctico.")
 
     if 'm17_resultados' in st.session_state and not st.session_state.m17_resultados.empty:
         st.markdown("---")
@@ -582,11 +590,10 @@ def ejecutar(supabase_client=None):
         
         t_st = df_filtro['Costo ST ($)'].sum()
         t_vu = df_filtro['Costo Vuelo ($)'].sum()
-        t_re = df_filtro['Costo Recargo ($)'].sum() # 💥 SUMATORIA DE RECARGOS
+        t_re = df_filtro['Costo Recargo ($)'].sum() 
         t_mx = df_filtro['Costo Mezcla ($)'].sum()
         t_gr = df_filtro['RESULTADO TOTAL ($)'].sum()
 
-        # 💥 AJUSTE VISUAL A 5 COLUMNAS PARA INCLUIR EL RECARGO EN EL DASHBOARD
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>👨‍🔬 Total Serv. Tec</p><p class='kpi-valor'>$ {formato_latino(t_st, 0)}</p></div>", unsafe_allow_html=True)
         with c2: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>✈️ Total Vuelo</p><p class='kpi-valor'>$ {formato_latino(t_vu, 0)}</p></div>", unsafe_allow_html=True)
