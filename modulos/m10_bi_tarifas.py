@@ -401,7 +401,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         hb1, hb2, hb3 = st.columns(3)
         with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
         with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
-        # Corrección del Typo que generaba el SyntaxError / NameError
         with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
         fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
@@ -497,17 +496,28 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
         df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
         if not df_tendencia.empty:
+            
+            # 💥 CORRECCIÓN CRUCIAL DEL EJE X PARA EL "RANGO PERSONALIZADO" 💥
             if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
                 tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                 tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                 titulo_x = "Meses Operativos"
-            else:
+            elif tipo_periodo == "RANGO PERSONALIZADO":
+                # Convertimos a Mes-Día (MM-DD) para mantener el flujo del tiempo sin mezclar los meses
+                df_tendencia['MES_DIA'] = df_tendencia['FECHA_DT'].dt.strftime('%m-%d')
+                tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES_DIA'])['COSTO_NUM'].mean().reset_index()
+                tendencia_agrupa = tendencia_agrupa.sort_values('MES_DIA')
+                # Mapeamos para que se lea visualmente bonito (DD/MM)
+                tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES_DIA'].apply(lambda x: f"{x.split('-')[1]}/{x.split('-')[0]}")
+                titulo_x = f"Línea de Tiempo ({etiq_periodo})"
+            else: # POR MES
                 df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
                 tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
                 tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                 tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                 titulo_x = f"Días Operativos ({etiq_periodo})"
+            
             tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
             fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
             fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
