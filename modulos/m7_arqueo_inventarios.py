@@ -140,7 +140,8 @@ def ejecutar(quitar_tildes, purificar_lote):
     
     /* 💥 ENDURECIMIENTO DE CONTROLES: Eliminación de palidez en inputs y selectores */
     div[data-testid="stTextInput"] input,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] {
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 6px !important;
         background-color: #ffffff !important;
@@ -148,21 +149,13 @@ def ejecutar(quitar_tildes, purificar_lote):
         font-weight: 800 !important;
         font-size: 15px !important;
     }
-    
-    /* Personalización nítida y opaca para los File Uploaders */
-    div[data-testid="stFileUploader"] section {
-        background-color: #ffffff !important;
-        border: 2px dashed #0d1b2a !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        background-color: transparent !important;
+        border: none !important;
     }
-    
-    /* HUD de Control de Arqueos */
-    .hud-arqueo {
-        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
-        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
-        justify-content: space-between; align-items: center;
+    div[data-testid="stSelectbox"] * {
+        color: #000000 !important;
+        font-weight: bold !important;
     }
     .hud-arqueo-item { text-align: center; flex: 1; }
     .hud-arqueo-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
