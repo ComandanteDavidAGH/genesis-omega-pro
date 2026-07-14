@@ -133,6 +133,7 @@ def compilar_html_pdf(cruce_final, semana, css_vip):
 
 def ejecutar(quitar_tildes, purificar_lote):
     # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Extirpación de Casillas Pálidas y Translúcidas
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Extirpación de Casillas Pálidas y Translúcidas
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
@@ -156,6 +157,22 @@ def ejecutar(quitar_tildes, purificar_lote):
     div[data-testid="stSelectbox"] * {
         color: #000000 !important;
         font-weight: bold !important;
+    }
+    
+    /* Personalización nítida y opaca para los File Uploaders */
+    div[data-testid="stFileUploader"] section {
+        background-color: #ffffff !important;
+        border: 2px dashed #0d1b2a !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+    }
+    
+    /* HUD de Control de Arqueos */
+    .hud-arqueo {
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
+        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
+        justify-content: space-between; align-items: center;
     }
     .hud-arqueo-item { text-align: center; flex: 1; }
     .hud-arqueo-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
