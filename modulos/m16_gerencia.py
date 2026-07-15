@@ -206,6 +206,21 @@ def ejecutar(*args, **kwargs):
         st.error(f"❌ No se encontraron registros de vuelo para el rango seleccionado.")
         return
 
+    # 💥 CORTAFUEGOS FINANCIERO: Saneamiento de Errores de Digitación en SAP
+    def purificar_tarifa(val, tope_max, valor_reemplazo):
+        if pd.isna(val): return 0.0
+        # 1. Regla de Oro: Si digitan en cientos (ej: 65), se asume miles (65.000)
+        if 0 < val < 2500: 
+            val = val * 1000
+        # 2. Tope Táctico: Si supera el máximo lógico (error de SAP), se corrige al valor estándar
+        if val > tope_max: 
+            return valor_reemplazo
+        return val
+
+    # Aplicamos el escudo a las columnas vitales ANTES de dividir la información
+    df_base['COSTO_VUELO_HA'] = df_base['COSTO_VUELO_HA'].apply(lambda x: purificar_tarifa(x, 150000, 75000))
+    df_base['COSTO_TOTAL_HA'] = df_base['COSTO_TOTAL_HA'].apply(lambda x: purificar_tarifa(x, 400000, 200000))
+
     df_aviones = df_base[df_base['TECNOLOGIA'] == 'AVIÓN'].copy()
     df_drones = df_base[df_base['TECNOLOGIA'] == 'DRONE'].copy()
 
