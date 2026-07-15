@@ -285,17 +285,42 @@ def ejecutar(*args, **kwargs):
 
             st.dataframe(df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
             
-            df_print_v['EJE_X'] = df_print_v['FINCA'].str[:12] + " (" + df_print_v['EQUIPO DRON'].str.split('-').str[0].str.strip() + ")"
+            # 💥 FIX MAESTRO: Evitar que Plotly sume las fincas. Usamos el ID único (index) para el eje X
+            df_print_v['EJE_X'] = df_print_v['FINCA'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x)) + "<br>(" + df_print_v['EQUIPO DRON'].str.split('-').str[0].str.strip() + ")"
+            
             fig = go.Figure()
-            fig.add_trace(go.Bar(x=df_print_v['EJE_X'], y=m_comp_v['AVIÓN'], name='Avión', marker_color='#1a365d'))
-            fig.add_trace(go.Bar(x=df_print_v['EJE_X'], y=m_comp_v['DRONE'], name='Dron', marker_color='#d4af37'))
+            
+            # Al usar x=df_print_v.index, garantizamos que cada fila de la tabla sea una barra independiente
+            fig.add_trace(go.Bar(
+                x=df_print_v.index, 
+                y=m_comp_v['AVIÓN'], 
+                name='Avión', 
+                marker_color='#1a365d',
+                customdata=df_print_v['FINCA'],
+                hovertemplate='<b>Finca:</b> %{customdata}<br><b>Avión:</b> $%{y:,.0f}<extra></extra>'
+            ))
+            
+            fig.add_trace(go.Bar(
+                x=df_print_v.index, 
+                y=m_comp_v['DRONE'], 
+                name='Dron', 
+                marker_color='#d4af37',
+                customdata=df_print_v['FINCA'],
+                hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
+            ))
+            
             fig.update_layout(
                 title="Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)", 
                 barmode='group', 
                 plot_bgcolor='rgba(0,0,0,0)', 
-                xaxis=dict(tickangle=-45),
+                xaxis=dict(
+                    tickangle=-45,
+                    tickmode='array',
+                    tickvals=df_print_v.index,
+                    ticktext=df_print_v['EJE_X']
+                ),
                 yaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)"), # 💥 Formato de Moneda Real sin la 'k'
-                hovermode="closest" # ⚡ Restablece la interactividad responsiva
+                hovermode="closest" 
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
