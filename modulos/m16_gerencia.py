@@ -285,14 +285,13 @@ def ejecutar(*args, **kwargs):
 
             st.dataframe(df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
             
-            # 💥 FIX MAESTRO: Evitar que Plotly sume las fincas. Usamos el ID único (index) para el eje X
-            df_print_v['EJE_X'] = df_print_v['FINCA'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x)) + "<br>(" + df_print_v['EQUIPO DRON'].str.split('-').str[0].str.strip() + ")"
+            # 💥 FIX MAESTRO DE ALTA GAMA: Identificadores únicos y legibles
+            df_print_v['X_UNIQUE'] = df_print_v['FINCA'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x)) + " [" + df_print_v.index.astype(str) + "]"
             
             fig = go.Figure()
             
-            # Al usar x=df_print_v.index, garantizamos que cada fila de la tabla sea una barra independiente
             fig.add_trace(go.Bar(
-                x=df_print_v.index, 
+                x=df_print_v['X_UNIQUE'], 
                 y=m_comp_v['AVIÓN'], 
                 name='Avión', 
                 marker_color='#1a365d',
@@ -301,7 +300,7 @@ def ejecutar(*args, **kwargs):
             ))
             
             fig.add_trace(go.Bar(
-                x=df_print_v.index, 
+                x=df_print_v['X_UNIQUE'], 
                 y=m_comp_v['DRONE'], 
                 name='Dron', 
                 marker_color='#d4af37',
@@ -309,18 +308,29 @@ def ejecutar(*args, **kwargs):
                 hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
             ))
             
+            # 🚀 TOQUE GERENCIAL: Zoom dinámico y Minimapa de Navegación
+            # Calculamos mostrar máximo 15 barras iniciales para que siempre se vean premium
+            vista_inicial = min(14.5, len(df_print_v) - 0.5) 
+            
             fig.update_layout(
                 title="Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)", 
                 barmode='group', 
                 plot_bgcolor='rgba(0,0,0,0)', 
                 xaxis=dict(
-                    tickangle=-45,
-                    tickmode='array',
-                    tickvals=df_print_v.index,
-                    ticktext=df_print_v['EJE_X']
+                    tickangle=-90,
+                    tickfont=dict(size=11),
+                    range=[-0.5, vista_inicial], # Zoom automático a las primeras fincas
+                    rangeslider=dict(visible=True, thickness=0.08, bgcolor="#e2e8f0"), # El Minimapa
+                    type='category'
                 ),
-                yaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)"), # 💥 Formato de Moneda Real sin la 'k'
-                hovermode="closest" 
+                yaxis=dict(
+                    tickformat="$,.0f", 
+                    title="Costo ($ COP / ha)", 
+                    showgrid=True, 
+                    gridcolor='rgba(200,200,200,0.2)'
+                ),
+                hovermode="closest",
+                margin=dict(b=20)
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
