@@ -83,6 +83,14 @@ def cargar_datos_gerenciales():
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
+            # 💥 ESCUDO ANTI-OUTLIERS (SANEAMIENTO DE ERRORES DE DIGITACIÓN EN SAP)
+            # 1. Regla de Oro: Si digitan en cientos o decenas (ej: 65), se asume miles (65.000)
+            df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
+            df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
+            
+            # 2. Tope Táctico: Si la tarifa de vuelo pura supera los 150.000 COP/Ha, es un error de SAP (pusieron el total). Lo topamos.
+            df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: 75000 if x > 150000 else x)
+            
             df['OPERADOR_DRON'] = df['HK'].astype(str).str.strip() + " - " + df['PISTA'].astype(str).str.strip()
             
             return df.dropna(subset=['FECHA_FILTRABLE'])
