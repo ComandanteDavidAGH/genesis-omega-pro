@@ -279,7 +279,8 @@ def ejecutar(*args, **kwargs):
                 barmode='group', 
                 plot_bgcolor='rgba(0,0,0,0)', 
                 xaxis=dict(tickangle=-45),
-                hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
+                yaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)"), # 💥 Formato de Moneda Real sin la 'k'
+                hovermode="closest" # ⚡ Restablece la interactividad responsiva
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
