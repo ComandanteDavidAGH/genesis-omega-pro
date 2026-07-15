@@ -188,7 +188,16 @@ def ejecutar(extraer_numero):
                         if val == "❌ DESFASE": return 'background-color: #f8d7da; color: #721c24; font-weight: bold; text-align: center;'
                         return ''
  
-                    st.dataframe(radar.style.map(color_estado, subset=['ESTADO']), use_container_width=True, hide_index=True)
+                    st.dataframe(
+                        radar.style.map(color_estado, subset=['ESTADO']), 
+                        use_container_width=True, 
+                        hide_index=True,
+                        column_config={
+                            "PRECIO_ACTUAL": st.column_config.NumberColumn("PRECIO ACTUAL", format="%.3f"),
+                            "PRECIO_SAP": st.column_config.NumberColumn("PRECIO SAP", format="%.3f"),
+                            "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")
+                        }
+                    )
                      
                     if insumos_fail == 0:
                         st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales.")
