@@ -115,9 +115,8 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 
     for iter_id, receta in dict_recetas.items():
         puntaje = 0
-        es_valido = True
         
-        # 1. VALIDACIÓN DEL LÍDER
+        # 1. VALIDACIÓN DEL LÍDER (Blindaje: Ahora castiga, no bloquea)
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -126,11 +125,8 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_lider = True
                     break
             if not match_lider:
-                es_valido = False 
+                puntaje -= 500 # Penalización táctica, pero permite que gane si los demás químicos son idénticos
         
-        if not es_valido:
-            continue
-
         # 2. ANÁLISIS QUÍMICO RIGUROSO
         for p_receta, d_esperada in receta.items():
             match_receta = False
@@ -138,7 +134,9 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             for k_sap, d_sap in sap_dict_pista.items():
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
-                    if abs(d_sap - d_esperada) <= 0.5: 
+                    # Escudo de tolerancia dinámica para variaciones de hectáreas
+                    tolerancia = max(0.8, d_esperada * 0.25)
+                    if abs(d_sap - d_esperada) <= tolerancia: 
                         dose_matched = True 
                     break
             
@@ -168,15 +166,17 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if not is_fert:
                     puntaje -= 100 
 
-        if iter_id == coctel_piloto_base: 
-            puntaje += 10
+        # 💥 SUPREMACÍA DEL REPORTE DE VUELO
+        if coctel_piloto_base and iter_id == coctel_piloto_base: 
+            puntaje += 1000
 
+        # 💥 ACTUALIZACIÓN DE GANADOR ABSOLUTO
         if puntaje > max_p:
             max_p = puntaje
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
-    # AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
+    # 3. AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
