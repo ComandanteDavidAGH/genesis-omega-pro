@@ -1249,7 +1249,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 n_limpio = round(float(n), 4)
                 return int(Decimal(str(n_limpio)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
-            costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round).sum()
+            # 💥 ESCUDO ANTI-FANTASMAS: Si la matriz no se creó (no hay químicos), el costo de mezcla es cero.
+            if 'df_matriz' in locals() and df_matriz is not None and not df_matriz.empty:
+                costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round).sum()
+            else:
+                costo_mezcla_total = 0
 
             unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
             unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
