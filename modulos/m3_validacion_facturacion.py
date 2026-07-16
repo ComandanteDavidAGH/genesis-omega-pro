@@ -1203,10 +1203,22 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if dosis_teorica is None: 
                         dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                         
+                    # 💥 CEREBRO AUTO-CALCULADOR DE RECOMENDACIONES TÉCNICAS
+                    base_ideal = dosis_teorica * ha_dosis_final
+                    extra_pct_auto = 0.0
+                    # Si SAP pide más y la diferencia es mayor a unos mililitros de redondeo
+                    if base_ideal > 0 and (cant_total_pedido - base_ideal) > 0.1:
+                        extra_pct_auto = ((cant_total_pedido / base_ideal) - 1) * 100
+
                     matriz_datos.append({
-                        "A: Producto": nombre_p, "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), "C: X (Extra %)": 0.0,
-                        "D: Dosis Total (Sistema)": 0.0, "E: Costo Unit (+Margen)": round(costo_unit * mult_material, 0),
-                        "G: Lotes (SAP)": lote_sap, "H: Saldo Real SAP": round(saldo_sap, 3), "I: Sugerido SAP (Total)": round(cant_total_pedido, 3)
+                        "A: Producto": nombre_p, 
+                        "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), 
+                        "C: X (Extra %)": round(extra_pct_auto, 3), # ¡Se calcula y se asigna solo!
+                        "D: Dosis Total (Sistema)": 0.0, 
+                        "E: Costo Unit (+Margen)": round(costo_unit * mult_material, 0),
+                        "G: Lotes (SAP)": lote_sap, 
+                        "H: Saldo Real SAP": round(saldo_sap, 3), 
+                        "I: Sugerido SAP (Total)": round(cant_total_pedido, 3)
                     })
 
                 df_matriz = pd.DataFrame(matriz_datos)
@@ -1225,11 +1237,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 def calcular_semaforo_misiones(row):
                     sistema = float(row["D: Dosis Total (Sistema)"])
                     sugerido = float(row["I: Sugerido SAP (Total)"])
+                    extra_pct = float(row.get("C: X (Extra %)", 0.0))
                     desviacion = sistema - sugerido
                     
-                    if desviacion == 0:
+                    if abs(desviacion) <= 1.0:
+                        # 💥 NUEVO SEMÁFORO: Avisa visualmente que la IA hizo el ajuste
+                        if extra_pct > 0:
+                            return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
                         return "🟢 ÓPTIMO"
-                    elif abs(desviacion) <= 1.0:
+                    elif abs(desviacion) <= 5.0:
                         return f"🟡 DESV. LEVE ({'+++' if desviacion > 0 else '---'})"
                     else:
                         return f"🔴 FUERA RANGO ({'+++' if desviacion > 0 else '---'})"
