@@ -1098,6 +1098,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif "NM" in sigla_coctel: fert_detectado = "NATURAMIN WSP"
                     elif "QM" in sigla_coctel: fert_detectado = "QUELAMIX"
                 
+                # 💥 AUTO-DETECCIÓN FORZADA EN SAP: Si el piloto olvidó la sigla, la buscamos obligatoriamente en la lista de químicos de SAP
+                if not fert_detectado:
+                    for k_sap in sap_dict_pista.keys():
+                        k_up = k_sap.upper()
+                        if "ZINTRAC" in k_up: fert_detectado = "ZINTRAC X LITRO SV"; sigla_coctel = "ZN"; break
+                        elif "BANATREL" in k_up: fert_detectado = "BANATREL SC"; sigla_coctel = "BT"; break
+                        elif "NATURAMIN" in k_up: fert_detectado = "NATURAMIN WSP"; sigla_coctel = "NM"; break
+                        elif "QUELAMIX" in k_up: fert_detectado = "QUELAMIX"; sigla_coctel = "QM"; break
+                        elif "ZITRON" in k_up: fert_detectado = "ZITRON"; sigla_coctel = "ZT"; break
+
                 if fert_detectado:
                     dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
                     dosis_oficiales_coctel[fert_detectado.replace(" ", "")] = dosis_real
