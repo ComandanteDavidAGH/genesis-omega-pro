@@ -684,9 +684,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             if not match_sap.empty:
                 try:
-                    col_finca = [c for c in df_p.columns if 'FINCA' in str(c).upper() or 'CLIENTE' in str(c).upper()][0]
-                    col_ha = [c for c in df_p.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
-                    col_mat = [c for c in df_p.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper()][0]
+                    # 💥 RADAR DINÁMICO: A prueba de columnas ocultas o desplazadas en SAP
+                    col_finca_cands = [c for c in df_p.columns if any(x in str(c).upper() for x in ['FINCA', 'CLIENTE', 'DESTINATARIO', 'NOMBRE', 'SOLICITANTE'])]
+                    col_finca = col_finca_cands[0] if col_finca_cands else df_p.columns[8]
+                    
+                    col_ha_cands = [c for c in df_p.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
+                    col_ha = col_ha_cands[0] if col_ha_cands else df_p.columns[6]
+                    
+                    col_mat_cands = [c for c in df_p.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
+                    col_mat = col_mat_cands[0] if col_mat_cands else df_p.columns[5]
                     
                     finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
                     ha_correcta = 0.0
@@ -860,9 +866,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         pista_detectada = p_val
                         break
                         
-                col_ha = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
+                # 💥 EXTRACCIÓN BLINDADA DE HECTÁREAS (Elimina el hardcodeo de iloc[5])
+                col_ha_cands = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
+                col_ha = col_ha_cands[0] if col_ha_cands else df_ped.columns[6]
+                
+                col_mat_cands = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
+                col_mat = col_mat_cands[0] if col_mat_cands else df_ped.columns[5]
+
                 for _, r_p in match_ped.iterrows():
-                    if len(r_p) >= 7 and "459" in str(r_p.iloc[5]):
+                    val_mat = str(r_p[col_mat]).strip()
+                    if val_mat == "459" or val_mat.split(".")[0] == "459":
                         ha_dosis_detectada = extraer_numero(r_p[col_ha])
                         break
         
