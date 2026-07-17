@@ -1113,44 +1113,27 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
-                fert_detectado_key = None
-                
-                # 💥 1. Chequeo de sigla del piloto
-                if sigla_coctel:
-                    for f_n, f_s in dict_fertilizantes.items():
-                        if f_s == sigla_coctel: 
-                            fert_detectado_key = f_n
-                            break
-                            
-                # 💥 2. Escáner libre omnidireccional (A prueba de espacios)
-                if not fert_detectado_key:
-                    for k_sap in sap_dict_pista.keys():
-                        k_sap_clean = str(k_sap).replace(" ", "").upper()
-                        for f_n, f_s in dict_fertilizantes.items():
-                            if f_n == k_sap_clean or (len(k_sap_clean) >= 4 and f_n in k_sap_clean) or (len(f_n) >= 4 and k_sap_clean in f_n):
-                                fert_detectado_key = f_n
-                                sigla_coctel = f_s
-                                break
-                        if fert_detectado_key:
-                            break
-
-                # 💥 3. Inyección garantizada de Sigla y Dosis Real
-                if fert_detectado_key:
-                    dosis_real = 0.5 # Seguro por defecto
-                    try:
-                        # Buscamos la dosis real ignorando espacios en tu matriz original
-                        for col_idx in range(len(df_mez.columns) - 1):
-                            mask = df_mez.iloc[:, col_idx].astype(str).str.replace(" ", "").str.upper() == fert_detectado_key
-                            if mask.any():
-                                val = pd.to_numeric(df_mez[mask].iloc[0, col_idx+1], errors='coerce')
-                                if pd.notna(val) and val > 0: 
-                                    dosis_real = float(val)
-                                    break
-                    except: pass
+                # 💥 ESCÁNER UNIVERSAL DE SIGLAS (A prueba de balas contra formatos de Excel)
+                sigla_detectada = ""
+                for k_sap in sap_dict_pista.keys():
+                    k_sap_clean = str(k_sap).replace(" ", "").upper()
                     
-                    dosis_oficiales_coctel[fert_detectado_key] = dosis_real
-                    if sigla_coctel and sigla_coctel not in coctel_ganador: 
-                        coctel_ganador += f" {sigla_coctel}"
+                    # Barrido profundo en todo el Excel (Celda por celda)
+                    for c_idx in range(len(df_mez.columns) - 1):
+                        mask = df_mez.iloc[:, c_idx].astype(str).str.replace(" ", "").str.upper() == k_sap_clean
+                        if mask.any():
+                            # Revisamos al vecino derecho
+                            for v in df_mez[mask].iloc[:, c_idx + 1].values:
+                                v_str = str(v).strip().upper()
+                                # Si es un texto corto de letras, obligatoriamente es una sigla
+                                if v_str.isalpha() and 1 <= len(v_str) <= 3 and v_str not in ["NAN", "NON", ""]:
+                                    sigla_detectada = v_str
+                                    break
+                        if sigla_detectada: break
+                    if sigla_detectada: break
+                
+                if sigla_detectada and sigla_detectada not in coctel_ganador:
+                    coctel_ganador += f" {sigla_detectada}"
 
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
                 
@@ -1238,26 +1221,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
-                    # 💥 RESCATE ABSOLUTO DE DOSIS: Si el producto no estaba en la receta base, lo buscamos en todo el Excel (Aplica para Fosfostress y Siganex extra)
+                    # 💥 RESCATE UNIVERSAL DE DOSIS (Ignora columnas, barre todo el Excel)
                     if dosis_teorica is None:
-                        try:
-                            for col_idx in range(len(df_mez.columns) - 1):
-                                mask = df_mez.iloc[:, col_idx].astype(str).str.replace(" ", "").str.upper() == nombre_limpio
-                                if mask.any():
-                                    val_rescatado = pd.to_numeric(df_mez[mask].iloc[0, col_idx+1], errors='coerce')
-                                    if pd.notna(val_rescatado) and val_rescatado > 0:
-                                        dosis_teorica = float(val_rescatado)
-                                        break
-                        except: pass
+                        for c_idx in range(len(df_mez.columns) - 1):
+                            mask = df_mez.iloc[:, c_idx].astype(str).str.replace(" ", "").str.upper() == nombre_limpio
+                            if mask.any():
+                                for v in df_mez[mask].iloc[:, c_idx + 1].values:
+                                    try:
+                                        num = float(str(v).replace(",", "."))
+                                        # Si el vecino es un número razonable, es la dosis
+                                        if 0 < num < 100: 
+                                            dosis_teorica = num
+                                            break
+                                    except:
+                                        pass
+                            if dosis_teorica is not None: break
 
-                    # Si definitivamente el Excel no lo tiene registrado, hacemos la división de emergencia
+                    # División de ultimísima emergencia (Casi nunca se usará ahora)
                     if dosis_teorica is None: 
                         dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                         
                     # 💥 CEREBRO AUTO-CALCULADOR DE RECOMENDACIONES TÉCNICAS
                     base_ideal = dosis_teorica * ha_dosis_final
                     extra_pct_auto = 0.0
-                    # Si SAP pide más y la diferencia es mayor a unos mililitros de redondeo
                     if base_ideal > 0 and (cant_total_pedido - base_ideal) > 0.1:
                         extra_pct_auto = ((cant_total_pedido / base_ideal) - 1) * 100
 
@@ -1310,28 +1296,28 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
 
-                # 💥 PINTOR TÁCTICO: Colorea la celda "Dosis Ideal" y "Sugerido SAP" según su peligro
+                # 💥 PINTOR TÁCTICO: Calcula usando la base pura matemática
                 def estilizar_dosis_ideal(row):
                     estilos = [''] * len(row)
                     try:
                         idx_sistema = row.index.get_loc("D: Dosis Total (Sistema)")
                         idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
                         
-                        sistema = float(row["D: Dosis Total (Sistema)"])
+                        # Matemática pura: Dosis estándar * Hectáreas
+                        base_ideal = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
                         sugerido = float(row["I: Sugerido SAP (Total)"])
                         extra_pct = float(row.get("C: X (Extra %)", 0.0))
                         
-                        # Revelamos la verdad matemática quitando el extra temporalmente
-                        diferencia_real = sugerido - (sistema / (1 + (extra_pct/100)) if extra_pct > 0 else sistema)
+                        diferencia_real = sugerido - base_ideal
                         
                         if diferencia_real < -1.0: 
-                            # Grave: SAP envió menos (Rojo)
+                            # SAP envió menos
                             color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
                         elif diferencia_real > 1.0 or extra_pct > 0: 
-                            # Advertencia: SAP envió más / Hay recargo técnico (Amarillo/Naranja)
+                            # SAP envió más (Recargo técnico)
                             color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                         else: 
-                            # Óptimo: Verde
+                            # Óptimo
                             color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
                             
                         estilos[idx_sistema] = color
