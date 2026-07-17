@@ -1291,13 +1291,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                         sistema = float(row["D: Dosis Total (Sistema)"])
                         sugerido = float(row["I: Sugerido SAP (Total)"])
-                        diferencia = sugerido - sistema
+                        extra_pct = float(row.get("C: X (Extra %)", 0.0))
                         
-                        if diferencia < -1.0: 
-                            # Grave: SAP envió menos de lo ideal (Peligro rojo, sub-dosificación humana)
+                        # Revelamos la verdad matemática quitando el extra temporalmente
+                        diferencia_real = sugerido - (sistema / (1 + (extra_pct/100)) if extra_pct > 0 else sistema)
+                        
+                        if diferencia_real < -1.0: 
+                            # Grave: SAP envió menos (Rojo)
                             color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
-                        elif diferencia > 1.0: 
-                            # Advertencia: SAP envió de más (Recomendación técnica, amarillo/naranja)
+                        elif diferencia_real > 1.0 or extra_pct > 0: 
+                            # Advertencia: SAP envió más / Hay recargo técnico (Amarillo/Naranja)
                             color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                         else: 
                             # Óptimo: Verde
