@@ -1079,18 +1079,17 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
-                    # 💥 ESCÁNER DE RADAR: Encuentra las columnas exactas sin importar dónde las mueva Excel
-                    idx_fert, idx_sigla = -1, -1
-                    for i, col in enumerate(df_mez.columns):
-                        if 'FERTILIZANTE' in str(col).upper(): idx_fert = i
-                        if 'SIGLA' in str(col).upper(): idx_sigla = i
-                        
-                    if idx_fert == -1 or idx_sigla == -1:
-                        for i in range(min(30, len(df_mez))):
-                            for j, val in enumerate(df_mez.iloc[i]):
-                                if 'FERTILIZANTE' in str(val).upper(): idx_fert = j
-                                elif 'SIGLA' in str(val).upper(): idx_sigla = j
-                            if idx_fert != -1 and idx_sigla != -1: break
+                    # 💥 RADAR ABSOLUTO DE FERTILIZANTES (Rompe la barrera de las columnas ocultas)
+                    for c_idx in range(len(df_mez.columns) - 1):
+                        col_head = str(df_mez.columns[c_idx]).upper()
+                        celda_head = str(df_mez.iloc[0, c_idx]).upper() if len(df_mez) > 0 else ""
+                        if 'FERTILIZANTE' in col_head or 'FERTILIZANTE' in celda_head:
+                            for r_idx in range(len(df_mez)):
+                                f_n = str(df_mez.iloc[r_idx, c_idx]).strip().upper()
+                                f_s = str(df_mez.iloc[r_idx, c_idx + 1]).strip().upper()
+                                if f_n not in ["NAN", "NONE", "FERTILIZANTES", ""] and f_s not in ["NAN", "NONE", "SIGLAS", ""]:
+                                    dict_fertilizantes[f_n.replace(" ", "")] = f_s
+                            break
 
                     for idx, row in df_mez.iterrows():
                         if len(row) > 3:
@@ -1104,36 +1103,23 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 dict_recetas[cid][p_tabla_clean] = d_tabla
                                 if es_lider: 
                                     dict_lideres[cid] = p_tabla_clean
-                                    
-                        # 💥 CONSTRUCCIÓN BLINDADA DE FERTILIZANTES
-                        if idx_fert != -1 and idx_sigla != -1 and len(row) > max(idx_fert, idx_sigla):
-                            fert_name = str(row.iloc[idx_fert]).strip().upper()
-                            fert_sigla = str(row.iloc[idx_sigla]).strip().upper()
-                            if fert_name not in ["NAN", "FERTILIZANTES", "NONE", ""] and fert_sigla not in ["NAN", "SIGLAS", "NONE", ""]:
-                                dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
+
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
-                # 💥 ESCÁNER UNIVERSAL DE SIGLAS (A prueba de balas contra formatos de Excel)
-                sigla_detectada = ""
+                # 💥 ANCLAJE FORZADO DE LA SIGLA (Busca el fertilizante de SAP en el diccionario y lo pega al título)
                 for k_sap in sap_dict_pista.keys():
-                    k_sap_clean = str(k_sap).replace(" ", "").upper()
-                    
-                    # Barrido profundo en todo el Excel (Celda por celda)
-                    for c_idx in range(len(df_mez.columns) - 1):
-                        mask = df_mez.iloc[:, c_idx].astype(str).str.replace(" ", "").str.upper() == k_sap_clean
-                        if mask.any():
-                            # Revisamos al vecino derecho
-                            for v in df_mez[mask].iloc[:, c_idx + 1].values:
-                                v_str = str(v).strip().upper()
-                                # Si es un texto corto de letras, obligatoriamente es una sigla
-                                if v_str.isalpha() and 1 <= len(v_str) <= 3 and v_str not in ["NAN", "NON", ""]:
-                                    sigla_detectada = v_str
-                                    break
-                        if sigla_detectada: break
-                    if sigla_detectada: break
-                
-                if sigla_detectada and sigla_detectada not in coctel_ganador:
-                    coctel_ganador += f" {sigla_detectada}"
+                    k_up = str(k_sap).replace(" ", "").upper()
+                    sigla_encontrada = ""
+                    if k_up in dict_fertilizantes:
+                        sigla_encontrada = dict_fertilizantes[k_up]
+                    else:
+                        for f_n, f_s in dict_fertilizantes.items():
+                            if f_n in k_up or k_up in f_n:
+                                sigla_encontrada = f_s
+                                break
+                    if sigla_encontrada and sigla_encontrada not in coctel_ganador:
+                        coctel_ganador += f" {sigla_encontrada}"
+                        break
 
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
                 
@@ -1222,35 +1208,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
                     # 💥 RESCATE UNIVERSAL DE DOSIS (Ignora columnas, barre todo el Excel)
-                    if dosis_teorica is None:
-                        for c_idx in range(len(df_mez.columns) - 1):
-                            mask = df_mez.iloc[:, c_idx].astype(str).str.replace(" ", "").str.upper() == nombre_limpio
-                            if mask.any():
-                                for v in df_mez[mask].iloc[:, c_idx + 1].values:
-                                    try:
-                                        num = float(str(v).replace(",", "."))
-                                        # Si el vecino es un número razonable, es la dosis
-                                        if 0 < num < 100: 
-                                            dosis_teorica = num
-                                            break
-                                    except:
-                                        pass
-                            if dosis_teorica is not None: break
-
-                    # División de ultimísima emergencia (Casi nunca se usará ahora)
                     if dosis_teorica is None: 
-                        dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
+                        # 💥 IMÁN DE DOSIS ESTÁNDAR: Si la IA deduce la dosis matemáticamente, la atrae a su valor agronómico real (Ej: 0.507 lo ancla a 0.5)
+                        d_sap_cruda = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
+                        dosis_estandar = [0.02, 0.06, 0.1, 0.13, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.75, 0.8, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0]
+                        dosis_cercana = min(dosis_estandar, key=lambda x: abs(x - d_sap_cruda))
+                        
+                        # Si la dosis está desfasada por muy poquito, ¡la anclamos a la perfección!
+                        if abs(d_sap_cruda - dosis_cercana) < 0.05:
+                            dosis_teorica = dosis_cercana
+                        else:
+                            dosis_teorica = d_sap_cruda
                         
                     # 💥 CEREBRO AUTO-CALCULADOR DE RECOMENDACIONES TÉCNICAS
                     base_ideal = dosis_teorica * ha_dosis_final
                     extra_pct_auto = 0.0
-                    if base_ideal > 0 and (cant_total_pedido - base_ideal) > 0.1:
+                    # Umbral estricto: Si la diferencia es mayor a 0.2 litros, lo asumimos como un Extra intencional
+                    if base_ideal > 0 and (cant_total_pedido - base_ideal) > 0.2:
                         extra_pct_auto = ((cant_total_pedido / base_ideal) - 1) * 100
 
                     matriz_datos.append({
                         "A: Producto": nombre_p, 
                         "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), 
-                        "C: X (Extra %)": round(extra_pct_auto, 3), # ¡Se calcula y se asigna solo!
+                        "C: X (Extra %)": round(extra_pct_auto, 3),
                         "D: Dosis Total (Sistema)": 0.0, 
                         "E: Costo Unit (+Margen)": round(costo_unit * mult_material, 0),
                         "G: Lotes (SAP)": lote_sap, 
@@ -1271,53 +1251,26 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
                 
-                def calcular_semaforo_misiones(row):
-                    sistema = float(row["D: Dosis Total (Sistema)"])
-                    sugerido = float(row["I: Sugerido SAP (Total)"])
-                    extra_pct = float(row.get("C: X (Extra %)", 0.0))
-                    desviacion = sistema - sugerido
-                    
-                    if abs(desviacion) <= 1.0:
-                        # 💥 NUEVO SEMÁFORO: Avisa visualmente que la IA hizo el ajuste
-                        if extra_pct > 0:
-                            return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
-                        return "🟢 ÓPTIMO"
-                    elif abs(desviacion) <= 5.0:
-                        return f"🟡 DESV. LEVE ({'+++' if desviacion > 0 else '---'})"
-                    else:
-                        return f"🔴 FUERA RANGO ({'+++' if desviacion > 0 else '---'})"
-
-                df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
-
-                columnas_ordenadas = [
-                    "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
-                    "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
-                    "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"
-                ]
-                df_matriz = df_matriz[columnas_ordenadas]
-
-                # 💥 PINTOR TÁCTICO: Calcula usando la base pura matemática
+                # 💥 PINTOR TÁCTICO DE ALTA PRECISIÓN: Detecta mililitros extra y colorea sin titubear
                 def estilizar_dosis_ideal(row):
                     estilos = [''] * len(row)
                     try:
                         idx_sistema = row.index.get_loc("D: Dosis Total (Sistema)")
                         idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
                         
-                        # Matemática pura: Dosis estándar * Hectáreas
-                        base_ideal = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
+                        # Comparamos SAP contra la dosis PURA (Sin los porcentajes extra)
+                        base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
                         sugerido = float(row["I: Sugerido SAP (Total)"])
                         extra_pct = float(row.get("C: X (Extra %)", 0.0))
                         
-                        diferencia_real = sugerido - base_ideal
+                        diferencia_real = sugerido - base_pura
                         
-                        if diferencia_real < -1.0: 
-                            # SAP envió menos
+                        # Tolerancia cero: Cualquier desvío mayor a 0.2 litros enciende alertas visuales
+                        if diferencia_real < -0.2: 
                             color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
-                        elif diferencia_real > 1.0 or extra_pct > 0: 
-                            # SAP envió más (Recargo técnico)
+                        elif diferencia_real > 0.2 or extra_pct > 0: 
                             color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                         else: 
-                            # Óptimo
                             color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
                             
                         estilos[idx_sistema] = color
@@ -1326,7 +1279,28 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         pass
                     return estilos
 
-                # Aplicamos el estilo a la matriz antes de enviarla al editor visual
+                def calcular_semaforo_misiones(row):
+                    base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
+                    sugerido = float(row["I: Sugerido SAP (Total)"])
+                    extra_pct = float(row.get("C: X (Extra %)", 0.0))
+                    diferencia = sugerido - base_pura
+                    
+                    if diferencia < -0.2:
+                        return f"🔴 PELIGRO: SUB-DOSIS (---)"
+                    elif diferencia > 0.2 or extra_pct > 0:
+                        return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)" if extra_pct > 0 else "🟡 DESV. LEVE (+++)"
+                    else:
+                        return "🟢 ÓPTIMO"
+
+                df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
+                
+                columnas_ordenadas = [
+                    "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
+                    "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
+                    "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"
+                ]
+                df_matriz = df_matriz[columnas_ordenadas]
+                
                 df_estilizado = df_matriz.style.apply(estilizar_dosis_ideal, axis=1)
 
                 edited_df = st.data_editor(
