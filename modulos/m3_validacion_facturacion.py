@@ -1239,17 +1239,25 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
                     # 💥 RESCATE UNIVERSAL DE DOSIS (Ignora columnas, barre todo el Excel)
-                    if dosis_teorica is None: 
-                        # 💥 IMÁN DE DOSIS ESTÁNDAR: Si la IA deduce la dosis matemáticamente, la atrae a su valor agronómico real (Ej: 0.507 lo ancla a 0.5)
-                        d_sap_cruda = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
-                        dosis_estandar = [0.02, 0.06, 0.1, 0.13, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.75, 0.8, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0]
-                        dosis_cercana = min(dosis_estandar, key=lambda x: abs(x - d_sap_cruda))
+                    # 💥 EXTRACTOR DE DOSIS EXACTA (Cero redondeos, copia fiel del Excel)
+                    if dosis_teorica is None:
+                        dosis_rescatada = None
+                        for c_idx in range(len(df_mez.columns) - 1):
+                            mask = df_mez.iloc[:, c_idx].astype(str).str.replace(" ", "").str.upper() == nombre_limpio
+                            if mask.any():
+                                try:
+                                    val_crudo = str(df_mez[mask].iloc[0, c_idx + 1]).replace(",", ".")
+                                    num = float(val_crudo)
+                                    if 0 < num < 100:
+                                        dosis_rescatada = num
+                                        break
+                                except: pass
                         
-                        # Si la dosis está desfasada por muy poquito, ¡la anclamos a la perfección!
-                        if abs(d_sap_cruda - dosis_cercana) < 0.05:
-                            dosis_teorica = dosis_cercana
+                        if dosis_rescatada is not None:
+                            dosis_teorica = dosis_rescatada
                         else:
-                            dosis_teorica = d_sap_cruda
+                            # Solo calcula matemáticamente si el producto no existe en ninguna hoja de tu matriz
+                            dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                         
                     # 💥 CEREBRO AUTO-CALCULADOR DE RECOMENDACIONES TÉCNICAS
                     base_ideal = dosis_teorica * ha_dosis_final
