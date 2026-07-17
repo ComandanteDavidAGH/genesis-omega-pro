@@ -116,7 +116,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
     for iter_id, receta in dict_recetas.items():
         puntaje = 0
         
-        # 1. VALIDACIÓN DEL LÍDER (Blindaje: Ahora castiga, no bloquea)
+        # 1. VALIDACIÓN DEL LÍDER (Castigo táctico si no coincide, pero no bloquea)
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -125,7 +125,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_lider = True
                     break
             if not match_lider:
-                puntaje -= 500 # Penalización táctica, pero permite que gane si los demás químicos son idénticos
+                puntaje -= 500 
         
         # 2. ANÁLISIS QUÍMICO RIGUROSO
         for p_receta, d_esperada in receta.items():
@@ -134,7 +134,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             for k_sap, d_sap in sap_dict_pista.items():
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
-                    # Escudo de tolerancia dinámica para variaciones de hectáreas
                     tolerancia = max(0.8, d_esperada * 0.25)
                     if abs(d_sap - d_esperada) <= tolerancia: 
                         dose_matched = True 
@@ -166,11 +165,10 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if not is_fert:
                     puntaje -= 100 
 
-        # 💥 SUPREMACÍA DEL REPORTE DE VUELO
+        # 💥 SUPREMACÍA DEL PILOTO REDUCIDA: Ahora vale +200. La química (SAP) manda.
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
-            puntaje += 1000
+            puntaje += 200
 
-        # 💥 ACTUALIZACIÓN DE GANADOR ABSOLUTO
         if puntaje > max_p:
             max_p = puntaje
             coctel_base = iter_id
@@ -1086,27 +1084,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
                 fert_detectado = None
+                
+                # 💥 ESCÁNER DINÁMICO: Primero verificamos si el piloto ya puso la sigla y si coincide con tu Diccionario de Excel
                 if sigla_coctel:
                     for f_n, f_s in dict_fertilizantes.items():
                         if f_s == sigla_coctel: 
                             fert_detectado = f_n
                             break
                             
-                if not fert_detectado:
-                    if "ZN" in sigla_coctel: fert_detectado = "ZINTRAC X LITRO SV"
-                    elif "BT" in sigla_coctel: fert_detectado = "BANATREL SC"
-                    elif "NM" in sigla_coctel: fert_detectado = "NATURAMIN WSP"
-                    elif "QM" in sigla_coctel: fert_detectado = "QUELAMIX"
-                
-                # 💥 AUTO-DETECCIÓN FORZADA EN SAP: Si el piloto olvidó la sigla, la buscamos obligatoriamente en la lista de químicos de SAP
+                # 💥 AUTO-DETECCIÓN LIBRE: Si el piloto no la puso, escaneamos la sábana de SAP buscando CUALQUIER fertilizante de tu diccionario
                 if not fert_detectado:
                     for k_sap in sap_dict_pista.keys():
-                        k_up = k_sap.upper()
-                        if "ZINTRAC" in k_up: fert_detectado = "ZINTRAC X LITRO SV"; sigla_coctel = "ZN"; break
-                        elif "BANATREL" in k_up: fert_detectado = "BANATREL SC"; sigla_coctel = "BT"; break
-                        elif "NATURAMIN" in k_up: fert_detectado = "NATURAMIN WSP"; sigla_coctel = "NM"; break
-                        elif "QUELAMIX" in k_up: fert_detectado = "QUELAMIX"; sigla_coctel = "QM"; break
-                        elif "ZITRON" in k_up: fert_detectado = "ZITRON"; sigla_coctel = "ZT"; break
+                        for f_n, f_s in dict_fertilizantes.items():
+                            if f_n == k_sap or (len(k_sap) >= 4 and f_n in k_sap) or (len(f_n) >= 4 and k_sap in f_n):
+                                fert_detectado = f_n
+                                sigla_coctel = f_s
+                                break
+                        if fert_detectado:
+                            break
 
                 if fert_detectado:
                     dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
