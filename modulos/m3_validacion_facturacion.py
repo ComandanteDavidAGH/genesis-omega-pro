@@ -1079,20 +1079,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
-                    # 💥 ESCÁNER DE PENETRACIÓN PROFUNDA: Encuentra la mini-tabla en cualquier fila o columna
-                    for c_idx in range(len(df_mez.columns) - 1):
-                        for r_idx in range(min(200, len(df_mez))): # Escanea hasta 200 filas hacia abajo
-                            celda_val = str(df_mez.iloc[r_idx, c_idx]).strip().upper()
-                            if "FERTILIZANTE" in celda_val:
-                                # ¡Encontramos el título de la mini-tabla! Ahora leemos hacia abajo
-                                for i in range(r_idx + 1, len(df_mez)):
-                                    f_n = str(df_mez.iloc[i, c_idx]).strip().upper()
-                                    f_s = str(df_mez.iloc[i, c_idx + 1]).strip().upper()
-                                    if f_n not in ["", "NAN", "NONE"] and f_s not in ["", "NAN", "NONE", "SIGLAS"]:
-                                        dict_fertilizantes[f_n.replace(" ", "")] = f_s
-                                break # Rompe el ciclo de filas porque ya la encontró
-                        if dict_fertilizantes: break # Rompe el ciclo de columnas si ya llenó el diccionario
+                    # 💥 RADAR ANTI-FALLOS: Búsqueda exhaustiva del Diccionario de Fertilizantes
+                    f_row, f_col = -1, -1
+                    for c in range(len(df_mez.columns)):
+                        if 'FERTILIZANTE' in str(df_mez.columns[c]).upper():
+                            f_row, f_col = -1, c
+                            break
+                    if f_col == -1:
+                        for c in range(len(df_mez.columns)):
+                            for r in range(min(200, len(df_mez))):
+                                if 'FERTILIZANTE' in str(df_mez.iloc[r, c]).upper():
+                                    f_row, f_col = r, c
+                                    break
+                            if f_col != -1: break
+                            
+                    if f_col != -1 and f_col + 1 < len(df_mez.columns):
+                        start_r = 0 if f_row == -1 else f_row + 1
+                        for r in range(start_r, len(df_mez)):
+                            n_f = str(df_mez.iloc[r, f_col]).strip().upper()
+                            s_f = str(df_mez.iloc[r, f_col + 1]).strip().upper()
+                            if n_f not in ["", "NAN", "NONE", "FERTILIZANTES"] and s_f not in ["", "NAN", "NONE", "SIGLAS"]:
+                                dict_fertilizantes[n_f.replace(" ", "")] = s_f
 
+                    # 💥 CONSTRUCCIÓN DE RECETAS BASE
                     for idx, row in df_mez.iterrows():
                         if len(row) > 3:
                             cid = str(row.iloc[0]).strip().upper()
@@ -1108,15 +1117,37 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
-                # 💥 IMPRESIÓN FORZADA EN EL TÍTULO
+                # 💥 IMPRESIÓN FORZADA EN EL TÍTULO (PLAN Z: Inyección Letal de Sigla)
+                sigla_anexada = False
                 for k_sap in sap_dict_pista.keys():
                     k_up = str(k_sap).replace(" ", "").upper()
+                    
+                    # 1. Buscamos en el diccionario reparado
                     for f_n, f_s in dict_fertilizantes.items():
                         if f_n in k_up or k_up in f_n:
                             if f_s not in coctel_ganador:
                                 coctel_ganador += f" {f_s}"
+                            sigla_anexada = True
                             break
                             
+                    # 2. PLAN Z: Si aún así el diccionario fallara, Búsqueda de Impacto Directo celda por celda
+                    if not sigla_anexada:
+                        for c_idx in range(len(df_mez.columns) - 1):
+                            for r_idx in range(len(df_mez)):
+                                celda = str(df_mez.iloc[r_idx, c_idx]).replace(" ", "").upper()
+                                if celda != "" and celda != "NAN" and (celda in k_up or k_up in celda):
+                                    # Si encontramos el nombre del fertilizante, miramos a su derecha
+                                    vecina = str(df_mez.iloc[r_idx, c_idx + 1]).strip().upper()
+                                    # Si la vecina tiene entre 1 y 3 letras, es la sigla 100% segura
+                                    if vecina.isalpha() and 1 <= len(vecina) <= 3 and vecina not in ["NAN"]:
+                                        if vecina not in coctel_ganador:
+                                            coctel_ganador += f" {vecina}"
+                                        sigla_anexada = True
+                                        break
+                            if sigla_anexada: break
+                            
+                    if sigla_anexada: break
+
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
                 
                 matriz_datos = []
