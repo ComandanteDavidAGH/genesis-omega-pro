@@ -1079,17 +1079,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
-                    # 💥 RADAR ABSOLUTO DE FERTILIZANTES (Rompe la barrera de las columnas ocultas)
+                    # 💥 ESCÁNER DE PENETRACIÓN PROFUNDA: Encuentra la mini-tabla en cualquier fila o columna
                     for c_idx in range(len(df_mez.columns) - 1):
-                        col_head = str(df_mez.columns[c_idx]).upper()
-                        celda_head = str(df_mez.iloc[0, c_idx]).upper() if len(df_mez) > 0 else ""
-                        if 'FERTILIZANTE' in col_head or 'FERTILIZANTE' in celda_head:
-                            for r_idx in range(len(df_mez)):
-                                f_n = str(df_mez.iloc[r_idx, c_idx]).strip().upper()
-                                f_s = str(df_mez.iloc[r_idx, c_idx + 1]).strip().upper()
-                                if f_n not in ["NAN", "NONE", "FERTILIZANTES", ""] and f_s not in ["NAN", "NONE", "SIGLAS", ""]:
-                                    dict_fertilizantes[f_n.replace(" ", "")] = f_s
-                            break
+                        for r_idx in range(min(200, len(df_mez))): # Escanea hasta 200 filas hacia abajo
+                            celda_val = str(df_mez.iloc[r_idx, c_idx]).strip().upper()
+                            if "FERTILIZANTE" in celda_val:
+                                # ¡Encontramos el título de la mini-tabla! Ahora leemos hacia abajo
+                                for i in range(r_idx + 1, len(df_mez)):
+                                    f_n = str(df_mez.iloc[i, c_idx]).strip().upper()
+                                    f_s = str(df_mez.iloc[i, c_idx + 1]).strip().upper()
+                                    if f_n not in ["", "NAN", "NONE"] and f_s not in ["", "NAN", "NONE", "SIGLAS"]:
+                                        dict_fertilizantes[f_n.replace(" ", "")] = f_s
+                                break # Rompe el ciclo de filas porque ya la encontró
+                        if dict_fertilizantes: break # Rompe el ciclo de columnas si ya llenó el diccionario
 
                     for idx, row in df_mez.iterrows():
                         if len(row) > 3:
@@ -1106,21 +1108,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
-                # 💥 ANCLAJE FORZADO DE LA SIGLA (Busca el fertilizante de SAP en el diccionario y lo pega al título)
+                # 💥 IMPRESIÓN FORZADA EN EL TÍTULO
                 for k_sap in sap_dict_pista.keys():
                     k_up = str(k_sap).replace(" ", "").upper()
-                    sigla_encontrada = ""
-                    if k_up in dict_fertilizantes:
-                        sigla_encontrada = dict_fertilizantes[k_up]
-                    else:
-                        for f_n, f_s in dict_fertilizantes.items():
-                            if f_n in k_up or k_up in f_n:
-                                sigla_encontrada = f_s
-                                break
-                    if sigla_encontrada and sigla_encontrada not in coctel_ganador:
-                        coctel_ganador += f" {sigla_encontrada}"
-                        break
-
+                    for f_n, f_s in dict_fertilizantes.items():
+                        if f_n in k_up or k_up in f_n:
+                            if f_s not in coctel_ganador:
+                                coctel_ganador += f" {f_s}"
+                            break
+                            
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
                 
                 matriz_datos = []
