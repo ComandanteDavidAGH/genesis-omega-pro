@@ -1098,30 +1098,43 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
-                fert_detectado = None
+                fert_detectado_key = None
                 
-                # 💥 ESCÁNER DINÁMICO: Primero verificamos si el piloto ya puso la sigla y si coincide con tu Diccionario de Excel
+                # 💥 1. Chequeo de sigla del piloto
                 if sigla_coctel:
                     for f_n, f_s in dict_fertilizantes.items():
                         if f_s == sigla_coctel: 
-                            fert_detectado = f_n
+                            fert_detectado_key = f_n
                             break
                             
-                # 💥 AUTO-DETECCIÓN LIBRE: Si el piloto no la puso, escaneamos la sábana de SAP buscando CUALQUIER fertilizante de tu diccionario
-                if not fert_detectado:
+                # 💥 2. Escáner libre omnidireccional (A prueba de espacios)
+                if not fert_detectado_key:
                     for k_sap in sap_dict_pista.keys():
+                        k_sap_clean = str(k_sap).replace(" ", "").upper()
                         for f_n, f_s in dict_fertilizantes.items():
-                            if f_n == k_sap or (len(k_sap) >= 4 and f_n in k_sap) or (len(f_n) >= 4 and k_sap in f_n):
-                                fert_detectado = f_n
+                            if f_n == k_sap_clean or (len(k_sap_clean) >= 4 and f_n in k_sap_clean) or (len(f_n) >= 4 and k_sap_clean in f_n):
+                                fert_detectado_key = f_n
                                 sigla_coctel = f_s
                                 break
-                        if fert_detectado:
+                        if fert_detectado_key:
                             break
 
-                if fert_detectado:
-                    dosis_real = obtener_dosis_exacta_fertilizante(df_mez, fert_detectado)
-                    dosis_oficiales_coctel[fert_detectado.replace(" ", "")] = dosis_real
-                    if sigla_coctel not in coctel_ganador: 
+                # 💥 3. Inyección garantizada de Sigla y Dosis Real
+                if fert_detectado_key:
+                    dosis_real = 0.5 # Seguro por defecto
+                    try:
+                        # Buscamos la dosis real ignorando espacios en tu matriz original
+                        for col_idx in range(len(df_mez.columns) - 1):
+                            mask = df_mez.iloc[:, col_idx].astype(str).str.replace(" ", "").str.upper() == fert_detectado_key
+                            if mask.any():
+                                val = pd.to_numeric(df_mez[mask].iloc[0, col_idx+1], errors='coerce')
+                                if pd.notna(val) and val > 0: 
+                                    dosis_real = float(val)
+                                    break
+                    except: pass
+                    
+                    dosis_oficiales_coctel[fert_detectado_key] = dosis_real
+                    if sigla_coctel and sigla_coctel not in coctel_ganador: 
                         coctel_ganador += f" {sigla_coctel}"
 
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
