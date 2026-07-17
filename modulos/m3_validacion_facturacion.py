@@ -116,7 +116,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
     for iter_id, receta in dict_recetas.items():
         puntaje = 0
         
-        # 1. VALIDACIÓN DEL LÍDER (Castigo táctico si no coincide, pero no bloquea)
+        # 1. VALIDACIÓN DEL LÍDER
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -127,22 +127,31 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if not match_lider:
                 puntaje -= 500 
         
-        # 2. ANÁLISIS QUÍMICO RIGUROSO
+        # 2. ANÁLISIS QUÍMICO RIGUROSO CON NIVELES DE PRECISIÓN
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
+            match_perfecto = False
             for k_sap, d_sap in sap_dict_pista.items():
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
+                    error = abs(d_sap - d_esperada)
                     tolerancia = max(0.8, d_esperada * 0.25)
-                    if abs(d_sap - d_esperada) <= tolerancia: 
+                    
+                    # 💥 NUEVO ESCUDO DE PRECISIÓN: Premia la exactitud para desempatar cócteles similares
+                    if error <= 0.15: 
+                        match_perfecto = True
+                        dose_matched = True
+                    elif error <= tolerancia: 
                         dose_matched = True 
                     break
             
             if match_receta:
                 puntaje += 100
-                if dose_matched: 
-                    puntaje += 50 
+                if match_perfecto:
+                    puntaje += 100 # +100 puntos extra por dar en el blanco exacto
+                elif dose_matched: 
+                    puntaje += 50  # +50 puntos si encaja por la tolerancia
                 else:
                     puntaje -= 50
             else:
@@ -165,7 +174,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if not is_fert:
                     puntaje -= 100 
 
-        # 💥 SUPREMACÍA DEL PILOTO REDUCIDA: Ahora vale +200. La química (SAP) manda.
+        # SUPREMACÍA DEL PILOTO
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
             puntaje += 200
 
@@ -186,7 +195,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
-
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
