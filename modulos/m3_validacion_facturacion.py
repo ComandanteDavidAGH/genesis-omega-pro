@@ -675,6 +675,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             else:
                 st.error("🚨 No se pudo restaurar la base de datos.") 
 
+    # 🚀 BOTÓN DE SINCRONIZACIÓN DE ALTA GAMA PARA EL MÓDULO 3
+    col_vacia, col_sync = st.columns([3, 1])
+    if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
+        st.cache_data.clear()
+        st.toast("✅ Módulo 3 Sincronizado y Memoria Vaciada.", icon="🔄")
+        st.rerun()
+
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operations")
     
@@ -1254,7 +1261,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         return f"🔴 FUERA RANGO ({'+++' if desviacion > 0 else '---'})"
 
                 df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
-                costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(lambda x: math.floor(x + 0.5)).sum()
 
                 columnas_ordenadas = [
                     "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
@@ -1263,8 +1269,33 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
 
+                # 💥 PINTOR TÁCTICO: Colorea la celda "Dosis Ideal" según su peligro
+                def estilizar_dosis_ideal(row):
+                    estilos = [''] * len(row)
+                    try:
+                        idx = row.index.get_loc("D: Dosis Total (Sistema)")
+                        sistema = float(row["D: Dosis Total (Sistema)"])
+                        sugerido = float(row["I: Sugerido SAP (Total)"])
+                        diferencia = sugerido - sistema
+                        
+                        if diferencia < -1.0: 
+                            # Grave: SAP envió menos de lo ideal (Peligro rojo, sub-dosificación)
+                            estilos[idx] = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
+                        elif diferencia > 1.0: 
+                            # Advertencia: SAP envió de más (Recomendación técnica, amarillo/naranja)
+                            estilos[idx] = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
+                        else: 
+                            # Óptimo: Verde
+                            estilos[idx] = 'background-color: #d4edda; color: #155724; font-weight: bold;'
+                    except:
+                        pass
+                    return estilos
+
+                # Aplicamos el estilo a la matriz antes de enviarla al editor visual
+                df_estilizado = df_matriz.style.apply(estilizar_dosis_ideal, axis=1)
+
                 edited_df = st.data_editor(
-                    df_matriz,
+                    df_estilizado, # Usamos el DataFrame con los colores inyectados
                     key=llave_editor_casilla,
                     column_config={
                         "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
