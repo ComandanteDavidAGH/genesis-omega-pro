@@ -1079,6 +1079,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
+                    # 💥 ESCÁNER DE RADAR: Encuentra las columnas exactas sin importar dónde las mueva Excel
+                    idx_fert, idx_sigla = -1, -1
+                    for i, col in enumerate(df_mez.columns):
+                        if 'FERTILIZANTE' in str(col).upper(): idx_fert = i
+                        if 'SIGLA' in str(col).upper(): idx_sigla = i
+                        
+                    if idx_fert == -1 or idx_sigla == -1:
+                        for i in range(min(30, len(df_mez))):
+                            for j, val in enumerate(df_mez.iloc[i]):
+                                if 'FERTILIZANTE' in str(val).upper(): idx_fert = j
+                                elif 'SIGLA' in str(val).upper(): idx_sigla = j
+                            if idx_fert != -1 and idx_sigla != -1: break
+
                     for idx, row in df_mez.iterrows():
                         if len(row) > 3:
                             cid = str(row.iloc[0]).strip().upper()
@@ -1091,11 +1104,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 dict_recetas[cid][p_tabla_clean] = d_tabla
                                 if es_lider: 
                                     dict_lideres[cid] = p_tabla_clean
-                        if len(row) > 13:
-                            fert_name, fert_sigla = str(row.iloc[12]).strip().upper(), str(row.iloc[13]).strip().upper()
-                            if fert_name and fert_sigla and fert_name not in ["NAN", "FERTILIZANTES", ""]:
+                                    
+                        # 💥 CONSTRUCCIÓN BLINDADA DE FERTILIZANTES
+                        if idx_fert != -1 and idx_sigla != -1 and len(row) > max(idx_fert, idx_sigla):
+                            fert_name = str(row.iloc[idx_fert]).strip().upper()
+                            fert_sigla = str(row.iloc[idx_sigla]).strip().upper()
+                            if fert_name not in ["NAN", "FERTILIZANTES", "NONE", ""] and fert_sigla not in ["NAN", "SIGLAS", "NONE", ""]:
                                 dict_fertilizantes[fert_name.replace(" ", "")] = fert_sigla
-
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
                 fert_detectado_key = None
@@ -1223,6 +1238,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
+                    # 💥 RESCATE ABSOLUTO DE DOSIS: Si el producto no estaba en la receta base, lo buscamos en todo el Excel (Aplica para Fosfostress y Siganex extra)
+                    if dosis_teorica is None:
+                        try:
+                            for col_idx in range(len(df_mez.columns) - 1):
+                                mask = df_mez.iloc[:, col_idx].astype(str).str.replace(" ", "").str.upper() == nombre_limpio
+                                if mask.any():
+                                    val_rescatado = pd.to_numeric(df_mez[mask].iloc[0, col_idx+1], errors='coerce')
+                                    if pd.notna(val_rescatado) and val_rescatado > 0:
+                                        dosis_teorica = float(val_rescatado)
+                                        break
+                        except: pass
+
+                    # Si definitivamente el Excel no lo tiene registrado, hacemos la división de emergencia
                     if dosis_teorica is None: 
                         dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                         
