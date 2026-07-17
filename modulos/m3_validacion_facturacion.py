@@ -1269,24 +1269,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
 
-                # 💥 PINTOR TÁCTICO: Colorea la celda "Dosis Ideal" según su peligro
+                # 💥 PINTOR TÁCTICO: Colorea la celda "Dosis Ideal" y "Sugerido SAP" según su peligro
                 def estilizar_dosis_ideal(row):
                     estilos = [''] * len(row)
                     try:
-                        idx = row.index.get_loc("D: Dosis Total (Sistema)")
+                        idx_sistema = row.index.get_loc("D: Dosis Total (Sistema)")
+                        idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
+                        
                         sistema = float(row["D: Dosis Total (Sistema)"])
                         sugerido = float(row["I: Sugerido SAP (Total)"])
                         diferencia = sugerido - sistema
                         
                         if diferencia < -1.0: 
-                            # Grave: SAP envió menos de lo ideal (Peligro rojo, sub-dosificación)
-                            estilos[idx] = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
+                            # Grave: SAP envió menos de lo ideal (Peligro rojo, sub-dosificación humana)
+                            color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
                         elif diferencia > 1.0: 
                             # Advertencia: SAP envió de más (Recomendación técnica, amarillo/naranja)
-                            estilos[idx] = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
+                            color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                         else: 
                             # Óptimo: Verde
-                            estilos[idx] = 'background-color: #d4edda; color: #155724; font-weight: bold;'
+                            color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
+                            
+                        estilos[idx_sistema] = color
+                        estilos[idx_sap] = color
                     except:
                         pass
                     return estilos
