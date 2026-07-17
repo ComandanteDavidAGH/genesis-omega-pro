@@ -38,13 +38,17 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     </style>
     """, unsafe_allow_html=True)
     
-    # --- 🔴 BOTÓN DE EMBARQUE PARA FORZAR LA LECTURA DEL EXCEL ---
-    col_emergencia, col_vacia = st.columns([2, 2])
-    if col_emergencia.button("⚠️ LIMPIAR MEMORIA Y TRAER CAMBIOS DEL EXCEL", type="primary", use_container_width=True):
+    # ====================================================================
+    # 💥 DESTRUCTOR DE MEMORIA ABSOLUTO (Forzar lectura real de Drive)
+    # ====================================================================
+    col_vacia, col_sync = st.columns([3, 1])
+    if col_sync.button("🔄 Sincronizar Datos", type="primary", use_container_width=True, key="btn_sync_m8"):
+        st.cache_data.clear() # 1. Destruye la foto vieja de Google Sheets
         if 'm8_datos_crudos' in st.session_state:
-            del st.session_state['m8_datos_crudos']
-        st.toast("Memoria vaciada. Extrayendo datos frescos de Google Sheets...", icon="🔄")
+            del st.session_state['m8_datos_crudos'] # 2. Destruye la memoria de la pantalla
+        st.toast("✅ Memoria vieja destruida. Descargando datos frescos de Drive...", icon="🔄")
         st.rerun()
+    st.markdown("---")
 
     def extraer_numero(val):
         if pd.isna(val) or val is None or str(val).strip() == "": return 0.0
