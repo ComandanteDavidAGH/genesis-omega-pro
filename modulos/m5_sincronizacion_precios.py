@@ -126,45 +126,35 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
         st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
         
-        if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
-            with st.spinner("📡 Descargando arsenal de precios desde Supabase Cloud..."):
-                try:
-                    respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
-                    raw_config = respuesta.data
-                    
-                    lista_precios = []
-                    for row in raw_config:
-                        prod = str(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                        
-                        es_cero_basura = False
-                        try:
-                            if float(prod) == 0:
-                                es_cero_basura = True
-                        except ValueError:
-                            pass
-                            
-                        if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
-                            # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
-                            costo_base = rastrear_precio_real(row)
-                            
-                            if costo_base > 0:
-                                lista_precios.append({
-                                    "PRODUCTO": prod,
-                                    "COSTO BASE": costo_base,
-                                    "TERCERO (+45.1%)": round(costo_base * 1.451, 0),
-                                    "AFILIADO (+16.4%)": round(costo_base * 1.164, 0),
-                                    "COOPERATIVA / SOCIO (+11.2%)": round(costo_base * 1.112, 0),
-                                    "ORGÁNICO (+1.1%)": round(costo_base * 1.011, 0)
-                                })
-                    
-                    if lista_precios:
-                        df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
-                        st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos extraídos de la columna COSTO.")
-                    else:
-                        st.warning("⚠️ No se pudieron procesar los valores numéricos de la columna COSTO.")
-                except Exception as e:
-                    st.error(f"🚨 Error al consultar Supabase: {e}")
+        # ====================================================================
+                            # 💥 PROTOCOLO LÁSER: UPSERT MANUAL ANTI-FANTASMAS
+                            # ====================================================================
+                            if 'supabase' in st.session_state:
+                                try:
+                                    cliente_sb = st.session_state['supabase']
+                                    with st.spinner("🌪️ Inyectando precios a la fuerza en Supabase..."):
+                                        contador = 0
+                                        for fila in data_full[1:]:
+                                            prod = fila[8] if len(fila) > 8 else ""
+                                            val_k = fila[10] if len(fila) > 10 else ""
+                                            
+                                            if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                                                prod_limpio = str(prod).strip().upper()
+                                                precio_limpio = extraer_numero(val_k)
+                                                
+                                                if precio_limpio > 0:
+                                                    # 1. Ataque de actualización (Ignora espacios extra ocultos en Supabase)
+                                                    res = cliente_sb.table("PRECIOS_INSUMOS").update({"COSTO": str(precio_limpio)}).ilike("PRODUCTO", f"%{prod_limpio}%").execute()
+                                                    
+                                                    # 2. Si la base de datos no lo tenía, lo insertamos nuevo obligatoriamente
+                                                    if not res.data:
+                                                        cliente_sb.table("PRECIOS_INSUMOS").insert({"PRODUCTO": prod_limpio, "COSTO": str(precio_limpio)}).execute()
+                                                    
+                                                    contador += 1
+                                        
+                                        st.success(f"🎯 MISIÓN CUMPLIDA: {contador} precios anclados en Supabase de forma definitiva.")
+                                except Exception as e:
+                                    st.error(f"🚨 Falla en la inyección de Supabase: {e}")
                     
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
