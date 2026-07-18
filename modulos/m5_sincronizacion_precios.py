@@ -283,7 +283,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                 
                                 if prod and precio_final > 0:
                                     dict_precios[prod] = precio_final
-
                             sh_dest = gc.open_by_url(url_dest)
                             ws_datos = sh_dest.worksheet("DATOS")
                             datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
