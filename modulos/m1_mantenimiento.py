@@ -232,13 +232,14 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
                             # ====================================================================
-                            # 💥 PROTOCOLO WIPE & WRITE CON ESCUDO ANTI-DUPLICADOS
+                            # 💥 PROTOCOLO DE INYECCIÓN ABSOLUTA (WIPE & WRITE PURIFICADO)
                             # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
                                     cliente_sb = st.session_state['supabase']
-                                    with st.spinner("🌪️ Purificando duplicados y forzando inyección en Supabase..."):
-                                        # 1. Escudo Anti-Duplicados (Filtra en la memoria RAM)
+                                    with st.spinner("🌪️ Extrayendo y purificando arsenal para Supabase..."):
+                                        
+                                        # 1. Escudo anti-duplicados estricto en RAM
                                         dict_unicos = {}
                                         for fila in data_full[1:]:
                                             prod = fila[8] if len(fila) > 8 else ""
@@ -246,29 +247,27 @@ def ejecutar(extraer_numero):
                                             
                                             if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
                                                 prod_limpio = str(prod).strip().upper()
-                                                precio_limpio = float(extraer_numero(val_k))
-                                                
-                                                # Al usar un diccionario, si el producto se repite en el Excel, 
-                                                # Python simplemente sobrescribe y guarda el último precio válido.
-                                                dict_unicos[prod_limpio] = str(precio_limpio)
-                                                
-                                        # 2. Empaquetado de datos puros (Garantizado sin repeticiones)
+                                                # Guardamos el valor como string crudo para que Postgres no lo rechace por formato
+                                                dict_unicos[prod_limpio] = str(val_k).strip()
+                                        
                                         records_espejo = [{"PRODUCTO": k, "COSTO": v} for k, v in dict_unicos.items()]
-                                                
+                                        
                                         if records_espejo:
-                                            # 3. BORRADO SEGURO: Vacía la tabla
-                                            cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
+                                            # 2. BARRIDO NUCLEAR: Forzamos el vaciado total de la tabla primero
+                                            cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO_FORZADO").execute()
                                             
-                                            # 4. INSERCIÓN DIRECTA: La Llave Primaria ahora sí lo aceptará todo
+                                            # 3. INYECCIÓN DIRECTA: Inserción en bloque limpia
                                             res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
                                             
                                             if res.data:
-                                                st.success(f"✅ ¡GOLPE MAESTRO! {len(res.data)} precios ÚNICOS anclados en Supabase.")
+                                                st.success(f"✅ ¡SISTEMA ALINEADO! Se han subido {len(res.data)} precios únicos a Supabase Cloud.")
                                             else:
-                                                st.error("🚨 La base de datos rechazó la inyección (No devolvió confirmación).")
+                                                st.error("🚨 Supabase recibió la orden pero rechazó el almacenamiento físico de las filas.")
+                                        else:
+                                            st.warning("⚠️ No se encontraron filas válidas en el Excel para procesar.")
                                                 
                                 except Exception as e:
-                                    st.error(f"🚨 Falla crítica en Supabase: {e}")
+                                    st.error(f"🚨 Falla Crítica de Inyección en Módulo 1: {e}")
                          
                         st.balloons()
                         st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura y se sincronizó la caché en la nube.")
