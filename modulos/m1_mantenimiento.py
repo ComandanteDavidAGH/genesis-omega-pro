@@ -209,73 +209,76 @@ def ejecutar(extraer_numero):
                     st.error(f"Error crítico al escanear los tableros: {e}")
  
         if st.session_state.get('datos_para_sincronizar'):
-            st.markdown("---")
-            if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
-                with st.spinner("Inyectando quirúrgicamente Columna K en Columna J..."):
-                    try:
-                        gc = inicializar_cliente_gspread()
-                        if gc is None:
-                            st.error("🚨 Enlace satelital roto antes del volcado.")
-                            st.stop()
-                            
-                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-                        ws_conf = sh.worksheet("Configuración")
-                        data_full = ws_conf.get_all_values()
+            # 💥 CAMBIO ESTRATÉGICO: Botón de Inyección con Diagnóstico Extremo
+        st.markdown("---")
+        if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
+            with st.spinner("Inyectando quirúrgicamente Columna K en Columna J y Supabase..."):
+                try:
+                    gc = inicializar_cliente_gspread()
+                    if gc is None:
+                        st.error("🚨 Enlace satelital roto con Google Drive.")
+                        st.stop()
                         
-                        valores_para_j = []
-                        for fila in data_full[1:]:
-                            valor_k = fila[10] if len(fila) > 10 else ""
-                            valores_para_j.append([valor_k])
-                         
-                        if valores_para_j:
-                            rango_destino = f"J2:J{len(valores_para_j) + 1}"
-                            ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
+                    sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    ws_conf = sh.worksheet("Configuración")
+                    data_full = ws_conf.get_all_values()
+                    
+                    valores_para_j = []
+                    for fila in data_full[1:]:
+                        valor_k = fila[10] if len(fila) > 10 else ""
+                        valores_para_j.append([valor_k])
+                     
+                    if valores_para_j:
+                        rango_destino = f"J2:J{len(valores_para_j) + 1}"
+                        ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
+                        st.success("✅ Paso 1: Excel actualizado perfectamente en Google Drive.")
+                        
+                    # ====================================================================
+                    # 💥 MIGRACIÓN A SUPABASE CON DETECTOR DE FALLOS EN VIVO
+                    # ====================================================================
+                    if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
+                        st.error("❌ ERROR CRÍTICO DE ENLACE: La conexión a Supabase se borró de la memoria RAM. SOLUCIÓN: Ve al menú lateral izquierdo, haz clic en 'Centro de Mando' (o Inicio) para que el sistema reconecte, y luego vuelve aquí al Módulo 1.")
+                    else:
+                        try:
+                            cliente_sb = st.session_state['supabase']
                             
-                            # ====================================================================
-                            # 💥 MIGRACIÓN BLINDADA A LAS 4 COLUMNAS DE SUPABASE
-                            # ====================================================================
-                            if 'supabase' in st.session_state:
-                                try:
-                                    cliente_sb = st.session_state['supabase']
-                                    
-                                    # 1. Purificación estricta anti-duplicados en RAM
-                                    dict_unicos = {}
-                                    for fila in data_full[1:]:
-                                        prod = fila[8] if len(fila) > 8 else ""
-                                        val_k = fila[10] if len(fila) > 10 else ""
-                                        
-                                        if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
-                                            prod_limpio = str(prod).strip().upper()
-                                            dict_unicos[prod_limpio] = str(val_k).strip()
-                                    
-                                    # 2. Construcción del payload satisfaciendo la estructura de la BD
-                                    records_espejo = [
-                                        {
-                                            "PRODUCTO": k, 
-                                            "COSTO": v,
-                                            "Columna2": "",
-                                            "valor a devolver": ""
-                                        } for k, v in dict_unicos.items()
-                                    ]
-                                    
-                                    if records_espejo:
-                                        # 3. Vaciado previo para evitar colisiones
-                                        cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
-                                        
-                                        # 4. Inserción masiva autorizada
-                                        res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
-                                        
-                                        if res.data:
-                                            st.success(f"⚡ NUBE SINCRONIZADA: {len(records_espejo)} precios maestros migrados con éxito a Supabase.")
-                                        else:
-                                            st.error("🚨 Supabase rechazó el almacenamiento físico de las filas.")
-                                except Exception as esb:
-                                    st.error(f"🚨 Alerta en canal de Supabase: {esb}")
+                            dict_unicos = {}
+                            for fila in data_full[1:]:
+                                prod = fila[8] if len(fila) > 8 else ""
+                                val_k = fila[10] if len(fila) > 10 else ""
+                                
+                                if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                                    prod_limpio = str(prod).strip().upper()
+                                    dict_unicos[prod_limpio] = str(val_k).strip()
                             
-                        st.balloons()
-                        st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura.")
-                        del st.session_state['datos_para_sincronizar']
-                    except Exception as e:
-                        st.error(f"🚨 FALLA EN LA INYECCIÓN EN CALIENTE: {e}")
+                            records_espejo = [
+                                {
+                                    "PRODUCTO": k, 
+                                    "COSTO": v,
+                                    "Columna2": "",
+                                    "valor a devolver": ""
+                                } for k, v in dict_unicos.items()
+                            ]
+                            
+                            if not records_espejo:
+                                st.warning("⚠️ No se encontraron productos válidos para subir.")
+                            else:
+                                st.info("🧹 Paso 2: Limpiando la base de datos antigua en Supabase...")
+                                cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
+                                
+                                st.info(f"🚀 Paso 3: Inyectando {len(records_espejo)} registros frescos en la nube...")
+                                res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                                
+                                if res.data:
+                                    st.success(f"⚡ ¡VICTORIA ABSOLUTA! Nube Supabase Sincronizada con {len(res.data)} productos.")
+                                    st.balloons()
+                                else:
+                                    st.error("🚨 Supabase recibió la orden pero rechazó los datos. Revisa la estructura de la tabla.")
+                                    
+                        except Exception as esb:
+                            st.error(f"🚨 El motor de Supabase ha fallado con este error exacto: {esb}")
+                            
+                except Exception as e:
+                    st.error(f"🚨 FALLA GENERAL DEL SISTEMA: {e}")
 if __name__ == "__main__":
     pass
