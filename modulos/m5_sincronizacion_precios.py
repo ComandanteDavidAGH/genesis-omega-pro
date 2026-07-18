@@ -12,26 +12,19 @@ def inicializar_cliente_gspread():
         return None
 
 def purificar_y_convertir_precio(valor_crudo):
-    """ Convierte cualquier formato de texto de SAP/Excel a un número flotante real """
     if not valor_crudo:
         return 0.0
-    
-    # Limpieza de caracteres cosméticos
     val_str = str(valor_crudo).replace("$", "").replace("COP", "").replace(" ", "").strip()
-    
-    # Manejo de formatos de miles y decimales cruzados (Ej: 11.953,50 o 11,953.50)
     if "," in val_str and "." in val_str:
         if val_str.find(".") < val_str.find(","):
             val_str = val_str.replace(".", "").replace(",", ".")
         else:
             val_str = val_str.replace(",", "")
     elif "," in val_str:
-        # Si tiene solo comas, asumimos formato decimal o miles según el contexto de SAP
         if len(val_str.split(",")[-1]) == 2:
             val_str = val_str.replace(",", ".")
         else:
             val_str = val_str.replace(",", "")
-            
     try:
         return float(val_str)
     except ValueError:
@@ -58,6 +51,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         st.error("🚨 El enlace principal con Supabase no está inicializado.")
         return
 
+    gc = inicializar_cliente_gspread()
+
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Computo de Perfiles)")
@@ -74,7 +69,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             val_costo = row.get("COSTO", "0")
                             
                             if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod:
-                                # Aplicamos el purificador numérico avanzado para romper el estancamiento
                                 costo_base = purificar_y_convertir_precio(val_costo)
                                 
                                 if costo_base > 0:
@@ -90,7 +84,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ ¡TARIFARIO DESPLEGADO! {len(lista_precios)} productos mapeados con sus respectivos márgenes comerciales.")
+                        st.success(f"✅ ¡TARIFARIO DESPLEGADO! {len(lista_precios)} productos mapeados con márgenes.")
                     else:
                         st.error("🚨 Error matemático: Supabase respondió, pero la columna COSTO contiene formatos ilegibles o la tabla está vacía.")
                 except Exception as e:
@@ -110,11 +104,11 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     <p class="hud-tarifas-value">🧪 {total_quimicos_tarifados} ítems</p>
                 </div>
                 <div class="hud-tarifas-item">
-                    <p class="hud-tarifas-title">Costo Promedio Mercado</p>
+                    <p class="hud-tarifas-title">Costo Promedio</p>
                     <p class="hud-tarifas-value">💵 $ {costo_medio_base:,.0f}</p>
                 </div>
                 <div class="hud-tarifas-item">
-                    <p class="hud-tarifas-title">Tope Máximo de Venta</p>
+                    <p class="hud-tarifas-title">Tope Máximo</p>
                     <p class="hud-tarifas-value">📈 $ {costo_maximo_comercial:,.0f}</p>
                 </div>
             </div>
@@ -132,9 +126,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 
             with t2:
                 st.markdown("#### Caja de Copiado Masivo para SAP")
-                col_margen = st.selectbox("Seleccione el Perfil de Productor para exportar:", 
+                col_margen = st.selectbox("Seleccione el Perfil de Productor:", 
                                           ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
-                
                 lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
                 st.code("\n".join(lista_textos), language="text")
                     
@@ -151,17 +144,157 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COSTO BASE"]))
                     with c2: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO<br>(+1.1%)</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
                     with c3: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP<br>(+11.2%)</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
                     with c4: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO<br>(+16.4%)</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
                     with c5: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO<br>(+45.1%)</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
+
+    # --- 🚀 SECCIÓN INFERIOR RESTAURADA: OMEGA V12 ---
+    st.markdown("---")
+    st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
+    
+    with st.container(border=True):
+        c_url1, c_url2 = st.columns(2)
+        with c_url1:
+            st.text_input("🔗 1. Base de Origen Activa:", value="DATABASE: Supabase Cloud [PRECIOS_INSUMOS]", disabled=True)
+        with c_url2:
+            url_dest = st.text_input("🎯 2. URL de Sábana Destino (Google Sheets):", placeholder="Pegue el enlace completo aquí...")
+        
+        semana_target = st.number_input("🔢 Digite la Semana a actualizar (1 a 53):", min_value=1, max_value=53, value=24, step=1)
+        
+        c_btn1, c_btn2 = st.columns(2)
+        
+        with c_btn1:
+            if st.button("📊 PREVISUALIZAR COMPORTAMIENTO DE PRECIOS POR DOSIS", use_container_width=True, type="secondary"):
+                if gc is None:
+                    st.error("🚨 Enlace satelital roto con Google Cloud.")
+                elif not url_dest or "http" not in url_dest:
+                    st.error("❌ Ingrese la URL de destino para previsualizar.")
+                else:
+                    try:
+                        with st.spinner("🕵️‍♂️ Calculando Comportamiento Operativo..."):
+                            respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
+                            dict_precios = {}
+                            for row in respuesta.data:
+                                prod = limpiar_texto_vba(row.get('PRODUCTO', '')).upper().strip()
+                                precio_final = purificar_y_convertir_precio(row.get('COSTO', 0))
+                                if prod and precio_final > 0:
+                                    dict_precios[prod] = precio_final
+
+                            sh_dest = gc.open_by_url(url_dest)
+                            ws_datos = sh_dest.worksheet("DATOS")
+                            datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
+                            
+                            idx_fila_semanas = 6
+                            for idx, r in enumerate(datos_dest[:12]):
+                                r_str = [str(cell).strip().split('.')[0] for cell in r]
+                                if any(w in r_str for w in ["11", "12", "13", "18"]):
+                                    idx_fila_semanas = idx
+                                    break
+                            
+                            filas_comp = []
+                            for r_idx, row in enumerate(datos_dest):
+                                n_fila = r_idx + 1
+                                if n_fila < (idx_fila_semanas + 2): continue
+                                
+                                row_padded = row + [""] * (15 - len(row)) if len(row) < 15 else row
+                                tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
+                                producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
+                                
+                                if producto_dest in dict_precios:
+                                    precio_pleno = dict_precios[producto_dest]
+                                    dosis_valor = extraer_numero(row_padded[0])
+                                    
+                                    if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
+                                        valor_dosis = precio_pleno * dosis_valor if dosis_valor > 0 else 0
+                                        formula = f"{dosis_valor} Dosis × $ {precio_pleno:,.0f}"
+                                    else:
+                                        valor_dosis = precio_pleno
+                                        formula = "Precio Unitario Directo"
+                                        
+                                    filas_comp.append({
+                                        "Fila SAP": n_fila,
+                                        "Tipo de Registro": tipo_tabla,
+                                        "Insumo / Producto": producto_dest,
+                                        "Precio Final Calculado": valor_dosis,
+                                        "Lógica de Impacto": formula
+                                    })
+                            
+                            if filas_comp:
+                                st.dataframe(pd.DataFrame(filas_comp), use_container_width=True, hide_index=True)
+                            else:
+                                st.warning("⚠️ No se encontraron coincidencias.")
+                    except Exception as e:
+                        st.error(f"🚨 Falla en análisis: {e}")
+
+        with c_btn2:
+            if st.button("🚀 EJECUTAR SINCRONIZACIÓN OMEGA V12", use_container_width=True, type="primary"):
+                if gc is None:
+                    st.error("🚨 Enlace satelital roto con Google Cloud.")
+                    return
+                try:
+                    with st.status("🕵️‍♂️ CONECTANDO CON CÉLULA SUPABASE...", expanded=True) as status:
+                        respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
+                        dict_precios = {}
+                        for row in respuesta.data:
+                            prod = limpiar_texto_vba(row.get('PRODUCTO', '')).upper().strip()
+                            precio_final = purificar_y_convertir_precio(row.get('COSTO', 0))
+                            if prod and precio_final > 0:
+                                dict_precios[prod] = precio_final
+                        
+                        sh_dest = gc.open_by_url(url_dest)
+                        ws_datos = sh_dest.worksheet("DATOS")
+                        datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
+                        
+                        idx_fila_semanas = 6
+                        for idx, r in enumerate(datos_dest[:12]):
+                            r_str = [str(cell).strip().split('.')[0] for cell in r]
+                            if any(w in r_str for w in ["11", "12", "13", "18"]):
+                                idx_fila_semanas = idx
+                                break
+                        
+                        col_semana = -1
+                        for i, v in enumerate(datos_dest[idx_fila_semanas]):
+                            if str(v).strip().split('.')[0] == str(semana_target):
+                                col_semana = i + 1
+                                break
+                        
+                        if col_semana == -1: col_semana = int(semana_target) + 5
+                        
+                        updates = [{'range': gspread.utils.rowcol_to_a1(idx_fila_semanas + 1, col_semana), 'values': [[int(semana_target)]]}]
+                        
+                        for r_idx, row in enumerate(datos_dest):
+                            n_fila = r_idx + 1
+                            if n_fila < (idx_fila_semanas + 2): continue
+                            
+                            row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
+                            tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
+                            producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
+                            
+                            if producto_dest in dict_precios:
+                                precio_unitario = dict_precios[producto_dest]
+                                if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
+                                    dosis_valor = extraer_numero(row_padded[0])
+                                    valor_final = precio_unitario * dosis_valor if dosis_valor > 0 else 0
+                                else:
+                                    valor_final = precio_unitario
+                                    
+                                updates.append({'range': gspread.utils.rowcol_to_a1(n_fila, col_semana), 'values': [[valor_final]]})
+
+                        if len(updates) > 1:
+                            ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
+                            status.update(label="🎯 ¡MÓDULO DE DOSIS AJUSTADO!", state="complete")
+                            st.success(f"🎉 Precios impactados en la columna {col_semana}.")
+                            st.balloons()
+                except Exception as e:
+                    st.error(f"🚨 FALLA EN LA INYECCIÓN: {e}")
 
 if __name__ == "__main__":
     pass
