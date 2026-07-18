@@ -277,13 +277,12 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                             dict_precios = {}
                             for row in respuesta.data:
-                                for row in respuesta.data:
-                            prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                            # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
-                            precio_final = rastrear_precio_real(row)
-                            
-                            if prod and precio_final > 0:
-                                dict_precios[prod] = precio_final
+                                prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
+                                # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
+                                precio_final = rastrear_precio_real(row)
+                                
+                                if prod and precio_final > 0:
+                                    dict_precios[prod] = precio_final
 
                             sh_dest = gc.open_by_url(url_dest)
                             ws_datos = sh_dest.worksheet("DATOS")
