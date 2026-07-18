@@ -232,12 +232,12 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
                             # ====================================================================
-                            # 💥 PROTOCOLO BLINDADO: UPSERT EN NUBE
+                            # 💥 PROTOCOLO DE INYECCIÓN FORZADA (WIPE & WRITE)
                             # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
                                     cliente_sb = st.session_state['supabase']
-                                    with st.spinner("🌪️ Inyectando arsenal en Supabase..."):
+                                    with st.spinner("🌪️ Forzando inyección en Supabase..."):
                                         records_espejo = []
                                         for fila in data_full[1:]:
                                             prod = fila[8] if len(fila) > 8 else ""
@@ -253,11 +253,19 @@ def ejecutar(extraer_numero):
                                                 })
                                                 
                                         if records_espejo:
-                                            # 💥 GOLPE MAESTRO: 'upsert' sobrescribe duplicados sin generar error
-                                            cliente_sb.table("PRECIOS_INSUMOS").upsert(records_espejo, on_conflict="PRODUCTO").execute()
+                                            # 1. BORRADO SEGURO: Vacía la tabla (Sabemos que esto sí funciona)
+                                            cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
                                             
+                                            # 2. INSERCIÓN DIRECTA: Mete todos los datos limpios de un solo golpe
+                                            res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                                            
+                                            if res.data:
+                                                st.success(f"✅ ¡GOLPE MAESTRO! {len(res.data)} precios anclados en Supabase.")
+                                            else:
+                                                st.error("🚨 La base de datos rechazó la inyección.")
+                                                
                                 except Exception as e:
-                                    st.error(f"🚨 Falla al inyectar en Supabase: {e}")
+                                    st.error(f"🚨 Falla crítica en Supabase: {e}")
                          
                         st.balloons()
                         st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura y se sincronizó la caché en la nube.")
