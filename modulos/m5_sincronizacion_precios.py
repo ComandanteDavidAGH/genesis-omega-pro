@@ -114,7 +114,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             </div>
             """, unsafe_allow_html=True)
             
-            t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Copia Individual"])
+            t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Consulta Multi-Producto"])
             
             with t1:
                 st.markdown("#### Matriz de Costos y Márgenes Oficiales")
@@ -132,10 +132,21 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 st.code("\n".join(lista_textos), language="text")
                     
             with t3:
-                st.markdown("#### Búsqueda Rápida Individual")
-                prod_sel = st.selectbox("🔍 Seleccione Producto:", df_t["PRODUCTO"].tolist())
-                if prod_sel:
+                st.markdown("#### Búsqueda Rápida de Costos y Márgenes")
+                
+                # 💥 LA EVOLUCIÓN: Mutación de selectbox a multiselect con precarga inteligente
+                opciones_productos = df_t["PRODUCTO"].tolist()
+                prods_sel = st.multiselect(
+                    "🔍 Seleccione uno o varios Productos para comparar:", 
+                    options=opciones_productos,
+                    default=[opciones_productos[0]] if opciones_productos else []
+                )
+                
+                # Despliegue en cascada controlada por cada elemento seleccionado
+                for prod_sel in prods_sel:
                     datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
+                    
+                    st.markdown(f"#### 🧪 Arsenal: `{prod_sel}`")
                     c1, c2, c3, c4, c5 = st.columns(5)
                     caja_titulo = "height: 45px; display: flex; align-items: flex-end; margin-bottom: 5px;"
                     estilo_etiqueta = "font-size: 11px; font-weight: 900; color: #0d1b2a; margin: 0; line-height: 1.2;"
@@ -144,17 +155,18 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COSTO BASE"]))
                     with c2: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO<br>(+1.1%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
                     with c3: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP<br>(+11.2%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
                     with c4: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO<br>(+16.4%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
                     with c5: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO</p></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO<br>(+45.1%)</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
+                    st.markdown("<hr style='border:1px dashed #d4af37; margin-top:5px; margin-bottom:20px;'/>", unsafe_allow_html=True)
 
     # --- 🚀 SECCIÓN INFERIOR COMPLETA: OMEGA V12 ---
     st.markdown("---")
