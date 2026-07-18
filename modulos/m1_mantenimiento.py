@@ -232,18 +232,13 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
                             # ====================================================================
-                            # 💥 PROTOCOLO TIERRA ARRASADA: PURGA Y SINCRONIZACIÓN ABSOLUTA EN NUBE
+                            # 💥 PROTOCOLO BLINDADO: UPSERT EN NUBE
                             # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
                                     cliente_sb = st.session_state['supabase']
-                                    with st.spinner("🌪️ Ejecutando Protocolo Tierra Arrasada en Supabase (Limpieza profunda)..."):
-                                        # 1. PURGA TOTAL: Borramos todo para evitar fantasmas y espacios ocultos
-                                        cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "X_VACIO_X").execute()
-                                        cliente_sb.table("sap_precios_config").delete().neq("producto", "X_VACIO_X").execute()
-                                        
+                                    with st.spinner("🌪️ Inyectando arsenal en Supabase..."):
                                         records_espejo = []
-                                        records_legacy = []
                                         for fila in data_full[1:]:
                                             prod = fila[8] if len(fila) > 8 else ""
                                             val_k = fila[10] if len(fila) > 10 else ""
@@ -256,15 +251,10 @@ def ejecutar(extraer_numero):
                                                     "PRODUCTO": prod_limpio,
                                                     "COSTO": str(precio_limpio)
                                                 })
-                                                records_legacy.append({
-                                                    "producto": prod_limpio,
-                                                    "precio_establecido": precio_limpio
-                                                })
                                                 
                                         if records_espejo:
-                                            # 2. INYECCIÓN FRESCA: Metemos la base de datos de Drive intacta a Supabase
-                                            cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
-                                            cliente_sb.table("sap_precios_config").insert(records_legacy).execute()
+                                            # 💥 GOLPE MAESTRO: 'upsert' sobrescribe duplicados sin generar error
+                                            cliente_sb.table("PRECIOS_INSUMOS").upsert(records_espejo, on_conflict="PRODUCTO").execute()
                                             
                                 except Exception as e:
                                     st.error(f"🚨 Falla al inyectar en Supabase: {e}")
