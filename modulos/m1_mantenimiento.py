@@ -231,11 +231,19 @@ def ejecutar(extraer_numero):
                             rango_destino = f"J2:J{len(valores_para_j) + 1}"
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
-                            # INTEGRACIÓN SUPABASE: Sincronizar el espejo del arsenal actualizado de precios
+                            # ====================================================================
+                            # 💥 PROTOCOLO TIERRA ARRASADA: PURGA Y SINCRONIZACIÓN ABSOLUTA EN NUBE
+                            # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
-                                    supabase_client = st.session_state['supabase']
-                                    with st.spinner("📡 Forzando actualización en base de datos central..."):
+                                    cliente_sb = st.session_state['supabase']
+                                    with st.spinner("🌪️ Ejecutando Protocolo Tierra Arrasada en Supabase (Limpieza profunda)..."):
+                                        # 1. PURGA TOTAL: Borramos todo para evitar fantasmas y espacios ocultos
+                                        cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "X_VACIO_X").execute()
+                                        cliente_sb.table("sap_precios_config").delete().neq("producto", "X_VACIO_X").execute()
+                                        
+                                        records_espejo = []
+                                        records_legacy = []
                                         for fila in data_full[1:]:
                                             prod = fila[8] if len(fila) > 8 else ""
                                             val_k = fila[10] if len(fila) > 10 else ""
@@ -244,15 +252,22 @@ def ejecutar(extraer_numero):
                                                 prod_limpio = str(prod).strip().upper()
                                                 precio_limpio = float(extraer_numero(val_k))
                                                 
-                                                # 💥 FUERZA BRUTA: Actualiza buscando coincidencias exactas del nombre
-                                                # Esto puentea la falta de Primary Keys y aplasta los duplicados fantasmas
-                                                supabase_client.table("PRECIOS_INSUMOS").update({"COSTO": str(precio_limpio)}).eq("PRODUCTO", prod_limpio).execute()
+                                                records_espejo.append({
+                                                    "PRODUCTO": prod_limpio,
+                                                    "COSTO": str(precio_limpio)
+                                                })
+                                                records_legacy.append({
+                                                    "producto": prod_limpio,
+                                                    "precio_establecido": precio_limpio
+                                                })
                                                 
-                                                # Respaldo a la tabla secundaria
-                                                supabase_client.table("sap_precios_config").update({"precio_establecido": precio_limpio}).eq("producto", str(prod).strip()).execute()
-                                                
+                                        if records_espejo:
+                                            # 2. INYECCIÓN FRESCA: Metemos la base de datos de Drive intacta a Supabase
+                                            cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                                            cliente_sb.table("sap_precios_config").insert(records_legacy).execute()
+                                            
                                 except Exception as e:
-                                    st.error(f"🚨 Falla revelada en la base de datos: {e}")
+                                    st.error(f"🚨 Falla al inyectar en Supabase: {e}")
                          
                         st.balloons()
                         st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura y se sincronizó la caché en la nube.")
