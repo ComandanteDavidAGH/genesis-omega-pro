@@ -227,76 +227,82 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                         "Lógica de Impacto": formula
                                     })
                             
-                            if filas_comp:
-                                df_vis = pd.DataFrame(filas_comp).copy()
-                                df_vis["Precio Final Calculado"] = df_vis["Precio Final Calculado"].map("$ {:,.0f}".format).str.replace(",", ".")
-                                st.dataframe(df_vis, use_container_width=True, hide_index=True)
-                            else:
-                                st.warning("⚠️ No se encontraron coincidencias.")
-                    except Exception as e:
-                        st.error(f"🚨 Falla en análisis: {e}")
+                            if insumos_fail == 0:
+                        st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales en Drive.")
+                    else:
+                        st.warning("⚠️ SE DETECTARON DESFASES EN EL ARSENAL DE PRECIOS. Proceda a la inyección para nivelar los tableros.")
+                        st.session_state['datos_para_sincronizar'] = True
 
-        with c_btn2:
-            if st.button("🚀 EJECUTAR SINCRONIZACIÓN OMEGA V12", use_container_width=True, type="primary"):
-                if gc is None:
-                    st.error("🚨 Enlace satelital roto con Google Cloud.")
-                    return
-                try:
-                    with st.status("🕵️‍♂️ CONECTANDO CON CÉLULA SUPABASE...", expanded=True) as status:
-                        respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
-                        dict_precios = {}
-                        for row in respuesta.data:
-                            prod = limpiar_texto_vba(row.get('PRODUCTO', '')).upper().strip()
-                            precio_final = purificar_y_convertir_precio(row.get('COSTO', 0))
-                            if prod and precio_final > 0:
-                                dict_precios[prod] = precio_final
-                        
-                        sh_dest = gc.open_by_url(url_dest)
-                        ws_datos = sh_dest.worksheet("DATOS")
-                        datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
-                        
-                        idx_fila_semanas = 6
-                        for idx, r in enumerate(datos_dest[:12]):
-                            r_str = [str(cell).strip().split('.')[0] for cell in r]
-                            if any(w in r_str for w in ["11", "12", "13", "18"]):
-                                idx_fila_semanas = idx
-                                break
-                        
-                        col_semana = -1
-                        for i, v in enumerate(datos_dest[idx_fila_semanas]):
-                            if str(v).strip().split('.')[0] == str(semana_target):
-                                col_semana = i + 1
-                                break
-                        
-                        if col_semana == -1: col_semana = int(semana_target) + 5
-                        
-                        updates = [{'range': gspread.utils.rowcol_to_a1(idx_fila_semanas + 1, col_semana), 'values': [[int(semana_target)]]}]
-                        
-                        for r_idx, row in enumerate(datos_dest):
-                            n_fila = r_idx + 1
-                            if n_fila < (idx_fila_semanas + 2): continue
-                            
-                            row_padded = row + [""] * (max(col_semana + 2, 15) - len(row)) if len(row) < max(col_semana + 2, 15) else row
-                            tipo_tabla = limpiar_texto_vba(row_padded[1]).upper().strip() 
-                            producto_dest = limpiar_texto_vba(row_padded[3]).upper().strip()
-                            
-                            if producto_dest in dict_precios:
-                                precio_unitario = dict_precios[producto_dest]
-                                if "DOSIS-HA" in tipo_tabla.replace(" ", ""):
-                                    dosis_valor = extraer_numero(row_padded[0])
-                                    valor_final = precio_unitario * dosis_valor if dosis_valor > 0 else 0
-                                else:
-                                    valor_final = precio_unitario
-                                    
-                                updates.append({'range': gspread.utils.rowcol_to_a1(n_fila, col_semana), 'values': [[valor_final]]})
-
-                        if len(updates) > 1:
-                            ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
-                            status.update(label="🎯 ¡MÓDULO DE DOSIS AJUSTADO!", state="complete")
-                            st.success(f"🎉 Precios impactados en la columna {col_semana} de la macro.")
-                            st.balloons()
                 except Exception as e:
-                    st.error(f"🚨 FALLA EN LA INYECCIÓN: {e}")
+                    st.error(f"Error crítico al escanear los tableros: {e}")
 
+        # 💥 CAMBIO ESTRATÉGICO: Quitamos el "if" restrictivo para permitir inyecciones forzadas a Supabase
+        st.markdown("---")
+        if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
+            with st.spinner("Inyectando quirúrgicamente Columna K en Columna J..."):
+                try:
+                    gc = inicializar_cliente_gspread()
+                    if gc is None:
+                        st.error("🚨 Enlace satelital roto antes del volcado.")
+                        st.stop()
+                        
+                    sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                    ws_conf = sh.worksheet("Configuración")
+                    data_full = ws_conf.get_all_values()
+                    
+                    valores_para_j = []
+                    for fila in data_full[1:]:
+                        valor_k = fila[10] if len(fila) > 10 else ""
+                        valores_para_j.append([valor_k])
+                     
+                    if valores_para_j:
+                        rango_destino = f"J2:J{len(valores_para_j) + 1}"
+                        ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
+                        
+                        # ====================================================================
+                        # 💥 MIGRACIÓN BLINDADA A LAS 4 COLUMNAS DE SUPABASE
+                        # ====================================================================
+                        if 'supabase' in st.session_state:
+                            try:
+                                cliente_sb = st.session_state['supabase']
+                                
+                                # 1. Purificación estricta anti-duplicados en RAM
+                                dict_unicos = {}
+                                for fila in data_full[1:]:
+                                    prod = fila[8] if len(fila) > 8 else ""
+                                    val_k = fila[10] if len(fila) > 10 else ""
+                                    
+                                    if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                                        prod_limpio = str(prod).strip().upper()
+                                        dict_unicos[prod_limpio] = str(val_k).strip()
+                                
+                                # 2. Payload completo respetando la estructura gráfica de Supabase
+                                records_espejo = [
+                                    {
+                                        "PRODUCTO": k, 
+                                        "COSTO": v,
+                                        "Columna2": "",
+                                        "valor a devolver": ""
+                                    } for k, v in dict_unicos.items()
+                                ]
+                                
+                                if records_espejo:
+                                    # 3. Vaciado previo
+                                    cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
+                                    
+                                    # 4. Inserción masiva
+                                    res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                                    
+                                    if res.data:
+                                        st.success(f"⚡ NUBE SINCRONIZADA: {len(records_espejo)} precios maestros migrados con éxito a Supabase Cloud.")
+                                    else:
+                                        st.error("🚨 Supabase rechazó el almacenamiento físico de las filas.")
+                            except Exception as esb:
+                                st.error(f"🚨 Alerta en canal de Supabase: {esb}")
+                        
+                    st.balloons()
+                    st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas de forma segura.")
+                except Exception as e:
+                    st.error(f"🚨 FALLA EN LA INYECCIÓN EN CALIENTE: {e}")
 if __name__ == "__main__":
     pass
