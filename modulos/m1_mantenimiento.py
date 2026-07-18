@@ -232,45 +232,35 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
                             # ====================================================================
-                            # 💥 PROTOCOLO DE INYECCIÓN ABSOLUTA (WIPE & WRITE PURIFICADO)
+                            # 💥 MIGRACIÓN FORZADA Y PURIFICADA A SUPABASE
                             # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
                                     cliente_sb = st.session_state['supabase']
-                                    with st.spinner("🌪️ Extrayendo y purificando arsenal para Supabase..."):
+                                    
+                                    # 1. Escudo anti-duplicados estricto en RAM
+                                    dict_unicos = {}
+                                    for fila in data_full[1:]:
+                                        prod = fila[8] if len(fila) > 8 else ""
+                                        val_k = fila[10] if len(fila) > 10 else ""
                                         
-                                        # 1. Escudo anti-duplicados estricto en RAM
-                                        dict_unicos = {}
-                                        for fila in data_full[1:]:
-                                            prod = fila[8] if len(fila) > 8 else ""
-                                            val_k = fila[10] if len(fila) > 10 else ""
-                                            
-                                            if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
-                                                prod_limpio = str(prod).strip().upper()
-                                                # Guardamos el valor como string crudo para que Postgres no lo rechace por formato
-                                                dict_unicos[prod_limpio] = str(val_k).strip()
-                                        
-                                        records_espejo = [{"PRODUCTO": k, "COSTO": v} for k, v in dict_unicos.items()]
-                                        
-                                        if records_espejo:
-                                            # 2. BARRIDO NUCLEAR: Forzamos el vaciado total de la tabla primero
-                                            cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO_FORZADO").execute()
-                                            
-                                            # 3. INYECCIÓN DIRECTA: Inserción en bloque limpia
-                                            res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
-                                            
-                                            if res.data:
-                                                st.success(f"✅ ¡SISTEMA ALINEADO! Se han subido {len(res.data)} precios únicos a Supabase Cloud.")
-                                            else:
-                                                st.error("🚨 Supabase recibió la orden pero rechazó el almacenamiento físico de las filas.")
-                                        else:
-                                            st.warning("⚠️ No se encontraron filas válidas en el Excel para procesar.")
-                                                
-                                except Exception as e:
-                                    st.error(f"🚨 Falla Crítica de Inyección en Módulo 1: {e}")
-                         
+                                        if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                                            prod_limpio = str(prod).strip().upper()
+                                            dict_unicos[prod_limpio] = str(val_k).strip()
+                                    
+                                    records_espejo = [{"PRODUCTO": k, "COSTO": v} for k, v in dict_unicos.items()]
+                                    
+                                    if records_espejo:
+                                        # 2. Barrido de seguridad
+                                        cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
+                                        # 3. Inserción masiva limpia
+                                        cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                                        st.success(f"⚡ NUBE SINCRONIZADA: {len(records_espejo)} precios maestros migrados a Supabase.")
+                                except Exception as esb:
+                                    st.error(f"🚨 Alerta en canal de Supabase: {esb}")
+                            
                         st.balloons()
-                        st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura y se sincronizó la caché en la nube.")
+                        st.success(f"🎯 INYECCIÓN EXITOSA. Se actualizaron {len(valores_para_j)} celdas en la columna J de forma segura.")
                         del st.session_state['datos_para_sincronizar']
                     except Exception as e:
                         st.error(f"🚨 FALLA EN LA INYECCIÓN EN CALIENTE: {e}")
