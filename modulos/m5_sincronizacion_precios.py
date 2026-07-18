@@ -58,7 +58,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Computo de Perfiles)")
         
         if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
-            with st.spinner("📡 Descargando base central y aplicando márgenes de perfiles..."):
+            with st.spinner("📡 Descargando base central de Supabase y aplicando márgenes..."):
                 try:
                     respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                     lista_precios = []
@@ -84,9 +84,9 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     if lista_precios:
                         df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
                         st.session_state['df_tarifario'] = df_tarifario
-                        st.success(f"✅ ¡TARIFARIO DESPLEGADO! {len(lista_precios)} productos mapeados con márgenes.")
+                        st.success(f"✅ ¡TARIFARIO DESPLEGADO! {len(lista_precios)} productos mapeados con sus márgenes.")
                     else:
-                        st.error("🚨 Error matemático: Supabase respondió, pero la columna COSTO contiene formatos ilegibles o la tabla está vacía.")
+                        st.error("🚨 Error matemático: Supabase respondió, pero la columna COSTO contiene formatos ilegibles o la tabla sigue vacía.")
                 except Exception as e:
                     st.error(f"🚨 Falla crítica en descarga del Módulo 5: {e}")
                     
@@ -156,7 +156,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO</p></div>", unsafe_allow_html=True)
                         st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
 
-    # --- 🚀 SECCIÓN INFERIOR RESTAURADA: OMEGA V12 ---
+    # --- 🚀 SECCIÓN INFERIOR COMPLETA: OMEGA V12 ---
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
     
@@ -228,7 +228,9 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                     })
                             
                             if filas_comp:
-                                st.dataframe(pd.DataFrame(filas_comp), use_container_width=True, hide_index=True)
+                                df_vis = pd.DataFrame(filas_comp).copy()
+                                df_vis["Precio Final Calculado"] = df_vis["Precio Final Calculado"].map("$ {:,.0f}".format).str.replace(",", ".")
+                                st.dataframe(df_vis, use_container_width=True, hide_index=True)
                             else:
                                 st.warning("⚠️ No se encontraron coincidencias.")
                     except Exception as e:
@@ -291,7 +293,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         if len(updates) > 1:
                             ws_datos.batch_update(updates, value_input_option='USER_ENTERED')
                             status.update(label="🎯 ¡MÓDULO DE DOSIS AJUSTADO!", state="complete")
-                            st.success(f"🎉 Precios impactados en la columna {col_semana}.")
+                            st.success(f"🎉 Precios impactados en la columna {col_semana} de la macro.")
                             st.balloons()
                 except Exception as e:
                     st.error(f"🚨 FALLA EN LA INYECCIÓN: {e}")
