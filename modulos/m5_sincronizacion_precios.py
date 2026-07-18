@@ -89,6 +89,37 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         return
 
     gc = inicializar_cliente_gspread()
+    # ====================================================================
+    # 💥 RASTREADOR OMNIDIRECCIONAL DE PRECIOS Y PROTECTOR DE DECIMALES
+    # ====================================================================
+    def rastrear_precio_real(row):
+        # 1. Búsqueda agresiva: Prioridad a columnas PRECIO, ACTUAL o SAP
+        for k, v in row.items():
+            k_up = str(k).upper()
+            if "PRECIO" in k_up or "SAP" in k_up or "ACTUAL" in k_up:
+                v_str = str(v).replace("$", "").replace("COP", "").strip()
+                if "," in v_str and "." in v_str: 
+                    v_str = v_str.replace(".", "").replace(",", ".")
+                elif "," in v_str: 
+                    v_str = v_str.replace(",", ".")
+                try: 
+                    num = float(v_str)
+                    if num > 0: return num
+                except: pass
+        
+        # 2. Búsqueda de respaldo: Si no hay precios nuevos, busca COSTO
+        for k, v in row.items():
+            if "COSTO" in str(k).upper():
+                v_str = str(v).replace("$", "").replace("COP", "").strip()
+                if "," in v_str and "." in v_str: 
+                    v_str = v_str.replace(".", "").replace(",", ".")
+                elif "," in v_str: 
+                    v_str = v_str.replace(",", ".")
+                try: 
+                    num = float(v_str)
+                    if num > 0: return num
+                except: pass
+        return 0.0
 
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
@@ -113,9 +144,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             pass
                             
                         if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
-                            # 💥 RADAR BLINDADO: Prioriza el PRECIO actualizado de SAP y protege los decimales
-                            val_costo = row.get('PRECIO', row.get('precio', row.get('PRECIO_SAP', row.get('COSTO', row.get('costo', 0)))))
-                            costo_base = extraer_numero(val_costo)
+                            # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
+                            costo_base = rastrear_precio_real(row)
                             
                             if costo_base > 0:
                                 lista_precios.append({
@@ -247,13 +277,13 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                             dict_precios = {}
                             for row in respuesta.data:
-                                prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                                # 💥 RADAR BLINDADO: Prioriza el PRECIO actualizado de SAP
-                                val_costo = row.get('PRECIO', row.get('precio', row.get('PRECIO_SAP', row.get('COSTO', row.get('costo', 0)))))
-                                precio_final = extraer_numero(val_costo)
-                                
-                                if prod and precio_final > 0:
-                                    dict_precios[prod] = precio_final
+                                for row in respuesta.data:
+                            prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
+                            # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
+                            precio_final = rastrear_precio_real(row)
+                            
+                            if prod and precio_final > 0:
+                                dict_precios[prod] = precio_final
 
                             sh_dest = gc.open_by_url(url_dest)
                             ws_datos = sh_dest.worksheet("DATOS")
