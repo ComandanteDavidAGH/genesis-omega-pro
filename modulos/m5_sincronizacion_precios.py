@@ -8,7 +8,6 @@ import io
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
-
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
@@ -20,11 +19,42 @@ def inicializar_cliente_gspread():
         return None
 
 # =================================================================
+# 💥 RASTREADOR OMNIDIRECCIONAL DE PRECIOS Y PROTECTOR DE DECIMALES
+# =================================================================
+def rastrear_precio_real(row):
+    # 1. Búsqueda agresiva: Prioridad a columnas PRECIO, ACTUAL o SAP
+    for k, v in row.items():
+        k_up = str(k).upper()
+        if "PRECIO" in k_up or "SAP" in k_up or "ACTUAL" in k_up:
+            v_str = str(v).replace("$", "").replace("COP", "").strip()
+            if "," in v_str and "." in v_str: 
+                v_str = v_str.replace(".", "").replace(",", ".")
+            elif "," in v_str: 
+                v_str = v_str.replace(",", ".")
+            try: 
+                num = float(v_str)
+                if num > 0: return num
+            except: pass
+    
+    # 2. Búsqueda de respaldo: Si no hay precios nuevos, busca COSTO
+    for k, v in row.items():
+        if "COSTO" in str(k).upper():
+            v_str = str(v).replace("$", "").replace("COP", "").strip()
+            if "," in v_str and "." in v_str: 
+                v_str = v_str.replace(".", "").replace(",", ".")
+            elif "," in v_str: 
+                v_str = v_str.replace(",", ".")
+            try: 
+                num = float(v_str)
+                if num > 0: return num
+            except: pass
+    return 0.0
+
+# =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
 # =================================================================
-
 def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Destrucción de Casillas Pálidas en Inputs y Códigos
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -48,7 +78,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
     .hud-recargos-title, .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-tarifas-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     
-    /* 💥 DETONACIÓN DE CONTROLES PÁLIDOS: Forzar visibilidad extrema en campos interactivos */
+    /* 💥 DETONACIÓN DE CONTROLES PÁLIDOS */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input,
     div[data-testid="stSelectbox"] [data-baseweb="select"] {
@@ -60,7 +90,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         font-size: 15px !important;
     }
     
-    /* Casillas de Copiado Rápido de alto impacto visual y contraste */
     div[data-testid="stCodeBlock"], 
     div[data-testid="stCodeBlock"] pre, 
     div[data-testid="stCodeBlock"] pre code {
@@ -89,72 +118,49 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         return
 
     gc = inicializar_cliente_gspread()
-    # ====================================================================
-    # 💥 RASTREADOR OMNIDIRECCIONAL DE PRECIOS Y PROTECTOR DE DECIMALES
-    # ====================================================================
-    def rastrear_precio_real(row):
-        # 1. Búsqueda agresiva: Prioridad a columnas PRECIO, ACTUAL o SAP
-        for k, v in row.items():
-            k_up = str(k).upper()
-            if "PRECIO" in k_up or "SAP" in k_up or "ACTUAL" in k_up:
-                v_str = str(v).replace("$", "").replace("COP", "").strip()
-                if "," in v_str and "." in v_str: 
-                    v_str = v_str.replace(".", "").replace(",", ".")
-                elif "," in v_str: 
-                    v_str = v_str.replace(",", ".")
-                try: 
-                    num = float(v_str)
-                    if num > 0: return num
-                except: pass
-        
-        # 2. Búsqueda de respaldo: Si no hay precios nuevos, busca COSTO
-        for k, v in row.items():
-            if "COSTO" in str(k).upper():
-                v_str = str(v).replace("$", "").replace("COP", "").strip()
-                if "," in v_str and "." in v_str: 
-                    v_str = v_str.replace(".", "").replace(",", ".")
-                elif "," in v_str: 
-                    v_str = v_str.replace(",", ".")
-                try: 
-                    num = float(v_str)
-                    if num > 0: return num
-                except: pass
-        return 0.0
 
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
         st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Copia Rápida)")
         st.info("💡 Obtenga la lista de precios exactos multiplicados por el margen de cada perfil, listos para copiar y pegar en SAP.")
         
-        # ====================================================================
-                            # 💥 PROTOCOLO LÁSER: UPSERT MANUAL ANTI-FANTASMAS
-                            # ====================================================================
-                            if 'supabase' in st.session_state:
-                                try:
-                                    cliente_sb = st.session_state['supabase']
-                                    with st.spinner("🌪️ Inyectando precios a la fuerza en Supabase..."):
-                                        contador = 0
-                                        for fila in data_full[1:]:
-                                            prod = fila[8] if len(fila) > 8 else ""
-                                            val_k = fila[10] if len(fila) > 10 else ""
-                                            
-                                            if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
-                                                prod_limpio = str(prod).strip().upper()
-                                                precio_limpio = extraer_numero(val_k)
-                                                
-                                                if precio_limpio > 0:
-                                                    # 1. Ataque de actualización (Ignora espacios extra ocultos en Supabase)
-                                                    res = cliente_sb.table("PRECIOS_INSUMOS").update({"COSTO": str(precio_limpio)}).ilike("PRODUCTO", f"%{prod_limpio}%").execute()
-                                                    
-                                                    # 2. Si la base de datos no lo tenía, lo insertamos nuevo obligatoriamente
-                                                    if not res.data:
-                                                        cliente_sb.table("PRECIOS_INSUMOS").insert({"PRODUCTO": prod_limpio, "COSTO": str(precio_limpio)}).execute()
-                                                    
-                                                    contador += 1
-                                        
-                                        st.success(f"🎯 MISIÓN CUMPLIDA: {contador} precios anclados en Supabase de forma definitiva.")
-                                except Exception as e:
-                                    st.error(f"🚨 Falla en la inyección de Supabase: {e}")
+        if st.button("🔄 Cargar / Actualizar Tarifario Maestro", type="secondary", use_container_width=True):
+            with st.spinner("📡 Descargando arsenal de precios desde Supabase Cloud..."):
+                try:
+                    respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
+                    lista_precios = []
+                    
+                    for row in respuesta.data:
+                        prod = str(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
+                        
+                        es_cero_basura = False
+                        try:
+                            if float(prod) == 0: es_cero_basura = True
+                        except ValueError:
+                            pass
+                            
+                        if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
+                            # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
+                            costo_base = rastrear_precio_real(row)
+                            
+                            if costo_base > 0:
+                                lista_precios.append({
+                                    "PRODUCTO": prod,
+                                    "COSTO BASE": costo_base,
+                                    "TERCERO (+45.1%)": round(costo_base * 1.451, 0),
+                                    "AFILIADO (+16.4%)": round(costo_base * 1.164, 0),
+                                    "COOPERATIVA / SOCIO (+11.2%)": round(costo_base * 1.112, 0),
+                                    "ORGÁNICO (+1.1%)": round(costo_base * 1.011, 0)
+                                })
+                    
+                    if lista_precios:
+                        df_tarifario = pd.DataFrame(lista_precios).sort_values(by="PRODUCTO").reset_index(drop=True)
+                        st.session_state['df_tarifario'] = df_tarifario
+                        st.success(f"✅ Tarifario cargado con éxito: {len(lista_precios)} productos extraídos.")
+                    else:
+                        st.warning("⚠️ No se pudieron procesar los valores numéricos correctamente.")
+                except Exception as e:
+                    st.error(f"🚨 Error al consultar Supabase: {e}")
                     
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
@@ -213,8 +219,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
             with t3:
                 st.markdown("#### Búsqueda Rápida Individual")
-                # Se eliminó el CSS palido local heredando el estilo endurecido global de st.code
-
                 prod_sel = st.selectbox("🔍 Buscar Producto Específico:", df_t["PRODUCTO"].tolist())
                 if prod_sel:
                     datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
@@ -263,7 +267,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     st.error("❌ Ingrese la URL de la Sábana Destino para previsualizar los cálculos.")
                 else:
                     try:
-                        with st.spinner("🕵️‍♂️ Calculando Comportamiento Operativo (Precio Pleno × Dosis)..."):
+                        with st.spinner("🕵️‍♂️ Calculando Comportamiento Operativo..."):
                             respuesta = supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
                             dict_precios = {}
                             for row in respuesta.data:
@@ -273,6 +277,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                 
                                 if prod and precio_final > 0:
                                     dict_precios[prod] = precio_final
+
                             sh_dest = gc.open_by_url(url_dest)
                             ws_datos = sh_dest.worksheet("DATOS")
                             datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
@@ -327,7 +332,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                 st.dataframe(df_vis, use_container_width=True, hide_index=True)
                                 st.success(f"📋 Análisis completo: {len(df_comp)} registros listos para inyección.")
                             else:
-                                st.warning("⚠️ No se encontraronconcoincidencias entre los productos de Supabase y las filas de la Sábana.")
+                                st.warning("⚠️ No se encontraron coincidencias entre Supabase y la Sábana.")
                     except Exception as e:
                         st.error(f"🚨 Falla en el análisis de comportamiento: {e}")
 
@@ -346,9 +351,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         dict_precios = {}
                         for row in respuesta.data:
                             prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                            # 💥 RADAR BLINDADO: Prioriza el PRECIO actualizado de SAP
-                            val_costo = row.get('PRECIO', row.get('precio', row.get('PRECIO_SAP', row.get('COSTO', row.get('costo', 0)))))
-                            precio_final = extraer_numero(val_costo)
+                            # 💥 LLAMADO AL RASTREADOR OMNIDIRECCIONAL
+                            precio_final = rastrear_precio_real(row)
                             
                             if prod and precio_final > 0:
                                 dict_precios[prod] = precio_final
