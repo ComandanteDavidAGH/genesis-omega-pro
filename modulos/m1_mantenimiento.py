@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import gspread
-import io
-import re
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
@@ -14,13 +12,12 @@ def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # 🌟 UNIFICACIÓN MAESTRA: Usamos el secreto gcp_service_account con scopes explícitos
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
 # =================================================================
@@ -30,34 +27,34 @@ def inicializar_cliente_gspread():
 def ejecutar(extraer_numero):
     # Inyección de la línea estética VIP Corporativa
     st.markdown("""
-     <style>
-     .titulo-principal { 
-         color: #0d1b2a; 
-         border-bottom: 3px solid #d4af37; 
-         padding-bottom: 5px; 
-         font-family: 'Arial Black', sans-serif; 
-     }
-     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { 
-         border: 3px solid #0d1b2a !important; 
-         border-radius: 8px !important; 
-         overflow: hidden !important; 
-     }
-     
-     /* HUD de Control de Precios */
-     .hud-precios {
-         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
-         border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
-         box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
-         justify-content: space-between; align-items: center;
-     }
-     .hud-precios-item { text-align: center; flex: 1; }
-     .hud-precios-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-     .hud-precios-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
-     .hud-precios-ok { color: #00ff66; font-family: 'Arial Black'; }
-     .hud-precios-fail { color: #ff3333; font-family: 'Arial Black'; }
-     </style>
+    <style>
+    .titulo-principal { 
+        color: #0d1b2a; 
+        border-bottom: 3px solid #d4af37; 
+        padding-bottom: 5px; 
+        font-family: 'Arial Black', sans-serif; 
+    }
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { 
+        border: 3px solid #0d1b2a !important; 
+        border-radius: 8px !important; 
+        overflow: hidden !important; 
+    }
+    
+    /* HUD de Control de Precios */
+    .hud-precios {
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
+        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
+        justify-content: space-between; align-items: center;
+    }
+    .hud-precios-item { text-align: center; flex: 1; }
+    .hud-precios-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .hud-precios-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    .hud-precios-ok { color: #00ff66; font-family: 'Arial Black'; }
+    .hud-precios-fail { color: #ff3333; font-family: 'Arial Black'; }
+    </style>
     """, unsafe_allow_html=True)
- 
+
     st.markdown("<h1 class='titulo-principal'>Inteligencia de Precios SAP</h1>", unsafe_allow_html=True)
      
     f_sap_raw = st.file_uploader("📥 1. Suba la Sábana Cruda de SAP", type=["xlsx", "xls", "csv"])
@@ -72,7 +69,7 @@ def ejecutar(extraer_numero):
                     else:
                         try:
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='utf-8')
-                        except:
+                        except Exception:
                             f_sap_raw.seek(0)
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
                      
@@ -85,7 +82,6 @@ def ejecutar(extraer_numero):
                     df_final['J'] = df.iloc[:, 10].values
                     unicos = sorted(df.iloc[:, 10].astype(str).unique().tolist())
                      
-                    # Autenticación acelerada en RAM interconectada
                     gc = inicializar_cliente_gspread()
                     if gc is None:
                         st.error("🚨 No se pudo establecer conexión con Google Cloud. Verifique sus credenciales.")
@@ -98,21 +94,18 @@ def ejecutar(extraer_numero):
                     hoja_plantilla.update(range_name="A3", values=df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
                     hoja_plantilla.update(range_name="K3", values=[[x] for x in unicos], value_input_option='USER_ENTERED')
                      
-                    # INTEGRACIÓN SUPABASE: Respaldo silencioso de datos purificados
                     if 'supabase' in st.session_state:
                         try:
                             supabase_client = st.session_state['supabase']
-                            # Sanitizar nombres de columnas para asegurar compatibilidad Postgres sin romper df_final
                             df_db = df_final.copy()
                             df_db.columns = [f"col_{i}" for i in range(len(df_db.columns) - 1)] + ["col_j"]
                             registros = df_db.fillna("").to_dict(orient='records')
                             
-                            # Volcado en caliente a Supabase (Tabla de lectura veloz)
                             supabase_client.table("sap_precios_plantilla").delete().neq("col_j", "PROBAR_VACIO_FORZADO").execute()
                             if registros:
                                 supabase_client.table("sap_precios_plantilla").insert(registros).execute()
                         except Exception:
-                            pass # Protección Zero Regression si la estructura de la tabla aún no se crea
+                            pass
 
                     st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de forma instantánea.")
                     st.session_state['paso_a_listo'] = True
@@ -140,7 +133,6 @@ def ejecutar(extraer_numero):
                     radar = df_conf.iloc[:, [8, 9, 10]].copy()
                     radar.columns = ['PRODUCTO', 'PRECIO_ACTUAL', 'PRECIO_SAP']
                      
-                    # Filtro anti-fantasmas multi-formato
                     def es_fila_basura(val):
                         val_str = str(val).strip().upper()
                         if val_str in ["", "NAN", "NONE", "PRODUCTO"]: return True
@@ -158,7 +150,6 @@ def ejecutar(extraer_numero):
                     radar['ESTADO'] = radar['DIFERENCIA'].apply(lambda x: "✅ OK" if x == 0 else "❌ DESFASE")
                     radar = radar.sort_values(by="ESTADO", ascending=False)
                      
-                    # HUD OPERATIVO
                     total_insumos = len(radar)
                     insumos_ok = len(radar[radar['ESTADO'] == "✅ OK"])
                     insumos_fail = len(radar[radar['ESTADO'] == "❌ DESFASE"])
@@ -175,8 +166,8 @@ def ejecutar(extraer_numero):
                         </div>
                         <div class="hud-precios-item">
                             <p class="hud-precios-title">Desfases Detectados</p>
-                            <p class="hud-precios-value {'hud-precios-fail' if insumos_fail > 0 else 'hud-precios-ok'}">
-                                 {'⚠️' if insumos_fail > 0 else '✅'} {insumos_fail} Desfases
+                            <p class="hud-precios-value hud-precios-fail">
+                                ⚠️ {insumos_fail} Desfases
                             </p>
                         </div>
                     </div>
@@ -200,16 +191,16 @@ def ejecutar(extraer_numero):
                     )
                      
                     if insumos_fail == 0:
-                        st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales.")
+                        st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales en Drive.")
                     else:
                         st.warning("⚠️ SE DETECTARON DESFASES EN EL ARSENAL DE PRECIOS. Proceda a la inyección para nivelar los tableros.")
-                        st.session_state['datos_para_sincronizar'] = True
+                    
+                    st.session_state['datos_para_sincronizar'] = True
  
                 except Exception as e:
                     st.error(f"Error crítico al escanear los tableros: {e}")
- 
-        if st.session_state.get('datos_para_sincronizar'):
-            # 💥 CAMBIO ESTRATÉGICO: Botón de Inyección con Diagnóstico Extremo
+
+        # 💥 CAMBIO ESTRATÉGICO: El botón azul de inyección ya no depende del IF del Paso B, aparece siempre libre.
         st.markdown("---")
         if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
             with st.spinner("Inyectando quirúrgicamente Columna K en Columna J y Supabase..."):
@@ -280,5 +271,6 @@ def ejecutar(extraer_numero):
                             
                 except Exception as e:
                     st.error(f"🚨 FALLA GENERAL DEL SISTEMA: {e}")
+
 if __name__ == "__main__":
     pass
