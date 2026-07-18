@@ -236,17 +236,30 @@ def ejecutar(extraer_numero):
                                 try:
                                     supabase_client = st.session_state['supabase']
                                     records_espejo = []
+                                    records_legacy = []
                                     for fila in data_full[1:]:
                                         prod = fila[8] if len(fila) > 8 else ""
                                         val_k = fila[10] if len(fila) > 10 else ""
+                                        
                                         if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                                            precio_limpio = float(extraer_numero(val_k))
+                                            
+                                            # Inyección para la tabla MAESTRA (La que lee el Módulo 5)
                                             records_espejo.append({
-                                                "producto": str(prod).strip(),
-                                                "precio_establecido": float(extraer_numero(val_k))
+                                                "PRODUCTO": str(prod).strip().upper(),
+                                                "COSTO": precio_limpio
                                             })
+                                            
+                                            # Inyección de respaldo (Legacy)
+                                            records_legacy.append({
+                                                "producto": str(prod).strip(),
+                                                "precio_establecido": precio_limpio
+                                            })
+                                            
                                     if records_espejo:
-                                        # Hacemos un upsert para actualizar los precios master velozmente
-                                        supabase_client.table("sap_precios_config").upsert(records_espejo, on_conflict="producto").execute()
+                                        # 💥 GOLPE MAESTRO: Actualizar simultáneamente ambas tablas
+                                        supabase_client.table("PRECIOS_INSUMOS").upsert(records_espejo, on_conflict="PRODUCTO").execute()
+                                        supabase_client.table("sap_precios_config").upsert(records_legacy, on_conflict="producto").execute()
                                 except Exception:
                                     pass
                          
