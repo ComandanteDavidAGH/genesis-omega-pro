@@ -232,13 +232,14 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
                             # ====================================================================
-                            # 💥 PROTOCOLO DE INYECCIÓN FORZADA (WIPE & WRITE)
+                            # 💥 PROTOCOLO WIPE & WRITE CON ESCUDO ANTI-DUPLICADOS
                             # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
                                     cliente_sb = st.session_state['supabase']
-                                    with st.spinner("🌪️ Forzando inyección en Supabase..."):
-                                        records_espejo = []
+                                    with st.spinner("🌪️ Purificando duplicados y forzando inyección en Supabase..."):
+                                        # 1. Escudo Anti-Duplicados (Filtra en la memoria RAM)
+                                        dict_unicos = {}
                                         for fila in data_full[1:]:
                                             prod = fila[8] if len(fila) > 8 else ""
                                             val_k = fila[10] if len(fila) > 10 else ""
@@ -247,22 +248,24 @@ def ejecutar(extraer_numero):
                                                 prod_limpio = str(prod).strip().upper()
                                                 precio_limpio = float(extraer_numero(val_k))
                                                 
-                                                records_espejo.append({
-                                                    "PRODUCTO": prod_limpio,
-                                                    "COSTO": str(precio_limpio)
-                                                })
+                                                # Al usar un diccionario, si el producto se repite en el Excel, 
+                                                # Python simplemente sobrescribe y guarda el último precio válido.
+                                                dict_unicos[prod_limpio] = str(precio_limpio)
+                                                
+                                        # 2. Empaquetado de datos puros (Garantizado sin repeticiones)
+                                        records_espejo = [{"PRODUCTO": k, "COSTO": v} for k, v in dict_unicos.items()]
                                                 
                                         if records_espejo:
-                                            # 1. BORRADO SEGURO: Vacía la tabla (Sabemos que esto sí funciona)
+                                            # 3. BORRADO SEGURO: Vacía la tabla
                                             cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
                                             
-                                            # 2. INSERCIÓN DIRECTA: Mete todos los datos limpios de un solo golpe
+                                            # 4. INSERCIÓN DIRECTA: La Llave Primaria ahora sí lo aceptará todo
                                             res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
                                             
                                             if res.data:
-                                                st.success(f"✅ ¡GOLPE MAESTRO! {len(res.data)} precios anclados en Supabase.")
+                                                st.success(f"✅ ¡GOLPE MAESTRO! {len(res.data)} precios ÚNICOS anclados en Supabase.")
                                             else:
-                                                st.error("🚨 La base de datos rechazó la inyección.")
+                                                st.error("🚨 La base de datos rechazó la inyección (No devolvió confirmación).")
                                                 
                                 except Exception as e:
                                     st.error(f"🚨 Falla crítica en Supabase: {e}")
