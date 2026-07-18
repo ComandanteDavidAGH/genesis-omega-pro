@@ -232,13 +232,13 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             
                             # ====================================================================
-                            # 💥 MIGRACIÓN FORZADA Y PURIFICADA A SUPABASE
+                            # 💥 MIGRACIÓN BLINDADA A LAS 4 COLUMNAS DE SUPABASE
                             # ====================================================================
                             if 'supabase' in st.session_state:
                                 try:
                                     cliente_sb = st.session_state['supabase']
                                     
-                                    # 1. Escudo anti-duplicados estricto en RAM
+                                    # 1. Purificación estricta anti-duplicados en RAM
                                     dict_unicos = {}
                                     for fila in data_full[1:]:
                                         prod = fila[8] if len(fila) > 8 else ""
@@ -248,14 +248,27 @@ def ejecutar(extraer_numero):
                                             prod_limpio = str(prod).strip().upper()
                                             dict_unicos[prod_limpio] = str(val_k).strip()
                                     
-                                    records_espejo = [{"PRODUCTO": k, "COSTO": v} for k, v in dict_unicos.items()]
+                                    # 2. Construcción del payload satisfaciendo la estructura de la BD
+                                    records_espejo = [
+                                        {
+                                            "PRODUCTO": k, 
+                                            "COSTO": v,
+                                            "Columna2": "",
+                                            "valor a devolver": ""
+                                        } for k, v in dict_unicos.items()
+                                    ]
                                     
                                     if records_espejo:
-                                        # 2. Barrido de seguridad
+                                        # 3. Vaciado previo para evitar colisiones
                                         cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
-                                        # 3. Inserción masiva limpia
-                                        cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
-                                        st.success(f"⚡ NUBE SINCRONIZADA: {len(records_espejo)} precios maestros migrados a Supabase.")
+                                        
+                                        # 4. Inserción masiva autorizada
+                                        res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                                        
+                                        if res.data:
+                                            st.success(f"⚡ NUBE SINCRONIZADA: {len(records_espejo)} precios maestros migrados con éxito a Supabase.")
+                                        else:
+                                            st.error("🚨 Supabase rechazó el almacenamiento físico de las filas.")
                                 except Exception as esb:
                                     st.error(f"🚨 Alerta en canal de Supabase: {esb}")
                             
@@ -264,6 +277,5 @@ def ejecutar(extraer_numero):
                         del st.session_state['datos_para_sincronizar']
                     except Exception as e:
                         st.error(f"🚨 FALLA EN LA INYECCIÓN EN CALIENTE: {e}")
-
 if __name__ == "__main__":
     pass
