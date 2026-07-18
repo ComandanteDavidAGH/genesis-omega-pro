@@ -113,14 +113,10 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             pass
                             
                         if prod and prod != "PRODUCTO" and "INVENTARIO" not in prod and not es_cero_basura:
-                            # 🎯 RADAR CORREGIDO: Apunta estrictamente a la columna COSTO de Supabase
-                            val_costo = row.get('COSTO', row.get('costo', 0))
-                            txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
-                            try:
-                                costo_base = float(txt_costo)
-                            except ValueError:
-                                costo_base = extraer_numero(str(val_costo))
-                                
+                            # 💥 RADAR BLINDADO: Prioriza el PRECIO actualizado de SAP y protege los decimales
+                            val_costo = row.get('PRECIO', row.get('precio', row.get('PRECIO_SAP', row.get('COSTO', row.get('costo', 0)))))
+                            costo_base = extraer_numero(val_costo)
+                            
                             if costo_base > 0:
                                 lista_precios.append({
                                     "PRODUCTO": prod,
@@ -252,14 +248,11 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             dict_precios = {}
                             for row in respuesta.data:
                                 prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                                # 🎯 RADAR CORREGIDO: Apunta estrictamente a COSTO
-                                val_costo = row.get('COSTO', row.get('costo', 0))
-                                txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
-                                try:
-                                    precio_final = float(txt_costo)
-                                except Exception:
-                                    precio_final = val_seguro(str(val_costo))
-                                if prod:
+                                # 💥 RADAR BLINDADO: Prioriza el PRECIO actualizado de SAP
+                                val_costo = row.get('PRECIO', row.get('precio', row.get('PRECIO_SAP', row.get('COSTO', row.get('costo', 0)))))
+                                precio_final = extraer_numero(val_costo)
+                                
+                                if prod and precio_final > 0:
                                     dict_precios[prod] = precio_final
 
                             sh_dest = gc.open_by_url(url_dest)
@@ -335,14 +328,11 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         dict_precios = {}
                         for row in respuesta.data:
                             prod = limpiar_texto_vba(row.get('PRODUCTO', row.get('producto', ''))).upper().strip()
-                            # 🎯 RADAR CORREGIDO: Apunta estrictamente a COSTO
-                            val_costo = row.get('COSTO', row.get('costo', 0))
-                            txt_costo = str(val_costo).replace('.', '').replace(',', '.').strip()
-                            try:
-                                precio_final = float(txt_costo)
-                            except Exception:
-                                precio_final = val_seguro(str(val_costo))
-                            if prod:
+                            # 💥 RADAR BLINDADO: Prioriza el PRECIO actualizado de SAP
+                            val_costo = row.get('PRECIO', row.get('precio', row.get('PRECIO_SAP', row.get('COSTO', row.get('costo', 0)))))
+                            precio_final = extraer_numero(val_costo)
+                            
+                            if prod and precio_final > 0:
                                 dict_precios[prod] = precio_final
                         
                         st.write(f"📊 **Supabase:** `{len(dict_precios)}` precios maestros mapeados.")
