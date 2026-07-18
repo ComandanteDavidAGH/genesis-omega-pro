@@ -135,7 +135,7 @@ def ejecutar(extraer_numero):
                      
                     def es_fila_basura(val):
                         val_str = str(val).strip().upper()
-                        if val_str in ["", "NAN", "NONE", "PRODUCTO"]: return True
+                        if val_str in ["", "NAN", "NONE", "PRODUCTO", "0", "0.0"]: return True
                         try:
                             if float(val_str) == 0: return True
                         except ValueError:
@@ -150,7 +150,6 @@ def ejecutar(extraer_numero):
                     radar['ESTADO'] = radar['DIFERENCIA'].apply(lambda x: "✅ OK" if x == 0 else "❌ DESFASE")
                     radar = radar.sort_values(by="ESTADO", ascending=False)
                      
-                    # 🧠 ANCLAJE EN RAM: Guardamos los datos analizados para permitir la persistencia visual
                     st.session_state['radar_data'] = radar
                     st.session_state['total_insumos'] = len(radar)
                     st.session_state['insumos_ok'] = len(radar[radar['ESTADO'] == "✅ OK"])
@@ -161,9 +160,6 @@ def ejecutar(extraer_numero):
                 except Exception as e:
                     st.error(f"Error crítico al escanear los tableros: {e}")
 
-        # ====================================================================
-        # 💥 RENDERIZADO PERSISTENTE CON DISEÑO REVOLUCIONARIO COMPAÑERO
-        # ====================================================================
         if st.session_state.get('scan_ejecutado'):
             radar = st.session_state['radar_data']
             total_insumos = st.session_state['total_insumos']
@@ -189,11 +185,10 @@ def ejecutar(extraer_numero):
             </div>
             """, unsafe_allow_html=True)
 
-            # 🎯 EL CAMBIO SOLICITADO: Columnas para alinear Título y Botón exactamente lado a lado
             col_titulo, col_boton = st.columns([7, 5])
             
             with col_titulo:
-                st.markdown("#### 🛰_ Reporte Detallado de Situación:")
+                st.markdown("#### 🛰️ Reporte Detallado de Situación:")
                 
             with col_boton:
                 if st.button("✅ APROBAR E INYECTAR PRECIOS (MODO SEGURO)", type="primary", use_container_width=True):
@@ -231,7 +226,10 @@ def ejecutar(extraer_numero):
                                         
                                         if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
                                             prod_limpio = str(prod).strip().upper()
-                                            dict_unicos[prod_limpio] = str(val_k).strip()
+                                            
+                                            # 🛡️ SOLUCIÓN DE FONDO INTERNA: Bloqueo radical a ceros, vacíos o nulos de Drive/SAP
+                                            if prod_limpio not in ["0", "0.0", "NAN", "NONE", "NULL", ""]:
+                                                dict_unicos[prod_limpio] = str(val_k).strip()
                                     
                                     records_espejo = [
                                         {
@@ -243,7 +241,9 @@ def ejecutar(extraer_numero):
                                     ]
                                     
                                     if records_espejo:
+                                        # Vaciar la tabla antigua por completo
                                         cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
+                                        # Inyectar el arsenal purificado sin ceros
                                         res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
                                         
                                         if res.data:
