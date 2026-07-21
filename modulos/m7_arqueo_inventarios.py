@@ -4,7 +4,7 @@ import gspread
 import re
 import math
 import io
-from datetime import datetime  # <--- INYECTA ESTA LÍNEA EXACTAMENTE AQUÍ
+from datetime import datetime
 import streamlit.components.v1 as components
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -50,11 +50,11 @@ def compilar_excel_maestro(cruce_final, semana):
                         cell.alignment = Alignment(horizontal='right')
                     elif cell.column == 8: 
                         cell.alignment = Alignment(horizontal='center')
-                       
+                        
             for col in worksheet.columns:
                 max_len = max(len(str(c.value or '')) for c in col)
                 worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 12), 42)
-               
+                
     return buffer.getvalue()
 
 def compilar_html_pdf(cruce_final, semana, css_vip):
@@ -132,14 +132,11 @@ def compilar_html_pdf(cruce_final, semana, css_vip):
 # =================================================================
 
 def ejecutar(quitar_tildes, purificar_lote):
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Extirpación de Casillas Pálidas y Translúcidas
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Extirpación de Casillas Pálidas y Translúcidas
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 ENDURECIMIENTO DE CONTROLES: Eliminación de palidez en inputs y selectores */
     div[data-testid="stTextInput"] input,
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {
@@ -159,7 +156,6 @@ def ejecutar(quitar_tildes, purificar_lote):
         font-weight: bold !important;
     }
     
-    /* Personalización nítida y opaca para los File Uploaders */
     div[data-testid="stFileUploader"] section {
         background-color: #ffffff !important;
         border: 2px dashed #0d1b2a !important;
@@ -167,7 +163,6 @@ def ejecutar(quitar_tildes, purificar_lote):
         padding: 10px !important;
     }
     
-    /* HUD de Control de Arqueos */
     .hud-arqueo {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
@@ -193,15 +188,29 @@ def ejecutar(quitar_tildes, purificar_lote):
         archivos_sup = st.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
     with c3:
         st.markdown("### 🎯 3. Objetivo")
-        semana_obj = st.text_input("Semana a Auditar (Ej: 17):", placeholder="Escriba la semana aquí...")
+        semana_obj = st.text_input("Semana a Auditar (Ej: 29):", placeholder="Escriba la semana aquí...")
 
-    # Inicialización segura de persistencia en memoria ram de Streamlit
     if "arqueo_procesado" not in st.session_state:
         st.session_state.arqueo_procesado = False
     if "observaciones_memoria" not in st.session_state:
         st.session_state.observaciones_memoria = {}
     if "centro_pdf_activo" not in st.session_state:
         st.session_state.centro_pdf_activo = False
+
+    def limpiar_numeros_generico(x):
+        if pd.isna(x) or x is None: return 0.0
+        if isinstance(x, (int, float)): return float(x)
+        s = str(x).strip().replace(' ', '')
+        if not s or s.lower() in ['nan', 'none', '']: return 0.0
+        if '.' in s and ',' in s:
+            if s.rfind(',') > s.rfind('.'):
+                s = s.replace('.', '').replace(',', '.')
+            else:
+                s = s.replace(',', '')
+        elif ',' in s:
+            s = s.replace(',', '.')
+        try: return float(s)
+        except: return 0.0
 
     def generar_cruce():
         cruce = pd.merge(st.session_state.df_sap_grouped, st.session_state.df_sup_grouped, on=['PISTA', 'LOTE_KEY'], how='outer')
@@ -215,7 +224,6 @@ def ejecutar(quitar_tildes, purificar_lote):
         cruce['ESTADO'] = cruce['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) <= 0.05 else "❌ DISCREPANCIA")
         cruce['OBSERVACIONES'] = ""
         
-        # INTEGRACIÓN SUPABASE: Recuperación de comentarios históricos guardados en la nube para la semana
         comentarios_cloud = {}
         if 'supabase' in st.session_state and semana_obj:
             try:
@@ -256,15 +264,14 @@ def ejecutar(quitar_tildes, purificar_lote):
                             sap_file.seek(0)
                             df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
 
-                    # 🌟 FIX COINCIDENCIA ALGORÍTMICA DE COLUMNAS DE SAP
                     columnas_originales = list(df_sap.columns)
                     columnas_saneadas = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                     
                     idx_item = next((i for i, c in enumerate(columnas_saneadas) if 'material' == c or 'item' in c), 0)
-                    idx_desc = next((i for i, c in enumerate(columnas_saneadas) if 'descripcion' in c or 'producto' in c), 1)
-                    idx_pista = next((i for i, c in enumerate(columnas_saneadas) if 'almacen' in c or 'pista' in c), 2)
-                    idx_lote = next((i for i, c in enumerate(columnas_saneadas) if 'lote' == c or 'lote_key' in c), 3)
-                    idx_saldo = next((i for i, c in enumerate(columnas_saneadas) if 'libre' in c or 'saldo' in c), 4)
+                    idx_desc = next((i for i, c in enumerate(columnas_saneadas) if 'descripcion' in c or 'producto' in c or 'texto' in c), 1)
+                    idx_pista = next((i for i, c in enumerate(columnas_saneadas) if 'almacen' in c or 'pista' in c or 'centro' in c), 2)
+                    idx_lote = next((i for i, c in enumerate(columnas_saneadas) if 'lote' in c), 3)
+                    idx_saldo = next((i for i, c in enumerate(columnas_saneadas) if 'libre' in c or 'saldo' in c or 'cantidad' in c), 4)
                     
                     c_item = columnas_originales[idx_item]
                     c_desc = columnas_originales[idx_desc]
@@ -276,35 +283,25 @@ def ejecutar(quitar_tildes, purificar_lote):
                     df_sap_clean.columns = ['ITEM', 'PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                     df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
                     df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().str.upper()
-                    
-                    # 🌟 FIX DEFINITIVO: LIMPIEZA REGIONAL Y RESPETO DE DECIMALES SAP
-                    def limpiar_numeros_sap(x):
-                        if pd.isna(x): return 0.0
-                        if isinstance(x, (int, float)):
-                            return float(x)
-                        s = str(x).strip().replace(' ', '')
-                        if not s or s.lower() == 'nan': return 0.0
-                        if '.' in s and ',' in s:
-                            if s.rfind(',') > s.rfind('.'):
-                                s = s.replace('.', '').replace(',', '.')
-                            else:
-                                s = s.replace(',', '')
-                        elif ',' in s:
-                            s = s.replace(',', '.')
-                        try: return float(s)
-                        except: return 0.0
-
-                    df_sap_clean['SALDO_SAP'] = df_sap_clean['SALDO_SAP'].apply(limpiar_numeros_sap)
+                    df_sap_clean['SALDO_SAP'] = df_sap_clean['SALDO_SAP'].apply(limpiar_numeros_generico)
                     
                     st.session_state.df_sap_raw = df_sap_clean 
                     st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
 
-                    lista_sup = []; sem_num = str(semana_obj).strip()
-                    nombres_pestaña = [sem_num, f"SEM {sem_num}", f"SEM{sem_num}", f"SEMANA {sem_num}"]
+                    lista_sup = []
+                    sem_num = str(semana_obj).strip()
                     
                     for file in archivos_sup:
                         dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
-                        target = next((n for n in dict_dfs.keys() if str(n).upper().strip() in [p.upper() for p in nombres_pestaña]), None)
+                        target = None
+                        
+                        # Búsqueda inteligente de la pestaña por semana
+                        for sheet_name in dict_dfs.keys():
+                            s_clean = quitar_tildes(str(sheet_name)).upper().strip()
+                            if re.search(r'\b' + re.escape(sem_num) + r'\b', s_clean) or s_clean == sem_num:
+                                target = sheet_name
+                                break
+                        
                         if target:
                             df_raw = dict_dfs[target]
                             h_idx = -1
@@ -316,16 +313,21 @@ def ejecutar(quitar_tildes, purificar_lote):
                             if h_idx != -1:
                                 df_s = df_raw.iloc[h_idx + 1:].copy()
                                 df_s.columns = [f"{quitar_tildes(x)}_{idx}" for idx, x in enumerate(df_raw.iloc[h_idx])]
+                                
                                 c_p = next((c for c in df_s.columns if "PRODUC" in c or "DESCRI" in c), None)
                                 c_a = next((c for c in df_s.columns if "ALMAC" in c or "PISTA" in c), None)
                                 c_l = next((c for c in df_s.columns if "LOTE" in c and "SALDO" not in c), None)
-                                c_v = next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c), None)
+                                
+                                # 💥 EXTRACCIÓN DEL SALDO FINAL REAL (Inversión de búsqueda de derecha a izquierda)
+                                cols_saldo = [c for c in df_s.columns if "SALDO" in str(c).upper() and not any(x in str(c).upper() for x in ["INIC", " IN", "INGRES", "ENTRA"])]
+                                c_v = cols_saldo[-1] if cols_saldo else next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c), None)
+                                
                                 if all([c_p, c_a, c_l, c_v]):
                                     df_s_c = df_s[[c_p, c_a, c_l, c_v]].copy()
                                     df_s_c.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE_SUP', 'SALDO_FISICO']
                                     df_s_c['PISTA'] = df_s_c['PISTA'].astype(str).str.strip().str.upper().replace('NAN', None).ffill().bfill()
                                     df_s_c['LOTE_KEY'] = df_s_c['LOTE_SUP'].apply(purificar_lote)
-                                    df_s_c['SALDO_FISICO'] = pd.to_numeric(df_s_c['SALDO_FISICO'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                                    df_s_c['SALDO_FISICO'] = df_s_c['SALDO_FISICO'].apply(limpiar_numeros_generico)
                                     lista_sup.append(df_s_c)
 
                     if lista_sup:
@@ -334,7 +336,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         generar_cruce()
                         st.session_state.arqueo_procesado = True
                         
-                        # INTEGRACIÓN SUPABASE: Respaldo preventivo de la ejecución del cruce consolidado
                         if 'supabase' in st.session_state:
                             try:
                                 supa = st.session_state['supabase']
@@ -360,7 +361,6 @@ def ejecutar(quitar_tildes, purificar_lote):
     if st.session_state.arqueo_procesado:
         f_df_cruce = st.session_state.cruce_final
         
-        # 🚀 EMBARQUE DEL HUD DE CONTROL DE AUDITORÍA DE ARQUEOS
         total_sku_arqueados = len(f_df_cruce)
         coincidencias_ok = len(f_df_cruce[f_df_cruce['ESTADO'] == "✅ OK"])
         desfases_criticos = len(f_df_cruce[f_df_cruce['ESTADO'] == "❌ DISCREPANCIA"])
@@ -423,7 +423,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                     if not idx_m.empty: 
                         st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
                     
-                    # Estructurar guardado en caliente para Supabase
                     payload_obs_cloud.append({
                         "semana": str(st.session_state.semana_actual).strip(),
                         "lote_pista_key": str(key),
@@ -431,7 +430,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
                 
-                # INTEGRACIÓN SUPABASE: Upsert dinámico de observaciones editadas
                 if 'supabase' in st.session_state and payload_obs_cloud:
                     try:
                         st.session_state['supabase'].table("arqueos_observaciones").upsert(payload_obs_cloud, on_conflict="semana,lote_pista_key").execute()
@@ -468,7 +466,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
                         st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
                         
-                        # INTEGRACIÓN SUPABASE: Log de control para trazar fusiones de lotes manuales
                         if 'supabase' in st.session_state:
                             try:
                                 log_fusion = {
@@ -491,7 +488,6 @@ def ejecutar(quitar_tildes, purificar_lote):
  
         st.markdown("---")
         
-        # --- ZONA DUAL DE EXPORTACIÓN ---
         col_dw1, col_dw2 = st.columns(2)
         
         with col_dw1:
