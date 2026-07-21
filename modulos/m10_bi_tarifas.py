@@ -30,9 +30,9 @@ def acortar_fecha(txt):
     try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
     except Exception: return txt
 
-# 💥 CACHÉ CON TTL DE 15 MINUTOS (Filtros y cargas instantáneas)
+# 💥 CAMBIO ESTRATÉGICO: Nombre nuevo para forzar la destrucción del caché trabado
 @st.cache_data(ttl=900, show_spinner=False)
-def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
+def cargar_maestro_operativo_m9():
     gc = inicializar_cliente_gspread_propio()
     datos_brutos = []
     
@@ -76,10 +76,8 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    # Pre-compilado de Regex para máxima velocidad
     patron_clean = re.compile(r'[^\d\.,\-]')
     
-    # 💥 SANITIZADOR FINANCIERO ULTRA-RÁPIDO
     def sanear_valores_sap(val):
         if pd.isna(val) or val is None or val == "": return 0.0
         s_clean = patron_clean.sub('', str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", ""))
@@ -99,19 +97,17 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         except Exception:
             return 0.0
 
-    cols_monetarias = ['COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'DOMINICAL_HA']
-    for col in cols_monetarias:
+    # 💥 Módulo 100% Autónomo: Ahora usa su propio motor rápido para todo
+    cols_a_limpiar = ['COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'DOMINICAL_HA', 'AREA_FUMIG', 'REND_HR']
+    for col in cols_a_limpiar:
         df[col] = df[col].apply(sanear_valores_sap)
         
-    df['AREA_FUMIG'] = df['AREA_FUMIG'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
-    df['REND_HR'] = df['REND_HR'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
-        
-    df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
+    # Conversión de Fechas Nativa de Pandas (Ignora errores y no se traba)
+    df['FECHA_DT'] = pd.to_datetime(df['FECHA'], errors='coerce', dayfirst=True)
     df = df.dropna(subset=['FECHA_DT'])
     
     if df.empty: return pd.DataFrame()
     
-    df['FECHA_DT'] = pd.to_datetime(df['FECHA_DT'])
     df['AÑO'] = df['FECHA_DT'].dt.year.astype(int)
     df['TRIMESTRE'] = df['FECHA_DT'].dt.quarter.astype(int)
     df['MES_NUM'] = df['FECHA_DT'].dt.month.astype(int)
@@ -189,7 +185,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Centro de Comando: Rendimiento y Finanzas</h1>", unsafe_allow_html=True)
     
-    df_dash = cargar_y_preprocesar_boveda_mando_directo(procesar_fecha_pesada, extraer_numero)
+    df_dash = cargar_maestro_operativo_m9()
     
     if df_dash.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones transaccionales activas registradas en la TABLA 1 o Supabase Cloud.")
