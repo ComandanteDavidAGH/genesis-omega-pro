@@ -23,12 +23,12 @@ def inicializar_cliente_gspread_propio():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
 def acortar_fecha(txt):
     try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
-    except: return txt
+    except Exception: return txt
 
 @st.cache_data(show_spinner=False)
 def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
@@ -75,7 +75,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
-    # 💥 SANITIZADOR FINANCIERO ABSOLUTO: Resuelve desbordamientos de puntos y escala de miles
+    # 💥 SANITIZADOR FINANCIERO PURIFICADO: Sin alteración de escala arbitraria
     def sanear_valores_sap(val):
         if pd.isna(val) or val is None: return 0.0
         s = str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", "")
@@ -92,12 +92,8 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
                 if s_clean.count('.') > 1: s_clean = s_clean.replace('.', '')
                 elif len(s_clean.split('.')[-1]) == 3: s_clean = s_clean.replace('.', '')
             
-            num = float(s_clean) if s_clean else 0.0
-            # Regla de Oro: Auto-inflado contable obligatorio para cifras en miles bajo el umbral 2500
-            if 0 < num < 2500:
-                num = num * 1000
-            return num
-        except:
+            return float(s_clean) if s_clean else 0.0
+        except Exception:
             return 0.0
 
     cols_monetarias = ['COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'DOMINICAL_HA']
@@ -144,10 +140,9 @@ def formato_gerencial_latino(numero):
 
 def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     VERDE_INTENSO = '#143521' 
-    DORADO = '#d4af37'        
+    DORADO = '#d4af37'         
     PALETA_YOY = [VERDE_INTENSO, '#7ebc59'] 
     
-    # 🚀 FIJACIÓN DE BORDES INDUSTRIALES (Imagen 2 Sanada al 100%)
     st.markdown(f"""
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
@@ -156,7 +151,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
-    /* Enmarcar selectores con contorno sólido de 3px e interior blanco puro */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {{
         background-color: #ffffff !important;
@@ -176,7 +170,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         font-weight: 800 !important;
         text-transform: uppercase !important;
     }}
-    /* 💥 EFECTO LUPA / POP-OUT 3D EN GRÁFICOS 💥 */
     div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out !important;
         border-radius: 10px !important;
@@ -184,9 +177,9 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         background-color: #ffffff !important;
     }}
     div[data-testid="stPlotlyChart"]:hover {{
-        transform: scale(1.04) !important; /* Aumenta el tamaño un 4% */
-        box-shadow: 0px 15px 30px rgba(20, 53, 33, 0.4), 0px 0px 15px rgba(212, 175, 55, 0.3) !important; /* Sombra Verde/Dorado */
-        z-index: 999 !important; /* Lo trae al frente de la pantalla */
+        transform: scale(1.04) !important;
+        box-shadow: 0px 15px 30px rgba(20, 53, 33, 0.4), 0px 0px 15px rgba(212, 175, 55, 0.3) !important;
+        z-index: 999 !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -280,7 +273,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
         df_filtrado['MES_ORDEN'] = df_filtrado['AÑO'].astype(str) + "-" + df_filtrado['MES_NUM'].astype(str).str.zfill(2) + " (" + df_filtrado['MES_NOMBRE'] + ")"
         
-        # 💥 AJUSTE 1: Inyectamos 'AÑO' al agrupador para no perder el rastro cronológico
         df_costo = df_filtrado.groupby(['AÑO', 'MES_ORDEN', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
         df_costo = df_costo.sort_values(by=['AÑO', 'MES_ORDEN'])
         
@@ -297,7 +289,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
         go_fig = go.Figure()
         
-        # 💥 AJUSTE 2: Bucle para separar barras por año, colorearlas e inyectar tooltip
         años_presentes = sorted(df_costo['AÑO'].unique())
         for i, año_map in enumerate(años_presentes):
             df_año = df_costo[df_costo['AÑO'] == año_map]
@@ -364,7 +355,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig4, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES (Imagen 1 Sanada en Miles)
+    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES
     # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"#### ⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
@@ -376,7 +367,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
         df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['MES_NOMBRE'] + ")"
         
-        # Saneamiento del multiplicador: Las etiquetas reflejan ahora los miles de pesos reales (Ej: $ 9.000)
         df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
         
         fig5 = px.bar(df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', barmode='group', text='ETIQUETA_DOM', color_discrete_sequence=PALETA_YOY, category_orders={"AÑO_STR": ["2025", "2026", "2027"]})
