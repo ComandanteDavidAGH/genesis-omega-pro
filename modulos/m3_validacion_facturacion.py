@@ -116,7 +116,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
     for iter_id, receta in dict_recetas.items():
         puntaje = 0
         
-        # 1. VALIDACIÓN DEL LÍDER
         lider_db = dict_lideres.get(iter_id, "")
         if lider_db:
             match_lider = False
@@ -127,7 +126,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if not match_lider:
                 puntaje -= 500 
         
-        # 2. ANÁLISIS QUÍMICO RIGUROSO CON NIVELES DE PRECISIÓN
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
@@ -138,7 +136,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     error = abs(d_sap - d_esperada)
                     tolerancia = max(0.8, d_esperada * 0.25)
                     
-                    # 💥 NUEVO ESCUDO DE PRECISIÓN: Premia la exactitud para desempatar cócteles similares
                     if error <= 0.15: 
                         match_perfecto = True
                         dose_matched = True
@@ -149,9 +146,9 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if match_receta:
                 puntaje += 100
                 if match_perfecto:
-                    puntaje += 100 # +100 puntos extra por dar en el blanco exacto
+                    puntaje += 100 
                 elif dose_matched: 
-                    puntaje += 50  # +50 puntos si encaja por la tolerancia
+                    puntaje += 50  
                 else:
                     puntaje -= 50
             else:
@@ -174,7 +171,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if not is_fert:
                     puntaje -= 100 
 
-        # SUPREMACÍA DEL PILOTO
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
             puntaje += 200
 
@@ -183,7 +179,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             coctel_base = iter_id
             dosis_oficiales_coctel = receta.copy()
 
-    # 3. AGREGAR LA SIGLA DEL FERTILIZANTE AL FINAL
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
@@ -195,6 +190,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
+
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
@@ -202,12 +198,10 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.header("", anchor="inicio_modulo")
 
-    # 🚀 PROTOCOLO SAMURÁI DE INYECCIÓN DE ALTO CONTRASTE MODIFICADO CON TU VERDE CORPORATIVO (#143521)
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     
-    /* 💥 INTERFAZ HARDENED: Forzado de contornos en tablas, inputs de fecha, texto, números, dropdowns y data editors */
     div[data-testid="stDataEditor"],
     div[data-testid="stDataFrame"] {
         border: 3px solid #143521 !important; 
@@ -216,37 +210,36 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         overflow: hidden !important;
     }
     
-    div[data-testid=\"stSelectbox\"] > div,
-    div[data-testid=\"stSelectbox\"] div[data-baseweb=\"select\"],
-    div[data-testid=\"stTextInput\"] input,
-    div[data-testid=\"stNumberInput\"] input,
-    div[data-testid=\"stDateInput\"] input {
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stDateInput"] input {
         background-color: #ffffff !important;
         border: 3px solid #143521 !important;
         border-radius: 8px !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }
     
-    div[data-testid=\"stSelectbox\"] div[data-baseweb=\"select\"] > div {
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         background-color: transparent !important;
         border: none !important;
     }
     
-    div[data-testid=\"stSelectbox\"] *, 
-    div[data-testid=\"stTextInput\"] *, 
-    div[data-testid=\"stNumberInput\"] *, 
-    div[data-testid=\"stDateInput\"] * {
+    div[data-testid="stSelectbox"] *, 
+    div[data-testid="stTextInput"] *, 
+    div[data-testid="stNumberInput"] *, 
+    div[data-testid="stDateInput"] * {
         color: #000000 !important;
         font-weight: bold !important;
     }
     
-    div[data-testid=\"stMainBlockContainer\"] label p {
+    div[data-testid="stMainBlockContainer"] label p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
     }
     
-    /* 💥 DETONACIÓN DE PALIDEZ EN CASILLAS DE COPIADO RAPIDO (st.code) */
     div[data-testid="stCodeBlock"], 
     div[data-testid="stCodeBlock"] pre, 
     div[data-testid="stCodeBlock"] pre code {
@@ -258,7 +251,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         padding: 2px 5px !important;
     }
     
-    /* Fuerza tipografía e impacto de color en el texto y sus tokens internos de Streamlit */
     div[data-testid="stCodeBlock"] code,
     div[data-testid="stCodeBlock"] code span,
     div[data-testid="stCodeBlock"] pre span {
@@ -401,17 +393,22 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.session_state.finca_anterior = lista_fincas[0]
             st.session_state.idx_prod = 3
             
+        if 'fecha_sim_mem' not in st.session_state:
+            st.session_state.fecha_sim_mem = datetime.now().date()
+
         if 'dias_ciclo_sim_mem' not in st.session_state:
             st.session_state.dias_ciclo_sim_mem = 14
 
         with st.container(border=True):
             st.markdown("#### 📝 Parámetros de la Operación")
-            cs1, cs2, cs3, cs4 = st.columns(4)
+            cs1, cs2, cs3, cs4, cs5 = st.columns(5)
             coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
             ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
             finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+            fecha_eval_sim = cs4.date_input("📅 Fecha Operación", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
             
-            if finca_sim != st.session_state.finca_anterior:
+            # 💥 RE-CÁLCULO DINÁMICO DE DÍAS CICLO AL CAMBIAR LA FINCA O LA FECHA EVALUADA
+            if (finca_sim != st.session_state.finca_anterior) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
                 datos = diccionario_fincas.get(finca_sim, {})
                 if datos.get("Productor") in lista_productores:
                     st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
@@ -439,19 +436,21 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     if fechas_enc:
                         fechas_limpias = [f for f in fechas_enc if pd.notna(f)]
-                        hoy = pd.to_datetime(datetime.now())
-                        validas = [f for f in fechas_limpias if f <= hoy]
+                        eval_dt = pd.to_datetime(fecha_eval_sim)
+                        # Buscamos la última fumigación estricta ANTES o IGUAL a la fecha seleccionada
+                        validas = [f for f in fechas_limpias if f <= eval_dt]
                         if validas:
-                            ciclo = (hoy - max(validas)).days
+                            ciclo = (eval_dt - max(validas)).days
                             if 0 <= ciclo <= 365: dias_ciclo_calc_sim = ciclo
                 except:
                     pass
                 
                 st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
                 st.session_state.finca_anterior = finca_sim
+                st.session_state.fecha_sim_mem = fecha_eval_sim
                 st.rerun()
 
-            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
+            tipo_prod_sim = cs5.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
 
         tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
         if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
@@ -675,7 +674,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             else:
                 st.error("🚨 No se pudo restaurar la base de datos.") 
 
-    # 🚀 BOTÓN DE SINCRONIZACIÓN DE ALTA GAMA PARA EL MÓDULO 3
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
         st.cache_data.clear()
@@ -697,7 +695,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             if not match_sap.empty:
                 try:
-                    # 💥 RADAR DINÁMICO: A prueba de columnas ocultas o desplazadas en SAP
                     col_finca_cands = [c for c in df_p.columns if any(x in str(c).upper() for x in ['FINCA', 'CLIENTE', 'DESTINATARIO', 'NOMBRE', 'SOLICITANTE'])]
                     col_finca = col_finca_cands[0] if col_finca_cands else df_p.columns[8]
                     
@@ -879,7 +876,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         pista_detectada = p_val
                         break
                         
-                # 💥 EXTRACCIÓN BLINDADA DE HECTÁREAS (Elimina el hardcodeo de iloc[5])
                 col_ha_cands = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
                 col_ha = col_ha_cands[0] if col_ha_cands else df_ped.columns[6]
                 
@@ -1079,7 +1075,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
-                    # 💥 RADAR ANTI-FALLOS: Búsqueda exhaustiva del Diccionario de Fertilizantes
                     f_row, f_col = -1, -1
                     for c in range(len(df_mez.columns)):
                         if 'FERTILIZANTE' in str(df_mez.columns[c]).upper():
@@ -1101,7 +1096,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if n_f not in ["", "NAN", "NONE", "FERTILIZANTES"] and s_f not in ["", "NAN", "NONE", "SIGLAS"]:
                                 dict_fertilizantes[n_f.replace(" ", "")] = s_f
 
-                    # 💥 CONSTRUCCIÓN DE RECETAS BASE
                     for idx, row in df_mez.iterrows():
                         if len(row) > 3:
                             cid = str(row.iloc[0]).strip().upper()
@@ -1117,9 +1111,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
                 
-                # ====================================================================
-                # 💥 ESCUDO TÁCTICO ABSOLUTO (CERO FALLOS EN SIGLAS Y DOSIS)
-                # ====================================================================
                 diccionario_rescate = {
                     "FOSFOSTRESS": "FE", "ZINTRAC": "ZN", "BANATREL": "BT", 
                     "NATURAMIN": "NM", "QUELAMIX": "QM", "ZITRON": "ZT"
@@ -1128,18 +1119,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 for k_sap in sap_dict_pista.keys():
                     k_up = str(k_sap).upper()
                     
-                    # 1. INYECCIÓN LETAL DE SIGLA (Obliga a anexar FE si ve Fosfostress)
                     for clave, sigla in diccionario_rescate.items():
                         if clave in k_up:
                             if sigla not in coctel_ganador:
                                 coctel_ganador += f" {sigla}"
                             break
                             
-                    # 2. ANCLAJE DE DOSIS (Caza a Fosfostress y Siganex para clavar el 0.5)
                     if "FOSFOSTRESS" in k_up or "SIGANEX" in k_up:
-                        dosis_segura = 0.5 # Valor agronómico estándar garantizado
+                        dosis_segura = 0.5 
                         try:
-                            # Busca en Excel a la fuerza, si lo encuentra lo actualiza
                             for c in range(len(df_mez.columns) - 1):
                                 mask = df_mez.iloc[:, c].astype(str).str.upper().str.contains("FOSFOSTRESS" if "FOSFOSTRESS" in k_up else "SIGANEX")
                                 if mask.any():
@@ -1149,7 +1137,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                         break
                         except: pass
                         
-                        # Inyectamos la dosis directamente en la memoria de la IA
                         dosis_oficiales_coctel[k_sap.replace(" ", "")] = dosis_segura
 
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
@@ -1238,8 +1225,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
-                    # 💥 RESCATE UNIVERSAL DE DOSIS (Ignora columnas, barre todo el Excel)
-                    # 💥 EXTRACTOR DE DOSIS EXACTA (Cero redondeos, copia fiel del Excel)
                     if dosis_teorica is None:
                         dosis_rescatada = None
                         for c_idx in range(len(df_mez.columns) - 1):
@@ -1256,13 +1241,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if dosis_rescatada is not None:
                             dosis_teorica = dosis_rescatada
                         else:
-                            # Solo calcula matemáticamente si el producto no existe en ninguna hoja de tu matriz
                             dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
                         
-                    # 💥 CEREBRO AUTO-CALCULADOR DE RECOMENDACIONES TÉCNICAS
                     base_ideal = dosis_teorica * ha_dosis_final
                     extra_pct_auto = 0.0
-                    # Umbral estricto: Si la diferencia es mayor a 0.2 litros, lo asumimos como un Extra intencional
                     if base_ideal > 0 and (cant_total_pedido - base_ideal) > 0.2:
                         extra_pct_auto = ((cant_total_pedido / base_ideal) - 1) * 100
 
@@ -1290,21 +1272,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
                 
-                # 💥 PINTOR TÁCTICO DE ALTA PRECISIÓN: Detecta mililitros extra y colorea sin titubear
                 def estilizar_dosis_ideal(row):
                     estilos = [''] * len(row)
                     try:
                         idx_sistema = row.index.get_loc("D: Dosis Total (Sistema)")
                         idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
                         
-                        # Comparamos SAP contra la dosis PURA (Sin los porcentajes extra)
                         base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
                         sugerido = float(row["I: Sugerido SAP (Total)"])
                         extra_pct = float(row.get("C: X (Extra %)", 0.0))
                         
                         diferencia_real = sugerido - base_pura
                         
-                        # Tolerancia cero: Cualquier desvío mayor a 0.2 litros enciende alertas visuales
                         if diferencia_real < -0.2: 
                             color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
                         elif diferencia_real > 0.2 or extra_pct > 0: 
@@ -1343,7 +1322,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_estilizado = df_matriz.style.apply(estilizar_dosis_ideal, axis=1)
 
                 edited_df = st.data_editor(
-                    df_estilizado, # Usamos el DataFrame con los colores inyectados
+                    df_estilizado,
                     key=llave_editor_casilla,
                     column_config={
                         "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", min_value=0.000, format="%.3f"),
@@ -1363,14 +1342,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             else:
                 st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
 
-            # --- LIQUIDACIÓN FINAL ---
             from decimal import Decimal, ROUND_HALF_UP
 
             def sap_round(n): 
                 n_limpio = round(float(n), 4)
                 return int(Decimal(str(n_limpio)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
-            # 💥 ESCUDO ANTI-FANTASMAS: Si la matriz no se creó (no hay químicos), el costo de mezcla es cero.
             if 'df_matriz' in locals() and df_matriz is not None and not df_matriz.empty:
                 costo_mezcla_total = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round).sum()
             else:
