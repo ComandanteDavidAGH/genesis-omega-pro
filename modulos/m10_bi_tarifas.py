@@ -25,9 +25,9 @@ def inicializar_cliente_gspread_propio():
     except Exception:
         return None
 
-# 💥 CACHÉ ACTIVO: MOTOR AUTÓNOMO M10
+# 💥 CACHÉ ACTIVO: MOTOR 100% AUTÓNOMO (Sin depender de funciones externas)
 @st.cache_data(ttl=900, show_spinner=False)
-def cargar_maestro_costos_m10(_procesar_fecha_pesada, _extraer_numero):
+def cargar_maestro_costos_m10():
     gc = inicializar_cliente_gspread_propio()
     datos_brutos = []
     
@@ -59,10 +59,11 @@ def cargar_maestro_costos_m10(_procesar_fecha_pesada, _extraer_numero):
     
     if not datos_brutos or len(datos_brutos) <= 2: return pd.DataFrame()
         
+    # 🧠 Buscador de cabeceras inteligente a prueba de errores
     idx_headers = 4
-    for i in range(min(8, len(datos_brutos))):
-        row_clean = [str(x).strip().upper() for x in datos_brutos[i]]
-        if "Nº ORDEN" in row_clean or "FINCA" in row_clean or "VALOR A FACTURAR" in "".join(row_clean):
+    for i in range(min(15, len(datos_brutos))):
+        row_str = " ".join([str(x).upper() for x in datos_brutos[i]])
+        if "FINCA" in row_str and ("PILOTO" in row_str or "ORDEN" in row_str):
             idx_headers = i
             break
         
@@ -70,9 +71,12 @@ def cargar_maestro_costos_m10(_procesar_fecha_pesada, _extraer_numero):
     lista_limpia = [r[:30] + [""] * max(0, 30 - len(r)) for r in filas_datos]
     df = pd.DataFrame(lista_limpia, columns=columnas_obj)
     
+    # =========================================================
+    # 🛠️ MOTORES DE PURIFICACIÓN INTERNOS E INFALIBLES
+    # =========================================================
     patron_clean = re.compile(r'[^\d\.,\-]')
     
-    def sanear_valores_sap(val):
+    def limpiar_numero_interno(val):
         if pd.isna(val) or val is None or val == "": return 0.0
         s_clean = patron_clean.sub('', str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", ""))
         if not s_clean or s_clean == '-': return 0.0
@@ -90,14 +94,24 @@ def cargar_maestro_costos_m10(_procesar_fecha_pesada, _extraer_numero):
         except Exception:
             return 0.0
 
-    # PURIFICACIÓN FINANCIERA PROFUNDA
-    cols_monetarias = ['COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'COSTO_FINCA', 'PAGO_AVION']
+    def limpiar_fecha_interna(x):
+        x = str(x).strip()
+        if not x or x.upper() in ["NAN", "NONE", "NULL", ""]: return pd.NaT
+        # Detecta el formato numérico escondido de Excel (ej. 45123)
+        if x.isdigit() and len(x) >= 4:
+            try: return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(x), 'D')
+            except: return pd.NaT
+        # Transforma puntos y barras en guiones para Pandas
+        x = x.replace('.', '-').replace('/', '-')
+        try: return pd.to_datetime(x, dayfirst=True, errors='coerce')
+        except: return pd.NaT
+
+    # APLICACIÓN DE MOTORES
+    cols_monetarias = ['COSTO_HA', 'VALOR_FACTURAR', 'LIMITE', 'COSTO_TOTAL', 'COSTO_AVION', 'COSTO_FINCA', 'PAGO_AVION', 'AREA_FUMIG']
     for col in cols_monetarias:
-        df[col] = df[col].apply(sanear_valores_sap)
+        df[col] = df[col].apply(limpiar_numero_interno)
         
-    df['AREA_FUMIG'] = df['AREA_FUMIG'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
-    
-    df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
+    df['FECHA_DT'] = df['FECHA'].apply(limpiar_fecha_interna)
     df = df.dropna(subset=['FECHA_DT'])
     
     if df.empty: return pd.DataFrame()
@@ -109,7 +123,9 @@ def cargar_maestro_costos_m10(_procesar_fecha_pesada, _extraer_numero):
     meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
     df['MES_NOMBRE'] = df['MES_NUM'].map(meses_dict)
     
-    return df[df['AREA_FUMIG'] > 0].reset_index(drop=True)
+    # 🎯 FILTRO ESTRATÉGICO FINANCIERO: Solo misiones que tengan costo o facturación activa
+    df = df[(df['VALOR_FACTURAR'] > 0) | (df['COSTO_TOTAL'] > 0)].reset_index(drop=True)
+    return df
 
 # =================================================================
 # 👑 FUNCIONES DE FORMATO
@@ -131,6 +147,7 @@ def formato_gerencial_latino(numero):
 # 👑 INTERFAZ MÓDULO 10: INTELIGENCIA DE COSTOS (BI)
 # =================================================================
 
+# La cabecera se mantiene igual para respetar la conexión con app.py
 def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     AZUL_PROFUNDO = '#0d1b2a' 
     DORADO = '#d4af37'         
@@ -154,7 +171,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Inteligencia de Costos y Rentabilidad (BI)</h1>", unsafe_allow_html=True)
     
-    df_costos = cargar_maestro_costos_m10(procesar_fecha_pesada, extraer_numero)
+    # 💥 Llamada limpia a la función aislada sin pasarle variables problemáticas
+    df_costos = cargar_maestro_costos_m10()
     
     if df_costos.empty:
         st.warning("⚠️ Bóveda vacía o sin misiones transaccionales para procesar Inteligencia Financiera.")
@@ -183,7 +201,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     costo_total_operacion = df_filtrado['COSTO_TOTAL'].sum()
     rentabilidad_neta = facturacion_bruta - costo_total_operacion
     margen_pct = (rentabilidad_neta / facturacion_bruta * 100) if facturacion_bruta > 0 else 0
-    costo_promedio_ha = df_filtrado['COSTO_HA'].mean()
+    costo_promedio_ha = df_filtrado[df_filtrado['COSTO_HA'] > 0]['COSTO_HA'].mean()
+    if pd.isna(costo_promedio_ha): costo_promedio_ha = 0
     
     st.markdown(f"""
     <div class="hud-comando">
@@ -214,7 +233,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### 📊 Distribución del Costo Operativo", unsafe_allow_html=True)
-        # Sumamos los dos pilares del costo
         costo_avion = df_filtrado['COSTO_AVION'].sum()
         costo_finca_insumos = df_filtrado['COSTO_FINCA'].sum()
         
@@ -234,7 +252,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     with g2:
         st.markdown(f"#### ⚖️ Facturación vs Costo por Finca", unsafe_allow_html=True)
         df_rent = df_filtrado.groupby('FINCA').agg({'VALOR_FACTURAR': 'sum', 'COSTO_TOTAL': 'sum'}).reset_index()
-        # Ordenar por los que más facturan
         df_rent = df_rent.sort_values(by='VALOR_FACTURAR', ascending=False).head(10)
         
         fig2 = go.Figure()
@@ -269,14 +286,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     with g4:
         st.markdown(f"#### 🧪 Top 10 Cócteles más Costosos/Ha", unsafe_allow_html=True)
         df_coctel = df_filtrado.groupby('COCTEL')['COSTO_HA'].mean().reset_index()
-        df_coctel = df_coctel.sort_values(by='COSTO_HA', ascending=True).tail(10) # Tail para que los más caros salgan arriba en Plotly
+        df_coctel = df_coctel.sort_values(by='COSTO_HA', ascending=True).tail(10) 
         df_coctel['COCTEL_CORTO'] = df_coctel['COCTEL'].apply(lambda x: str(x)[:20] + '..')
         df_coctel['ETIQUETA'] = df_coctel['COSTO_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
 
         fig4 = px.bar(df_coctel, y='COCTEL_CORTO', x='COSTO_HA', orientation='h', text='ETIQUETA', color_discrete_sequence=['#457b9d'])
         fig4.update_traces(textposition='outside')
         fig4.update_layout(xaxis_title="Costo Promedio / Ha", yaxis_title="", plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=30))
-        # Ajustamos el límite de X para que la etiqueta no se corte
         fig4.update_xaxes(range=[0, df_coctel['COSTO_HA'].max() * 1.3])
         st.plotly_chart(fig4, use_container_width=True)
 
