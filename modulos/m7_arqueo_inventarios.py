@@ -197,6 +197,7 @@ def ejecutar(quitar_tildes, purificar_lote):
     if "centro_pdf_activo" not in st.session_state:
         st.session_state.centro_pdf_activo = False
 
+    # 💥 PURIFICADOR NÚMERICO LIBRE DE REGLA DE ORO (Extrae decimales exactos)
     def limpiar_numeros_generico(x):
         if pd.isna(x) or x is None: return 0.0
         if isinstance(x, (int, float)): return float(x)
@@ -264,33 +265,38 @@ def ejecutar(quitar_tildes, purificar_lote):
                             sap_file.seek(0)
                             df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
 
+                    # 🌟 DETECCIÓN INTELIGENTE DE COLUMNAS SAP (A PRUEBA DE LAYOUTS ERRÓNEOS)
                     columnas_originales = list(df_sap.columns)
-                    columnas_saneadas = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
+                    headers = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                     
-                    # 🎯 DETECTOR MULTI-CRITERIO INFALIBLE DE COLUMNAS SAP
-                    def buscar_columna_sap(patrones, default_idx):
-                        for pat in patrones:
-                            for i, c in enumerate(columnas_saneadas):
-                                if pat in c:
-                                    return i
-                        return default_idx
+                    idx_item, idx_desc, idx_pista, idx_lote, idx_saldo = -1, -1, -1, -1, -1
+                    
+                    # 1. ESCÁNER DE DATOS: Prioridad Absoluta para detectar la verdadera PISTA
+                    pistas_conocidas = ["TEHO", "PLUC", "PORI", "LUCI", "PDIV", "Z-1", "Z-2"]
+                    for i in range(len(df_sap.columns)):
+                        vals = df_sap.iloc[:, i].dropna().astype(str).str.upper().head(50).tolist()
+                        for v in vals:
+                            if v.strip() in pistas_conocidas:
+                                idx_pista = i
+                                break
+                        if idx_pista != -1: 
+                            break
 
-                    idx_item = buscar_columna_sap(['material', 'codigo', 'item'], 0)
-                    idx_desc = buscar_columna_sap(['descripcion', 'texto', 'producto', 'nombre'], 1)
-                    
-                    # 💥 FILTRO ANTI-CENTRO: Prioriza el NOMBRE de la Pista (TEHO) sobre el CÓDIGO (4000)
-                    idx_pista = 2
-                    pistas_candidatas = [i for i, c in enumerate(columnas_saneadas) if any(k in c for k in ['denom', 'pista', 'nom_almacen', 'nombre almac'])]
-                    if not pistas_candidatas:
-                        pistas_candidatas = [i for i, c in enumerate(columnas_saneadas) if ('almacen' in c or 'almac' in c) and 'centro' not in c]
-                    if not pistas_candidatas:
-                        pistas_candidatas = [i for i, c in enumerate(columnas_saneadas) if 'centro' in c]
-                    if pistas_candidatas:
-                        idx_pista = pistas_candidatas[0]
+                    # 2. ESCÁNER DE CABECERAS: Fallback estructurado
+                    for i, h in enumerate(headers):
+                        if idx_item == -1 and any(k in h for k in ['material', 'codigo', 'item']): idx_item = i
+                        if idx_desc == -1 and any(k in h for k in ['descripcion', 'texto', 'producto', 'nombre']): idx_desc = i
+                        if idx_pista == -1 and any(k in h for k in ['almacen', 'alm', 'pista', 'ubicacion']) and 'centro' not in h: idx_pista = i
+                        if idx_lote == -1 and 'lote' in h: idx_lote = i
+                        if idx_saldo == -1 and any(k in h for k in ['libre', 'saldo', 'cantidad', 'stock']): idx_saldo = i
+                        
+                    # 3. SEGURIDAD FINAL (Asignación por defecto en caso de formato estándar MB52)
+                    if idx_item == -1: idx_item = 0
+                    if idx_desc == -1: idx_desc = 1
+                    if idx_pista == -1: idx_pista = 2
+                    if idx_lote == -1: idx_lote = 3
+                    if idx_saldo == -1: idx_saldo = 4
 
-                    idx_lote = buscar_columna_sap(['lote'], 3)
-                    idx_saldo = buscar_columna_sap(['libre', 'saldo', 'cantidad', 'stock'], 4)
-                    
                     c_item = columnas_originales[idx_item]
                     c_desc = columnas_originales[idx_desc]
                     c_pista = columnas_originales[idx_pista]
