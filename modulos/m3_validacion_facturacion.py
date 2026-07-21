@@ -401,18 +401,40 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         with st.container(border=True):
             st.markdown("#### 📝 Parámetros de la Operación")
-            cs1, cs2, cs3, cs4, cs5 = st.columns(5)
+            cs1, cs2, cs3, cs4 = st.columns(4)
             coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
             ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
             finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
-            fecha_eval_sim = cs4.date_input("📅 Fecha Operación", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
             
-            # 💥 RE-CÁLCULO DINÁMICO DE DÍAS CICLO AL CAMBIAR LA FINCA O LA FECHA EVALUADA
-            if (finca_sim != st.session_state.finca_anterior) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
+            # --- Auto-Actualizador Productor ---
+            if finca_sim != st.session_state.finca_anterior:
                 datos = diccionario_fincas.get(finca_sim, {})
                 if datos.get("Productor") in lista_productores:
                     st.session_state.idx_prod = lista_productores.index(datos.get("Productor"))
-                
+                    
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
+
+        tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
+        if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
+            tope_finca_auto = "TOPE MAX GENERAL"
+
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
+            c_f1, c_f2, c_f3, c_f4, c_f5 = st.columns(5)
+            
+            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
+            vuelo_sim = c_f1.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
+            
+            pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+            pista_sim = c_f2.selectbox("🛣️ Pista Base", pistas_base_lista)
+            
+            horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+            
+            # 💥 AQUÍ ESTÁ EL SELECTOR DE FECHAS SOLICITADO
+            fecha_eval_sim = c_f4.date_input("📅 Fecha de Misión", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
+            
+            # 💥 CEREBRO RE-CALCULADOR DE DÍAS CICLO AL CAMBIAR FECHA O FINCA
+            if (finca_sim != st.session_state.finca_anterior) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
                 dias_ciclo_calc_sim = 14
                 try:
                     f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
@@ -437,8 +459,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if fechas_enc:
                         fechas_limpias = [f for f in fechas_enc if pd.notna(f)]
                         eval_dt = pd.to_datetime(fecha_eval_sim)
-                        # Buscamos la última fumigación estricta ANTES o IGUAL a la fecha seleccionada
-                        validas = [f for f in fechas_limpias if f <= eval_dt]
+                        # Busca estrictamente la fecha anterior más cercana
+                        validas = [f for f in fechas_limpias if f < eval_dt]
                         if validas:
                             ciclo = (eval_dt - max(validas)).days
                             if 0 <= ciclo <= 365: dias_ciclo_calc_sim = ciclo
@@ -450,24 +472,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.session_state.fecha_sim_mem = fecha_eval_sim
                 st.rerun()
 
-            tipo_prod_sim = cs5.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
-
-        tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
-        if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
-            tope_finca_auto = "TOPE MAX GENERAL"
-
-        with st.container(border=True):
-            st.markdown("#### ⚙️ Configuración de Flota")
-            cs5, cs6, cs7, cs8 = st.columns(4)
-            
-            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
-            vuelo_sim = cs5.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
-            
-            pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
-            pista_sim = cs6.selectbox("🛣️ Pista Base", pistas_base_lista)
-            
-            horometro_sim = cs7.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-            dias_ciclo_sim = cs8.number_input("📅 Días Ciclo", min_value=0, step=1, key="dias_ciclo_sim_mem")
+            dias_ciclo_sim = c_f5.number_input("⏳ Días Ciclo", min_value=0, step=1, key="dias_ciclo_sim_mem")
             
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
