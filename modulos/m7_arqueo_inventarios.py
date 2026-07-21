@@ -267,11 +267,29 @@ def ejecutar(quitar_tildes, purificar_lote):
                     columnas_originales = list(df_sap.columns)
                     columnas_saneadas = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                     
-                    idx_item = next((i for i, c in enumerate(columnas_saneadas) if 'material' == c or 'item' in c), 0)
-                    idx_desc = next((i for i, c in enumerate(columnas_saneadas) if 'descripcion' in c or 'producto' in c or 'texto' in c), 1)
-                    idx_pista = next((i for i, c in enumerate(columnas_saneadas) if 'almacen' in c or 'pista' in c or 'centro' in c), 2)
-                    idx_lote = next((i for i, c in enumerate(columnas_saneadas) if 'lote' in c), 3)
-                    idx_saldo = next((i for i, c in enumerate(columnas_saneadas) if 'libre' in c or 'saldo' in c or 'cantidad' in c), 4)
+                    # 🎯 DETECTOR MULTI-CRITERIO INFALIBLE DE COLUMNAS SAP
+                    def buscar_columna_sap(patrones, default_idx):
+                        for pat in patrones:
+                            for i, c in enumerate(columnas_saneadas):
+                                if pat in c:
+                                    return i
+                        return default_idx
+
+                    idx_item = buscar_columna_sap(['material', 'codigo', 'item'], 0)
+                    idx_desc = buscar_columna_sap(['descripcion', 'texto', 'producto', 'nombre'], 1)
+                    
+                    # 💥 FILTRO ANTI-CENTRO: Prioriza el NOMBRE de la Pista (TEHO) sobre el CÓDIGO (4000)
+                    idx_pista = 2
+                    pistas_candidatas = [i for i, c in enumerate(columnas_saneadas) if any(k in c for k in ['denom', 'pista', 'nom_almacen', 'nombre almac'])]
+                    if not pistas_candidatas:
+                        pistas_candidatas = [i for i, c in enumerate(columnas_saneadas) if ('almacen' in c or 'almac' in c) and 'centro' not in c]
+                    if not pistas_candidatas:
+                        pistas_candidatas = [i for i, c in enumerate(columnas_saneadas) if 'centro' in c]
+                    if pistas_candidatas:
+                        idx_pista = pistas_candidatas[0]
+
+                    idx_lote = buscar_columna_sap(['lote'], 3)
+                    idx_saldo = buscar_columna_sap(['libre', 'saldo', 'cantidad', 'stock'], 4)
                     
                     c_item = columnas_originales[idx_item]
                     c_desc = columnas_originales[idx_desc]
@@ -295,7 +313,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
                         target = None
                         
-                        # Búsqueda inteligente de la pestaña por semana
                         for sheet_name in dict_dfs.keys():
                             s_clean = quitar_tildes(str(sheet_name)).upper().strip()
                             if re.search(r'\b' + re.escape(sem_num) + r'\b', s_clean) or s_clean == sem_num:
@@ -318,7 +335,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 c_a = next((c for c in df_s.columns if "ALMAC" in c or "PISTA" in c), None)
                                 c_l = next((c for c in df_s.columns if "LOTE" in c and "SALDO" not in c), None)
                                 
-                                # 💥 EXTRACCIÓN DEL SALDO FINAL REAL (Inversión de búsqueda de derecha a izquierda)
+                                # Extracción estricta del Saldo Final (Última columna que contenga SALDO y no sea Inicial)
                                 cols_saldo = [c for c in df_s.columns if "SALDO" in str(c).upper() and not any(x in str(c).upper() for x in ["INIC", " IN", "INGRES", "ENTRA"])]
                                 c_v = cols_saldo[-1] if cols_saldo else next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c), None)
                                 
