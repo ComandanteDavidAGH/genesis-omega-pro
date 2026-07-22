@@ -286,7 +286,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                     
                     idx_item, idx_desc, idx_pista, idx_lote, idx_saldo = -1, -1, -1, -1, -1
                     
-                    # 💥 BÚSQUEDA INTELIGENTE DE PISTA EN SAP (Evita el "4000")
                     pistas_conocidas = ["TEHO", "PLUC", "PORI", "LUCI", "PDIV", "Z-1", "Z-2"]
                     for i in range(len(df_sap.columns)):
                         vals = df_sap.iloc[:, i].dropna().astype(str).str.upper().head(50).tolist()
@@ -328,12 +327,10 @@ def ejecutar(quitar_tildes, purificar_lote):
                     lista_sup = []
                     sem_num = str(semana_obj).strip()
                     
-                    # 💥 PROCESAMIENTO DE EXCEL FÍSICOS
                     for file in archivos_sup:
                         file.seek(0)
                         dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
                         
-                        # Carga paralela con openpyxl para detectar la basura oculta
                         file.seek(0)
                         try:
                             wb = openpyxl.load_workbook(file, data_only=True)
@@ -350,7 +347,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                         if target_sheet:
                             df_raw = dict_dfs[target_sheet]
                             
-                            # 🛡️ ESCUDO ANTI-FANTASMAS: DESTRUCCIÓN DE FILAS OCULTAS
+                            # DESTRUCCIÓN DE FILAS OCULTAS
                             if wb and target_sheet in wb.sheetnames:
                                 ws = wb[target_sheet]
                                 filas_ocultas = [r - 1 for r, dim in ws.row_dimensions.items() if dim.hidden]
@@ -561,26 +558,35 @@ def ejecutar(quitar_tildes, purificar_lote):
             else:
                 st.success("✅ No se detectan lotes pendientes por fusionar.")
 
+            # --- VISTA COMPACTA Y PLEGABLE DEL HISTORIAL DE FUSIONES ---
             if st.session_state.historial_fusiones:
                 st.markdown("---")
-                st.markdown("##### ↩️ Fusiones Activas Realizadas (Control de Deshacer)")
-                for idx_f, f_item in enumerate(st.session_state.historial_fusiones):
-                    c_f1, c_f2 = st.columns([3, 1])
-                    c_f1.info(f"📍 **{f_item['pista']}** | Lote Creado: `{f_item['lote_erroneo']}` $\rightarrow$ Sumado a Lote SAP: `{f_item['lote_destino']}` (+{f_item['volumen']} L/Kg)")
-                    if c_f2.button(f"↩️ DESHACER ESTA FUSIÓN", key=f"btn_undo_{idx_f}"):
-                        st.session_state.historial_fusiones.pop(idx_f)
-                        
+                with st.expander(f"↩️ Ver / Gestionar Fusiones Realizadas ({len(st.session_state.historial_fusiones)})", expanded=False):
+                    if st.button("🧹 LIMPIAR TODO EL HISTORIAL DE FUSIONES", type="secondary", use_container_width=True):
+                        st.session_state.historial_fusiones = []
                         st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
-                        for f_rest in st.session_state.historial_fusiones:
-                            mask_r = (st.session_state.df_sup_grouped['PISTA'] == f_rest['pista']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == f_rest['lote_key_erroneo'])
-                            st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_SUP'] = f_rest['lote_destino']
-                            st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_KEY'] = purificar_lote(f_rest['lote_destino'])
-                            st.session_state.df_sup_grouped.loc[mask_r, 'PRODUCTO_SUP'] = f_rest['producto']
-                        
-                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
                         generar_cruce()
-                        st.toast("✅ Fusión deshecha con éxito.", icon="↩️")
+                        st.toast("✅ Historial de fusiones limpiado por completo.", icon="🧹")
                         st.rerun()
+                        
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    for idx_f, f_item in enumerate(st.session_state.historial_fusiones):
+                        c_f1, c_f2 = st.columns([3, 1])
+                        c_f1.info(f"📍 **{f_item['pista']}** | Lote Creado: `{f_item['lote_erroneo']}` ➔ Sumado a Lote SAP: `{f_item['lote_destino']}` (+{f_item['volumen']} L/Kg)")
+                        if c_f2.button(f"↩️ DESHACER", key=f"btn_undo_{idx_f}"):
+                            st.session_state.historial_fusiones.pop(idx_f)
+                            
+                            st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
+                            for f_rest in st.session_state.historial_fusiones:
+                                mask_r = (st.session_state.df_sup_grouped['PISTA'] == f_rest['pista']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == f_rest['lote_key_erroneo'])
+                                st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_SUP'] = f_rest['lote_destino']
+                                st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_KEY'] = purificar_lote(f_rest['lote_destino'])
+                                st.session_state.df_sup_grouped.loc[mask_r, 'PRODUCTO_SUP'] = f_rest['producto']
+                            
+                            st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                            generar_cruce()
+                            st.toast("✅ Fusión deshecha con éxito.", icon="↩️")
+                            st.rerun()
  
         with tab3:
             st.dataframe(st.session_state.cruce_final.drop(columns=['LOTE_KEY'], errors='ignore').style.map(lambda x: 'background-color: #d4edda; color: #155724' if x == "✅ OK" else '', subset=['ESTADO']), use_container_width=True, hide_index=True, column_config={"SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"), "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"), "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")})
