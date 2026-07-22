@@ -9,11 +9,10 @@ import streamlit.components.v1 as components
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =================================================================
-# ⚡ COMPILADORES DE ESTRUCTURA Y ESTILOS (ALTA VELOCIDAD EN RAM)
+# ⚡ COMPILADORES DE ESTRUCTURA Y ESTILOS
 # =================================================================
 
 def compilar_excel_maestro(cruce_final, semana):
-    """ Genera y estila el libro de openpyxl una sola vez en memoria """
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         f_df = cruce_final.drop(columns=['LOTE_KEY'], errors='ignore')
@@ -57,7 +56,6 @@ def compilar_excel_maestro(cruce_final, semana):
     return buffer.getvalue()
 
 def compilar_html_pdf(cruce_final, semana, css_vip):
-    """ Construye la estructura limpia para el motor de inyección html2pdf """
     pistas = sorted(cruce_final['PISTA'].unique())
     html_out = f"""
     <html>
@@ -127,7 +125,7 @@ def compilar_html_pdf(cruce_final, semana, css_vip):
     return html_out
 
 # =================================================================
-# 👑 INTERFAZ GRÁFICA Y CONTROL DE BÚNKERS
+# 👑 INTERFAZ GRÁFICA
 # =================================================================
 
 def ejecutar(quitar_tildes, purificar_lote):
@@ -145,14 +143,6 @@ def ejecutar(quitar_tildes, purificar_lote):
         color: #0d1b2a !important;
         font-weight: 800 !important;
         font-size: 15px !important;
-    }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        background-color: transparent !important;
-        border: none !important;
-    }
-    div[data-testid="stSelectbox"] * {
-        color: #000000 !important;
-        font-weight: bold !important;
     }
     
     div[data-testid="stFileUploader"] section {
@@ -198,7 +188,6 @@ def ejecutar(quitar_tildes, purificar_lote):
     if "centro_pdf_activo" not in st.session_state:
         st.session_state.centro_pdf_activo = False
 
-    # 💥 PURIFICADOR DECIMÁL QUIRÚRGICO (Pilar 4)
     def limpiar_numeros_generico(x):
         if pd.isna(x) or x is None: return 0.0
         if isinstance(x, (int, float)): return float(x)
@@ -268,8 +257,10 @@ def ejecutar(quitar_tildes, purificar_lote):
         else:
             try:
                 with st.spinner("Desplegando analista algorítmico de inventarios..."):
+                    # 🧹 LIMPIEZA FORZADA EN CADA INICIO (Para borrar rastros de fusiones pasadas)
                     st.session_state.observaciones_memoria = {}
                     st.session_state.historial_fusiones = []
+                    
                     sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                     
                     if sap_file.name.lower().endswith('.xlsx') or sap_file.name.lower().endswith('.xls'): 
@@ -281,7 +272,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                             sap_file.seek(0)
                             df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
 
-                    # 🌟 ESCÁNER DINÁMICO DE SÁBANA SAP
                     columnas_originales = list(df_sap.columns)
                     headers = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                     
@@ -328,23 +318,23 @@ def ejecutar(quitar_tildes, purificar_lote):
                     lista_sup = []
                     sem_num = str(semana_obj).strip()
                     
-                    # 💥 PILAR 2: PROCESAMIENTO DE REPORTES FÍSICOS (Pestaña Única por Libro Excel)
+                    # 🔍 CONTENEDOR DE RAYOS X
+                    debug_logs = []
+                    
                     for file in archivos_sup:
                         dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
                         target_sheet = None
                         
-                        # Búsqueda estricta de la pestaña de la semana seleccionada
                         for sheet_name in dict_dfs.keys():
                             s_clean = quitar_tildes(str(sheet_name)).upper().strip()
                             if re.search(r'\b' + re.escape(sem_num) + r'\b', s_clean) or s_clean == sem_num:
                                 target_sheet = sheet_name
-                                break  # 🛑 CANDADO DE PESTAÑA ÚNICA: Detiene el ciclo tras hallar la 1era coincidencia en este archivo
+                                break 
 
                         if target_sheet:
                             df_raw = dict_dfs[target_sheet]
                             h_idx = -1
                             
-                            # Localización dinámica de la fila de cabecera
                             for i in range(min(30, len(df_raw))):
                                 row_v = [quitar_tildes(str(x)).upper() for x in df_raw.iloc[i].values if pd.notna(x)]
                                 if any("LOTE" in val for val in row_v) and any("SALDO" in val for val in row_v):
@@ -356,12 +346,10 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 raw_headers = [str(x) for x in df_raw.iloc[h_idx]]
                                 df_s.columns = [f"{quitar_tildes(x)}_{idx}" for idx, x in enumerate(raw_headers)]
                                 
-                                # 💥 PILAR 1: RADAR DINÁMICO DE COLUMNAS EN EL EXCEL FÍSICO
                                 c_p = next((c for c in df_s.columns if any(k in c.upper() for k in ["PRODUC", "DESCRI", "TEXTO", "ARTICULO"])), None)
                                 c_a = next((c for c in df_s.columns if any(k in c.upper() for k in ["ALMAC", "PISTA", "CENTRO", "UBICAC"])), None)
                                 c_l = next((c for c in df_s.columns if "LOTE" in c.upper() and "SALDO" not in c.upper()), None)
                                 
-                                # 💥 PILAR 3: CAPTURA ESTRICTA DEL SALDO FINAL (Excluye Inicios, Ingresos, Salidas)
                                 cand_saldos = []
                                 for c in df_s.columns:
                                     c_upper = c.upper()
@@ -375,7 +363,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                                     df_s_c = df_s[[c_p, c_a, c_l, c_v]].copy()
                                     df_s_c.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE_SUP', 'SALDO_FISICO']
                                     
-                                    # 💥 PILAR 4: LIMPIEZA DE FILAS VACÍAS Y TOTALES
                                     df_s_c = df_s_c.dropna(subset=['PRODUCTO_SUP', 'LOTE_SUP'])
                                     df_s_c = df_s_c[df_s_c['PRODUCTO_SUP'].astype(str).str.strip() != '']
                                     df_s_c = df_s_c[~df_s_c['PRODUCTO_SUP'].astype(str).str.upper().str.contains("TOTAL|SUMA", regex=True)]
@@ -383,6 +370,18 @@ def ejecutar(quitar_tildes, purificar_lote):
                                     df_s_c['PISTA'] = df_s_c['PISTA'].astype(str).str.strip().str.upper().replace('NAN', None).ffill().bfill()
                                     df_s_c['LOTE_KEY'] = df_s_c['LOTE_SUP'].apply(purificar_lote)
                                     df_s_c['SALDO_FISICO'] = df_s_c['SALDO_FISICO'].apply(limpiar_numeros_generico)
+                                    
+                                    debug_logs.append({
+                                        "Archivo": file.name,
+                                        "Pestaña": target_sheet,
+                                        "Col_Producto": c_p,
+                                        "Col_Almacen": c_a,
+                                        "Col_Lote": c_l,
+                                        "Col_Saldo": c_v,
+                                        "Total_Filas": len(df_s_c),
+                                        "Muestra_Pistas": list(df_s_c['PISTA'].unique())
+                                    })
+                                    
                                     lista_sup.append(df_s_c)
 
                     if lista_sup:
@@ -391,30 +390,22 @@ def ejecutar(quitar_tildes, purificar_lote):
                         st.session_state.semana_actual = semana_obj
                         generar_cruce()
                         st.session_state.arqueo_procesado = True
-                        
-                        if 'supabase' in st.session_state:
-                            try:
-                                supa = st.session_state['supabase']
-                                payload_cruce = []
-                                for _, row_c in st.session_state.cruce_final.iterrows():
-                                    payload_cruce.append({
-                                        "semana": str(semana_obj).strip(), "pista": str(row_c["PISTA"]),
-                                        "item_codigo": str(row_c["ITEM"]), "producto": str(row_c["PRODUCTO"]),
-                                        "lote": str(row_c["LOTE"]), "saldo_sap": float(row_c["SALDO_SAP"]),
-                                        "saldo_fisico": float(row_c["SALDO_FISICO"]), "diferencia": float(row_c["DIFERENCIA"]),
-                                        "estado": str(row_c["ESTADO"])
-                                    })
-                                if payload_cruce:
-                                    supa.table("arqueos_inventario_maestro").delete().eq("semana", str(semana_obj).strip()).execute()
-                                    supa.table("arqueos_inventario_maestro").insert(payload_cruce).execute()
-                            except Exception:
-                                pass
+                        st.session_state.debug_logs = debug_logs
                     else: 
                         st.error("❌ No se localizaron hojas que coincidan con la semana indicada en los reportes físicos.")
             except Exception as e: 
                 st.error(f"🚨 Error estructural: {e}")
                 
     if st.session_state.arqueo_procesado:
+        # 🔍 PANEL DE RAYOS X VISIBLE PARA DEPURACIÓN
+        if "debug_logs" in st.session_state and st.session_state.debug_logs:
+            with st.expander("🔍 RAYOS X: VER QUÉ LEYÓ EL SISTEMA DE TUS ARCHIVOS (Haga clic para abrir)"):
+                st.write("### 📌 Resumen de Lectura por Archivo:")
+                st.json(st.session_state.debug_logs)
+                
+                st.write("### 📌 Suma Pura Físicos Extraída (Antes de cruzar con SAP):")
+                st.dataframe(st.session_state.df_sup_grouped_virgen, use_container_width=True)
+
         f_df_cruce = st.session_state.cruce_final
         
         total_sku_arqueados = len(f_df_cruce)
@@ -551,7 +542,6 @@ def ejecutar(quitar_tildes, purificar_lote):
             else:
                 st.success("✅ No se detectan lotes pendientes por fusionar.")
 
-            # --- HISTORIAL Y REVERSIÓN GRANULAR ---
             if st.session_state.historial_fusiones:
                 st.markdown("---")
                 st.markdown("##### ↩️ Fusiones Activas Realizadas (Control de Deshacer)")
