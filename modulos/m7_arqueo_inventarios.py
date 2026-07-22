@@ -31,7 +31,6 @@ def compilar_excel_maestro(cruce_final, semana):
             worksheet = writer.sheets[sheetname]
             worksheet.auto_filter.ref = worksheet.dimensions 
             
-            # Inyección limpia de Fórmulas Vivas de Excel
             for r_idx in range(2, worksheet.max_row + 1):
                 worksheet.cell(row=r_idx, column=7).value = f"=F{r_idx}-E{r_idx}"
                 worksheet.cell(row=r_idx, column=8).value = f'=IF(ABS(G{r_idx})<=0.05, "✅ OK", "❌ DISCREPANCIA")'
@@ -194,10 +193,12 @@ def ejecutar(quitar_tildes, purificar_lote):
         st.session_state.arqueo_procesado = False
     if "observaciones_memoria" not in st.session_state:
         st.session_state.observaciones_memoria = {}
+    if "historial_fusiones" not in st.session_state:
+        st.session_state.historial_fusiones = []
     if "centro_pdf_activo" not in st.session_state:
         st.session_state.centro_pdf_activo = False
 
-    # 💥 PURIFICADOR NÚMERICO LIBRE DE REGLA DE ORO (Extrae decimales exactos)
+    # 💥 PURIFICADOR DECIMÁL QUIRÚRGICO (Pilar 4)
     def limpiar_numeros_generico(x):
         if pd.isna(x) or x is None: return 0.0
         if isinstance(x, (int, float)): return float(x)
@@ -247,13 +248,28 @@ def ejecutar(quitar_tildes, purificar_lote):
         st.session_state.cruce_final = cruce[['PISTA', 'ITEM', 'PRODUCTO', 'LOTE_KEY', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'ESTADO', 'OBSERVACIONES']].sort_values(by=['PISTA', 'PRODUCTO']).reset_index(drop=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🚀 INICIAR ARQUEO ESTRATÉGICO", type="primary", use_container_width=True):
+    
+    col_act1, col_act2 = st.columns([2, 1])
+    
+    with col_act2:
+        if st.button("🔄 RESETEAR Y PURGAR MEMORIA", use_container_width=True):
+            for k in ["arqueo_procesado", "df_sap_grouped", "df_sup_grouped", "df_sup_grouped_virgen", "cruce_final", "observaciones_memoria", "df_sap_raw", "historial_fusiones"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.toast("✅ Memoria purgada. Arqueo restablecido.", icon="🔄")
+            st.rerun()
+
+    with col_act1:
+        btn_iniciar = st.button("🚀 INICIAR ARQUEO ESTRATÉGICO", type="primary", use_container_width=True)
+
+    if btn_iniciar:
         if not archivo_sap or not archivos_sup or not semana_obj: 
             st.error("❌ Suministros insuficientes para el cruce maestro.")
         else:
             try:
                 with st.spinner("Desplegando analista algorítmico de inventarios..."):
                     st.session_state.observaciones_memoria = {}
+                    st.session_state.historial_fusiones = []
                     sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                     
                     if sap_file.name.lower().endswith('.xlsx') or sap_file.name.lower().endswith('.xls'): 
@@ -265,13 +281,12 @@ def ejecutar(quitar_tildes, purificar_lote):
                             sap_file.seek(0)
                             df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
 
-                    # 🌟 DETECCIÓN INTELIGENTE DE COLUMNAS SAP (A PRUEBA DE LAYOUTS ERRÓNEOS)
+                    # 🌟 ESCÁNER DINÁMICO DE SÁBANA SAP
                     columnas_originales = list(df_sap.columns)
                     headers = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                     
                     idx_item, idx_desc, idx_pista, idx_lote, idx_saldo = -1, -1, -1, -1, -1
                     
-                    # 1. ESCÁNER DE DATOS: Prioridad Absoluta para detectar la verdadera PISTA
                     pistas_conocidas = ["TEHO", "PLUC", "PORI", "LUCI", "PDIV", "Z-1", "Z-2"]
                     for i in range(len(df_sap.columns)):
                         vals = df_sap.iloc[:, i].dropna().astype(str).str.upper().head(50).tolist()
@@ -282,7 +297,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         if idx_pista != -1: 
                             break
 
-                    # 2. ESCÁNER DE CABECERAS: Fallback estructurado
                     for i, h in enumerate(headers):
                         if idx_item == -1 and any(k in h for k in ['material', 'codigo', 'item']): idx_item = i
                         if idx_desc == -1 and any(k in h for k in ['descripcion', 'texto', 'producto', 'nombre']): idx_desc = i
@@ -290,7 +304,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         if idx_lote == -1 and 'lote' in h: idx_lote = i
                         if idx_saldo == -1 and any(k in h for k in ['libre', 'saldo', 'cantidad', 'stock']): idx_saldo = i
                         
-                    # 3. SEGURIDAD FINAL (Asignación por defecto en caso de formato estándar MB52)
                     if idx_item == -1: idx_item = 0
                     if idx_desc == -1: idx_desc = 1
                     if idx_pista == -1: idx_pista = 2
@@ -315,46 +328,66 @@ def ejecutar(quitar_tildes, purificar_lote):
                     lista_sup = []
                     sem_num = str(semana_obj).strip()
                     
+                    # 💥 PILAR 2: PROCESAMIENTO DE REPORTES FÍSICOS (Pestaña Única por Libro Excel)
                     for file in archivos_sup:
                         dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
-                        target = None
+                        target_sheet = None
                         
+                        # Búsqueda estricta de la pestaña de la semana seleccionada
                         for sheet_name in dict_dfs.keys():
                             s_clean = quitar_tildes(str(sheet_name)).upper().strip()
                             if re.search(r'\b' + re.escape(sem_num) + r'\b', s_clean) or s_clean == sem_num:
-                                target = sheet_name
-                                break
-                        
-                        if target:
-                            df_raw = dict_dfs[target]
+                                target_sheet = sheet_name
+                                break  # 🛑 CANDADO DE PESTAÑA ÚNICA: Detiene el ciclo tras hallar la 1era coincidencia en este archivo
+
+                        if target_sheet:
+                            df_raw = dict_dfs[target_sheet]
                             h_idx = -1
+                            
+                            # Localización dinámica de la fila de cabecera
                             for i in range(min(30, len(df_raw))):
-                                row_v = [quitar_tildes(x) for x in df_raw.iloc[i].values if pd.notna(x)]
+                                row_v = [quitar_tildes(str(x)).upper() for x in df_raw.iloc[i].values if pd.notna(x)]
                                 if any("LOTE" in val for val in row_v) and any("SALDO" in val for val in row_v):
                                     h_idx = i
                                     break
+                                    
                             if h_idx != -1:
                                 df_s = df_raw.iloc[h_idx + 1:].copy()
-                                df_s.columns = [f"{quitar_tildes(x)}_{idx}" for idx, x in enumerate(df_raw.iloc[h_idx])]
+                                raw_headers = [str(x) for x in df_raw.iloc[h_idx]]
+                                df_s.columns = [f"{quitar_tildes(x)}_{idx}" for idx, x in enumerate(raw_headers)]
                                 
-                                c_p = next((c for c in df_s.columns if "PRODUC" in c or "DESCRI" in c), None)
-                                c_a = next((c for c in df_s.columns if "ALMAC" in c or "PISTA" in c), None)
-                                c_l = next((c for c in df_s.columns if "LOTE" in c and "SALDO" not in c), None)
+                                # 💥 PILAR 1: RADAR DINÁMICO DE COLUMNAS EN EL EXCEL FÍSICO
+                                c_p = next((c for c in df_s.columns if any(k in c.upper() for k in ["PRODUC", "DESCRI", "TEXTO", "ARTICULO"])), None)
+                                c_a = next((c for c in df_s.columns if any(k in c.upper() for k in ["ALMAC", "PISTA", "CENTRO", "UBICAC"])), None)
+                                c_l = next((c for c in df_s.columns if "LOTE" in c.upper() and "SALDO" not in c.upper()), None)
                                 
-                                # Extracción estricta del Saldo Final (Última columna que contenga SALDO y no sea Inicial)
-                                cols_saldo = [c for c in df_s.columns if "SALDO" in str(c).upper() and not any(x in str(c).upper() for x in ["INIC", " IN", "INGRES", "ENTRA"])]
-                                c_v = cols_saldo[-1] if cols_saldo else next((c for c in df_s.columns if "SALDO" in c and "INIC" not in c), None)
+                                # 💥 PILAR 3: CAPTURA ESTRICTA DEL SALDO FINAL (Excluye Inicios, Ingresos, Salidas)
+                                cand_saldos = []
+                                for c in df_s.columns:
+                                    c_upper = c.upper()
+                                    if "SALDO" in c_upper:
+                                        if not any(ex in c_upper for ex in ["INIC", "INICIAL", "INGRES", "ENTRA", "SALID"]):
+                                            cand_saldos.append(c)
+                                
+                                c_v = cand_saldos[-1] if cand_saldos else next((c for c in df_s.columns if "SALDO" in c.upper() and "INIC" not in c.upper()), None)
                                 
                                 if all([c_p, c_a, c_l, c_v]):
                                     df_s_c = df_s[[c_p, c_a, c_l, c_v]].copy()
                                     df_s_c.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE_SUP', 'SALDO_FISICO']
+                                    
+                                    # 💥 PILAR 4: LIMPIEZA DE FILAS VACÍAS Y TOTALES
+                                    df_s_c = df_s_c.dropna(subset=['PRODUCTO_SUP', 'LOTE_SUP'])
+                                    df_s_c = df_s_c[df_s_c['PRODUCTO_SUP'].astype(str).str.strip() != '']
+                                    df_s_c = df_s_c[~df_s_c['PRODUCTO_SUP'].astype(str).str.upper().str.contains("TOTAL|SUMA", regex=True)]
+                                    
                                     df_s_c['PISTA'] = df_s_c['PISTA'].astype(str).str.strip().str.upper().replace('NAN', None).ffill().bfill()
                                     df_s_c['LOTE_KEY'] = df_s_c['LOTE_SUP'].apply(purificar_lote)
                                     df_s_c['SALDO_FISICO'] = df_s_c['SALDO_FISICO'].apply(limpiar_numeros_generico)
                                     lista_sup.append(df_s_c)
 
                     if lista_sup:
-                        st.session_state.df_sup_grouped = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        st.session_state.df_sup_grouped_virgen = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
                         st.session_state.semana_actual = semana_obj
                         generar_cruce()
                         st.session_state.arqueo_procesado = True
@@ -460,19 +493,20 @@ def ejecutar(quitar_tildes, purificar_lote):
                         pass
  
         with tab2:
+            st.markdown("#### 🛠️ Conciliador e Historial de Correcciones")
+            
             err_fantasmas = st.session_state.cruce_final[(st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & (st.session_state.cruce_final['SALDO_SAP'] == 0) & (st.session_state.cruce_final['SALDO_FISICO'] > 0)]
-            if err_fantasmas.empty: 
-                st.success("✅ No se detectan lotes fantasmas generados por errores de digitación en las pistas.")
-            else:
-                opciones = err_fantasmas.apply(lambda x: f"{x['PISTA']} | Prod: {x['PRODUCTO']} | Lote Físico: {x['LOTE']}", axis=1).tolist()
-                sel = st.selectbox("1️⃣ Seleccione el error de digitación comercial:", opciones)
+            
+            if not err_fantasmas.empty:
+                opciones = err_fantasmas.apply(lambda x: f"{x['PISTA']} | Prod: {x['PRODUCTO']} | Lote Físico: {x['LOTE']} ({x['SALDO_FISICO']} L/Kg)", axis=1).tolist()
+                sel = st.selectbox("1️⃣ Seleccione el error de digitación a corregir:", opciones)
                 if sel:
                     row_s = err_fantasmas.iloc[opciones.index(sel)]
                     df_sap_pista = st.session_state.df_sap_raw[st.session_state.df_sap_raw['PISTA'] == row_s['PISTA']]
                     df_exact = df_sap_pista[df_sap_pista['PRODUCTO'] == row_s['PRODUCTO']]
                     
                     if not df_exact.empty: 
-                        lote_ok_str = st.selectbox(f"2️⃣ Lotes Oficiales de SAP encontrados:", sorted(df_exact.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist()))
+                        lote_ok_str = st.selectbox(f"2️⃣ Seleccione el Lote Oficial de SAP de destino:", sorted(df_exact.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist()))
                     else: 
                         lote_ok_str = st.selectbox(f"2️⃣ Arsenal completo de la pista en SAP:", sorted(df_sap_pista.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist()))
                     
@@ -483,6 +517,15 @@ def ejecutar(quitar_tildes, purificar_lote):
                         txt_obs = f"Corrección unificada con SAP ({prod_sap} - {lote_sap})"
                         key_obs = f"{row_s['PISTA']}_{purificar_lote(lote_sap)}"
                         st.session_state.observaciones_memoria[key_obs] = txt_obs
+                        
+                        st.session_state.historial_fusiones.append({
+                            "pista": row_s['PISTA'],
+                            "lote_erroneo": row_s['LOTE'],
+                            "lote_key_erroneo": row_s['LOTE_KEY'],
+                            "lote_destino": lote_sap,
+                            "producto": prod_sap,
+                            "volumen": row_s['SALDO_FISICO']
+                        })
                         
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_sap
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
@@ -504,6 +547,30 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 pass
 
                         generar_cruce()
+                        st.rerun()
+            else:
+                st.success("✅ No se detectan lotes pendientes por fusionar.")
+
+            # --- HISTORIAL Y REVERSIÓN GRANULAR ---
+            if st.session_state.historial_fusiones:
+                st.markdown("---")
+                st.markdown("##### ↩️ Fusiones Activas Realizadas (Control de Deshacer)")
+                for idx_f, f_item in enumerate(st.session_state.historial_fusiones):
+                    c_f1, c_f2 = st.columns([3, 1])
+                    c_f1.info(f"📍 **{f_item['pista']}** | Lote Creado: `{f_item['lote_erroneo']}` $\rightarrow$ Sumado a Lote SAP: `{f_item['lote_destino']}` (+{f_item['volumen']} L/Kg)")
+                    if c_f2.button(f"↩️ DESHACER ESTA FUSIÓN", key=f"btn_undo_{idx_f}"):
+                        st.session_state.historial_fusiones.pop(idx_f)
+                        
+                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
+                        for f_rest in st.session_state.historial_fusiones:
+                            mask_r = (st.session_state.df_sup_grouped['PISTA'] == f_rest['pista']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == f_rest['lote_key_erroneo'])
+                            st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_SUP'] = f_rest['lote_destino']
+                            st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_KEY'] = purificar_lote(f_rest['lote_destino'])
+                            st.session_state.df_sup_grouped.loc[mask_r, 'PRODUCTO_SUP'] = f_rest['producto']
+                        
+                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        generar_cruce()
+                        st.toast("✅ Fusión deshecha con éxito.", icon="↩️")
                         st.rerun()
  
         with tab3:
