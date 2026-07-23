@@ -313,7 +313,6 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.header("", anchor="inicio_modulo")
     
-    # 💥 INYECTOR CSS PARA BORDES VERDES INDUSTRIALES EN STREAMLIT
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -322,7 +321,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     
-    /* 💥 CONTROLES RESALTADOS: Contornos Verde Intenso de 3px contra la opacidad gris traslúcida */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
     div[data-testid="stDateInput"] input {
@@ -381,7 +379,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # Corrección de la tipificación monetaria (Regla de Oro < 2500)
+        # 💥 CANDADO ANTI-DUPLICIDAD: Evita sumar los mismos registros si existen en Historico y Actual
+        cols_dedup = [c for c in ['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_MAESTRA', 'COCTEL_MAESTRO'] if c in super_base_bi.columns]
+        if cols_dedup:
+            super_base_bi = super_base_bi.drop_duplicates(subset=cols_dedup, keep='first').copy()
+
         def sanear_valores_sap(val):
             v = limpiar_dinero(val)
             if 0 < v < 2500: return v * 1000
@@ -437,13 +439,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
 
-        # --- INICIO DE ZONA DE REEMPLAZO ---
         if tipo_periodo == "RANGO PERSONALIZADO":
-            # Filtro Absoluto Puro: Ignora Año Base y Año Comp
             df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= fecha_inicial_libre) & (df_finca['FECHA_DT'].dt.date <= fecha_final_libre)].copy()
-            df_periodo_a = pd.DataFrame() # Vacío para anular la comparativa
+            df_periodo_a = pd.DataFrame()
         else:
-            # Filtro Comparativo Tradicional
             df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
             df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
             if tipo_periodo == "POR TRIMESTRE":
@@ -462,7 +461,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
         
         if tipo_periodo == "RANGO PERSONALIZADO":
-            # --- MODO 1: MÉTRICAS ABSOLUTAS (RANGO PERSONALIZADO) ---
             k1, k2 = st.columns(2)
             k1.metric(label="Costo Promedio Ha", value=f"$ {formato_latino(costo_b, 0)}")
             k2.metric(label="Total Operaciones (OS)", value=f"{df_periodo_b['OS_MAESTRA'].nunique()} OS")
@@ -549,7 +547,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 st.download_button(label="📄 Exportar Cócteles (CSV)", data=csv_n1, file_name="Cocteles_Rango_Personalizado.csv", mime="text/csv", key="btn_down_n1")
 
         else:
-            # --- MODO 2: MÉTRICAS COMPARATIVAS (AÑO VS AÑO ORIGINAL) ---
             delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
             k1, k2, k3 = st.columns(3)
             k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {formato_latino(costo_a, 0)}")
@@ -670,11 +667,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
                 st.download_button(label="📄 Exportar Variación de Cócteles (CSV)", data=csv_n1, file_name="Variacion_Cocteles.csv", mime="text/csv", key="btn_down_n1")
-        # --- FIN DE ZONA DE REEMPLAZO ---
-            
-            # =====================================================================
-            # 🔬 NIVEL 2: CACHÉ ABSOLUTA DE BÓVEDA DE RECETAS
-            # =====================================================================
+
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
             cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
