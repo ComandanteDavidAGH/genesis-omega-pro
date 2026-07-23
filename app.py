@@ -36,6 +36,7 @@ import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
 import modulos.m18_desglose_facturacion as m18  # <--- INYECTAR AQUÍ
+
 # --- 🔐 CREDENCIALES DE BÓVEDA ---
 USUARIOS_CREDENTIALS = {
     "usernames": {
@@ -193,6 +194,54 @@ def descargar_matriz_rapida(url, pestaña):
             if i < 2: time.sleep(2); continue
             else: return []
 
+# ⚡ FUNCIÓN DE ORDENAMIENTO CRONOLÓGICO PARA SUPABASE
+def sincronizar_y_ordenar_tabla1_a_supabase():
+    """
+    Lee TABLA 1 de Drive, la ordena cronológicamente (más recientes primero)
+    y la reinyecta a Supabase para que el visor siempre esté actualizado.
+    """
+    if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
+        return
+
+    try:
+        supabase = st.session_state['supabase']
+        gc = conectar_satelite()
+        if not gc: return
+
+        with st.spinner("🔄 Ordenando cronológicamente y sincronizando con Supabase..."):
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            t1_raw = boveda.worksheet("TABLA 1").get_all_values()
+            
+            idx_header = 4
+            for i in range(min(10, len(t1_raw))):
+                if "FINCA" in [str(x).upper().strip() for x in t1_raw[i]]:
+                    idx_header = i
+                    break
+                    
+            cols = [f"col_{k}" for k in range(len(t1_raw[idx_header]))]
+            df_t1 = pd.DataFrame(t1_raw[idx_header+1:], columns=cols)
+            df_t1 = df_t1[df_t1['col_0'].astype(str).str.strip() != ""].copy()
+
+            if len(df_t1.columns) > 7:
+                df_t1['fecha_dt'] = pd.to_datetime(df_t1['col_7'], format='%d/%m/%Y', errors='coerce')
+                # ⚡ EL TRUCO: ascending=False pone las fechas recientes arriba
+                df_t1 = df_t1.sort_values(by='fecha_dt', ascending=False).drop(columns=['fecha_dt'])
+
+            registros = df_t1.fillna("").to_dict(orient='records')
+            
+            if registros:
+                supabase.table("sap_tabla_1_maestro").delete().neq("col_0", "VACIO_FORZADO").execute()
+                
+                tamano_bloque = 1000
+                for i in range(0, len(registros), tamano_bloque):
+                    bloque = registros[i:i + tamano_bloque]
+                    supabase.table("sap_tabla_1_maestro").insert(bloque).execute()
+                    
+                st.toast("⚡ Supabase ordenado y sincronizado exitosamente.", icon="✅")
+
+    except Exception as e:
+        st.toast(f"🚨 Error en sincronización de fondo: {e}")
+
 # ⚡ Inicialización Blindada del Motor Supabase con Sincronización de Sesión Cohesiva
 @st.cache_resource(show_spinner=False)
 def conectar_supabase() -> Client:
@@ -223,14 +272,16 @@ with st.sidebar:
     
     if st.session_state['usuario_rol'] == "ADMIN":
         # ---------------------------------------------------------
-        # 🔄 BOTÓN DE SINCRONIZACIÓN GLOBAL (Destructor de Caché)
+        # 🔄 BOTÓN DE SINCRONIZACIÓN GLOBAL (Destructor de Caché y Ordenador)
         # ---------------------------------------------------------
         if st.button("🔄 Sincronizar Nube", type="primary", use_container_width=True):
-            with st.spinner("Vaciando memoria y conectando con Google Drive..."):
-                st.cache_data.clear()
-                st.cache_resource.clear()
-                time.sleep(1) # Pausa táctica de 1 segundo para asegurar la desconexión
-            st.success("✅ Base de datos purgada y actualizada.")
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            
+            # ⚡ Ejecutamos el ordenamiento cronológico a Supabase
+            sincronizar_y_ordenar_tabla1_a_supabase()
+            
+            st.success("✅ Base de datos purgada, ordenada y actualizada.")
             time.sleep(0.5)
             st.rerun()
             
@@ -252,7 +303,7 @@ with st.sidebar:
             "💰 14. Pronóstico Financiero",
             "🗺️ 15. Mapa de Calor Agronómico",
             "💼 16. Comparativo Gerencial (Dron vs Avión)",
-            "🚀 17. Mega-Proyección Operativa",  # <--- ¡ESTA COMA ES VITAL!
+            "🚀 17. Mega-Proyección Operativa",  
             "🔍 18. Auditoría y Desglose Financiero"
             
         ], key="modulo_actual")
