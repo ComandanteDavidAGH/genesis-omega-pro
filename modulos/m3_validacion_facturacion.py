@@ -951,8 +951,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=widget_key)
             with r1c4:
                 multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-                multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
-                interciclo_menor_20 = st.toggle("🚜 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
+                # 🔄 AJUSTE VISUAL: Ícono táctico de interciclo/rotación para parcelas < 20Ha
+                interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
 
             recargo_final = 0.0
             pista_sel = "PLUC"
