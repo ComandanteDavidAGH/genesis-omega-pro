@@ -12,7 +12,7 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 CONEXIÓN A BÓVEDA DE DATOS
+# 🔌 CONEXIÓN Y CARGA DE DATOS ULTRARRÁPIDA (SUPABASE FIRST)
 # =================================================================
 
 def obtener_cliente_gspread_unificado():
@@ -23,11 +23,31 @@ def obtener_cliente_gspread_unificado():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
-@st.cache_data(show_spinner=False, ttl=600)
-def obtener_historial_completo_ciclos():
+@st.cache_data(show_spinner=False, ttl=1800)
+def obtener_historial_completo_ciclos_cached():
+    """
+    Recupera el historial de ciclos desde Supabase en milisegundos.
+    Usa Google Sheets únicamente como respaldo de emergencia.
+    """
+    df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
+    
+    # 1. Intentar lectura instantánea vía Supabase
+    if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
+        try:
+            supabase_client = st.session_state['supabase']
+            res_t1 = supabase_client.table("sap_tabla_1_maestro").select("*").execute()
+            res_ap = supabase_client.table("tabla_apoyo_raw").select("*").execute()
+            if res_t1.data: df_t1 = pd.DataFrame(res_t1.data)
+            if res_ap.data: df_apoyo = pd.DataFrame(res_ap.data)
+            if not df_t1.empty:
+                return df_t1, df_apoyo
+        except Exception:
+            pass
+
+    # 2. Fallback a Google Sheets si Supabase no responde
     gc = obtener_cliente_gspread_unificado()
     if not gc:
         return pd.DataFrame(), pd.DataFrame()
@@ -51,10 +71,10 @@ def obtener_historial_completo_ciclos():
         df_apoyo = pd.DataFrame(apoyo[idx_ap+1:], columns=apoyo[idx_ap]) if len(apoyo) > idx_ap else pd.DataFrame()
         
         return df_t1, df_apoyo
-    except:
+    except Exception:
         return pd.DataFrame(), pd.DataFrame()
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def preprocesar_flota_gspread():
     gc = obtener_cliente_gspread_unificado()
     dict_aviones_default = {
@@ -92,7 +112,7 @@ def preprocesar_flota_gspread():
         dict_drones = dict(zip(nombres_dr, precios_dr))
         
         return dict_aviones, dict_drones
-    except:
+    except Exception:
         return dict_aviones_default, dict_drones_default
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
@@ -103,11 +123,11 @@ def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
                 val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: 
                     return float(val)
-    except: 
+    except Exception: 
         pass
     return 0.5 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
@@ -360,7 +380,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
                     if texto_tope not in pistas_con_tope: 
                         pistas_con_tope.append(texto_tope)
-        except: 
+        except Exception: 
             pass
         
         if not pistas_con_tope: 
@@ -382,7 +402,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
                     if f_name not in lista_fincas: 
                         lista_fincas.append(f_name)
-        except: 
+        except Exception: 
             pass
             
         if not lista_fincas: 
@@ -435,7 +455,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 dias_ciclo_calc_sim = 14
                 try:
                     f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
-                    df_viva, df_hist = obtener_historial_completo_ciclos()
+                    df_viva, df_hist = obtener_historial_completo_ciclos_cached()
                     fechas_enc = []
                     
                     for df_temp in [df_viva, df_hist]:
@@ -451,7 +471,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                         fechas_enc.append(pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D'))
                                         continue
                                     try: fechas_enc.append(pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce'))
-                                    except: pass
+                                    except Exception: pass
                     
                     if fechas_enc:
                         fechas_limpias = [f for f in fechas_enc if pd.notna(f)]
@@ -460,7 +480,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if validas:
                             ciclo = (eval_dt - max(validas)).days
                             if 0 <= ciclo <= 365: dias_ciclo_calc_sim = ciclo
-                except:
+                except Exception:
                     pass
                 
                 st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
@@ -530,7 +550,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 if f_s == sigla_f and f_n not in ["NAN", "FERTILIZANTES", ""]:
                                     fert_encontrado_obj = f_n
                                     break
-                    except: 
+                    except Exception: 
                         pass
                 
                 if not fert_encontrado_obj:
@@ -715,7 +735,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else extraer_numero(match_sap.iloc[0][col_ha])
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
-                except: 
+                except Exception: 
                     pass
 
         c0, c1, c2 = st.columns([1, 2, 2])
@@ -793,7 +813,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         dias_ciclo_calc = 0
         try:
             f_obj_alpha = re.sub(r'[^A-Z0-9]', '', finca_limpia)
-            df_viva, df_hist = obtener_historial_completo_ciclos()
+            df_viva, df_hist = obtener_historial_completo_ciclos_cached()
             fechas_encontradas = []
 
             def parsear_fecha_robusta(val):
@@ -816,7 +836,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
                 try: 
                     return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
-                except: 
+                except Exception: 
                     return pd.NaT
 
             def extraer_fechas(df_temp):
@@ -852,7 +872,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
                     if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
                         dias_ciclo_calc = 0
-        except:
+        except Exception:
             pass
 
         datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
@@ -1044,6 +1064,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista = {}
                 datos_extraidos_sap = []
 
+                # ⚡ 1:1 EXTRACCIÓN EXACTA POR FILA/POSICIÓN DE SAP
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                     if not col_mat: 
@@ -1064,9 +1085,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                     nombre_p = f"Item {cod_item}"
                     if not df_sab.empty:
-                        match_sabana = df_sab[df_sab.iloc[:, 0].astype(str).str.strip() == cod_item]
-                        if match_sabana.empty: 
-                            match_sabana = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(cod_item, case=False, na=False)).any(axis=1)]
+                        # Busqueda optimizada por índice directo
+                        df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
+                        match_sabana = df_sab[df_sab_col0_clean == cod_item]
                         if not match_sabana.empty:
                             col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
                             if col_nombre_sab: 
@@ -1138,12 +1159,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     if 0 < float(val_str) < 10:
                                         dosis_segura = float(val_str)
                                         break
-                        except: pass
+                        except Exception: pass
                         
                         dosis_oficiales_coctel[k_sap.replace(" ", "")] = dosis_segura
 
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
                 
+                # PRE-PROCESAMIENTO VECTORIAL DE SÁBANA PARA SPEED
+                if not df_sab.empty:
+                    df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
+                else:
+                    df_sab_col0_clean = pd.Series(dtype=str)
+
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
                     cod_item = str(item_data['cod']).strip().upper().lstrip('0')
@@ -1151,17 +1178,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     costo_unit, lote_sap, saldo_sap = 0.0, "SIN LOTE EN PISTA", 0.0
 
                     if not df_sab.empty:
-                        col_0_limpia = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0') if str(x).lower() not in ['nan', 'none', '<na>', ''] else "")
-                        match_sabana_global = df_sab[col_0_limpia == cod_item]
-                        if match_sabana_global.empty and nombre_limpio != "" and "ITEM" not in nombre_limpio:
-                            match_sabana_global = df_sab[df_sab.astype(str).apply(lambda x: x.str.contains(nombre_limpio, case=False, na=False)).any(axis=1)]
+                        match_sabana_global = df_sab[df_sab_col0_clean == cod_item]
 
                         if not match_sabana_global.empty:
                             if idx_almacen != -1:
                                 match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)]
                             else:
-                                match_pista_precio = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
-                            
+                                match_pista_precio = match_sabana_global
+
                             fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
 
                             if idx_precio != -1: 
@@ -1177,19 +1201,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if idx_almacen != -1:
                                 match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
                             else:
-                                match_pista = match_sabana_global[match_sabana_global.astype(str).apply(lambda x: x.str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)).any(axis=1)]
+                                match_pista = match_sabana_global
 
                             if not match_pista.empty:
-                                try:
-                                    if idx_saldo != -1:
-                                        match_pista['Temp_Sort'] = match_pista.iloc[:, idx_saldo].apply(extraer_numero)
-                                        if not match_pista[match_pista['Temp_Sort'] > 0].empty: 
-                                            match_pista = match_pista.sort_values(by='Temp_Sort', ascending=True) 
-                                        else: 
-                                            match_pista = match_pista.sort_values(by='Temp_Sort', ascending=False)
-                                except: 
-                                    pass
-                                
                                 fila_final = match_pista.iloc[0]
                                 if idx_lote != -1: 
                                     lote_sap = str(fila_final.iloc[idx_lote])
@@ -1213,7 +1227,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
                                 if precio_maestro > 0:
                                     costo_unit = float(precio_maestro) 
-                    except Exception as e:
+                    except Exception:
                         pass
 
                     dosis_teorica = None
@@ -1238,14 +1252,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     if 0 < num < 100:
                                         dosis_rescatada = num
                                         break
-                                except: pass
+                                except Exception: pass
                         
                         if dosis_rescatada is not None:
                             dosis_teorica = dosis_rescatada
                         else:
                             dosis_teorica = cant_linea_sap / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                    # 💥 DOSIS IDEAL 100% PURA (TEÓRICA SIN REC. TÉCNICA REPETIDA)
+                    # 💥 REGLA DE ORO: DOSIS IDEAL 100% PURA (Dosis/Ha * Hectáreas)
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
@@ -1262,9 +1276,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_matriz = pd.DataFrame(matriz_datos)
                 
                 if not df_matriz.empty:
+                    # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO DE RECARGO TÉCNICO SOBRE LA SUMA TOTAL DEL PRODUCTO
+                    # 💥 CÁLCULO EXACTO DE % EXTRA
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Total (Sistema)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
@@ -1298,7 +1313,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 
                             estilos[idx_sistema] = color
                             estilos[idx_sap] = color
-                        except:
+                        except Exception:
                             pass
                         return estilos
 
@@ -1310,7 +1325,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         diferencia = total_producto - base_pura
                         
                         if total_producto < (base_pura - 0.05):
-                            return f"🔴 PELIGRO: SUB-DOSIS (---)"
+                            return "🔴 PELIGRO: SUB-DOSIS (---)"
                         elif extra_pct > 0.01 or diferencia > 0.05:
                             return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
                         else:
@@ -1591,7 +1606,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive y replicado en la bóveda relacional.")
-                        st.toast(f"💾 Memoria Sincronizada con éxito.", icon="⚔️")
+                        st.toast("💾 Memoria Sincronizada con éxito.", icon="⚔️")
                         
                         if 'memoria_excel' in st.session_state: 
                             del st.session_state['memoria_excel']
