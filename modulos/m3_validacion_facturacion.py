@@ -406,7 +406,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             ha_sim = cs2.number_input("🚜 Hectáreas", min_value=1.0, value=143.0)
             finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
             
-            # --- Auto-Actualizador Productor ---
             if finca_sim != st.session_state.finca_anterior:
                 datos = diccionario_fincas.get(finca_sim, {})
                 if datos.get("Productor") in lista_productores:
@@ -430,10 +429,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
             
-            # 💥 AQUÍ ESTÁ EL SELECTOR DE FECHAS SOLICITADO
             fecha_eval_sim = c_f4.date_input("📅 Fecha de Misión", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
             
-            # 💥 CEREBRO RE-CALCULADOR DE DÍAS CICLO AL CAMBIAR FECHA O FINCA
             if (finca_sim != st.session_state.finca_anterior) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
                 dias_ciclo_calc_sim = 14
                 try:
@@ -459,7 +456,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if fechas_enc:
                         fechas_limpias = [f for f in fechas_enc if pd.notna(f)]
                         eval_dt = pd.to_datetime(fecha_eval_sim)
-                        # Busca estrictamente la fecha anterior más cercana
                         validas = [f for f in fechas_limpias if f < eval_dt]
                         if validas:
                             ciclo = (eval_dt - max(validas)).days
@@ -1046,6 +1042,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista = {}
                 datos_extraidos_sap = []
 
+                # Extracción 1 a 1 para mantener la misma estructura exacta de posiciones de SAP
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                     if not col_mat: 
@@ -1077,7 +1074,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
                     sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
                     datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
-                
+
                 dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
                 if not df_mez.empty:
                     f_row, f_col = -1, -1
@@ -1149,7 +1146,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
                     cod_item = str(item_data['cod']).strip().upper().lstrip('0')
-                    nombre_p, nombre_limpio, cant_total_pedido = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
+                    nombre_p, nombre_limpio, cant_linea_sap = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
                     costo_unit, lote_sap, saldo_sap = 0.0, "SIN LOTE EN PISTA", 0.0
 
                     if not df_sab.empty:
@@ -1218,7 +1215,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     except Exception as e:
                         pass
 
-                    total_sap_producto = sum(item['cant_total'] for item in datos_extraidos_sap if item['cod'] == item_data['cod'])
                     dosis_teorica = None
                     for p_receta, d_oficial in dosis_oficiales_coctel.items():
                         if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
@@ -1246,12 +1242,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if dosis_rescatada is not None:
                             dosis_teorica = dosis_rescatada
                         else:
-                            dosis_teorica = total_sap_producto / ha_dosis_final if ha_dosis_final > 0 else 0.0
-                        
+                            dosis_teorica = cant_linea_sap / ha_dosis_final if ha_dosis_final > 0 else 0.0
+
                     base_ideal = dosis_teorica * ha_dosis_final
                     extra_pct_auto = 0.0
-                    if base_ideal > 0 and (cant_total_pedido - base_ideal) > 0.2:
-                        extra_pct_auto = ((cant_total_pedido / base_ideal) - 1) * 100
 
                     matriz_datos.append({
                         "A: Producto": nombre_p, 
@@ -1261,10 +1255,20 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         "E: Costo Unit (+Margen)": round(costo_unit * mult_material, 0),
                         "G: Lotes (SAP)": lote_sap, 
                         "H: Saldo Real SAP": round(saldo_sap, 3), 
-                        "I: Sugerido SAP (Total)": round(cant_total_pedido, 3)
+                        "I: Sugerido SAP (Total)": round(cant_linea_sap, 3)
                     })
 
                 df_matriz = pd.DataFrame(matriz_datos)
+                
+                # 💥 CÁLCULO DE SUMA ACUMULADA POR PRODUCTO (Mantiene las filas separadas pero suma sus cantidades)
+                df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
+
+                # Recálculo de Recargo Técnico sobre la suma total del producto
+                for idx_m, r_m in df_matriz.iterrows():
+                    b_ideal = r_m["B: Dosis/Ha (SAP)"] * ha_dosis_final
+                    tot_p = r_m["TOTAL_PROD_SAP"]
+                    if b_ideal > 0 and (tot_p - b_ideal) > 0.5:
+                        df_matriz.at[idx_m, "C: X (Extra %)"] = round(((tot_p / b_ideal) - 1) * 100, 3)
                 
                 llave_editor_casilla = f"editor_valid_{casilla_key}"
                 if llave_editor_casilla in st.session_state:
@@ -1277,6 +1281,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
                 
+                # 🎨 ESTILIZADO CON CONOCIMIENTO DE LA SUMA TOTAL DE PRODUCTO
                 def estilizar_dosis_ideal(row):
                     estilos = [''] * len(row)
                     try:
@@ -1284,14 +1289,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
                         
                         base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
-                        sugerido = float(row["I: Sugerido SAP (Total)"])
+                        total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
                         extra_pct = float(row.get("C: X (Extra %)", 0.0))
                         
-                        diferencia_real = sugerido - base_pura
+                        tolerancia = max(0.5, base_pura * 0.01)
+                        diferencia_real = total_producto - base_pura
                         
-                        if diferencia_real < -0.2: 
+                        if diferencia_real < -tolerancia: 
                             color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
-                        elif diferencia_real > 0.2 or extra_pct > 0: 
+                        elif extra_pct > 0 or diferencia_real > tolerancia: 
                             color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                         else: 
                             color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
@@ -1302,16 +1308,23 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         pass
                     return estilos
 
+                # 📊 SEMÁFORO UNIFICADO POR PRODUCTO (Sin Falsos Positivos en Filas Separadas)
                 def calcular_semaforo_misiones(row):
                     base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
-                    sugerido = float(row["I: Sugerido SAP (Total)"])
+                    total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
                     extra_pct = float(row.get("C: X (Extra %)", 0.0))
-                    diferencia = sugerido - base_pura
                     
-                    if diferencia < -0.2:
+                    tolerancia = max(0.5, base_pura * 0.01)
+                    diferencia = total_producto - base_pura
+                    
+                    if total_producto < (base_pura - tolerancia):
                         return f"🔴 PELIGRO: SUB-DOSIS (---)"
-                    elif diferencia > 0.2 or extra_pct > 0:
-                        return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)" if extra_pct > 0 else "🟡 DESV. LEVE (+++)"
+                    elif extra_pct > 0:
+                        return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
+                    elif abs(diferencia) <= tolerancia:
+                        return "🟢 ÓPTIMO"
+                    elif diferencia > tolerancia:
+                        return "🟡 DESV. LEVE (+++)"
                     else:
                         return "🟢 ÓPTIMO"
 
@@ -1320,11 +1333,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 columnas_ordenadas = [
                     "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
                     "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
-                    "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP"
+                    "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "TOTAL_PROD_SAP"
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
                 
-                df_estilizado = df_matriz.style.apply(estilizar_dosis_ideal, axis=1)
+                # Ocultamos TOTAL_PROD_SAP de la vista final del DataEditor
+                df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
 
                 edited_df = st.data_editor(
                     df_estilizado,
