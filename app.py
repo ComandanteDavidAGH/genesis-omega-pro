@@ -193,8 +193,8 @@ def descargar_matriz_rapida(url, pestaña):
 # ⚡ FUNCIÓN DE ORDENAMIENTO CRONOLÓGICO FÍSICO PARA DRIVE Y SUPABASE
 def sincronizar_y_ordenar_tabla1_a_supabase():
     """
-    Lee TABLA 1 de Drive protegiendo sus fórmulas, la ordena cronológicamente,
-    actualiza físicamente Google Sheets y sincroniza con Supabase.
+    Lee TABLA 1 con Doble Motor: Fórmulas para Drive y Valores para Supabase.
+    Restaura y sincroniza ambas plataformas cronológicamente sin romper datos.
     """
     if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
         return
@@ -204,53 +204,90 @@ def sincronizar_y_ordenar_tabla1_a_supabase():
         gc = conectar_satelite()
         if not gc: return
 
-        with st.spinner("🔄 Ordenando cronológicamente Google Drive y Supabase..."):
+        with st.spinner("🔄 Rescatando datos y ordenando (Nube y Drive)..."):
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
-            # Leer en modo 'FORMULA' para no romper fórmulas
-            t1_raw = ws_t1.get_all_values(value_render_option='FORMULA')
+            # 💥 LECTURA DOBLE: Valores puros para Supabase, Fórmulas para Drive
+            t1_formulas = ws_t1.get_all_values(value_render_option='FORMULA')
+            t1_valores = ws_t1.get_all_values(value_render_option='UNFORMATTED_VALUE')
             
             idx_header = 4
-            for i in range(min(10, len(t1_raw))):
-                if "FINCA" in [str(x).upper().strip() for x in t1_raw[i]]:
+            for i in range(min(10, len(t1_formulas))):
+                if "FINCA" in [str(x).upper().strip() for x in t1_formulas[i]]:
                     idx_header = i
                     break
                     
-            cols = [f"col_{k}" for k in range(len(t1_raw[idx_header]))]
-            datos_filas = t1_raw[idx_header+1:]
-            max_len = len(cols)
-            datos_pad = [r + [""] * (max_len - len(r)) for r in datos_filas]
+            cols_raw = [str(x).strip() for x in t1_formulas[idx_header]]
+            max_len = len(cols_raw)
             
-            df_t1 = pd.DataFrame(datos_pad, columns=cols)
-            df_t1 = df_t1[df_t1['col_0'].astype(str).str.strip() != ""].copy()
+            # Alinear matrices para evitar desbordes
+            datos_form = [r + [""] * (max_len - len(r)) for r in t1_formulas[idx_header+1:]]
+            datos_val = [r + [""] * (max_len - len(r)) for r in t1_valores[idx_header+1:]]
+            
+            df_form = pd.DataFrame(datos_form, columns=cols_raw)
+            df_val = pd.DataFrame(datos_val, columns=cols_raw)
+            
+            col_primer_id = cols_raw[0] if cols_raw else df_val.columns[0]
+            
+            # Filtrar filas vacías
+            filas_validas = df_val[col_primer_id].astype(str).str.strip() != ""
+            df_form = df_form[filas_validas].copy()
+            df_val = df_val[filas_validas].copy()
 
-            # Ordenar por fecha (más recientes arriba)
-            if len(df_t1.columns) > 7:
-                df_t1['fecha_dt'] = pd.to_datetime(df_t1['col_7'], format='%d/%m/%Y', errors='coerce')
-                df_t1 = df_t1.sort_values(by='fecha_dt', ascending=False).drop(columns=['fecha_dt'])
+            col_fecha = next((c for c in cols_raw if "FECHA" in str(c).upper()), None)
+            
+            if col_fecha:
+                # Extraer fechas puras
+                df_val['fecha_dt'] = pd.to_datetime(df_val[col_fecha].astype(str).str.replace("'", "").str.strip(), format='%d/%m/%Y', errors='coerce')
+                
+                # 1. ORDENAR VALORES (y guardar el índice correcto)
+                df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
+                indices_ordenados = df_val_sorted.index
+                
+                # 2. ORDENAR FÓRMULAS (usando el mismo índice)
+                df_form_sorted = df_form.loc[indices_ordenados]
+                
+                df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
+            else:
+                df_val_sorted = df_val
+                df_form_sorted = df_form
 
-            # 1. Actualizar Supabase
-            registros_supa = df_t1.fillna("").to_dict(orient='records')
+            # ========================================================
+            # 💾 1. RESTAURAR SUPABASE (Con valores limpios, sin fórmulas)
+            # ========================================================
+            registros_supa = []
+            for _, row in df_val_sorted.iterrows():
+                # Filtrar columnas basura que molestan a Supabase
+                fila_limpia = {str(k).strip(): (v if pd.notna(v) else "") for k, v in row.items() if str(k).strip() != ""}
+                registros_supa.append(fila_limpia)
+
             if registros_supa:
-                supabase.table("sap_tabla_1_maestro").delete().neq("col_0", "VACIO_FORZADO").execute()
-                tamano_bloque = 1000
-                for i in range(0, len(registros_supa), tamano_bloque):
-                    supabase.table("sap_tabla_1_maestro").insert(registros_supa[i:i + tamano_bloque]).execute()
+                try:
+                    supabase.table("TABLA_1").delete().neq(col_primer_id, "VACIO_FORZADO").execute()
+                    # Insertar en bloques pequeños de 200 para no ahogar la red
+                    tamano_bloque = 200
+                    for i in range(0, len(registros_supa), tamano_bloque):
+                        supabase.table("TABLA_1").insert(registros_supa[i:i + tamano_bloque]).execute()
+                    st.toast("⚡ Base de datos Supabase restaurada.", icon="✅")
+                except Exception as e_supa:
+                    st.error(f"🚨 Supabase rechazó los datos: {e_supa}")
+                    return
 
-            # 2. Actualizar Google Sheets
-            valores_ordenados_drive = df_t1.fillna("").values.tolist()
+            # ========================================================
+            # 📝 2. ACTUALIZAR GOOGLE DRIVE (Con fórmulas intactas)
+            # ========================================================
+            valores_ordenados_drive = df_form_sorted.fillna("").values.tolist()
             if valores_ordenados_drive:
                 rango_inicio = f"A{idx_header + 2}"
                 rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
                 ws_t1.batch_clear([rango_borrar])
                 ws_t1.update(range_name=rango_inicio, values=valores_ordenados_drive, value_input_option='USER_ENTERED')
                 
-            st.toast("⚡ Nube Físicamente Ordenada y Sincronizada.", icon="✅")
+            st.toast("⚡ Google Drive Físicamente Ordenado.", icon="✅")
 
     except Exception as e:
-        st.toast(f"🚨 Error en sincronización de fondo: {e}")
-
+        st.error(f"🚨 Error crítico en sincronización: {e}")
 # ⚡ Inicialización del Motor Supabase
 @st.cache_resource(show_spinner=False)
 def conectar_supabase() -> Client:
