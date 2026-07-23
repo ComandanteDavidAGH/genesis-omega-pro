@@ -120,7 +120,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         border-radius: 10px !important;
         box-shadow: 0px 4px 15px rgba(13, 27, 42, 0.2) !important;
         background-color: #060d15 !important;
-        max-height: 420px !important;
+        max-height: 450px !important;
         overflow-y: auto !important;
     }
     div[data-testid="stCodeBlock"] pre {
@@ -212,13 +212,15 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     st.write("")
                     incluir_nombres = st.toggle("🏷️ Incluir Nombres de Productos", value=False, key="toggle_inc_nombres")
 
-                # Formatear salida
+                # 📐 CÁLCULO DE ALINEACIÓN DE COLUMNA RECTA (MATRIZ)
                 if incluir_nombres:
-                    lista_textos = [f"{p} - {fmt_sap(v)}" for p, v in zip(df_t["PRODUCTO"], df_t[col_margen])]
+                    # Determinamos el tamaño del nombre más largo para fijar la columna derecha
+                    max_len = max([len(str(p)) for p in df_t["PRODUCTO"]] + [35]) + 4
+                    lista_textos = [f"{str(p).ljust(max_len)}│  {fmt_sap(v)}" for p, v in zip(df_t["PRODUCTO"], df_t[col_margen])]
                 else:
                     lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
                 
-                st.info(f"📊 **Listos para Transferencia:** {len(lista_textos)} registros procesados. Haga clic en el ícono 📋 (arriba a la derecha de la consola) para copiar.")
+                st.info(f"📊 **Listos para Transferencia:** {len(lista_textos)} registros procesados en columna alineada. Haga clic en 📋 para copiar.")
                 st.code("\n".join(lista_textos), language="text")
                     
             with t3:
