@@ -25,7 +25,6 @@ def inicializar_cliente_gspread():
 # =================================================================
 
 def ejecutar(extraer_numero):
-    # Inyección de la línea estética VIP Corporativa
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -94,7 +93,7 @@ def ejecutar(extraer_numero):
                     hoja_plantilla.update(range_name="A3", values=df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
                     hoja_plantilla.update(range_name="K3", values=[[x] for x in unicos], value_input_option='USER_ENTERED')
                      
-                    if 'supabase' in st.session_state:
+                    if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                         try:
                             supabase_client = st.session_state['supabase']
                             df_db = df_final.copy()
@@ -115,7 +114,6 @@ def ejecutar(extraer_numero):
     st.markdown("---")
     st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (ESTADO DEL ARSENAL)")
      
-    # 💥 FUNCIÓN REUTILIZABLE DE ESCÁNER DE PRECIOS (BÓVEDA GOOGLE DRIVE)
     def reordenar_y_escanear_radar():
         gc = inicializar_cliente_gspread()
         if gc is None:
@@ -155,6 +153,38 @@ def ejecutar(extraer_numero):
         st.session_state['scan_ejecutado'] = True
         return True, ""
 
+    def inyectar_precios_a_supabase(data_full):
+        if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
+            return False, "❌ ERROR: No hay conexión con la base de datos de Supabase."
+        try:
+            cliente_sb = st.session_state['supabase']
+            dict_unicos = {}
+            for fila in data_full[1:]:
+                prod = fila[8] if len(fila) > 8 else ""
+                val_k = fila[10] if len(fila) > 10 else ""
+                if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
+                    prod_limpio = str(prod).strip().upper()
+                    if prod_limpio not in ["0", "0.0", "NAN", "NONE", "NULL", ""]:
+                        dict_unicos[prod_limpio] = str(val_k).strip()
+
+            records_espejo = [
+                {
+                    "PRODUCTO": k, 
+                    "COSTO": v,
+                    "Columna2": "",
+                    "valor a devolver": ""
+                } for k, v in dict_unicos.items()
+            ]
+
+            if records_espejo:
+                cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
+                res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
+                if res.data:
+                    return True, f"✅ Supabase actualizado con {len(records_espejo)} insumos."
+            return False, "⚠️ No se encontraron registros válidos para sincronizar."
+        except Exception as e:
+            return False, f"🚨 Error en Supabase: {e}"
+
     col_scan1, col_scan2 = st.columns([1, 1])
     
     with col_scan1:
@@ -193,12 +223,12 @@ def ejecutar(extraer_numero):
 
         st.markdown("#### 🛰️ Reporte Detallado de Situación:")
 
-        # 💥 BOTÓN MAESTRO DE NIVELACIÓN CON ACTUALIZACIÓN EN VIVO
-        c_btn1, c_btn2 = st.columns([1, 1])
+        # 💥 PANEL DE BOTONES DUAL: GOOGLE DRIVE + BOTÓN DEDICADO SUPABASE
+        c_btn1, c_btn2, c_btn3 = st.columns([1.5, 1.5, 1])
         
         with c_btn1:
-            if st.button("🔄 ACTUALIZAR PRECIO ACTUAL (NIVELAR CON SAP)", type="primary", use_container_width=True):
-                with st.spinner("Inyectando precios SAP en Columna PRECIO ACTUAL (Google Drive & Supabase)..."):
+            if st.button("🚀 NIVELAR Y SINCRONIZAR TODO (DRIVE + SUPABASE)", type="primary", use_container_width=True):
+                with st.spinner("Nivelando Google Drive y Supabase Cloud..."):
                     try:
                         gc = inicializar_cliente_gspread()
                         if gc is None:
@@ -218,44 +248,48 @@ def ejecutar(extraer_numero):
                         if valores_para_j:
                             rango_destino = f"J2:J{len(valores_para_j) + 1}"
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
-                            
-                        # 2. Sincronizar Supabase con el arsenal purificado
-                        if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
-                            try:
-                                cliente_sb = st.session_state['supabase']
-                                dict_unicos = {}
-                                for fila in data_full[1:]:
-                                    prod = fila[8] if len(fila) > 8 else ""
-                                    val_k = fila[10] if len(fila) > 10 else ""
-                                    if prod and str(prod).strip() and str(prod).upper() != "PRODUCTO":
-                                        prod_limpio = str(prod).strip().upper()
-                                        if prod_limpio not in ["0", "0.0", "NAN", "NONE", "NULL", ""]:
-                                            dict_unicos[prod_limpio] = str(val_k).strip()
-                                
-                                records_espejo = [
-                                    {
-                                        "PRODUCTO": k, 
-                                        "COSTO": v,
-                                        "Columna2": "",
-                                        "valor a devolver": ""
-                                    } for k, v in dict_unicos.items()
-                                ]
-                                if records_espejo:
-                                    cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
-                                    cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
-                            except Exception as esb:
-                                st.warning(f"⚠️ Google Sheets actualizado, pero Supabase notificó: {esb}")
+                            st.toast("✅ Google Drive actualizado.", icon="📊")
 
-                        # 3. RE-ESCANEO AUTOMÁTICO EN VIVO (Borra el desfase de la pantalla)
+                        # 2. Inyección explícita a Supabase
+                        ok_sb, msg_sb = inyectar_precios_a_supabase(data_full)
+                        if ok_sb:
+                            st.toast(msg_sb, icon="🌩️")
+                        else:
+                            st.warning(msg_sb)
+
+                        # 3. RE-ESCANEO EN VIVO
                         reordenar_y_escanear_radar()
-                        st.toast("⚡ ¡PRECIOS ACTUALIZADOS Y ESTABILIZADOS AL 100%!", icon="✅")
+                        st.toast("⚡ ¡AMBAS NUBES SINCRONIZADAS AL 100%!", icon="✅")
                         st.balloons()
                         st.rerun()
 
                     except Exception as e:
-                        st.error(f"🚨 Error durante la inyección de precios: {e}")
+                        st.error(f"🚨 Error durante la sincronización: {e}")
 
         with c_btn2:
+            if st.button("🌩️ SINCRONIZAR ÚNICAMENTE SUPABASE CLOUD", use_container_width=True):
+                with st.spinner("Conectando con la base relacional Supabase..."):
+                    try:
+                        gc = inicializar_cliente_gspread()
+                        if gc is None:
+                            st.error("🚨 Enlace satelital roto con Google Drive.")
+                            st.stop()
+                            
+                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                        ws_conf = sh.worksheet("Configuración")
+                        data_full = ws_conf.get_all_values()
+
+                        ok_sb, msg_sb = inyectar_precios_a_supabase(data_full)
+                        if ok_sb:
+                            st.success(f"⚡ {msg_sb}")
+                            st.balloons()
+                        else:
+                            st.error(msg_sb)
+
+                    except Exception as e:
+                        st.error(f"🚨 Error de conexión a Supabase: {e}")
+
+        with c_btn3:
             if st.button("🔄 RE-ESCANEAR BÓVEDA", use_container_width=True):
                 with st.spinner("Re-escaneando bóveda de precios..."):
                     reordenar_y_escanear_radar()
@@ -279,9 +313,9 @@ def ejecutar(extraer_numero):
         )
          
         if insumos_fail == 0:
-            st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales en Drive.")
+            st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales.")
         else:
-            st.warning("⚠️ SE DETECTARON DESFASES EN EL ARSENAL DE PRECIOS. Haga clic en '🔄 ACTUALIZAR PRECIO ACTUAL' para nivelar los tableros.")
+            st.warning("⚠️ SE DETECTARON DESFASES EN EL ARSENAL DE PRECIOS. Use los botones superiores para nivelar los tableros.")
 
 if __name__ == "__main__":
     pass
