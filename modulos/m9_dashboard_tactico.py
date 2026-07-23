@@ -9,7 +9,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import re
 import io
 
-
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN PROPIO (INTERCONEXIÓN DIRECTA EN RAM)
 # =================================================================
@@ -212,7 +211,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
     hk_filtro = f3.selectbox("✈️ MATRÍCULA (HK)", hks_disp)
 
-    # --- 🛰️ PIPELINE DE FILTRADO HISTÓRICO EXCLUSIVO M9 ---
     df_filtrado = df_dash.copy()
     if año_sel != "TODOS (Comparativa Anual)": df_filtrado = df_filtrado[df_filtrado['AÑO'] == int(año_sel)]
     if trimestres[trim_sel] != 0: df_filtrado = df_filtrado[df_filtrado['TRIMESTRE'] == trimestres[trim_sel]]
@@ -250,20 +248,20 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (NUEVO: Gráfico de Área/Ola)
+    # GRÁFICO 1: ÁREA ASPERJADA (RETORNO A BARRAS VERTICALES ROBUSTAS)
     # -----------------------------------------------------
     with g1:
-        st.markdown(f"#### 🌊 EVOLUCIÓN DE ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
+        st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
         df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
-        fig1 = px.area(
+        fig1 = px.bar(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
-            markers=True, text='ETIQUETA', color_discrete_sequence=PALETA_YOY
+            barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY
         )
-        fig1.update_traces(textposition='top center', textfont=dict(size=11, color='black', family="Arial Black"))
+        fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
         fig1.update_layout(
             xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", 
             plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
@@ -275,7 +273,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO (COMBO BARRA + LÍNEA)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO (MANTENIDO HYBRID)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -327,58 +325,44 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO POR MATRÍCULA (NUEVO: Gráfico de Donut / Anillo)
+    # GRÁFICO 3: RENDIMIENTO/HORA (RETORNO A BARRAS HORIZONTALES)
     # -----------------------------------------------------
     with g3:
-        st.markdown(f"#### 🍩 DISTRIBUCIÓN DE HORAS POR AONAVE (HK) — {titulo_finca}", unsafe_allow_html=True)
-        df_rend_hk = df_filtrado.groupby(['HK'])['REND_HR'].sum().reset_index()
-        df_rend_hk['HK'] = df_rend_hk['HK'].astype(str).str.replace(".0", "", regex=False)
-        df_rend_hk = df_rend_hk[df_rend_hk['REND_HR'] > 0]
-        df_rend_hk['ETIQUETA'] = df_rend_hk['REND_HR'].apply(lambda x: f"{formato_latino(x, 1)} Hr")
+        st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
+        df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
+        df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
+        df_rend['SEMANA'] = df_rend['SEMANA'].astype(str).str.replace(".0", "", regex=False)
+        df_rend['EJE_Y'] = df_rend['HK'] + " | Sem " + df_rend['SEMANA']
+        df_rend = df_rend.sort_values(by=['HK', 'SEMANA'], ascending=[True, False])
+        df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
+        altura_dinamica = max(400, len(df_rend) * 22)
         
-        if not df_rend_hk.empty:
-            fig3 = px.pie(
-                df_rend_hk, 
-                names='HK', 
-                values='REND_HR', 
-                hole=0.45,
-                color_discrete_sequence=px.colors.qualitative.Dark24
-            )
-            fig3.update_traces(
-                textinfo='label+percent+value', 
-                texttemplate='<b>%{label}</b><br>%{value:.1f} Hr<br>(%{percent})',
-                textfont=dict(size=12, family='Arial')
-            )
-            fig3.update_layout(
-                showlegend=True, 
-                legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
-                margin=dict(t=30, b=50)
-            )
-            st.plotly_chart(fig3, use_container_width=True)
-        else:
-            st.info("No hay horas de vuelo registradas para el filtro activo.")
-
+        fig3 = px.bar(
+            df_rend, y='EJE_Y', x='REND_HR', orientation='h', 
+            text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO]
+        )
+        fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
+        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
+        fig3.update_yaxes(type='category')
+        if not df_rend.empty:
+            fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
+        st.plotly_chart(fig3, use_container_width=True)
+        
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE (NUEVO: Línea Curva de Tendencia)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE (RETORNO A BARRAS VERTICALES)
     # -----------------------------------------------------
     with g4:
-        st.markdown(f"#### 📈 TENDENCIA DE FACTURACIÓN MENSUAL — {titulo_finca}", unsafe_allow_html=True)
+        st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
         df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
         df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
         df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
         df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
         
-        fig4 = px.line(
+        fig4 = px.bar(
             df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', 
-            markers=True, text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY
+            barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY
         )
-        fig4.update_traces(
-            line_shape='spline', 
-            line=dict(width=3.5), 
-            marker=dict(size=9), 
-            textposition='top center', 
-            textfont=dict(size=11, family="Arial Black")
-        )
+        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
         fig4.update_layout(
             xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", 
             plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
@@ -386,11 +370,11 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             margin=dict(t=50)
         )
         if not df_mes.empty:
-            fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.3])
+            fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
         st.plotly_chart(fig4, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES (NUEVO: Área Suave Dorada)
+    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES (RETORNO A BARRAS VERTICALES)
     # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"#### ⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
@@ -401,26 +385,24 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_dom = df_dom.sort_values(by=['AÑO', 'SEMANA_NUM'])
         df_dom['AÑO_STR'] = df_dom['AÑO'].astype(str)
         df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['MES_NOMBRE'] + ")"
+        
         df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
         
-        fig5 = px.area(
+        fig5 = px.bar(
             df_dom, x='EJE_X', y='DOMINICAL_HA', color='AÑO_STR', 
-            markers=True, text='ETIQUETA_DOM', 
-            color_discrete_sequence=['#d4af37', '#27AE60', '#E67E22'], 
+            barmode='group', text='ETIQUETA_DOM', 
+            color_discrete_sequence=PALETA_YOY, 
             category_orders={"AÑO_STR": ["2025", "2026", "2027"]}
         )
-        fig5.update_traces(
-            textposition='top center', 
-            textfont=dict(size=11, color='black', family="Arial Black"), 
-            cliponaxis=False
-        )
+        fig5.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial Black"), cliponaxis=False)
         fig5.update_layout(
             xaxis_title="Semana Operativa", yaxis_title="Total Recargos ($ COP)", 
-            plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
+            plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', bargap=0.1, bargroupgap=0.0, 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50)
         )
-        fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
+        if not df_dom.empty:
+            fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
         st.plotly_chart(fig5, use_container_width=True)
     else:
         st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
@@ -428,7 +410,13 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("---")
     buffer_rep = io.BytesIO()
     df_filtrado.drop(columns=['FECHA_DT'], errors='ignore').to_excel(buffer_rep, sheet_name='Reporte', index=False)
-    st.download_button(label="📥 DESCARGAR REPORTE EN EXCEL", data=buffer_rep.getvalue(), file_name=f"Reporte_Hectareas_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)                        
+    st.download_button(
+        label="📥 DESCARGAR REPORTE EN EXCEL", 
+        data=buffer_rep.getvalue(), 
+        file_name=f"Reporte_Hectareas_{datetime.now().strftime('%Y%m%d')}.xlsx", 
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        use_container_width=True
+    )                        
 
 if __name__ == "__main__":
     pass
