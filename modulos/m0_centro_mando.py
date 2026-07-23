@@ -1,10 +1,19 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import gspread
 
 # =================================================================
 # ⚡ MOTOR DE CARGA Y PROCESAMIENTO ULTRARRÁPIDO EN CACHÉ
 # =================================================================
+
+def inicializar_cliente_gspread():
+    try:
+        if "gcp_service_account" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        return gspread.service_account(filename='credenciales.json')
+    except Exception:
+        return None
 
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_inventario_supabase_cached():
@@ -28,13 +37,11 @@ def procesar_radar_logistico_cached(df_sabana):
     if df_sabana.empty:
         return None, "VACIO", 0, 0, 0, pd.DataFrame()
 
-    # 1. Mapeo estructural indexado
     col_cod = next((c for c in df_sabana.columns if str(c).strip() == 'Material'), None)
     col_pista = next((c for c in df_sabana.columns if str(c).strip() == 'Almacén'), None)
     col_saldo = next((c for c in df_sabana.columns if str(c).strip() == 'Libre utilización'), None)
     col_desc = next((c for c in df_sabana.columns if str(c).strip() == 'Descripción del material'), None)
 
-    # Fallbacks automáticos
     if not col_cod: col_cod = next((c for c in df_sabana.columns if 'MATERIAL' in str(c).upper()), None)
     if not col_pista: col_pista = next((c for c in df_sabana.columns if 'ALMACEN' in str(c).upper() or 'LGORT' in str(c).upper()), None)
     if not col_saldo: col_saldo = next((c for c in df_sabana.columns if 'LIBRE' in str(c).upper() or 'UTILIZACION' in str(c).upper() or 'LABST' in str(c).upper()), None)
@@ -43,7 +50,6 @@ def procesar_radar_logistico_cached(df_sabana):
     if not col_cod or not col_pista or not col_saldo:
         return None, "ERROR_COLUMNAS", 0, 0, 0, pd.DataFrame()
 
-    # 2. Copia y Limpieza Vectorial
     df_temp = df_sabana.copy()
     df_temp[col_saldo] = pd.to_numeric(df_temp[col_saldo].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
     df_temp = df_temp[df_temp[col_saldo] > 0]
@@ -58,10 +64,8 @@ def procesar_radar_logistico_cached(df_sabana):
     else:
         df_temp['PRODUCTO_RADAR'] = codigos_limpios + " | INSUMO QUÍMICO REGISTRADO"
 
-    # 3. CONSOLIDACIÓN MAESTRA
     inventario_agrupado = df_temp.groupby([col_pista, 'PRODUCTO_RADAR'])[col_saldo].sum().reset_index()
     
-    # 4. COMPILADOR DE REGLAS DE SEGURIDAD OPERATIVA (Vectorizado)
     pistas_series = inventario_agrupado[col_pista].astype(str).str.upper()
     productos_series = inventario_agrupado['PRODUCTO_RADAR'].astype(str).str.upper()
     
@@ -90,7 +94,6 @@ def procesar_radar_logistico_cached(df_sabana):
     inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, valores_limite, default=100)
     inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, regles_texto, default="100 L/Kg (Estándar Global)")
     
-    # 5. Filtrar stock crítico
     df_alertas = inventario_agrupado[inventario_agrupado[col_saldo] < inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD']].copy()
     
     df_alertas = df_alertas.rename(columns={
@@ -111,6 +114,76 @@ def procesar_radar_logistico_cached(df_sabana):
     conteo_alertas = len(df_alertas_render)
 
     return df_alertas_render, "EXITO", total_almacenes, total_insumos, conteo_alertas, df_alertas_render
+
+# =================================================================
+# 🗄️ ORDENAMIENTO GLOBAL DE BASE DE DATOS (DRIVE + SUPABASE)
+# =================================================================
+
+def ordenar_base_datos_global():
+    if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
+        st.error("🚨 Sin conexión activa a Supabase.")
+        return
+
+    try:
+        supabase = st.session_state['supabase']
+        gc = inicializar_cliente_gspread()
+        if not gc: 
+            st.error("🚨 Sin conexión a Google Drive.")
+            return
+
+        with st.status("🔄 Iniciando Protocolo de Ordenamiento Cronológico...", expanded=True) as status:
+            st.write("📥 Descargando TABLA 1 desde Google Drive (Protegiendo fórmulas)...")
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            ws_t1 = boveda.worksheet("TABLA 1")
+            
+            # Leer como fórmulas para no destruir los cálculos de Excel
+            t1_raw = ws_t1.get_all_values(value_render_option='FORMULA')
+            
+            idx_header = 4
+            for i in range(min(10, len(t1_raw))):
+                if "FINCA" in [str(x).upper().strip() for x in t1_raw[i]]:
+                    idx_header = i
+                    break
+                    
+            cols = [f"col_{k}" for k in range(len(t1_raw[idx_header]))]
+            datos_filas = t1_raw[idx_header+1:]
+            max_len = len(cols)
+            datos_pad = [r + [""] * (max_len - len(r)) for r in datos_filas]
+            
+            df_t1 = pd.DataFrame(datos_pad, columns=cols)
+            df_t1 = df_t1[df_t1['col_0'].astype(str).str.strip() != ""].copy()
+
+            st.write("🧮 Ordenando registros por fecha (Más recientes primero)...")
+            if len(df_t1.columns) > 7:
+                # Se limpia la fecha de comillas ocultas y se parsea
+                df_t1['fecha_dt'] = pd.to_datetime(df_t1['col_7'].astype(str).str.replace("'", "").str.strip(), format='%d/%m/%Y', errors='coerce')
+                # ascending=False envía las fechas recientes a la cima
+                df_t1 = df_t1.sort_values(by='fecha_dt', ascending=False, na_position='last').drop(columns=['fecha_dt'])
+
+            registros_supa = df_t1.fillna("").to_dict(orient='records')
+            
+            st.write("🧹 Limpiando base de datos relacional Supabase...")
+            if registros_supa:
+                supabase.table("sap_tabla_1_maestro").delete().neq("col_0", "VACIO_FORZADO").execute()
+                
+                st.write("📤 Inyectando registros ordenados en Supabase...")
+                tamano_bloque = 1000
+                for i in range(0, len(registros_supa), tamano_bloque):
+                    supabase.table("sap_tabla_1_maestro").insert(registros_supa[i:i + tamano_bloque]).execute()
+
+            st.write("📝 Reestructurando Google Sheets físicamente...")
+            valores_ordenados_drive = df_t1.fillna("").values.tolist()
+            if valores_ordenados_drive:
+                rango_inicio = f"A{idx_header + 2}"
+                rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
+                ws_t1.batch_clear([rango_borrar])
+                ws_t1.update(range_name=rango_inicio, values=valores_ordenados_drive, value_input_option='USER_ENTERED')
+                
+            status.update(label="✅ Base de Datos Ordenada y Sincronizada al 100%", state="complete", expanded=False)
+            st.balloons()
+
+    except Exception as e:
+        st.error(f"🚨 Error en sincronización: {e}")
 
 # =================================================================
 # 👑 RENDERIZADO VISUAL DEL CENTRO DE MANDO
@@ -159,6 +232,18 @@ def renderizar():
     st.markdown(f"### Bienvenido al Cuartel General, **{st.session_state.get('usuario_nombre', 'Comandante')}**.")
     st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos. Seleccione un hangar en el menú lateral para iniciar operaciones.")
     
+    # -------------------------------------------------------------
+    # 🗄️ PANEL DE MANTENIMIENTO GLOBAL DE BASE DE DATOS
+    # -------------------------------------------------------------
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("### 🗄️ Panel de Mantenimiento de Base de Datos")
+    st.info("💡 **Alineación Cronológica:** Utilice esta herramienta para ordenar físicamente todas las misiones por fecha. El sistema tomará todas las operaciones y pondrá las fechas más recientes en la parte superior tanto en Google Drive como en Supabase.")
+    if st.button("🧹 ORDENAR DRIVE Y SUPABASE POR FECHA", type="primary", use_container_width=True):
+        ordenar_base_datos_global()
+
+    # -------------------------------------------------------------
+    # 🚨 RADAR LOGÍSTICO DE INVENTARIOS
+    # -------------------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("### 🚨 Radar Logístico: Alerta Temprana de Inventarios")
     
