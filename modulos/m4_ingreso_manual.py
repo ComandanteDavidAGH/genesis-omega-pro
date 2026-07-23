@@ -1,9 +1,12 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import gspread
 import io
 import re
+import json
 from datetime import datetime, timedelta
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
@@ -13,14 +16,12 @@ from datetime import datetime, timedelta
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
     try:
-        # 🌟 CORRECCIÓN MAESTRA: Cambiamos "gcp_credentials" por "gcp_service_account"
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
-# --- 🧪 TRADUCTOR SEGURO DE NÚMEROS ---
 def a_numero_limpio(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -30,20 +31,144 @@ def a_numero_limpio(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         return float(v) if v else 0.0
-    except: return 0.0
+    except Exception:
+        return 0.0
+
+# =================================================================
+# 🔌 MEMORIA EN CACHÉ SUPABASE FIRST (VELOCIDAD LUZ)
+# =================================================================
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def cargar_memoria_referencias_m4_cached():
+    """
+    Carga acelerada de Pilotos, HKs, Fincas y Cócteles desde Supabase.
+    Fallback automático a Google Sheets.
+    """
+    memoria = {
+        'col_os': [],
+        'lista_pilotos': [],
+        'df_t2': pd.DataFrame(),
+        'lista_hks': [],
+        'df_apoyo': pd.DataFrame(),
+        'lista_fincas_oficiales': [],
+        'lista_cocteles_oficiales': []
+    }
+    
+    # 1. Intentar recuperación instantánea desde Supabase
+    if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
+        try:
+            sb = st.session_state['supabase']
+            res_t2 = sb.table("config_tabla2").select("*").execute()
+            res_ap = sb.table("tabla_apoyo_raw").select("*").execute()
+            res_t1 = sb.table("sap_tabla_1_maestro").select("*").execute()
+            
+            if res_t2.data and res_ap.data:
+                df_t2 = pd.DataFrame(res_t2.data)
+                df_ap = pd.DataFrame(res_ap.data)
+                df_t1 = pd.DataFrame(res_t1.data) if res_t1.data else pd.DataFrame()
+                
+                memoria['df_t2'] = df_t2
+                memoria['df_apoyo'] = df_ap
+                
+                if not df_t1.empty and 'col_0' in df_t1.columns:
+                    memoria['col_os'] = df_t1['col_0'].dropna().astype(str).tolist()
+                
+                if not df_t1.empty and 'col_15' in df_t1.columns:
+                    pilotos = df_t1['col_15'].dropna().astype(str).str.strip().str.upper().unique().tolist()
+                    memoria['lista_pilotos'] = sorted([p for p in pilotos if p not in ["PILOTO", "PILOTO AVIÓN", ""]])
+                
+                if 'col_8' in df_t2.columns:
+                    hks = df_t2['col_8'].dropna().astype(str).str.strip().str.upper().unique().tolist()
+                    memoria['lista_hks'] = sorted([h for h in hks if h])
+                    
+                if 'col_0' in df_t2.columns:
+                    fincas = df_t2['col_0'].dropna().astype(str).str.strip().str.upper().unique().tolist()
+                    memoria['lista_fincas_oficiales'] = sorted([f for f in fincas if f not in ["FINCA", "TOTAL", ""]])
+                    
+                if not df_t1.empty and 'col_6' in df_t1.columns:
+                    cocteles = df_t1['col_6'].dropna().astype(str).str.strip().unique().tolist()
+                    memoria['lista_cocteles_oficiales'] = sorted([c for c in cocteles if c not in ["COCTEL", ""]])
+                    
+                return memoria
+        except Exception:
+            pass
+
+    # 2. Fallback a Google Sheets solo si falla Supabase
+    gc = inicializar_cliente_gspread()
+    if gc is not None:
+        try:
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            ws_t1 = boveda.worksheet("TABLA 1")
+            
+            memoria['col_os'] = ws_t1.col_values(1)
+            pilotos_raw = ws_t1.col_values(16)
+            memoria['lista_pilotos'] = sorted(list(set([str(p).strip().upper() for p in pilotos_raw if p and str(p).upper() not in ["PILOTO", "PILOTO AVIÓN"]])))
+            
+            ws_t2 = boveda.worksheet("TABLA 2")
+            d_t2 = ws_t2.get_all_values()
+            d_t2_limpio = [r + [""] * (12 - len(r)) if len(r) < 12 else r for r in d_t2]
+            memoria['df_t2'] = pd.DataFrame(d_t2_limpio[4:])
+            memoria['lista_hks'] = sorted(list(set([str(r[8]).strip().upper() for r in d_t2_limpio[4:] if r[8]])))
+            memoria['lista_fincas_oficiales'] = sorted(list(set([str(r[0]).strip().upper() for r in d_t2_limpio[4:] if r[0]])))
+
+            ws_ap = boveda.worksheet("TABLA DE APOYO2023")
+            memoria['df_apoyo'] = pd.DataFrame(ws_ap.get_all_values())
+            
+            cocteles_raw = ws_t1.col_values(7)
+            memoria['lista_cocteles_oficiales'] = sorted(list(set([str(c).strip() for c in cocteles_raw if c and c != "COCTEL"])))
+        except Exception:
+            pass
+            
+    return memoria
+
+@st.cache_data(show_spinner=False, ttl=600)
+def obtener_vuelos_virtuales_cached():
+    """
+    Escaneo vectorizado instantáneo de órdenes virtuales (VIRT-)
+    """
+    gc = inicializar_cliente_gspread()
+    if not gc:
+        return [], [], []
+    try:
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        datos_t1 = sh.worksheet("TABLA 1").get_all_values()
+        datos_apoyo = sh.worksheet("TABLA DE APOYO2023").get_all_values()
+        
+        df_t1_temp = pd.DataFrame(datos_t1[5:])
+        
+        pendientes = []
+        if not df_t1_temp.empty and len(df_t1_temp.columns) > 19:
+            # ⚡ Vectorización pura de búsqueda VIRT-
+            mask_virt = df_t1_temp.iloc[:, 0].astype(str).str.upper().str.startswith("VIRT-")
+            df_virt = df_t1_temp[mask_virt]
+            
+            for idx, row in df_virt.iterrows():
+                os_val_check = str(row.iloc[0]).upper()
+                equipo = str(row.iloc[17]).upper()
+                if "AVION" in equipo or equipo == "":
+                    pendientes.append({
+                        "fila_real": idx + 6,
+                        "os_virt": os_val_check,
+                        "finca": str(row.iloc[2]),
+                        "ha": a_numero_limpio(row.iloc[5]),
+                        "costo_ha": a_numero_limpio(row.iloc[19]),
+                        "total": a_numero_limpio(row.iloc[18]),
+                        "modelo": equipo
+                    })
+        return pendientes, datos_t1, datos_apoyo
+    except Exception:
+        return [], [], []
 
 # =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DEL MÓDULO DE ÓRDENES (OS)
 # =================================================================
 
 def ejecutar(extraer_numero, purificar_lote):
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Eliminación definitiva de casillas pálidas
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 DETONACIÓN DE CASILLAS PÁLIDAS: Forzar visibilidad extrema en Inputs y Selectboxes */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input,
     div[data-testid="stSelectbox"] [data-baseweb="select"] {
@@ -55,7 +180,6 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 15px !important;
     }
     
-    /* HUD de Legalización */
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 12px; border-radius: 6px; color: white;
@@ -68,7 +192,6 @@ def ejecutar(extraer_numero, purificar_lote):
 
     st.markdown("<h1 class='titulo-principal'>Gestión y Legalización de Órdenes (OS)</h1>", unsafe_allow_html=True)
     
-    # Cliente acelerado en RAM único para todo el archivo
     gc = inicializar_cliente_gspread()
     if gc is None:
         st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
@@ -84,44 +207,17 @@ def ejecutar(extraer_numero, purificar_lote):
         col_ref1, col_ref2 = st.columns([3, 1])
         with col_ref2:
             if st.button("🔄 RECARGAR BASES MANUALES", use_container_width=True, key="btn_recargar_m4"):
-                st.session_state.pop('memoria_excel', None)
+                st.cache_data.clear()
                 st.rerun()
 
-        try:
-            boveda1 = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-            hoja_maestra1 = boveda1.worksheet("TABLA 1")
-            
-            if 'memoria_excel' not in st.session_state:
-                with st.spinner("📡 Sincronizando Cerebro (Pilotos, Aviones y Apoyo)..."):
-                    memoria = {}
-                    memoria['col_os'] = hoja_maestra1.col_values(1)
-                    
-                    pilotos_raw = hoja_maestra1.col_values(16)
-                    memoria['lista_pilotos'] = sorted(list(set([str(p).strip().upper() for p in pilotos_raw if p and str(p).upper() not in ["PILOTO", "PILOTO AVIÓN"]])))
-                    
-                    ws_t2_1 = boveda1.worksheet("TABLA 2")
-                    d_t2_1 = ws_t2_1.get_all_values()
-                    d_t2_limpio = [r + [""] * (12 - len(r)) if len(r) < 12 else r for r in d_t2_1]
-                    memoria['df_t2'] = pd.DataFrame(d_t2_limpio[4:]) 
-                    memoria['lista_hks'] = sorted(list(set([str(r[8]).strip().upper() for r in d_t2_limpio[4:] if r[8]])))
-
-                    ws_ap_1 = boveda1.worksheet("TABLA DE APOYO2023")
-                    d_ap_1 = ws_ap_1.get_all_values()
-                    memoria['df_apoyo'] = pd.DataFrame(d_ap_1)
-                    
-                    st.session_state['memoria_excel'] = memoria
-
-            mem = st.session_state['memoria_excel']
-            lista_os_existentes = [str(os).strip() for os in mem['col_os'] if str(os).strip() != ""]
-            df_t2_m4 = mem['df_t2']
-            df_apoyo_m4 = mem['df_apoyo']
-            
-            lista_fincas_oficiales = sorted(list(set([str(f).strip().upper() for f in df_t2_m4.iloc[:, 0] if f])))
-            lista_cocteles_oficiales = sorted(list(set([str(c).strip() for c in hoja_maestra1.col_values(7) if c and c != "COCTEL"])))
-
-        except Exception as e:
-            st.error(f"🚨 Error de enlace en Pestaña 1: {e}")
-            st.stop()
+        # ⚡ Carga ultrarrápida en memoria RAM
+        mem = cargar_memoria_referencias_m4_cached()
+        lista_os_existentes = [str(os).strip() for os in mem.get('col_os', []) if str(os).strip() != ""]
+        df_t2_m4 = mem.get('df_t2', pd.DataFrame())
+        df_apoyo_m4 = mem.get('df_apoyo', pd.DataFrame())
+        
+        lista_fincas_oficiales = mem.get('lista_fincas_oficiales', [])
+        lista_cocteles_oficiales = mem.get('lista_cocteles_oficiales', [])
 
         st.markdown("---")
         with st.expander("📝 1. DATOS DE LA ORDEN", expanded=True):
@@ -160,36 +256,51 @@ def ejecutar(extraer_numero, purificar_lote):
                         f_str = fecha_dt.strftime("%d/%m/%Y")
                         
                         mod_av, pist_av = "", ""
-                        match_av = df_t2_m4[df_t2_m4.iloc[:, 8].str.strip() == hk_val]
-                        if not match_av.empty:
-                            mod_av, pist_av = match_av.iloc[0, 9], match_av.iloc[0, 10]
+                        if not df_t2_m4.empty and len(df_t2_m4.columns) > 8:
+                            col_hk_idx = 8 if len(df_t2_m4.columns) > 8 else 'col_8'
+                            match_av = df_t2_m4[df_t2_m4.iloc[:, 8].astype(str).str.strip() == hk_val] if isinstance(col_hk_idx, int) else df_t2_m4[df_t2_m4[col_hk_idx].astype(str).str.strip() == hk_val]
+                            if not match_av.empty:
+                                mod_av = match_av.iloc[0, 9] if len(match_av.columns) > 9 else ""
+                                pist_av = match_av.iloc[0, 10] if len(match_av.columns) > 10 else ""
 
                         filas_finales = []
                         payload_supabase = []
                         t_ha_os = sum(df_editado['hectareas'])
                         
-                        h_tot = float(str(horo_val).replace(',','.'))
-                        p_tar = float(str(costo_val).replace(',','.'))
-                        p_rec = float(str(recargo_val).replace(',','.'))
+                        h_tot = a_numero_limpio(horo_val)
+                        p_tar = a_numero_limpio(costo_val)
+                        p_rec = a_numero_limpio(recargo_val)
 
                         for _, f in df_editado.iterrows():
                             n_finca = str(f['nombre_finca']).upper().strip()
                             if not n_finca: continue
                             
                             bloq, sect, hab, t_prod = "", "", 0, ""
-                            m_f = df_t2_m4[df_t2_m4.iloc[:, 0].str.upper().str.strip() == n_finca]
-                            if not m_f.empty:
-                                sect, hab, bloq, t_prod = m_f.iloc[0, 1], extraer_numero(m_f.iloc[0, 2]), m_f.iloc[0, 3], m_f.iloc[0, 5]
+                            if not df_t2_m4.empty:
+                                m_f = df_t2_m4[df_t2_m4.iloc[:, 0].astype(str).str.upper().str.strip() == n_finca]
+                                if not m_f.empty:
+                                    sect = m_f.iloc[0, 1] if len(m_f.columns) > 1 else ""
+                                    hab = a_numero_limpio(m_f.iloc[0, 2]) if len(m_f.columns) > 2 else 0
+                                    bloq = m_f.iloc[0, 3] if len(m_f.columns) > 3 else ""
+                                    t_prod = m_f.iloc[0, 5] if len(m_f.columns) > 5 else ""
                             
                             coctel_final = str(f.get('coctel', '')).strip()
-                            if not coctel_final or coctel_final in ["None", ""]:
-                                mask = (df_apoyo_m4.iloc[:, 1].str.upper().str.strip() == n_finca) & (df_apoyo_m4.iloc[:, 5].str.strip() == f_str)
-                                match_ap = df_apoyo_m4[mask]
-                                if not match_ap.empty:
-                                    coctel_final = match_ap.iloc[0, 8]
-                                else:
-                                    match_hist = df_apoyo_m4[df_apoyo_m4.iloc[:, 1].str.upper().str.strip() == n_finca]
-                                    if not match_hist.empty: coctel_final = match_hist.iloc[-1, 8]
+                            if (not coctel_final or coctel_final in ["None", ""]) and not df_apoyo_m4.empty:
+                                try:
+                                    col_f_ap = 1 if len(df_apoyo_m4.columns) > 1 else 'col_1'
+                                    col_d_ap = 5 if len(df_apoyo_m4.columns) > 5 else 'col_5'
+                                    col_c_ap = 8 if len(df_apoyo_m4.columns) > 8 else 'col_8'
+                                    
+                                    mask = (df_apoyo_m4.iloc[:, 1].astype(str).str.upper().str.strip() == n_finca) & (df_apoyo_m4.iloc[:, 5].astype(str).str.strip() == f_str)
+                                    match_ap = df_apoyo_m4[mask]
+                                    if not match_ap.empty:
+                                        coctel_final = str(match_ap.iloc[0, 8])
+                                    else:
+                                        match_hist = df_apoyo_m4[df_apoyo_m4.iloc[:, 1].astype(str).str.upper().str.strip() == n_finca]
+                                        if not match_hist.empty: 
+                                            coctel_final = str(match_hist.iloc[-1, 8])
+                                except Exception:
+                                    pass
 
                             ha_n = float(f['hectareas'])
                             h_prop = (ha_n / t_ha_os) * h_tot if t_ha_os > 0 else 0
@@ -211,7 +322,6 @@ def ejecutar(extraer_numero, purificar_lote):
                             
                             filas_finales.append(row)
 
-                            # Estructuración para Supabase
                             payload_supabase.append({
                                 "numero_os": str(os_val), "finca": str(n_finca), "hectareas": float(ha_n),
                                 "coctel": str(coctel_final), "fecha_operacion": str(f_str), "piloto": str(piloto_val),
@@ -220,11 +330,11 @@ def ejecutar(extraer_numero, purificar_lote):
                             })
                             
                         if filas_finales:
-                            # Escritura en Drive
+                            boveda1 = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                            hoja_maestra1 = boveda1.worksheet("TABLA 1")
                             hoja_maestra1.append_rows(filas_finales, value_input_option='USER_ENTERED')
                             
-                            # INTEGRACIÓN SUPABASE: Shadow Writing Preventivo
-                            if 'supabase' in st.session_state:
+                            if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                 try:
                                     st.session_state['supabase'].table("ordenes_servicio_os").insert(payload_supabase).execute()
                                 except Exception:
@@ -232,10 +342,11 @@ def ejecutar(extraer_numero, purificar_lote):
 
                             st.balloons()
                             st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con Cóctel y Fórmulas Automáticas.")
-                            st.session_state.pop('memoria_excel', None) 
+                            st.cache_data.clear()
                             st.rerun()
                                 
-                except Exception as e: st.error(f"Error en inyección: {e}")
+                except Exception as e: 
+                    st.error(f"Error en inyección: {e}")
 
     # -----------------------------------------------------------------
     # PESTAÑA 2: ESCÁNER DE LEGALIZACIÓN MULTI-OS (MEMORIA RAM ACELERADA)
@@ -243,36 +354,14 @@ def ejecutar(extraer_numero, purificar_lote):
     with tab2:
         st.markdown("### 🔄 Escáner de Legalización Multi-OS")
         
-        sh2 = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        ws_t1_2 = sh2.worksheet("TABLA 1")
-        ws_apoyo_2 = sh2.worksheet("TABLA DE APOYO2023")
-        
-        # ⚡ Cacheamos los datos de red de las tablas para mejorar rendimiento
-        if 'legalizacion_cache' not in st.session_state:
-            with st.spinner("Escaneando bases generales para legalizar misiones virtuales..."):
-                cache_leg = {}
-                cache_leg['datos_t1'] = ws_t1_2.get_all_values()
-                cache_leg['datos_apoyo'] = ws_apoyo_2.get_all_values()
-                st.session_state['legalizacion_cache'] = cache_leg
-                
-        if st.button("🔄 RECARGAR VUELOS VIRTUALES", use_container_width=True):
-            st.session_state.pop('legalizacion_cache', None)
-            st.rerun()
+        col_leg1, col_leg2 = st.columns([3, 1])
+        with col_leg2:
+            if st.button("🔄 RECARGAR VUELOS VIRTUALES", use_container_width=True):
+                st.cache_data.clear()
+                st.rerun()
 
-        datos_t1 = st.session_state['legalizacion_cache']['datos_t1']
-        datos_apoyo = st.session_state['legalizacion_cache']['datos_apoyo']
-        
-        pendientes = []
-        for idx, row in enumerate(datos_t1[5:]):
-            if len(row) > 19:
-                os_val_check = str(row[0]).upper()
-                equipo = str(row[17]).upper() 
-                if os_val_check.startswith("VIRT-") and ("AVION" in equipo or equipo == ""):
-                    pendientes.append({
-                        "fila_real": idx + 6, "os_virt": os_val_check, "finca": row[2],
-                        "ha": extraer_numero(row[5]), "costo_ha": extraer_numero(row[19]), 
-                        "total": extraer_numero(row[18]), "modelo": equipo
-                    })
+        # ⚡ Recuperación en Caché Ultrarrápida
+        pendientes, datos_t1, datos_apoyo = obtener_vuelos_virtuales_cached()
 
         if not pendientes:
             st.success("✅ No hay misiones de Avión pendientes por legalizar. ¡Cielo despejado!")
@@ -295,6 +384,7 @@ def ejecutar(extraer_numero, purificar_lote):
             st.markdown("---")
             st.subheader(f"🛠️ Desglose de OS para: {vuelo_sel['finca']}")
             
+            # Extraer lista de fincas de forma eficiente
             lista_todas_fincas = sorted(list(set([r[1] for r in datos_apoyo[3:] if len(r) > 1 and r[1]])))
 
             if 'legalizador_rows' not in st.session_state:
@@ -318,7 +408,7 @@ def ejecutar(extraer_numero, purificar_lote):
                     if finca_r != row["Finca"] and finca_r != "":
                         for r_ap in reversed(datos_apoyo):
                             if len(r_ap) > 3 and r_ap[1] == finca_r:
-                                costo_sugerido = extraer_numero(r_ap[3])
+                                costo_sugerido = a_numero_limpio(r_ap[3])
                                 break
                     
                     ha_r = c3.number_input(f"Ha #{i+1}", value=float(row.get("Hect AREAS", 0.0)) if "Hect AREAS" in row else float(row.get("Hectáreas", 0.0)), key=f"h_r_{i}")
@@ -340,6 +430,9 @@ def ejecutar(extraer_numero, purificar_lote):
                 else:
                     try:
                         with st.spinner("Legalizando y respetando Fórmulas MAP de Excel..."):
+                            sh2 = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                            ws_t1_2 = sh2.worksheet("TABLA 1")
+                            
                             r_idx = int(vuelo_sel['fila_real'])
                             Nuevas_Filas = []
                             payload_supa_leg = []
@@ -361,36 +454,31 @@ def ejecutar(extraer_numero, purificar_lote):
                                 
                                 Nuevas_Filas.append(nueva)
 
-                                # Preparar réplica relacional
                                 payload_supa_leg.append({
                                     "numero_os": str(r_f["OS"]), "finca": str(r_f["Finca"]), "hectareas": float(r_f["Ha"]),
                                     "coctel": str(nueva[6]), "fecha_operacion": str(nueva[7]), "piloto": str(nueva[15]),
-                                    "matricula": str(nueva[16]), "horometro_total": float(extraer_numero(nueva[10])),
+                                    "matricula": str(nueva[16]), "horometro_total": float(a_numero_limpio(nueva[10])),
                                     "total_costo": float(nueva[18]), "tipo_mision": "LEGALIZADA", "origen_registro": str(vuelo_sel['os_virt'])
                                 })
 
-                            # Modificación física en Google Sheets
                             ws_t1_2.delete_rows(r_idx)
                             ws_t1_2.insert_rows(Nuevas_Filas, r_idx, value_input_option='USER_ENTERED')
                             
-                            # Sincronización en Supabase
-                            if 'supabase' in st.session_state:
+                            if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                 try:
-                                    supabase_client = st.session_state['supabase']
-                                    # Marcamos la orden virtual como legalizada o la eliminamos del espejo
-                                    supabase_client.table("ordenes_servicio_os").delete().eq("numero_os", str(vuelo_sel['os_virt'])).execute()
-                                    # Insertamos los nuevos desgloses reales
-                                    supabase_client.table("ordenes_servicio_os").insert(payload_supa_leg).execute()
+                                    sb = st.session_state['supabase']
+                                    sb.table("ordenes_servicio_os").delete().eq("numero_os", str(vuelo_sel['os_virt'])).execute()
+                                    sb.table("ordenes_servicio_os").insert(payload_supa_leg).execute()
                                 except Exception:
                                     pass
 
                             st.balloons()
-                            st.success(f"🎯 LEGALIZACIÓN PERFECTA. El registro virtual ha sido eliminado y reemplazado por misiones reales.")
+                            st.success("🎯 LEGALIZACIÓN PERFECTA. El registro virtual ha sido eliminado y reemplazado por misiones reales.")
                             
                             st.session_state.pop('legalizador_rows', None)
-                            st.session_state.pop('legalizacion_cache', None)
+                            st.cache_data.clear()
                             st.rerun()
-                    except Exception as e:
+                    except Exception as e: 
                         st.error(f"🚨 Falla en el sistema de inserción de filas: {e}")
 
 if __name__ == "__main__":
