@@ -92,7 +92,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
 # =================================================================
 
 def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
-    # 🎨 INYECCIÓN CSS CON BORDE OSCURO TÁCTICO PARA CASILLAS DESPLEGABLES
+    # 🎨 INYECCIÓN CSS VIP DE ALTA TECNOLOGÍA
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
@@ -114,8 +114,27 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         font-weight: 800 !important; 
     }
     
-    div[data-testid="stCodeBlock"] pre { border: 3px solid #0d1b2a !important; border-radius: 8px !important; }
-    div[data-testid="stCodeBlock"] code { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
+    /* 📟 TERMINAL TÁCTICO DE COPIADO SAP (ALTA VELOCIDAD Y DISEÑO MATRIZ) */
+    div[data-testid="stCodeBlock"] {
+        border: 2px solid #d4af37 !important;
+        border-radius: 10px !important;
+        box-shadow: 0px 4px 15px rgba(13, 27, 42, 0.2) !important;
+        background-color: #060d15 !important;
+        max-height: 420px !important;
+        overflow-y: auto !important;
+    }
+    div[data-testid="stCodeBlock"] pre {
+        background-color: #060d15 !important;
+        border: none !important;
+        padding: 15px !important;
+    }
+    div[data-testid="stCodeBlock"] code {
+        color: #00ffcc !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+        font-family: 'Consolas', 'Courier New', monospace !important;
+        line-height: 1.6 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -179,9 +198,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 st.dataframe(df_visual, use_container_width=True, hide_index=True)
                 
             with t2:
-                st.markdown("#### Caja de Copiado Masivo para SAP")
+                st.markdown("#### 📟 Consola de Copiado Masivo para SAP")
                 
-                # 💥 RESTAURACIÓN DEL INTERRUPTOR DE NOMBRES Y DISTRIBUCIÓN
                 c_cop1, c_cop2 = st.columns([2, 1])
                 with c_cop1:
                     col_margen = st.selectbox(
@@ -190,16 +208,17 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         key="sb_perfil_copia"
                     )
                 with c_cop2:
-                    st.write("") # Alineación vertical
+                    st.write("") 
                     st.write("")
                     incluir_nombres = st.toggle("🏷️ Incluir Nombres de Productos", value=False, key="toggle_inc_nombres")
 
-                # Formatear salida dependiendo del estado del interruptor
+                # Formatear salida
                 if incluir_nombres:
                     lista_textos = [f"{p} - {fmt_sap(v)}" for p, v in zip(df_t["PRODUCTO"], df_t[col_margen])]
                 else:
                     lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
-                    
+                
+                st.info(f"📊 **Listos para Transferencia:** {len(lista_textos)} registros procesados. Haga clic en el ícono 📋 (arriba a la derecha de la consola) para copiar.")
                 st.code("\n".join(lista_textos), language="text")
                     
             with t3:
