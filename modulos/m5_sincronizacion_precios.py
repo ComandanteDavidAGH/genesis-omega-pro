@@ -92,6 +92,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
 # =================================================================
 
 def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
+    # 🎨 INYECCIÓN CSS CON BORDE OSCURO TÁCTICO PARA CASILLAS DESPLEGABLES
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
@@ -100,7 +101,19 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
     .hud-tarifas-item { text-align: center; flex: 1; }
     .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-tarifas-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
-    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stSelectbox"] [data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; font-weight: 800 !important; }
+    
+    /* 💥 BORDE TÁCTICO OSCURO Y FONDO BLANCO EN INPUTS Y SELECTBOX */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input, 
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] { 
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 6px !important; 
+        background-color: #ffffff !important;
+        color: #0d1b2a !important;
+        font-weight: 800 !important; 
+    }
+    
     div[data-testid="stCodeBlock"] pre { border: 3px solid #0d1b2a !important; border-radius: 8px !important; }
     div[data-testid="stCodeBlock"] code { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
     </style>
@@ -167,9 +180,26 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 
             with t2:
                 st.markdown("#### Caja de Copiado Masivo para SAP")
-                col_margen = st.selectbox("Seleccione el Perfil de Productor:", 
-                                          ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"])
-                lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
+                
+                # 💥 RESTAURACIÓN DEL INTERRUPTOR DE NOMBRES Y DISTRIBUCIÓN
+                c_cop1, c_cop2 = st.columns([2, 1])
+                with c_cop1:
+                    col_margen = st.selectbox(
+                        "Seleccione el Perfil de Productor:", 
+                        ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"],
+                        key="sb_perfil_copia"
+                    )
+                with c_cop2:
+                    st.write("") # Alineación vertical
+                    st.write("")
+                    incluir_nombres = st.toggle("🏷️ Incluir Nombres de Productos", value=False, key="toggle_inc_nombres")
+
+                # Formatear salida dependiendo del estado del interruptor
+                if incluir_nombres:
+                    lista_textos = [f"{p} - {fmt_sap(v)}" for p, v in zip(df_t["PRODUCTO"], df_t[col_margen])]
+                else:
+                    lista_textos = [fmt_sap(x) for x in df_t[col_margen]]
+                    
                 st.code("\n".join(lista_textos), language="text")
                     
             with t3:
@@ -223,7 +253,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         
         c_btn1, c_btn2 = st.columns(2)
         
-        # Mapa de precios acelerado desde la memoria local
         dict_precios = {}
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_m = st.session_state['df_tarifario']
