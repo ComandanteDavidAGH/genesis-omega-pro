@@ -367,10 +367,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.error("🚨 Columnas críticas estructurales ausentes en la Bóveda.")
             return
 
-        for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA']:
+        for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO']:
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
+        # =================================================================
+        # 1. PASO QUIRÚRGICO DE NORMALIZACIÓN DE TIPOS DE DATOS
+        # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
+        super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
@@ -379,10 +383,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # 💥 CANDADO ANTI-DUPLICIDAD: Evita sumar los mismos registros si existen en Historico y Actual
-        cols_dedup = [c for c in ['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_MAESTRA', 'COCTEL_MAESTRO'] if c in super_base_bi.columns]
-        if cols_dedup:
-            super_base_bi = super_base_bi.drop_duplicates(subset=cols_dedup, keep='first').copy()
+        super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
+
+        # =================================================================
+        # 2. CANDADO ANTI-DUPLICIDAD SOBRE VALORES CONVERTIDOS
+        # =================================================================
+        # Al estar FECHA_DT, FINCA_MAESTRA, AREA_NUM y COCTEL_CLEAN 100% homogenizados,
+        # la eliminación de duplicados entre HISTORICO y ACTUAL es INFALIBLE.
+        super_base_bi = super_base_bi.drop_duplicates(
+            subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
+            keep='last' # Conserva el registro de TABLA 1 si existe en ambas fuentes
+        ).reset_index(drop=True)
 
         def sanear_valores_sap(val):
             v = limpiar_dinero(val)
@@ -390,7 +401,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             return v
             
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
-        super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         super_base_bi['AVION_NUM'] = super_base_bi.apply(lambda r: r['AVION_NUM']/r['AREA_NUM'] if (r['AVION_NUM'] > 90000 and r['AREA_NUM'] > 0) else r['AVION_NUM'], axis=1)
