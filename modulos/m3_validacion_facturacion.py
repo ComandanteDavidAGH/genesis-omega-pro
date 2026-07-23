@@ -442,7 +442,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             c_f1, c_f2, c_f3, c_f4, c_f5 = st.columns(5)
             
             lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
-            vuelo_sim = c_f1.selectbox("🚁 Equipo de Vuelo", lista_opciones_flota_sim)
+            vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
             
             pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
             pista_sim = c_f2.selectbox("🛣️ Pista Base", pistas_base_lista)
@@ -1018,7 +1018,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                         
                     with c_dr:
-                        st.markdown("##### 🚁 Base Drones (Apoyo)")
+                        # 🛸 AJUSTE VISUAL: ÍCONO TÁCTICO DE DRON
+                        st.markdown("##### 🛸 Base Drones (Apoyo)")
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                         escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)                
                     
