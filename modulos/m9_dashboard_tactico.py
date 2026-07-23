@@ -76,7 +76,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     
     def sanear_valores_sap(val):
         if pd.isna(val) or val is None: return 0.0
-        s = str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", "")
+        s = str(val).strip().replace("$", "").replace("COP", "").replace(" ", "")
         s_clean = re.sub(r'[^\d\.,\-]', '', s)
         if not s_clean or s_clean == '-': return 0.0
         try:
@@ -100,6 +100,9 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df['AREA_FUMIG'] = df['AREA_FUMIG'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
     df['REND_HR'] = df['REND_HR'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
+    
+    # 💥 SANITIZACIÓN QUIRÚRGICA DE HORAS TOTALES (COLUMNA K)
+    df['H_TOTAL'] = df['H_TOTAL'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
@@ -249,7 +252,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA POR MES (BARRAS CLÁSICAS ESTABLES)
+    # GRÁFICO 1: ÁREA ASPERJADA POR MES
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -274,7 +277,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (GRÁFICO SEMÁFORO)
+    # GRÁFICO 2: CONTROL DE LÍMITES POR CÓCTEL (SEMÁFORO)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### 🚦 CONTROL DE LÍMITES POR CÓCTEL — {titulo_finca}", unsafe_allow_html=True)
@@ -297,7 +300,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         for i, año_map in enumerate(años_presentes):
             df_año = df_costo[df_costo['AÑO'] == año_map].copy()
-            # 🚦 INTELIGENCIA DE SEMÁFORO: Si supera límite es Rojo, sino su color de año.
             df_año['COLOR_BARRA'] = np.where(df_año['VALOR_FACTURAR'] > df_año['LIMITE'], ROJO_ALERTA, PALETA_YOY[i % len(PALETA_YOY)])
             custom_data = np.stack((df_año['COCTEL'], df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
             
@@ -310,7 +312,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Cóctel:</b> %{customdata[0]}<br><b>Facturación:</b> %{customdata[1]}<extra></extra>'
             ))
             
-        # Línea Roja Gruesa de Tope
         go_fig.add_trace(go.Scatter(
             x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Tope Máximo Permitido",
             mode='lines', line=dict(color=ROJO_ALERTA, width=4, dash='dot'),
@@ -324,57 +325,47 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO POR AERONAVE (GRÁFICO LOLLIPOP)
+    # GRÁFICO 3: HORAS TOTALES DE VUELO POR MATRÍCULA (HK) - LIMPIO Y CATEGÓRICO
     # -----------------------------------------------------
     with g3:
-        st.markdown(f"#### 🎯 RANKING RENDIMIENTO POR MATRÍCULA — {titulo_finca}", unsafe_allow_html=True)
-        df_rend = df_filtrado.groupby(['HK'])['REND_HR'].sum().reset_index()
-        df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
-        df_rend = df_rend[df_rend['REND_HR'] > 0]
-        # Ordenar ascendente para que el de mayor valor quede arriba en Plotly
-        df_rend = df_rend.sort_values('REND_HR', ascending=True)
+        st.markdown(f"#### ⏱️ HORAS TOTALES DE VUELO POR MATRÍCULA — {titulo_finca}", unsafe_allow_html=True)
+        # Sumar estrictamente H_TOTAL (Columna K)
+        df_rend = df_filtrado.groupby(['HK'])['H_TOTAL'].sum().reset_index()
+        
+        # 💥 FORZADO TEXTO: Se antepone "HK " para que Plotly JAMÁS cree una escala numérica (0-5000)
+        df_rend['HK_STR'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False).str.strip()
+        df_rend['HK_LABEL'] = df_rend['HK_STR'].apply(lambda x: f"HK {x}" if not x.startswith("HK") else x)
+        
+        df_rend = df_rend[df_rend['H_TOTAL'] > 0].sort_values('H_TOTAL', ascending=True)
         
         if not df_rend.empty:
-            df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f" {formato_latino(x, 1)} Hr")
-            altura_dinamica = max(350, len(df_rend) * 40)
+            df_rend['ETIQUETA'] = df_rend['H_TOTAL'].apply(lambda x: f"{formato_latino(x, 1)} Hr")
+            altura_dinamica = max(380, len(df_rend) * 45)
             
-            fig3 = go.Figure()
-            # 1. Dibujar las "varillas" (Líneas delgadas)
-            for _, row in df_rend.iterrows():
-                fig3.add_shape(
-                    type='line',
-                    x0=0, y0=row['HK'],
-                    x1=row['REND_HR'], y1=row['HK'],
-                    line=dict(color=VERDE_INTENSO, width=3)
-                )
-            
-            # 2. Dibujar las "piruletas" (Burbujas en las puntas con el texto)
-            fig3.add_trace(go.Scatter(
-                x=df_rend['REND_HR'],
-                y=df_rend['HK'],
-                mode='markers+text',
-                marker=dict(color=VERDE_INTENSO, size=18, line=dict(color=DORADO, width=2)),
-                text=df_rend['ETIQUETA'],
-                textposition='middle right',
-                textfont=dict(size=13, color='black', family='Arial Black'),
-                hoverinfo='none'
-            ))
-            
+            fig3 = px.bar(
+                df_rend, y='HK_LABEL', x='H_TOTAL', orientation='h', 
+                text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO]
+            )
+            fig3.update_traces(
+                textposition='outside', 
+                textfont=dict(size=12, color='black', family='Arial Black')
+            )
             fig3.update_layout(
                 height=altura_dinamica, 
-                xaxis_title="Horas Totales de Rendimiento", 
-                yaxis_title="Aeronave (HK)", 
-                plot_bgcolor='rgba(0,0,0,0)', 
-                showlegend=False,
+                yaxis_title="Matrícula (HK)", 
+                xaxis_title="Horas Totales de Vuelo (H_TOTAL)", 
+                plot_bgcolor='rgba(0,0,0,0)',
                 margin=dict(r=80)
             )
-            fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.3])
+            # Forzado estricto de eje categórico en Y
+            fig3.update_yaxes(type='category')
+            fig3.update_xaxes(range=[0, df_rend['H_TOTAL'].max() * 1.3])
             st.plotly_chart(fig3, use_container_width=True)
         else:
-            st.info("No hay horas de vuelo registradas para el filtro activo.")
+            st.info("No hay horas de vuelo registradas para los filtros activos.")
 
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (COMBO: BARRAS + LÍNEA DE ACUMULADO)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL vs ACUMULADO (ETIQUETAS DESACOPLADAS)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 📈 FACTURACIÓN BASE vs CRECIMIENTO ACUMULADO — {titulo_finca}", unsafe_allow_html=True)
@@ -386,25 +377,26 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         for i, año in enumerate(años_presentes):
             df_año = df_mes[df_mes['AÑO'] == año].copy()
-            # Calcular el acumulado (Year-To-Date)
             df_año['ACUMULADO'] = df_año['COSTO_TOTAL'].cumsum()
             color_b = PALETA_YOY[i % len(PALETA_YOY)]
             
-            # Barras para el facturado mensual
+            # 1. Barras con etiqueta DENTRO del cuerpo de la barra (Texto blanco)
             fig4.add_trace(go.Bar(
                 x=df_año['MES_NOMBRE'], y=df_año['COSTO_TOTAL'],
                 name=f"Facturado Mensual ({año})", marker_color=color_b,
-                text=df_año['COSTO_TOTAL'].apply(formato_gerencial_latino), textposition='inside',
-                textfont=dict(color='white', family='Arial')
+                text=df_año['COSTO_TOTAL'].apply(formato_gerencial_latino), 
+                textposition='inside',
+                textfont=dict(color='white', family='Arial Black', size=11)
             ))
             
-            # Línea con marcadores para el Acumulado
+            # 2. Línea de acumulado con etiqueta ARRIBA de la línea (Texto negro)
             fig4.add_trace(go.Scatter(
                 x=df_año['MES_NOMBRE'], y=df_año['ACUMULADO'],
                 name=f"Curva de Acumulado ({año})", mode='lines+markers+text',
                 line=dict(color=DORADO, width=3, dash='solid' if i == 0 else 'dot'),
                 marker=dict(size=10, color=DORADO, line=dict(color='black', width=1)),
-                text=df_año['ACUMULADO'].apply(formato_gerencial_latino), textposition='top center',
+                text=df_año['ACUMULADO'].apply(formato_gerencial_latino), 
+                textposition='top center',
                 textfont=dict(color='black', family='Arial Black', size=11)
             ))
             
@@ -415,13 +407,14 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             margin=dict(t=80)
         )
         if not df_mes.empty:
+            # Calcular el techo suficiente para que las etiquetas superiores no se corten
             max_val = df_mes.groupby('AÑO')['COSTO_TOTAL'].sum().max()
-            fig4.update_yaxes(range=[0, max_val * 1.25])
+            fig4.update_yaxes(range=[0, max_val * 1.35])
             
         st.plotly_chart(fig4, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 5: RASTREO DOMINICAL (BARRAS TÉRMICAS / HEAT-MAP)
+    # GRÁFICO 5: RASTREO DOMINICAL (BARRAS TÉRMICAS POR SEMANA)
     # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"#### 🔥 MAPA DE RIESGO: FUGAS POR RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
@@ -433,16 +426,15 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_dom['EJE_X'] = "Sem " + df_dom['SEMANA_NUM'].astype(str) + " (" + df_dom['AÑO'].astype(str) + ")"
         df_dom['ETIQUETA_DOM'] = df_dom['DOMINICAL_HA'].apply(lambda x: f"$ {formato_latino(x, 0)}")
         
-        # 🔥 Mapa térmico: Las barras más altas se tornan rojo oscuro (peligro de sobrecosto)
         fig5 = px.bar(
             df_dom, x='EJE_X', y='DOMINICAL_HA', color='DOMINICAL_HA', 
             text='ETIQUETA_DOM', 
-            color_continuous_scale=['#f9c74f', '#f77f00', '#d62828', '#6a040f'] # De amarillo a rojo vivo
+            color_continuous_scale=['#f9c74f', '#f77f00', '#d62828', '#6a040f']
         )
         fig5.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial Black"), cliponaxis=False)
         fig5.update_layout(
             xaxis_title="Semana Operativa (Año)", yaxis_title="Costo Perdido por Penalización ($ COP)", 
-            plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False, # Ocultamos la barra de escala lateral por limpieza
+            plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False,
             margin=dict(t=50)
         )
         fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
