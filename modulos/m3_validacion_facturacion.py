@@ -1042,7 +1042,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista = {}
                 datos_extraidos_sap = []
 
-                # Extracción 1 a 1 para mantener la misma estructura exacta de posiciones de SAP
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                     if not col_mat: 
@@ -1244,14 +1243,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         else:
                             dosis_teorica = cant_linea_sap / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                    base_ideal = dosis_teorica * ha_dosis_final
-                    extra_pct_auto = 0.0
+                    # 💥 CÁLCULO DE DOSIS IDEAL PURA (TEÓRICA ESTRICTA)
+                    dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
                         "A: Producto": nombre_p, 
                         "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), 
-                        "C: X (Extra %)": round(extra_pct_auto, 3),
-                        "D: Dosis Total (Sistema)": 0.0, 
+                        "C: X (Extra %)": 0.0, # Se calcula abajo
+                        "D: Dosis Total (Sistema)": dosis_ideal_pura, # 🎯 DOSIS IDEAL 100% PURA
                         "E: Costo Unit (+Margen)": round(costo_unit * mult_material, 0),
                         "G: Lotes (SAP)": lote_sap, 
                         "H: Saldo Real SAP": round(saldo_sap, 3), 
@@ -1260,44 +1259,39 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 df_matriz = pd.DataFrame(matriz_datos)
                 
-                # 💥 CÁLCULO DE SUMA ACUMULADA POR PRODUCTO (Mantiene las filas separadas pero suma sus cantidades)
+                # 💥 CÁLCULO DE SUMA ACUMULADA DE SAP POR PRODUCTO
                 df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                # Recálculo de Recargo Técnico sobre la suma total del producto
+                # 💥 CÁLCULO EXACTO DEL EXTRA % Y GARANTÍA DE DOSIS IDEAL PURA
                 for idx_m, r_m in df_matriz.iterrows():
-                    b_ideal = r_m["B: Dosis/Ha (SAP)"] * ha_dosis_final
-                    tot_p = r_m["TOTAL_PROD_SAP"]
-                    if b_ideal > 0 and (tot_p - b_ideal) > 0.5:
-                        df_matriz.at[idx_m, "C: X (Extra %)"] = round(((tot_p / b_ideal) - 1) * 100, 3)
-                
-                llave_editor_casilla = f"editor_valid_{casilla_key}"
-                if llave_editor_casilla in st.session_state:
-                    ediciones = st.session_state[llave_editor_casilla].get('edited_rows', {})
-                    for row_idx, edit_dict in ediciones.items():
-                        if "B: Dosis/Ha (SAP)" in edit_dict: 
-                            df_matriz.at[row_idx, "B: Dosis/Ha (SAP)"] = edit_dict["B: Dosis/Ha (SAP)"]
-                        if "C: X (Extra %)" in edit_dict: 
-                            df_matriz.at[row_idx, "C: X (Extra %)"] = edit_dict["C: X (Extra %)"]
+                    b_ideal_pura = r_m["D: Dosis Total (Sistema)"] # Dosis Ideal Pura (ej: 513.240)
+                    tot_p_sap = r_m["TOTAL_PROD_SAP"]            # Suma real de SAP (ej: 514.000)
 
-                df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * (1 + df_matriz["C: X (Extra %)"].fillna(0.0)/100) * ha_dosis_final).round(3)
+                    if b_ideal_pura > 0 and tot_p_sap > (b_ideal_pura + 0.001):
+                        extra_pct = ((tot_p_sap / b_ideal_pura) - 1.0) * 100.0
+                        df_matriz.at[idx_m, "C: X (Extra %)"] = round(extra_pct, 3)
+                    else:
+                        df_matriz.at[idx_m, "C: X (Extra %)"] = 0.0
+
+                # Re-asegurar que Dosis Ideal siempre sea B * Ha (Sin sumar recargo en esta columna)
+                df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * ha_dosis_final).round(3)
                 
-                # 🎨 ESTILIZADO CON CONOCIMIENTO DE LA SUMA TOTAL DE PRODUCTO
+                # 🎨 ESTILIZADO CON SENSIBILIDAD DECIMAL
                 def estilizar_dosis_ideal(row):
                     estilos = [''] * len(row)
                     try:
                         idx_sistema = row.index.get_loc("D: Dosis Total (Sistema)")
                         idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
                         
-                        base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
+                        base_pura = float(row["D: Dosis Total (Sistema)"])
                         total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
                         extra_pct = float(row.get("C: X (Extra %)", 0.0))
                         
-                        tolerancia = max(0.5, base_pura * 0.01)
                         diferencia_real = total_producto - base_pura
                         
-                        if diferencia_real < -tolerancia: 
+                        if diferencia_real < -0.05: 
                             color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
-                        elif extra_pct > 0 or diferencia_real > tolerancia: 
+                        elif extra_pct > 0.01 or diferencia_real > 0.05: 
                             color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                         else: 
                             color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
@@ -1308,23 +1302,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         pass
                     return estilos
 
-                # 📊 SEMÁFORO UNIFICADO POR PRODUCTO (Sin Falsos Positivos en Filas Separadas)
+                # 📊 SEMÁFORO EXACTO DÉCIMA A DÉCIMA
                 def calcular_semaforo_misiones(row):
-                    base_pura = float(row["B: Dosis/Ha (SAP)"]) * ha_dosis_final
+                    base_pura = float(row["D: Dosis Total (Sistema)"])
                     total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
                     extra_pct = float(row.get("C: X (Extra %)", 0.0))
                     
-                    tolerancia = max(0.5, base_pura * 0.01)
                     diferencia = total_producto - base_pura
                     
-                    if total_producto < (base_pura - tolerancia):
+                    if total_producto < (base_pura - 0.05):
                         return f"🔴 PELIGRO: SUB-DOSIS (---)"
-                    elif extra_pct > 0:
+                    elif extra_pct > 0.01 or diferencia > 0.05:
                         return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
-                    elif abs(diferencia) <= tolerancia:
-                        return "🟢 ÓPTIMO"
-                    elif diferencia > tolerancia:
-                        return "🟡 DESV. LEVE (+++)"
                     else:
                         return "🟢 ÓPTIMO"
 
@@ -1337,7 +1326,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
                 
-                # Ocultamos TOTAL_PROD_SAP de la vista final del DataEditor
                 df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
 
                 edited_df = st.data_editor(
