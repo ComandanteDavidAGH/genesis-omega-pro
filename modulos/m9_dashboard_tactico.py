@@ -76,7 +76,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
     
     def sanear_valores_sap(val):
         if pd.isna(val) or val is None: return 0.0
-        s = str(val).strip().replace("$", "").replace("COP", "").replace(" ", "")
+        s = str(val).strip().upper().replace("$", "").replace("COP", "").replace(" ", "")
         s_clean = re.sub(r'[^\d\.,\-]', '', s)
         if not s_clean or s_clean == '-': return 0.0
         try:
@@ -100,7 +100,6 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
         
     df['AREA_FUMIG'] = df['AREA_FUMIG'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
     df['REND_HR'] = df['REND_HR'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
-    df['H_TOTAL'] = df['H_TOTAL'].apply(lambda x: _extraer_numero(x) if str(x).strip() != "" else 0.0)
         
     df['FECHA_DT'] = df['FECHA'].apply(_procesar_fecha_pesada)
     df = df.dropna(subset=['FECHA_DT'])
@@ -140,7 +139,7 @@ def formato_gerencial_latino(numero):
 def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     VERDE_INTENSO = '#143521' 
     DORADO = '#d4af37'         
-    PALETA_YOY = [VERDE_INTENSO, '#2F75B5', '#E67E22', '#8E44AD'] 
+    PALETA_YOY = [VERDE_INTENSO, '#27AE60', '#2F75B5', '#E67E22'] 
     
     st.markdown(f"""
     <style>
@@ -249,7 +248,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA POR MES
+    # GRÁFICO 1: ÁREA ASPERJADA (RETORNO A BARRAS VERTICALES ROBUSTAS)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -274,7 +273,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO (MANTENIDO HYBRID)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -326,43 +325,31 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO/HORA POR MATRÍCULA Y SEMANA (RESTAURADO EXACTO A ORIGINAL)
+    # GRÁFICO 3: RENDIMIENTO/HORA (RETORNO A BARRAS HORIZONTALES)
     # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
-        
-        # Selección de columna de horas (si REND_HR no tiene datos usa H_TOTAL)
-        col_horas = 'REND_HR' if ('REND_HR' in df_filtrado.columns and df_filtrado['REND_HR'].sum() > 0) else 'H_TOTAL'
-        
-        # Agrupación exacta por HK y SEMANA (sin sumar todos los vuelos de un avión)
-        df_rend = df_filtrado.groupby(['HK', 'SEMANA'])[col_horas].sum().reset_index()
-        df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False).str.strip()
-        df_rend['SEMANA'] = df_rend['SEMANA'].astype(str).str.replace(".0", "", regex=False).str.strip()
-        
-        # Eje Y en formato "Matrícula | Sem XX"
+        df_rend = df_filtrado.groupby(['HK', 'SEMANA'])['REND_HR'].sum().reset_index()
+        df_rend['HK'] = df_rend['HK'].astype(str).str.replace(".0", "", regex=False)
+        df_rend['SEMANA'] = df_rend['SEMANA'].astype(str).str.replace(".0", "", regex=False)
         df_rend['EJE_Y'] = df_rend['HK'] + " | Sem " + df_rend['SEMANA']
         df_rend = df_rend.sort_values(by=['HK', 'SEMANA'], ascending=[True, False])
-        df_rend['ETIQUETA'] = df_rend[col_horas].apply(lambda x: f"{formato_latino(x, 2)} Hr")
+        df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
         altura_dinamica = max(400, len(df_rend) * 22)
         
         fig3 = px.bar(
-            df_rend, y='EJE_Y', x=col_horas, orientation='h', 
+            df_rend, y='EJE_Y', x='REND_HR', orientation='h', 
             text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO]
         )
         fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
-        fig3.update_layout(
-            height=altura_dinamica, 
-            yaxis_title="Matrícula (HK) | Semana", 
-            xaxis_title="Rendimiento (Horas)", 
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
+        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
         fig3.update_yaxes(type='category')
         if not df_rend.empty:
-            fig3.update_xaxes(range=[0, df_rend[col_horas].max() * 1.25])
+            fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE (RESTAURADO A BARRAS AGRUPADAS PURAS)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE (RETORNO A BARRAS VERTICALES)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
@@ -387,7 +374,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig4, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES
+    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES (RETORNO A BARRAS VERTICALES)
     # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"#### ⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
