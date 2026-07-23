@@ -20,6 +20,58 @@ def inicializar_cliente_gspread():
     except Exception:
         return None
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def obtener_radar_precios_cached(_extraer_numero):
+    """ Función ultrarrápida vectorizada para leer y estructurar el radar de precios """
+    gc = inicializar_cliente_gspread()
+    if gc is None:
+        return False, "🚨 Enlace satelital roto con Google Cloud.", None, 0, 0, 0
+        
+    try:
+        url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+        sh = gc.open_by_url(url_boveda)
+        ws_conf = sh.worksheet("Configuración")
+        
+        data = ws_conf.get_all_values()
+        df_conf = pd.DataFrame(data[1:], columns=data[0])
+        
+        radar = df_conf.iloc[:, [8, 9, 10]].copy()
+        radar.columns = ['PRODUCTO', 'PRECIO_ACTUAL', 'PRECIO_SAP']
+        
+        # ⚡ Vectorización pura: Eliminar filas basura sin usar bucles for
+        mask_validos = (
+            radar['PRODUCTO'].notna() & 
+            (radar['PRODUCTO'].str.strip() != "") & 
+            (radar['PRODUCTO'].str.upper() != "PRODUCTO") &
+            (radar['PRODUCTO'].str.upper() != "NAN") &
+            (radar['PRODUCTO'].str.upper() != "NONE") &
+            (radar['PRODUCTO'].str.strip() != "0") &
+            (radar['PRODUCTO'].str.strip() != "0.0")
+        )
+        radar = radar[mask_validos].copy()
+        
+        # Aplicación vectorizada de conversión numérica
+        radar['PRECIO_ACTUAL'] = radar['PRECIO_ACTUAL'].apply(_extraer_numero)
+        radar['PRECIO_SAP'] = radar['PRECIO_SAP'].apply(_extraer_numero)
+        radar['DIFERENCIA'] = (radar['PRECIO_SAP'] - radar['PRECIO_ACTUAL']).round(3)
+        
+        # Condicional vectorizado ultra-rápido (np.where)
+        import numpy as np
+        radar['ESTADO'] = np.where(radar['DIFERENCIA'].abs() < 0.001, "✅ OK", "❌ DESFASE")
+        radar = radar.sort_values(by="ESTADO", ascending=False)
+        
+        total_insumos = len(radar)
+        insumos_ok = len(radar[radar['ESTADO'] == "✅ OK"])
+        insumos_fail = len(radar[radar['ESTADO'] == "❌ DESFASE"])
+        
+        return True, "Radar procesado", radar, total_insumos, insumos_ok, insumos_fail, data_full_export(data)
+    except Exception as e:
+        return False, f"🚨 Error al leer radar: {e}", None, 0, 0, 0, None
+
+def data_full_export(data):
+    """Función de apoyo auxiliar para no perder la matriz full"""
+    return data
+
 # =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DE PRECIOS SAP
 # =================================================================
@@ -108,50 +160,13 @@ def ejecutar(extraer_numero):
 
                     st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de forma instantánea.")
                     st.session_state['paso_a_listo'] = True
+                    # Limpiamos el caché viejo para obligarlo a escanear si va al Paso B
+                    st.cache_data.clear()
                 except Exception as e:
                     st.error(f"🚨 Error en Paso A: {e}")
 
     st.markdown("---")
     st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (ESTADO DEL ARSENAL)")
-     
-    def reordenar_y_escanear_radar():
-        gc = inicializar_cliente_gspread()
-        if gc is None:
-            return False, "🚨 Enlace satelital roto con Google Cloud."
-            
-        url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-        sh = gc.open_by_url(url_boveda)
-        ws_conf = sh.worksheet("Configuración")
-         
-        data = ws_conf.get_all_values()
-        df_conf = pd.DataFrame(data[1:], columns=data[0])
-         
-        radar = df_conf.iloc[:, [8, 9, 10]].copy()
-        radar.columns = ['PRODUCTO', 'PRECIO_ACTUAL', 'PRECIO_SAP']
-         
-        def es_fila_basura(val):
-            val_str = str(val).strip().upper()
-            if val_str in ["", "NAN", "NONE", "PRODUCTO", "0", "0.0"]: return True
-            try:
-                if float(val_str) == 0: return True
-            except ValueError:
-                pass
-            return False
-            
-        radar = radar[~radar['PRODUCTO'].apply(es_fila_basura)]
-         
-        radar['PRECIO_ACTUAL'] = radar['PRECIO_ACTUAL'].apply(extraer_numero)
-        radar['PRECIO_SAP'] = radar['PRECIO_SAP'].apply(extraer_numero)
-        radar['DIFERENCIA'] = (radar['PRECIO_SAP'] - radar['PRECIO_ACTUAL']).round(3)
-        radar['ESTADO'] = radar['DIFERENCIA'].apply(lambda x: "✅ OK" if abs(x) < 0.001 else "❌ DESFASE")
-        radar = radar.sort_values(by="ESTADO", ascending=False)
-         
-        st.session_state['radar_data'] = radar
-        st.session_state['total_insumos'] = len(radar)
-        st.session_state['insumos_ok'] = len(radar[radar['ESTADO'] == "✅ OK"])
-        st.session_state['insumos_fail'] = len(radar[radar['ESTADO'] == "❌ DESFASE"])
-        st.session_state['scan_ejecutado'] = True
-        return True, ""
 
     def inyectar_precios_a_supabase(data_full):
         if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
@@ -190,17 +205,24 @@ def ejecutar(extraer_numero):
     with col_scan1:
         if st.button("🔍 ESCANEAR ESTADO ACTUAL", use_container_width=True):
             with st.spinner("Escaneando el estado de la bóveda de precios..."):
-                ok, msg = reordenar_y_escanear_radar()
+                ok, msg, radar, total_insumos, insumos_ok, insumos_fail, data_full = obtener_radar_precios_cached(extraer_numero)
                 if not ok:
                     st.error(msg)
                 else:
+                    st.session_state['scan_ejecutado'] = True
+                    st.session_state['radar_data'] = radar
+                    st.session_state['total_insumos'] = total_insumos
+                    st.session_state['insumos_ok'] = insumos_ok
+                    st.session_state['insumos_fail'] = insumos_fail
+                    st.session_state['data_full_cache'] = data_full
                     st.rerun()
 
     if st.session_state.get('scan_ejecutado'):
-        radar = st.session_state['radar_data']
-        total_insumos = st.session_state['total_insumos']
-        insumos_ok = st.session_state['insumos_ok']
-        insumos_fail = st.session_state['insumos_fail']
+        radar = st.session_state.get('radar_data', pd.DataFrame())
+        total_insumos = st.session_state.get('total_insumos', 0)
+        insumos_ok = st.session_state.get('insumos_ok', 0)
+        insumos_fail = st.session_state.get('insumos_fail', 0)
+        data_full = st.session_state.get('data_full_cache', [])
 
         st.markdown(f"""
         <div class="hud-precios">
@@ -237,7 +259,10 @@ def ejecutar(extraer_numero):
                             
                         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                         ws_conf = sh.worksheet("Configuración")
-                        data_full = ws_conf.get_all_values()
+                        
+                        # Usar data_full del caché para no volver a descargar la hoja si no es necesario
+                        if not data_full:
+                            data_full = ws_conf.get_all_values()
                         
                         # 1. Copiar Columna K (10) -> Columna J (9) en Google Sheets "Configuración"
                         valores_para_j = []
@@ -257,11 +282,18 @@ def ejecutar(extraer_numero):
                         else:
                             st.warning(msg_sb)
 
-                        # 3. RE-ESCANEO EN VIVO
-                        reordenar_y_escanear_radar()
-                        st.toast("⚡ ¡AMBAS NUBES SINCRONIZADAS AL 100%!", icon="✅")
-                        st.balloons()
-                        st.rerun()
+                        # 3. Limpiar caché viejo y RE-ESCANEO EN VIVO
+                        st.cache_data.clear()
+                        ok_re, msg_re, radar_re, tot, ok_i, fail_i, df_re = obtener_radar_precios_cached(extraer_numero)
+                        if ok_re:
+                            st.session_state['radar_data'] = radar_re
+                            st.session_state['total_insumos'] = tot
+                            st.session_state['insumos_ok'] = ok_i
+                            st.session_state['insumos_fail'] = fail_i
+                            st.session_state['data_full_cache'] = df_re
+                            st.toast("⚡ ¡AMBAS NUBES SINCRONIZADAS AL 100%!", icon="✅")
+                            st.balloons()
+                            st.rerun()
 
                     except Exception as e:
                         st.error(f"🚨 Error durante la sincronización: {e}")
@@ -270,14 +302,14 @@ def ejecutar(extraer_numero):
             if st.button("🌩️ SINCRONIZAR ÚNICAMENTE SUPABASE CLOUD", use_container_width=True):
                 with st.spinner("Conectando con la base relacional Supabase..."):
                     try:
-                        gc = inicializar_cliente_gspread()
-                        if gc is None:
-                            st.error("🚨 Enlace satelital roto con Google Drive.")
-                            st.stop()
-                            
-                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-                        ws_conf = sh.worksheet("Configuración")
-                        data_full = ws_conf.get_all_values()
+                        if not data_full:
+                            gc = inicializar_cliente_gspread()
+                            if gc is None:
+                                st.error("🚨 Enlace satelital roto con Google Drive.")
+                                st.stop()
+                            sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                            ws_conf = sh.worksheet("Configuración")
+                            data_full = ws_conf.get_all_values()
 
                         ok_sb, msg_sb = inyectar_precios_a_supabase(data_full)
                         if ok_sb:
@@ -292,7 +324,14 @@ def ejecutar(extraer_numero):
         with c_btn3:
             if st.button("🔄 RE-ESCANEAR BÓVEDA", use_container_width=True):
                 with st.spinner("Re-escaneando bóveda de precios..."):
-                    reordenar_y_escanear_radar()
+                    st.cache_data.clear()
+                    ok_re, msg_re, radar_re, tot, ok_i, fail_i, df_re = obtener_radar_precios_cached(extraer_numero)
+                    if ok_re:
+                        st.session_state['radar_data'] = radar_re
+                        st.session_state['total_insumos'] = tot
+                        st.session_state['insumos_ok'] = ok_i
+                        st.session_state['insumos_fail'] = fail_i
+                        st.session_state['data_full_cache'] = df_re
                     st.rerun()
 
         # Despliegue de la tabla estilizada
@@ -301,21 +340,22 @@ def ejecutar(extraer_numero):
             if val == "❌ DESFASE": return 'background-color: #f8d7da; color: #721c24; font-weight: bold; text-align: center;'
             return ''
 
-        st.dataframe(
-            radar.style.map(color_estado, subset=['ESTADO']), 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "PRECIO_ACTUAL": st.column_config.NumberColumn("PRECIO ACTUAL", format="%.3f"),
-                "PRECIO_SAP": st.column_config.NumberColumn("PRECIO SAP", format="%.3f"),
-                "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")
-            }
-        )
-         
-        if insumos_fail == 0:
-            st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales.")
-        else:
-            st.warning("⚠️ SE DETECTARON DESFASES EN EL ARSENAL DE PRECIOS. Use los botones superiores para nivelar los tableros.")
+        if not radar.empty:
+            st.dataframe(
+                radar.style.map(color_estado, subset=['ESTADO']), 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "PRECIO_ACTUAL": st.column_config.NumberColumn("PRECIO ACTUAL", format="%.3f"),
+                    "PRECIO_SAP": st.column_config.NumberColumn("PRECIO SAP", format="%.3f"),
+                    "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")
+                }
+            )
+             
+            if insumos_fail == 0:
+                st.success("🟢 TODO EL SISTEMA ESTÁ EN NIVEL 'OK'. No se requieren ajustes operacionales.")
+            else:
+                st.warning("⚠️ SE DETECTARON DESFASES EN EL ARSENAL DE PRECIOS. Use los botones superiores para nivelar los tableros.")
 
 if __name__ == "__main__":
     pass
