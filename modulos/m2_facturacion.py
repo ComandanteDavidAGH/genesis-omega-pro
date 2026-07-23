@@ -1,19 +1,83 @@
 import streamlit as st
 import pandas as pd
-import gspread
 import io
-import openpyxl
 import re
 import json
+import concurrent.futures
+
+# =================================================================
+# ⚡ MOTORES DE CARGA Y DESCARGA EN CACHÉ ULTRARRÁPIDA
+# =================================================================
 
 def extraer_numero_local(val):
     try:
         v = str(val).replace(',', '.')
         v = re.sub(r'[^\d\.]', '', v)
         return float(v) if v else 0.0
-    except: return 0.0
+    except Exception:
+        return 0.0
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def cargar_tablas_maestras_m2_cached():
+    """
+    Intenta recuperar las 4 tablas maestras desde Supabase primero (milisegundos).
+    Si no existen, las descarga de Google Sheets en paralelo.
+    """
+    resultados = {}
+    mapeo_tablas = {
+        'df_config': ('config_tabla2', "TABLA%202"),
+        'df_mezclas': ('dd_mezclas', "DD_Mesclas"),
+        'df_config_base': ('configuracion_base', "Configuraci%C3%B3n"),
+        'df_apoyo_raw': ('tabla_apoyo_raw', "TABLA%20DE%20APOYO2023")
+    }
+
+    # 1. Intentar vía Supabase (Velocidad Luz)
+    if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
+        try:
+            supabase_client = st.session_state['supabase']
+            for key, (table_name, _) in mapeo_tablas.items():
+                resp = supabase_client.table(table_name).select("*").execute()
+                if resp.data and len(resp.data) > 0:
+                    resultados[key] = pd.DataFrame(resp.data)
+        except Exception:
+            resultados = {}
+
+    # 2. Fallback a Google Sheets solo si faltan tablas
+    if len(resultados) < 4:
+        url_base = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet="
+        urls_a_bajar = {k: f"{url_base}{v[1]}" for k, v in mapeo_tablas.items() if k not in resultados}
+
+        def fetch_url(key, url):
+            try:
+                return key, pd.read_csv(url, skiprows=(0 if key == 'df_apoyo_raw' else 1))
+            except Exception:
+                return key, pd.DataFrame()
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                res_fetched = dict(executor.map(lambda item: fetch_url(*item), urls_a_bajar.items()))
+                resultados.update(res_fetched)
+        except Exception:
+            pass
+
+    return resultados
+
+# =================================================================
+# 👑 PROCESAMIENTO PRINCIPAL DE FACTURACIÓN
+# =================================================================
 
 def ejecutar(extraer_numero):
+    st.markdown("""
+    <style>
+    .titulo-principal { 
+        color: #0d1b2a; 
+        border-bottom: 3px solid #d4af37; 
+        padding-bottom: 5px; 
+        font-family: 'Arial Black', sans-serif; 
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
     if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
@@ -70,75 +134,26 @@ def ejecutar(extraer_numero):
 
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
-            with st.spinner("Desplegando Anclaje de Extracción Inteligente (Multihilo)..."):
+            with st.spinner("Desplegando Anclaje de Extracción Inteligente (Optimizado)..."):
                 try: 
+                    # 1. Carga directa de Sábana y Pedidos
                     nombre_sabana = f_sabana.name.lower()
-                    if nombre_sabana.endswith(('.xlsx', '.xls')): st.session_state['df_sabana'] = pd.read_excel(f_sabana)
+                    if nombre_sabana.endswith(('.xlsx', '.xls')): 
+                        st.session_state['df_sabana'] = pd.read_excel(f_sabana)
                     else:
-                        try: st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='utf-8')
-                        except:
+                        try: 
+                            st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='utf-8')
+                        except Exception:
                             f_sabana.seek(0)
                             st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='latin1')
                     
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # ⚡ 1. EXTRACCIÓN PARALELA MULTIHILO (Baja las 4 tablas al mismo tiempo)
-                    url_base = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet="
-                    
-                    urls_a_bajar = {
-                        'df_config': f"{url_base}TABLA%202",
-                        'df_mezclas': f"{url_base}DD_Mesclas",
-                        'df_config_base': f"{url_base}Configuraci%C3%B3n",
-                        'df_apoyo_raw': f"{url_base}TABLA%20DE%20APOYO2023"
-                    }
-                    
-                    import concurrent.futures
-                    def fetch_url(key, url):
-                        return key, pd.read_csv(url, skiprows=(0 if key == 'df_apoyo_raw' else 1))
-                        
-                    # Dispara hilos de red hacia Google Drive
-                    resultados = {}
-                    try:
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            resultados = dict(executor.map(lambda item: fetch_url(*item), urls_a_bajar.items()))
-                    except Exception:
-                        resultados = {}
+                    # ⚡ 2. Carga en caché ultrarrápida de tablas maestras
+                    resultados = cargar_tablas_maestras_m2_cached()
 
-                    # INTEGRACIÓN SUPABASE: Espejo Inteligente Tolerante a Fallos (Sincronización Silenciosa)
-                    if 'supabase' in st.session_state:
-                        try:
-                            supabase_client = st.session_state['supabase']
-                            mapeo_tablas = {
-                                'df_config': 'config_tabla2',
-                                'df_mezclas': 'dd_mezclas',
-                                'df_config_base': 'configuracion_base',
-                                'df_apoyo_raw': 'tabla_apoyo_raw'
-                            }
-                            for key, table_name in mapeo_tablas.items():
-                                # Escenario A: Descarga de Drive exitosa -> Espejamos a Supabase
-                                if key in resultados and not resultados[key].empty:
-                                    try:
-                                        df_sync = resultados[key].fillna("").astype(str)
-                                        records_sync = df_sync.to_dict(orient='records')
-                                        if records_sync:
-                                            supabase_client.table(table_name).delete().neq("id", "VACIO_FORZADO").execute()
-                                            # Inserción en bloques controlados para prevenir saturación de payload
-                                            supabase_client.table(table_name).insert(records_sync[:2000]).execute()
-                                    except Exception:
-                                        pass
-                                # Escenario B: Google bloqueó el hilo -> Recuperamos el último espejo guardado en Supabase
-                                else:
-                                    try:
-                                        resp = supabase_client.table(table_name).select("*").execute()
-                                        if resp.data:
-                                            resultados[key] = pd.DataFrame(resp.data)
-                                    except Exception:
-                                        pass
-                        except Exception:
-                            pass
-
-                    # Asegurar asignación por si ambas capas fallan críticamente (evita NameError)
+                    # Asignación a memoria de sesión
                     st.session_state['df_config'] = resultados.get('df_config', pd.DataFrame())
                     st.session_state['df_mezclas'] = resultados.get('df_mezclas', pd.DataFrame())
                     st.session_state['df_config_base'] = resultados.get('df_config_base', pd.DataFrame())
@@ -150,7 +165,8 @@ def ejecutar(extraer_numero):
                         fila_titulos = 0
                         for i in range(min(20, len(df_apoyo_raw))):
                             if df_apoyo_raw.iloc[i].astype(str).str.upper().str.contains('FINCA').any():
-                                fila_titulos = i; break
+                                fila_titulos = i
+                                break
                                 
                         encabezados_crudos = df_apoyo_raw.iloc[fila_titulos].tolist()
                         encabezados_limpios = []
@@ -169,6 +185,7 @@ def ejecutar(extraer_numero):
                         df_apoyo_final.columns = encabezados_limpios
                     st.session_state['df_apoyo'] = df_apoyo_final
 
+                    # ⚡ 3. Procesamiento optimizado de Pistas mediante pd.ExcelFile (Una sola lectura)
                     lista_pistas = []
                     
                     for f in f_pistas:
@@ -176,16 +193,13 @@ def ejecutar(extraer_numero):
                         bytes_f = io.BytesIO(f.getvalue())
                         dict_p = {}
                         
-                        # ⚡ 2. FRENO DE MANO QUITADO: read_only=True lee la "cáscara" del Excel sin calcular fórmulas
-                        if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xlsm'):
-                            wb_temp = openpyxl.load_workbook(bytes_f, read_only=True, keep_links=False)
-                            hojas_visibles = [ws.title for ws in wb_temp.worksheets if ws.sheet_state == 'visible']
-                            bytes_f.seek(0)
-                            if hojas_visibles: dict_p = pd.read_excel(bytes_f, sheet_name=hojas_visibles, header=None)
-                        elif nombre_archivo.endswith('.xls'): dict_p = pd.read_excel(bytes_f, sheet_name=None, header=None)
+                        if nombre_archivo.endswith(('.xlsx', '.xlsm', '.xls')):
+                            xls_file = pd.ExcelFile(bytes_f)
+                            dict_p = {sheet: xls_file.parse(sheet, header=None) for sheet in xls_file.sheet_names}
                         else:
-                            try: dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
-                            except:
+                            try:
+                                dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', header=None)}
+                            except Exception:
                                 bytes_f.seek(0)
                                 dict_p = {"Datos_CSV": pd.read_csv(bytes_f, sep=None, engine='python', encoding='latin1', header=None)}
                             
@@ -201,7 +215,6 @@ def ejecutar(extraer_numero):
                                     if any(palabra in val for palabra in ["FINCA", "HACIENDA", "CLIENTE"]): col_finca = c
                                     if any(palabra in val for palabra in ["PEDIDO", "ORDEN"]): col_pedido = c
                                     
-                                    # 🎯 RADAR DE HECTÁREAS DE PISTA
                                     val_sin_esp = val.replace(" ", "")
                                     if ("HA" in val_sin_esp or "HECT" in val_sin_esp) and not "HORA" in val and not "H/H" in val and not "FECHA" in val:
                                         if "APLIC" in val or "GPS" in val or "FUMIG" in val: col_ha = c
@@ -212,7 +225,6 @@ def ejecutar(extraer_numero):
                                     break 
                                 
                             if col_finca != -1:
-                                # ⚡ 3. EXTRACCIÓN DEL CÓCTEL UNA SOLA VEZ
                                 val_coctel_global = "S/N"
                                 for r_up in range(idx_header):
                                     fila_up = [str(x).strip().upper() for x in df.iloc[r_up].tolist()]
@@ -223,7 +235,6 @@ def ejecutar(extraer_numero):
                                             elif c_up + 2 < len(fila_up) and fila_up[c_up+2] not in ["", "NAN", "NONE"]: 
                                                 val_coctel_global = str(df.iloc[r_up, c_up+2]).strip()
                                                 
-                                # 🚀 PROCESAMIENTO DE FILAS A VELOCIDAD LUZ
                                 for r in range(idx_header + 1, len(df)):
                                     val_finca = str(df.iloc[r, col_finca]).strip()
                                     if val_finca.upper() in ["", "NAN", "NONE", "TOTAL"] or "TOTAL" in val_finca.upper(): continue
@@ -244,7 +255,6 @@ def ejecutar(extraer_numero):
                                                 
                                     val_coctel = val_coctel_global
                                     
-                                    # 🎯 EXTRACCIÓN DE HA DE PISTA
                                     val_ha_pista = 0.0
                                     if col_ha != -1 and col_ha < len(df.columns):
                                         val_ha_pista = extraer_numero_local(df.iloc[r, col_ha])
@@ -261,20 +271,20 @@ def ejecutar(extraer_numero):
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
                         
-                        # INTEGRACIÓN SUPABASE: Volcado relacional del set consolidado de misiones extraídas
-                        if 'supabase' in st.session_state:
+                        # Resguardo veloz en Supabase
+                        if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                             try:
                                 supabase_client = st.session_state['supabase']
-                                registros_misiones = []
-                                for m in lista_pistas:
-                                    registros_misiones.append({
+                                registros_misiones = [
+                                    {
                                         "origen": str(m["ORIGEN"]),
                                         "coctel": str(m["COCTEL"]),
                                         "finca_informe": str(m["FINCA_INFORME"]),
                                         "pedido_sap": str(m["PEDIDO_SAP"]),
                                         "ha_pista": float(m["HA_PISTA"]),
                                         "datos_fila_json": json.dumps(m["DATOS_FILA"], default=str)
-                                    })
+                                    } for m in lista_pistas
+                                ]
                                 if registros_misiones:
                                     supabase_client.table("pistas_misiones_cargadas").delete().neq("origen", "FORZADO").execute()
                                     supabase_client.table("pistas_misiones_cargadas").insert(registros_misiones).execute()
@@ -289,3 +299,8 @@ def ejecutar(extraer_numero):
                         
                 except Exception as e: 
                     st.error(f"🚨 Error crítico en el escáner: {e}")
+        else:
+            st.warning("⚠️ Asegúrese de haber subido la Sábana SAP, el Pedido SAP y los Informes de Pista antes de iniciar el procesamiento.")
+
+if __name__ == "__main__":
+    pass
