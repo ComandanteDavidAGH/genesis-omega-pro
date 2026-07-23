@@ -951,7 +951,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=widget_key)
             with r1c4:
                 multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-                # 🔄 AJUSTE VISUAL: Ícono táctico de interciclo/rotación para parcelas < 20Ha
+                multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
                 interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
 
             recargo_final = 0.0
@@ -1018,7 +1018,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                         
                     with c_dr:
-                        # 🛸 AJUSTE VISUAL: ÍCONO TÁCTICO DE DRON
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                         escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)                
@@ -1086,7 +1085,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                     nombre_p = f"Item {cod_item}"
                     if not df_sab.empty:
-                        # Busqueda optimizada por índice directo
                         df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
                         match_sabana = df_sab[df_sab_col0_clean == cod_item]
                         if not match_sabana.empty:
@@ -1166,7 +1164,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial: **{coctel_ganador}**")
                 
-                # PRE-PROCESAMIENTO VECTORIAL DE SÁBANA PARA SPEED
                 if not df_sab.empty:
                     df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
                 else:
@@ -1359,7 +1356,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         use_container_width=True, hide_index=True
                     )
 
-                    st.markdown("<br/>##### 📋 Copia Rápida para SAP (Costo Unitario)")
+                    # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
+                    st.write("")
+                    st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
                     st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
             else:
                 st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
@@ -1387,7 +1386,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             precio_columna_ref = dict_aviones.get(escuadron_aviones.iloc[0]['Avión'], 0) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
             precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadron_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
 
-            st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP)")
+            # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
+            st.write("")
+            st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
             m1, m2, m3, m4, m5 = st.columns(5)
             
             def mini_metric(i, t, v): 
@@ -1412,7 +1413,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
                 st.markdown(mini_metric("🚁", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
             
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.write("")
             幕sap1, 幕sap2, 幕sap3, 幕sap4 = st.columns(4)
             
             with 幕sap1:
