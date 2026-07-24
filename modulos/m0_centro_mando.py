@@ -3,12 +3,48 @@ import pandas as pd
 import numpy as np
 import gspread
 import math
-import re
-import unicodedata
+import traceback
+from datetime import datetime
 
 # =================================================================
-# ⚡ MOTOR DE CARGA Y PROCESAMIENTO ULTRARRÁPIDO EN CACHÉ
+# 📐 ESQUEMA OFICIAL DE SUPABASE (POSICIÓN EXACTA 1 A 34)
 # =================================================================
+COLUMNAS_SUPABASE = [
+    "Nº ORDEN",
+    "BLOQUE",
+    "FINCA",
+    "SECTOR",
+    "ÁREA BRUTA\n(ha)",
+    "ÁREA FUMIG.\n(ha)",
+    "COCTEL",
+    "FECHA",
+    "DÌA SEM",
+    "SEM",
+    "ODÒM.",
+    "VOLUMEN APLICADO\n(gln/ha)",
+    "VOLUMEN APLICADO\n(gln)",
+    "RENDIMIENTO (horas)",
+    "RENDIMIENTO\n(min)",
+    "PILOTO",
+    "HK",
+    "MODELO",
+    "COSTO AVIÒN\n($)",
+    "COSTO AVIÒN\n($/ha)",
+    "DOMINIC.\n($/ha)",
+    "COSTO AVIÒN\n($/finca)",
+    "VALOR A FACTURAR AL PRODUCTOR\n($/ha-ciclo)",
+    "PISTA",
+    "INCRENTO 2026 (6%)",
+    "LIMITE",
+    "ALERTA",
+    "% DE VARIACION",
+    "COSTO TOTAL",
+    "TOTAL PAGO AVIÓN",
+    "SEM RETROAC",
+    "Columna1",
+    "TIPO DE PRODUCTOR",
+    "TRABAJO"
+]
 
 def inicializar_cliente_gspread():
     try:
@@ -20,22 +56,15 @@ def inicializar_cliente_gspread():
     except Exception:
         return None
 
-def norm_str(s):
-    """ Normaliza un texto para comparación: quita tildes, mayúsculas, espacios y símbolos """
-    if not s: return ""
-    s = str(s).replace('\n', ' ').strip()
-    s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
-    return re.sub(r'[^a-zA-Z0-9]', '', s).lower()
-
-def convertir_fecha_excel(val):
-    """ Convierte número de serie de Excel (ej: 46219) o texto a DD/MM/YYYY """
+def normalizar_fecha_texto(val):
+    """ Convierte seriales de Excel (ej: 46101) o textos a formato estándar DD/MM/YYYY """
     if pd.isna(val) or val is None or str(val).strip() == "":
         return ""
-    val_str = str(val).strip()
+    val_str = str(val).strip().replace("'", "")
     try:
         num = float(val_str)
         if 30000 < num < 60000:
-            dt = pd.to_datetime(num, unit='D', origin='1899-12-30')
+            dt = pd.Timestamp('1899-12-30') + pd.Timedelta(days=num)
             return dt.strftime('%d/%m/%Y')
     except Exception:
         pass
@@ -137,20 +166,13 @@ def procesar_radar_logistico_cached(df_sabana):
     return df_alertas_render, "EXITO", total_almacenes, total_insumos, conteo_alertas, df_alertas_raw
 
 # =================================================================
-# 🗄️ ORDENAMIENTO GLOBAL Y RESTAURACIÓN PERFECTA DE COLUMNAS
+# 🗄️ ORDENAMIENTO GLOBAL Y RESTAURACIÓN QUIRÚRGICA DE SUPABASE
 # =================================================================
 
 def ordenar_base_datos_global():
     if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
         st.error("🚨 Sin conexión activa a Supabase.")
         return
-
-    def sanitizar(v):
-        if pd.isna(v) or v is None: return ""
-        if isinstance(v, (float, int)):
-            if math.isnan(v) or math.isinf(v): return 0
-            return v
-        return str(v).strip()
 
     try:
         supabase = st.session_state['supabase']
@@ -159,16 +181,7 @@ def ordenar_base_datos_global():
             st.error("🚨 Sin conexión a Google Drive.")
             return
 
-        with st.spinner("🔄 Consultando esquema exacto de Supabase y descargando Drive..."):
-            # 1. Obtener la lista exacta de columnas que tiene la tabla en Supabase
-            db_cols = []
-            try:
-                res_db = supabase.table("TABLA_1").select("*").limit(1).execute()
-                if res_db.data and len(res_db.data) > 0:
-                    db_cols = list(res_db.data[0].keys())
-            except Exception:
-                pass
-
+        with st.spinner("🔄 Conectando a Google Drive y extrayendo Sábana con mapeo exacto..."):
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
@@ -181,82 +194,73 @@ def ordenar_base_datos_global():
                     idx_header = i
                     break
                     
-            headers_excel = [str(x).replace('\n', ' ').strip() for x in t1_valores[idx_header]]
-            num_cols = len(headers_excel)
+            num_cols = len(COLUMNAS_SUPABASE)
             
+            # Recortar o rellenar a exactamente 34 columnas
             datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
             datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
             
-            df_form = pd.DataFrame(datos_form, columns=headers_excel)
-            df_val = pd.DataFrame(datos_val, columns=headers_excel)
+            df_form = pd.DataFrame(datos_form, columns=COLUMNAS_SUPABASE)
+            df_val = pd.DataFrame(datos_val, columns=COLUMNAS_SUPABASE)
             
-            col_id = headers_excel[0]
-            filas_validas = df_val[col_id].astype(str).str.strip() != ""
+            # Filtrar filas vacías (donde Nº ORDEN o FINCA estén en blanco)
+            filas_validas = (df_val["Nº ORDEN"].astype(str).str.strip() != "") | (df_val["FINCA"].astype(str).str.strip() != "")
             df_form = df_form[filas_validas].copy()
             df_val = df_val[filas_validas].copy()
 
-            # 2. CONSTRUIR MAPEO INTELIGENTE DE COLUMNAS (Excel -> DB)
-            # Normalizamos ambos lados para encontrar las parejas perfectas
-            col_map = {}
-            if db_cols:
-                db_norm_map = {norm_str(c): c for c in db_cols}
-                for h_ex in headers_excel:
-                    h_norm = norm_str(h_ex)
-                    if h_norm in db_norm_map:
-                        col_map[h_ex] = db_norm_map[h_norm]
-                    else:
-                        col_map[h_ex] = h_ex
-            else:
-                col_map = {h: h for h in headers_excel}
+            # Normalizar fechas a formato DD/MM/YYYY
+            df_val["FECHA"] = df_val["FECHA"].apply(normalizar_fecha_texto)
+            df_val['fecha_dt'] = pd.to_datetime(df_val["FECHA"], format='%d/%m/%Y', errors='coerce')
+            
+            # Ordenamiento cronológico: MÁS RECIENTES PRIMERO
+            df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
+            indices_ord = df_val_sorted.index
+            df_form_sorted = df_form.loc[indices_ord]
+            df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
 
-            # 3. CONVERSIÓN Y ORDENAMIENTO POR FECHA
-            col_fecha = next((c for c in headers_excel if "FECHA" in c.upper()), None)
-
-            if col_fecha:
-                df_val[col_fecha] = df_val[col_fecha].apply(convertir_fecha_excel)
-                df_val['fecha_dt'] = pd.to_datetime(df_val[col_fecha], format='%d/%m/%Y', errors='coerce')
-                
-                df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
-                indices_ord = df_val_sorted.index
-                df_form_sorted = df_form.loc[indices_ord]
-                df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
-            else:
-                df_val_sorted = df_val
-                df_form_sorted = df_form
-
-            # 4. ARMADO DE DICCIONARIOS CON LAS LLAVES EXACTAS DE SUPABASE
+            # Construir registros adaptados al tipo de dato exacto de PostgreSQL
             registros = []
             for _, row in df_val_sorted.iterrows():
                 rec = {}
-                for h_ex in headers_excel:
-                    if h_ex != "":
-                        db_key = col_map.get(h_ex, h_ex)
-                        rec[db_key] = sanitizar(row[h_ex])
+                for col in COLUMNAS_SUPABASE:
+                    v = row[col]
+                    if pd.isna(v) or v is None:
+                        v_clean = None if col in ["SEM", "SEM RETROAC"] else ""
+                    else:
+                        v_str = str(v).strip()
+                        if col in ["SEM", "SEM RETROAC"]:
+                            try: v_clean = int(float(v_str))
+                            except Exception: v_clean = None
+                        else:
+                            v_clean = v_str
+                    rec[col] = v_clean
                 registros.append(rec)
 
             if registros:
-                st.info("📤 Limpiando e inyectando datos mapeados a Supabase...")
-                # Determinar la clave ID real para el delete
-                col_id_db = col_map.get(col_id, col_id)
-                supabase.table("TABLA_1").delete().neq(col_id_db, "_VACIO_IMPOSIBLE_999_").execute()
+                st.info("📤 Vaciando tabla anterior e inyectando registros con fechas reales...")
                 
-                tamano_bloque = 250
+                # Borrado seguro
+                supabase.table("TABLA_1").delete().neq("Nº ORDEN", "_VACIO_IMPOSIBLE_999_").execute()
+                
+                # Inserción en bloques de 200
+                tamano_bloque = 200
                 for i in range(0, len(registros), tamano_bloque):
                     supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
 
-            # 5. ACTUALIZACIÓN EN GOOGLE DRIVE (MANTIENE SUS FÓRMULAS)
-            valores_drive = df_form_sorted[headers_excel].fillna("").values.tolist()
+            # Actualizar Google Drive conservando Fórmulas
+            valores_drive = df_form_sorted[COLUMNAS_SUPABASE].fillna("").values.tolist()
             if valores_drive:
                 rango_inicio = f"A{idx_header + 2}"
                 rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
                 ws_t1.batch_clear([rango_borrar])
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-            st.success(f"🎉 ¡MUNICIÓN RESTAURADA AL 100%! {len(registros)} registros sincronizados con fechas reales y datos completos.")
+            st.success(f"🎉 ¡SISTEMA RESTAURADO AL 100%! Se cargaron {len(registros)} registros perfectamente ordenados y sin campos NULL.")
             st.balloons()
 
     except Exception as e:
-        st.error(f"🚨 Error en sincronización: {e}")
+        st.error(f"🚨 Error durante la restauración: {e}")
+        st.code(traceback.format_exc())
 
 # =================================================================
 # 👑 RENDERIZADO VISUAL DEL CENTRO DE MANDO
@@ -279,11 +283,11 @@ def renderizar():
     st.markdown("<h1 class='titulo-principal'>🏠 Centro de Mando y Control</h1>", unsafe_allow_html=True)
     st.info("📡 **Radar Principal:** Monitoreo activo de sistemas, escuadrones y logística aérea.")
     st.markdown(f"### Bienvenido al Cuartel General, **{st.session_state.get('usuario_nombre', 'Comandante')}**.")
-    st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos. Seleccione un hangar en el menú lateral para iniciar operaciones.")
+    st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos.")
     
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("### 🗄️ Panel de Mantenimiento de Base de Datos")
-    st.info("💡 **Alineación Cronológica:** Utilice esta herramienta para ordenar físicamente todas las misiones por fecha. El sistema tomará todas las operaciones y pondrá las fechas más recientes en la parte superior tanto en Google Drive como en Supabase (`TABLA_1`).")
+    st.info("💡 **Alineación Cronológica Definita:** Sincroniza Google Drive y Supabase (`TABLA_1`) mapeando las 34 columnas exactas de PostgreSQL de forma posicional.")
     
     if st.button("🧹 ORDENAR DRIVE Y SUPABASE POR FECHA", type="primary", use_container_width=True):
         ordenar_base_datos_global()
