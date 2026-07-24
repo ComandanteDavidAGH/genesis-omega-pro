@@ -73,7 +73,7 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 ARTILLERÍA VISUAL: BLINDAJE TOTAL DE BORDES EN INPUTS ---
+# --- 🎯 ARTILLERÍA VISUAL: FUERZA BRUTA A LAS CASILLAS ---
 st.markdown("""
 <style>
 /* Ocultar elementos nativos innecesarios */
@@ -84,37 +84,55 @@ st.markdown("""
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* 💥 BLINDAJE DEFINITIVO PARA CASILLAS DE LOGIN Y FORMULARIOS */
-div[data-testid="stTextInput"] div[data-baseweb="input"],
-div[data-testid="stTextInput"] div[data-baseweb="base-input"],
-div[data-testid="stNumberInput"] div[data-baseweb="input"],
-div[data-baseweb="input"],
-div[data-baseweb="base-input"],
-div[data-baseweb="select"] {
-    border: 2px solid #0d1b2a !important;
-    box-shadow: 0 0 0 2px #0d1b2a !important;
-    border-radius: 8px !important;
-    background-color: #ffffff !important;
+/* =====================================================================
+   💥 TÁCTICA NUCLEAR CSS: ATACAR A LA ETIQUETA HTML DIRECTAMENTE
+   ===================================================================== */
+
+/* 1. Desactivar bordes invisibles de los contenedores de Streamlit */
+div[data-testid="stTextInput"] div[data-baseweb], 
+div[data-testid="stNumberInput"] div[data-baseweb] {
+    border: none !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
 }
 
-/* Efecto al seleccionar la casilla */
-div[data-baseweb="input"]:focus-within, 
-div[data-baseweb="base-input"]:focus-within,
-div[data-baseweb="select"]:focus-within {
-    border: 2px solid #d4af37 !important;
-    box-shadow: 0 0 0 3px #d4af37 !important;
-}
-
-/* Texto interno visible y estilizado */
-div[data-testid="stTextInput"] input,
-div[data-testid="stNumberInput"] input,
+/* 2. Asignar el borde azul marino DIRECTAMENTE a la casilla de escritura */
 input[type="text"], 
-input[type="password"] {
+input[type="password"], 
+input[type="number"] {
+    border: 2px solid #0d1b2a !important;
+    border-radius: 8px !important;
+    padding: 12px 15px !important;
     color: #0d1b2a !important;
     font-weight: 900 !important;
     font-size: 15px !important;
-    background-color: transparent !important;
+    background-color: #ffffff !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.05) !important;
 }
+
+/* 3. Efecto Dorado de Resaltado al hacer clic en la casilla */
+input[type="text"]:focus, 
+input[type="password"]:focus, 
+input[type="number"]:focus {
+    border: 2px solid #d4af37 !important;
+    box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8) !important;
+    outline: none !important;
+}
+
+/* 4. Solución especial para Listas Desplegables (Selectbox) */
+div[data-baseweb="select"] {
+    border: 2px solid #0d1b2a !important;
+    border-radius: 8px !important;
+    background-color: #ffffff !important;
+}
+div[data-baseweb="select"]:focus-within {
+    border: 2px solid #d4af37 !important;
+    box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8) !important;
+}
+
+/* ===================================================================== */
 
 button[kind="primary"] { 
     background-color: #0d1b2a !important; 
