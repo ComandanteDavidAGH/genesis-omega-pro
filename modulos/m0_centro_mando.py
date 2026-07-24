@@ -2,14 +2,32 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
+import math
+import traceback
 
 def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        elif "gcp_credentials" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
+
+def normalizar_fecha_texto(val):
+    """ Convierte seriales numéricos de Excel (ej: 46101) o texto a DD/MM/YYYY """
+    if pd.isna(val) or val is None or str(val).strip() == "":
+        return ""
+    val_str = str(val).strip().replace("'", "")
+    try:
+        num = float(val_str)
+        if 30000 < num < 60000:
+            dt = pd.Timestamp('1899-12-30') + pd.Timedelta(days=num)
+            return dt.strftime('%d/%m/%Y')
+    except Exception:
+        pass
+    return val_str
 
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_inventario_supabase_cached():
@@ -46,12 +64,20 @@ def procesar_radar_logistico_cached(df_sabana):
     df_temp['PRODUCTO_RADAR'] = codigos_limpios + " | " + df_temp[col_desc].astype(str).str.strip().str.upper() if col_desc else codigos_limpios + " | INSUMO QUÍMICO REGISTRADO"
 
     inventario_agrupado = df_temp.groupby([col_pista, 'PRODUCTO_RADAR'])[col_saldo].sum().reset_index()
+    pistas_series = inventario_agrupado[col_pista].astype(str).str.upper()
+    productos_series = inventario_agrupado['PRODUCTO_RADAR'].astype(str).str.upper()
     
-    condiciones = [
-        inventario_agrupado[col_pista].astype(str).str.upper().str.contains("LUCI|TEHO", na=False) & inventario_agrupado['PRODUCTO_RADAR'].astype(str).str.upper().str.contains("ACEITE|GRANEL|COMBUSTIBLE", na=False)
-    ]
-    inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, [1000], default=100)
-    inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, ["Regla Activa"], default="Estándar")
+    es_pista_menor = pistas_series.str.contains("LUCI|TEHO", na=False)
+    es_aceite = productos_series.str.contains("ACEITE|GRANEL|COMBUSTIBLE|DICAM", na=False)
+    es_mancol = productos_series.str.contains("MANCOL|MANCOZEB|103680|104287", na=False)
+    es_aditivo = productos_series.str.contains("ACONDICIONADOR|NATURAMIN|105980|108214|105296", na=False)
+    
+    condiciones = [es_aceite & es_pista_menor, es_aceite & ~es_pista_menor, es_mancol & es_pista_menor, es_mancol & ~es_pista_menor, es_aditivo]
+    valores_limite = [1000, 30280, 1000, 2500, 30]
+    regles_texto = ["1.000 L (Aceite - Pista Menor)", "30,280 L (Aceite - Pista Principal)", "1,000 L (Mancol - Pista Menor)", "2,500 L (Mancol - Pista Principal)", "30 L/Kg (Aditivo de Alta Rotación)"]
+    
+    inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, valores_limite, default=100)
+    inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, regles_texto, default="100 L/Kg (Estándar Global)")
     
     df_alertas = inventario_agrupado[inventario_agrupado[col_saldo] < inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD']].copy()
     df_alertas = df_alertas.rename(columns={col_pista: "📍 PISTA / ALMACÉN", 'PRODUCTO_RADAR': "🧪 CÓDIGO | NOMBRE DEL PRODUCTO", col_saldo: "⚠️ SALDO ACTUAL"})
@@ -62,42 +88,119 @@ def procesar_radar_logistico_cached(df_sabana):
     return df_alertas_render, "EXITO", inventario_agrupado[col_pista].nunique(), inventario_agrupado['PRODUCTO_RADAR'].nunique(), len(df_alertas_render), df_alertas
 
 # =================================================================
-# 🎣 LANZAR CEBO / SONDA DE DIAGNÓSTICO
+# 🗄️ ORDENAMIENTO GLOBAL Y SINCRONIZACIÓN DINÁMICA POR CEBO
 # =================================================================
-def lanzar_sonda_diagnostico():
+
+def ordenar_base_datos_global():
     if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
         st.error("🚨 Sin conexión activa a Supabase.")
         return
 
     try:
         supabase = st.session_state['supabase']
-        with st.status("🎣 Lanzando Cebo a Supabase...", expanded=True) as status:
+        gc = inicializar_cliente_gspread()
+        if not gc: 
+            st.error("🚨 Sin conexión a Google Drive.")
+            return
+
+        with st.spinner("🔄 Extrayendo ADN de la base de datos y descargando Drive..."):
             
-            st.write("1. Inyectando misión falsa (`_CEBO_`)...")
-            supabase.table("TABLA_1").insert({"Nº ORDEN": "_CEBO_"}).execute()
+            # 1. 🎯 EXTRAER LAS CLAVES REALES DIRECTAS DE SUPABASE (TÁCTICA CEBO)
+            supabase.table("TABLA_1").insert({"Nº ORDEN": "_SONDA_"}).execute()
+            res_sonda = supabase.table("TABLA_1").select("*").eq("Nº ORDEN", "_SONDA_").execute()
             
-            st.write("2. Leyendo cómo PostgreSQL nombra las columnas...")
-            res = supabase.table("TABLA_1").select("*").eq("Nº ORDEN", "_CEBO_").execute()
+            if not res_sonda.data:
+                st.error("🚨 No se pudieron obtener las llaves exactas de Supabase.")
+                return
+                
+            db_cols = list(res_sonda.data[0].keys())
+            supabase.table("TABLA_1").delete().eq("Nº ORDEN", "_SONDA_").execute()
+
+            # 2. LECTURA DE DATOS EN GOOGLE DRIVE
+            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            ws_t1 = boveda.worksheet("TABLA 1")
             
-            if res.data and len(res.data) > 0:
-                columnas_reales = list(res.data[0].keys())
+            t1_formulas = ws_t1.get_all_values(value_render_option='FORMULA')
+            t1_valores = ws_t1.get_all_values(value_render_option='FORMATTED_VALUE')
+            
+            idx_header = 4
+            for i in range(min(10, len(t1_formulas))):
+                if "FINCA" in [str(x).upper().strip() for x in t1_formulas[i]]:
+                    idx_header = i
+                    break
+                    
+            num_cols = len(db_cols)
+            
+            # Normalizar filas
+            datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
+            datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
+            
+            df_form = pd.DataFrame(datos_form, columns=db_cols)
+            df_val = pd.DataFrame(datos_val, columns=db_cols)
+            
+            col_id = db_cols[0]
+            col_finca = db_cols[2] if len(db_cols) > 2 else db_cols[0]
+            
+            filas_validas = (df_val[col_id].astype(str).str.strip() != "") | (df_val[col_finca].astype(str).str.strip() != "")
+            df_form = df_form[filas_validas].copy()
+            df_val = df_val[filas_validas].copy()
+
+            # Identificar columna de Fecha por posición (Columna 8 / índice 7) o nombre
+            col_fecha = db_cols[7] if len(db_cols) > 7 else next((c for c in db_cols if "FECHA" in c.upper()), db_cols[0])
+
+            df_val[col_fecha] = df_val[col_fecha].apply(normalizar_fecha_texto)
+            df_val['fecha_dt'] = pd.to_datetime(df_val[col_fecha], format='%d/%m/%Y', errors='coerce')
+            
+            # Ordenar de más reciente a más antiguo
+            df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
+            indices_ord = df_val_sorted.index
+            df_form_sorted = df_form.loc[indices_ord]
+            df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
+
+            # Construir payload perfecto con las claves que Supabase exige
+            registros = []
+            for _, row in df_val_sorted.iterrows():
+                rec = {}
+                for col in db_cols:
+                    v = row[col]
+                    if pd.isna(v) or v is None:
+                        rec[col] = None if "SEM" in col.upper() else ""
+                    else:
+                        v_str = str(v).strip()
+                        if "SEM" in col.upper() and col.upper() != "DÌA SEM" and col.upper() != "DÍA SEM":
+                            try: rec[col] = int(float(v_str))
+                            except Exception: rec[col] = None
+                        else:
+                            rec[col] = v_str
+                registros.append(rec)
+
+            if registros:
+                st.info("📤 Vaciando tabla anterior e inyectando data purificada...")
+                supabase.table("TABLA_1").delete().neq(col_id, "_VACIO_IMPOSIBLE_999_").execute()
                 
-                st.write("3. Destruyendo cebo para limpiar base de datos...")
-                supabase.table("TABLA_1").delete().eq("Nº ORDEN", "_CEBO_").execute()
+                tamano_bloque = 250
+                for i in range(0, len(registros), tamano_bloque):
+                    supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
+
+            # Escribir formulas ordenadas de vuelta en Drive
+            valores_drive = df_form_sorted[db_cols].fillna("").values.tolist()
+            if valores_drive:
+                rango_inicio = f"A{idx_header + 2}"
+                rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
+                ws_t1.batch_clear([rango_borrar])
+                ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-                status.update(label="🎯 CEBO CAPTURADO CON ÉXITO", state="complete")
-                
-                st.success("✅ **Comandante, aquí están las entrañas exactas de su base de datos. Por favor copie todo el texto del recuadro oscuro y envíemelo:**")
-                st.code(repr(columnas_reales), language="python")
-            else:
-                st.error("🚨 El cebo se inyectó pero no se pudo leer.")
+            st.success(f"🎉 ¡MUNICIÓN RESTAURADA! Se cargaron {len(registros)} registros formateados sin un solo NULL.")
+            st.balloons()
 
     except Exception as e:
-        st.error(f"🚨 Falla en el cebo: {e}")
+        st.error(f"🚨 Error durante la restauración: {e}")
+        st.code(traceback.format_exc())
 
 # =================================================================
 # 👑 RENDERIZADO VISUAL DEL CENTRO DE MANDO
 # =================================================================
+
 def renderizar():
     st.markdown("""
     <style>
@@ -107,37 +210,69 @@ def renderizar():
     .hud-mando-item { text-align: center; }
     .hud-mando-title { font-size: 11px; color: #6c757d; font-family: 'Arial Black', sans-serif; text-transform: uppercase; margin: 0; }
     .hud-mando-value { font-size: 20px; color: #0d1b2a; font-weight: 900; margin: 0; }
+    .hud-mando-alert { color: #cc0000; font-family: 'Arial Black', sans-serif; }
+    .hud-mando-ok { color: #00994c; font-family: 'Arial Black', sans-serif; }
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>🏠 Centro de Mando y Control</h1>", unsafe_allow_html=True)
     st.info("📡 **Radar Principal:** Monitoreo activo de sistemas, escuadrones y logística aérea.")
+    st.markdown(f"### Bienvenido al Cuartel General, **{st.session_state.get('usuario_nombre', 'Comandante')}**.")
+    st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos.")
     
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown("### 🎣 Panel de Diagnóstico Táctico (EL CEBO)")
-    st.warning("⚠️ **ATENCIÓN COMANDANTE:** Haga clic en el botón de abajo para extraer el código genético de su Supabase y acabar con el error de las columnas.")
+    st.markdown("### 🗄️ Panel de Mantenimiento de Base de Datos")
+    st.info("💡 **Alineación Cronológica Definitiva:** Sincroniza Google Drive y Supabase mapeando dinámicamente el esquema extraído.")
     
-    if st.button("🎣 LANZAR CEBO DE DIAGNÓSTICO", type="secondary", use_container_width=True):
-        lanzar_sonda_diagnostico()
+    if st.button("🧹 ORDENAR DRIVE Y SUPABASE POR FECHA", type="primary", use_container_width=True):
+        ordenar_base_datos_global()
 
     st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown("### 🚨 Radar Logístico")
+    st.markdown("### 🚨 Radar Logístico: Alerta Temprana de Inventarios")
     
     df_sabana = st.session_state.get('df_sabana', pd.DataFrame())
     if df_sabana.empty:
         df_sabana = cargar_inventario_supabase_cached()
-        if not df_sabana.empty: st.session_state['df_sabana'] = df_sabana
+        if not df_sabana.empty:
+            st.session_state['df_sabana'] = df_sabana
 
     if df_sabana.empty:
-        st.warning("⚠️ El sistema no detecta un inventario activo. Cargue la Sábana SAP en el Módulo 2.")
+        st.warning("⚠️ **Radar en Modo Espera:** El sistema no detecta un inventario activo en la memoria ni en la nube. Cargue la **Sábana SAP** en el **📥 Módulo 2**.")
     else:
-        df_alertas_render, estado, total_almacenes, total_insumos, conteo_alertas, _ = procesar_radar_logistico_cached(df_sabana)
-        if estado == "EXITO":
+        df_alertas_render, estado, total_almacenes, total_insumos, conteo_alertas, df_alertas_raw = procesar_radar_logistico_cached(df_sabana)
+
+        if estado == "ERROR_COLUMNAS":
+            st.error("❌ Error de Radar: No se pudieron mapear las columnas.")
+        else:
+            clase_alerta = "hud-mando-value hud-mando-alert" if conteo_alertas > 0 else "hud-mando-value hud-mando-ok"
+            texto_alerta = f"{conteo_alertas} Alertas" if conteo_alertas > 0 else "0 Críticos"
+            
             st.markdown(f"""
             <div class="hud-mando">
-                <div class="hud-mando-item"><p class="hud-mando-title">Pistas Activas</p><p class="hud-mando-value">🛰️ {total_almacenes}</p></div>
-                <div class="hud-mando-item"><p class="hud-mando-title">Insumos Únicos</p><p class="hud-mando-value">🧪 {total_insumos}</p></div>
-                <div class="hud-mando-item"><p class="hud-mando-title">Alertas</p><p class="hud-mando-value" style="color:{'#cc0000' if conteo_alertas > 0 else '#00994c'};">{conteo_alertas}</p></div>
+                <div class="hud-mando-item">
+                    <p class="hud-mando-title">Pistas / Almacenes Activos</p>
+                    <p class="hud-mando-value">🛰️ {total_almacenes}</p>
+                </div>
+                <div class="hud-mando-item">
+                    <p class="hud-mando-title">Insumos Consolidados Únicos</p>
+                    <p class="hud-mando-value">🧪 {total_insumos}</p>
+                </div>
+                <div class="hud-mando-item">
+                    <p class="hud-mando-title">Estado de Carga</p>
+                    <p class="{clase_alerta}">{texto_alerta}</p>
+                </div>
             </div>
             """, unsafe_allow_html=True)
-            if conteo_alertas > 0: st.dataframe(df_alertas_render, hide_index=True)
+            
+            if conteo_alertas > 0:
+                st.error("🚨 **¡ALERTA ROJA! MÁRGENES OPERATIVOS CRÍTICOS DETECTADOS:**")
+                df_render_display = df_alertas_render.copy()
+                df_render_display["⚠️ SALDO ACTUAL"] = df_render_display["⚠️ SALDO ACTUAL"].apply(lambda x: f"{x:,.1f}".replace(",", "."))
+                df_render_display["🛡️ LÍMITE DE SEGURIDAD"] = df_render_display["🛡️ LÍMITE DE SEGURIDAD"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
+                
+                def pintar_rojo_elegante(val):
+                    return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold; border-bottom: 1px solid #dee2e6;'] * len(val)
+                
+                st.dataframe(df_render_display.style.apply(pintar_rojo_elegante, axis=1), use_container_width=True, hide_index=True)
+            else:
+                st.success("✅ **INVENTARIO ÓPTIMO:** Todos los insumos se encuentran por encima de los márgenes de seguridad.")
