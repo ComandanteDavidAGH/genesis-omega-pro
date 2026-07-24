@@ -73,60 +73,54 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 BLINDAJE VISUAL: CASILLAS DE INPUT CON BORDES SÓLIDOS Y RESALTADOS ---
+# --- 🎯 BLINDAJE VISUAL: FORZAR BORDES EN LAS CASILLAS ---
 st.markdown("""
 <style>
-[data-testid="stToolbarActions"] { display: none !important; }
-.stAppDeployButton { display: none !important; }
-.viewerBadge_container { display: none !important; visibility: hidden !important; opacity: 0 !important; }
-div[class^="viewerBadge"] { display: none !important; }
-footer { display: none !important; visibility: hidden !important; }
+/* Ocultar elementos de Streamlit */
+[data-testid="stToolbarActions"], .stAppDeployButton, .viewerBadge_container, div[class^="viewerBadge"], footer { display: none !important; }
 #MainMenu { visibility: visible !important; display: block !important; }
 
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* 🌟 CORRECCIÓN MAESTRA PARA CASILLAS DE ENTRADA (LOGIN Y FORMULARIOS) */
-div[data-baseweb="input"], 
-div[data-testid="stTextInput"] div[data-baseweb="input"],
-div[data-testid="stNumberInput"] div[data-baseweb="input"],
-div[data-testid="stSelectbox"] [data-baseweb="select"] {
+/* ====================================================
+   💥 FUERZA BRUTA: BORDES DE LAS CASILLAS DE TEXTO 
+   ==================================================== */
+
+/* 1. Contenedor principal de Texto y Contraseña (Login) */
+div[data-baseweb="base-input"] {
     border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
     border-radius: 8px !important;
-    box-shadow: 0px 2px 5px rgba(0,0,0,0.05) !important;
+    background-color: #ffffff !important;
 }
 
-/* Efecto al hacer clic / enfocar la casilla (Resaltado Dorado) */
-div[data-baseweb="input"]:focus-within {
-    border-color: #d4af37 !important;
-    box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.6) !important;
+/* 2. Contenedor de Listas Desplegables */
+div[data-baseweb="select"] {
+    border: 2px solid #0d1b2a !important;
+    border-radius: 8px !important;
+    background-color: #ffffff !important;
 }
 
-/* Texto interno en negro extra negrita */
-div[data-baseweb="input"] input {
+/* 3. Efecto Dorado al hacer clic en las casillas */
+div[data-baseweb="base-input"]:focus-within, 
+div[data-baseweb="select"]:focus-within {
+    border: 2px solid #d4af37 !important;
+    box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
+}
+
+/* 4. Letra negra fuerte dentro de la casilla */
+input[type="text"], input[type="password"], input[type="number"] {
     color: #0d1b2a !important;
     font-weight: 900 !important;
     font-size: 15px !important;
     background-color: #ffffff !important;
 }
 
-button[kind="primary"] { 
-    background-color: #0d1b2a !important; 
-    color: #d4af37 !important; 
-    border: 2px solid #d4af37 !important; 
-    font-weight: bold !important;
-}
+/* ==================================================== */
 
-.titulo-principal { 
-    color: #0d1b2a; 
-    font-family: 'Arial Black', sans-serif; 
-    border-bottom: 3px solid #d4af37; 
-    text-transform: uppercase; 
-    position: relative; 
-    z-index: 1;
-}
+button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; font-weight: bold !important; }
+.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
 </style>
 """, unsafe_allow_html=True)
 
