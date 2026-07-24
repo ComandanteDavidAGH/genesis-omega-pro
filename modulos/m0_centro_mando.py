@@ -6,24 +6,51 @@ import math
 import traceback
 
 # =================================================================
-# 📐 ESQUEMA OFICIAL EXACTO (Alineado a la lista del Comandante)
+# 📐 ESQUEMA FÍSICO EXACTO DE SUPABASE (TRANSCRITO DESDE DEFINITION)
 # =================================================================
 COLUMNAS_SUPABASE = [
-    "Nº ORDEN", "BLOQUE", "FINCA", "SECTOR", "ÁREA BRUTA (ha)",
-    "ÁREA FUMIG. (ha)", "COCTEL", "FECHA", "DÌA SEM", "SEM",
-    "ODÒM.", "VOLUMEN APLICADO (gln/ha)", "VOLUMEN APLICADO (gln)",
-    "RENDIMIENTO (horas)", "RENDIMIENTO (min)", "PILOTO", "HK",
-    "MODELO", "COSTO AVIÒN ($)", "COSTO AVIÒN ($/ha)", "DOMINIC. ($/ha)",
-    "COSTO AVIÒN ($/finca)", "VALOR A FACTURAR AL PRODUCTOR ($/ha-ciclo)",
-    "PISTA", "INCRENTO 2026 (6%)", "LIMITE", "ALERTA", "% DE VARIACION",
-    "COSTO TOTAL", "TOTAL PAGO AVIÓN", "SEM RETROAC", "Columna1",
-    "TIPO DE PRODUCTOR", "TRABAJO"
+    "Nº ORDEN",
+    "BLOQUE",
+    "FINCA",
+    "SECTOR",
+    "ÁREA BRUTA\n(ha)",
+    "ÁREA FUMIG.\n(ha)",
+    "COCTEL",
+    "FECHA",
+    "DÌA SEM",
+    "SEM",
+    "ODÒM.",
+    "VOLUMEN APLICADO\n(gln/ha)",
+    "VOLUMEN APLICADO\n(gln)",
+    "RENDIMIENTO (horas)",
+    "RENDIMIENTO\n(min)",
+    "PILOTO",
+    "HK",
+    "MODELO",
+    "COSTO AVIÒN\n($)",
+    "COSTO AVIÒN\n($/ha)",
+    "DOMINIC.\n($/ha)",
+    "COSTO AVIÒN\n($/finca)",
+    "VALOR A FACTURAR AL PRODUCTOR\n($/ha-ciclo)",
+    "PISTA",
+    "INCRENTO 2026 (6%)",
+    "LIMITE",
+    "ALERTA",
+    "% DE VARIACION",
+    "COSTO TOTAL",
+    "TOTAL PAGO AVIÓN",
+    "SEM RETROAC",
+    "Columna1",
+    "TIPO DE PRODUCTOR",
+    "TRABAJO"
 ]
 
 def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        elif "gcp_credentials" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
@@ -105,15 +132,17 @@ def procesar_radar_logistico_cached(df_sabana):
 
 def ordenar_base_datos_global():
     if 'supabase' not in st.session_state or st.session_state['supabase'] is None:
-        st.error("🚨 Sin conexión a Supabase.")
+        st.error("🚨 Sin conexión activa a Supabase.")
         return
 
     try:
         supabase = st.session_state['supabase']
         gc = inicializar_cliente_gspread()
-        if not gc: return
+        if not gc: 
+            st.error("🚨 Sin conexión a Google Drive.")
+            return
 
-        with st.spinner("🔄 Conectando y leyendo posiciones exactas..."):
+        with st.spinner("🔄 Conectando y leyendo posiciones exactas desde Drive..."):
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
@@ -128,19 +157,16 @@ def ordenar_base_datos_global():
                     
             num_cols = len(COLUMNAS_SUPABASE)
             
-            # Cortamos exactamente a 34 columnas
             datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
             datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
             
             df_form = pd.DataFrame(datos_form, columns=COLUMNAS_SUPABASE)
             df_val = pd.DataFrame(datos_val, columns=COLUMNAS_SUPABASE)
             
-            # Limpiamos vacíos
             filas_validas = (df_val["Nº ORDEN"].astype(str).str.strip() != "") | (df_val["FINCA"].astype(str).str.strip() != "")
             df_form = df_form[filas_validas].copy()
             df_val = df_val[filas_validas].copy()
 
-            # Conversión y orden de fechas
             df_val["FECHA"] = df_val["FECHA"].apply(normalizar_fecha_texto)
             df_val['fecha_dt'] = pd.to_datetime(df_val["FECHA"], format='%d/%m/%Y', errors='coerce')
             
@@ -149,7 +175,6 @@ def ordenar_base_datos_global():
             df_form_sorted = df_form.loc[indices_ord]
             df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
 
-            # Armar payload exacto para PostgreSQL
             registros = []
             for _, row in df_val_sorted.iterrows():
                 rec = {}
@@ -172,10 +197,9 @@ def ordenar_base_datos_global():
                     test_item = registros[0]
                     supabase.table("TABLA_1").insert([test_item]).execute()
                 except Exception as e_test:
-                    st.error(f"🚨 Supabase detectó un error en las columnas: {e_test}")
-                    return # 🛑 SE DETIENE AQUÍ SIN BORRAR NADA
+                    st.error(f"🚨 Error en estructura de campos de Supabase: {e_test}")
+                    return
 
-                # Vaciado y Llenado real
                 st.info("✅ Columnas verificadas al 100%. Restaurando base de datos...")
                 supabase.table("TABLA_1").delete().neq("Nº ORDEN", "_VACIO_IMPOSIBLE_999_").execute()
                 
@@ -183,7 +207,6 @@ def ordenar_base_datos_global():
                 for i in range(0, len(registros), tamano_bloque):
                     supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
 
-            # Retorno de fórmulas a Drive
             valores_drive = df_form_sorted[COLUMNAS_SUPABASE].fillna("").values.tolist()
             if valores_drive:
                 rango_inicio = f"A{idx_header + 2}"
@@ -191,11 +214,11 @@ def ordenar_base_datos_global():
                 ws_t1.batch_clear([rango_borrar])
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-            st.success(f"🎉 ¡MUNICIÓN RESTAURADA! {len(registros)} registros alineados a la perfección.")
+            st.success(f"🎉 ¡MUNICIÓN RESTAURADA! Se cargaron {len(registros)} registros alineados a la perfección.")
             st.balloons()
 
     except Exception as e:
-        st.error(f"🚨 Error general: {e}")
+        st.error(f"🚨 Error durante la restauración: {e}")
         st.code(traceback.format_exc())
 
 # =================================================================
@@ -219,11 +242,11 @@ def renderizar():
     st.markdown("<h1 class='titulo-principal'>🏠 Centro de Mando y Control</h1>", unsafe_allow_html=True)
     st.info("📡 **Radar Principal:** Monitoreo activo de sistemas, escuadrones y logística aérea.")
     st.markdown(f"### Bienvenido al Cuartel General, **{st.session_state.get('usuario_nombre', 'Comandante')}**.")
-    st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos.")
+    st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos. Seleccione un hangar en el menú lateral para iniciar operaciones.")
     
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("### 🗄️ Panel de Mantenimiento de Base de Datos")
-    st.info("💡 **Alineación Cronológica Definita:** Sincroniza Google Drive y Supabase mapeando las 34 columnas exactas por posición.")
+    st.info("💡 **Alineación Cronológica Definitiva:** Sincroniza Google Drive y Supabase (`TABLA_1`) mapeando las 34 columnas exactas por posición.")
     
     if st.button("🧹 ORDENAR DRIVE Y SUPABASE POR FECHA", type="primary", use_container_width=True):
         ordenar_base_datos_global()
@@ -243,7 +266,7 @@ def renderizar():
         df_alertas_render, estado, total_almacenes, total_insumos, conteo_alertas, df_alertas_raw = procesar_radar_logistico_cached(df_sabana)
 
         if estado == "ERROR_COLUMNAS":
-            st.error("❌ Error de Radar: No se pudieron mapear las columnas.")
+            st.error("❌ Error de Radar: No se pudieron mapear las columnas. Verifique que el archivo corresponda a la Sábana Estándar o estructura de Supabase.")
         else:
             clase_alerta = "hud-mando-value hud-mando-alert" if conteo_alertas > 0 else "hud-mando-value hud-mando-ok"
             texto_alerta = f"{conteo_alertas} Alertas" if conteo_alertas > 0 else "0 Críticos"
@@ -270,8 +293,10 @@ def renderizar():
                 df_render_display = df_alertas_render.copy()
                 df_render_display["⚠️ SALDO ACTUAL"] = df_render_display["⚠️ SALDO ACTUAL"].apply(lambda x: f"{x:,.1f}".replace(",", "."))
                 df_render_display["🛡️ LÍMITE DE SEGURIDAD"] = df_render_display["🛡️ LÍMITE DE SEGURIDAD"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
+                
                 def pintar_rojo_elegante(val):
                     return ['background-color: #ffe6e6; color: #cc0000; font-weight: bold; border-bottom: 1px solid #dee2e6;'] * len(val)
+                
                 st.dataframe(df_render_display.style.apply(pintar_rojo_elegante, axis=1), use_container_width=True, hide_index=True)
             else:
-                st.success("✅ **INVENTARIO ÓPTIMO:** Todos los insumos están por encima de los márgenes de seguridad.")
+                st.success("✅ **INVENTARIO ÓPTIMO:** Todos los insumos químicos y energéticos en la totalidad de las pistas se encuentran por encima de los márgenes de seguridad establecidos. Operación aérea asegurada.")
