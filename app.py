@@ -73,10 +73,10 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 BLINDAJE VISUAL: FORZAR BORDES EN LAS CASILLAS ---
+# --- 🎯 ARTILLERÍA VISUAL: BLINDAJE TOTAL DE BORDES EN INPUTS ---
 st.markdown("""
 <style>
-/* Ocultar elementos de Streamlit */
+/* Ocultar elementos nativos innecesarios */
 [data-testid="stToolbarActions"], .stAppDeployButton, .viewerBadge_container, div[class^="viewerBadge"], footer { display: none !important; }
 #MainMenu { visibility: visible !important; display: block !important; }
 
@@ -84,43 +84,53 @@ st.markdown("""
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* ====================================================
-   💥 FUERZA BRUTA: BORDES DE LAS CASILLAS DE TEXTO 
-   ==================================================== */
-
-/* 1. Contenedor principal de Texto y Contraseña (Login) */
-div[data-baseweb="base-input"] {
-    border: 2px solid #0d1b2a !important;
-    border-radius: 8px !important;
-    background-color: #ffffff !important;
-}
-
-/* 2. Contenedor de Listas Desplegables */
+/* 💥 BLINDAJE DEFINITIVO PARA CASILLAS DE LOGIN Y FORMULARIOS */
+div[data-testid="stTextInput"] div[data-baseweb="input"],
+div[data-testid="stTextInput"] div[data-baseweb="base-input"],
+div[data-testid="stNumberInput"] div[data-baseweb="input"],
+div[data-baseweb="input"],
+div[data-baseweb="base-input"],
 div[data-baseweb="select"] {
     border: 2px solid #0d1b2a !important;
+    box-shadow: 0 0 0 2px #0d1b2a !important;
     border-radius: 8px !important;
     background-color: #ffffff !important;
 }
 
-/* 3. Efecto Dorado al hacer clic en las casillas */
-div[data-baseweb="base-input"]:focus-within, 
+/* Efecto al seleccionar la casilla */
+div[data-baseweb="input"]:focus-within, 
+div[data-baseweb="base-input"]:focus-within,
 div[data-baseweb="select"]:focus-within {
     border: 2px solid #d4af37 !important;
-    box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
+    box-shadow: 0 0 0 3px #d4af37 !important;
 }
 
-/* 4. Letra negra fuerte dentro de la casilla */
-input[type="text"], input[type="password"], input[type="number"] {
+/* Texto interno visible y estilizado */
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+input[type="text"], 
+input[type="password"] {
     color: #0d1b2a !important;
     font-weight: 900 !important;
     font-size: 15px !important;
-    background-color: #ffffff !important;
+    background-color: transparent !important;
 }
 
-/* ==================================================== */
+button[kind="primary"] { 
+    background-color: #0d1b2a !important; 
+    color: #d4af37 !important; 
+    border: 2px solid #d4af37 !important; 
+    font-weight: bold !important; 
+}
 
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; font-weight: bold !important; }
-.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
+.titulo-principal { 
+    color: #0d1b2a; 
+    font-family: 'Arial Black', sans-serif; 
+    border-bottom: 3px solid #d4af37; 
+    text-transform: uppercase; 
+    position: relative; 
+    z-index: 1;
+}
 </style>
 """, unsafe_allow_html=True)
 
