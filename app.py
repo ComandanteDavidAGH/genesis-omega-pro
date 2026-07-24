@@ -1,12 +1,12 @@
-# 1. 🛡️ SILENCIADOR GRÁFICO (DEBE IR ANTES QUE CUALQUIER OTRA COSA)
+# 1. 🛡️ SILENCIADOR GRÁFICO
 import matplotlib
 matplotlib.use('Agg')
 
-# 2. ⚙️ INICIO DEL MOTOR STREAMLIT Y CONFIGURACIÓN (REGLA DE ORO)
+# 2. ⚙️ INICIO DEL MOTOR STREAMLIT Y CONFIGURACIÓN
 import streamlit as st
 st.set_page_config(page_title="Génesis Omega Pro | AgroAéreo", layout="wide", page_icon="🚀", initial_sidebar_state="expanded")
 
-# 3. 📦 IMPORTACIÓN DE LIBRERÍAS PESADAS
+# 3. 📦 LIBRERÍAS
 import pandas as pd
 from datetime import datetime
 import gspread
@@ -39,7 +39,7 @@ import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
 import modulos.m18_desglose_facturacion as m18
 
-# --- 🔐 CREDENCIALES DE BÓVEDA ---
+# --- 🔐 CREDENCIALES ---
 pass_cmd = st.secrets.get("passwords", {}).get("comandante", "123") if "passwords" in st.secrets else "123"
 pass_ger = st.secrets.get("passwords", {}).get("gerencia", "123") if "passwords" in st.secrets else "123"
 
@@ -57,7 +57,7 @@ if 'modulo_actual' not in st.session_state: st.session_state['modulo_actual'] = 
 
 HAS_MATPLOTLIB = True
 
-# --- 🛡️ MOTOR DE MARCA DE AGUA FANTASMA (4%) ---
+# --- 🛡️ MARCA DE AGUA ---
 try:
     if os.path.exists("escudo.png"):
         with open("escudo.png", "rb") as image_file:
@@ -73,7 +73,7 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 ARTILLERÍA VISUAL CENTRALIZADA: PROTECCIÓN GLOBAL ANTI-PALIDEZ ---
+# --- 🎯 ESTILOS VISUALES DORADO / AZUL MARINO ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -94,61 +94,14 @@ footer { display: none !important; visibility: hidden !important; }
     background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
 }
 [data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
-[data-testid="stSidebar"] button[kind="secondary"] p { color: #ffffff !important; }
 
 button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
 
 .titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
-.tarjeta-info { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-top: 5px solid #0d1b2a; margin-bottom: 20px; position: relative; z-index: 1;}
-
-th { background-color: #f0f2f6 !important; color: black !important; }
-[data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
-
-div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input,
-div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
-div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
-div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
-    border: 2px solid #0d1b2a !important;
-    background-color: #ffffff !important;
-    border-radius: 8px !important;
-    color: #0d1b2a !important;
-    font-weight: 900 !important;
-    font-size: 15px !important;
-}
-
-div[data-testid="stMainBlockContainer"] div[data-testid="stFileUploader"] section {
-    background-color: #ffffff !important;
-    border: 2px dashed #0d1b2a !important;
-    border-radius: 8px !important;
-}
-
-div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"],
-div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] pre,
-div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] pre code {
-    background-color: #ffffff !important;
-    border: 3px solid #0d1b2a !important;
-    border-radius: 8px !important;
-}
-div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] code,
-div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] code span,
-div[data-testid="stMainBlockContainer"] div[data-testid="stCodeBlock"] pre span {
-    color: #0d1b2a !important;
-    font-weight: 900 !important;
-    font-size: 16px !important;
-    font-family: 'Arial Black', monospace !important;
-}
-
-.stTextInput input,
-.stSelectbox span,
-.stNumberInput input,
-.stDateInput input {
-    color: #000000 !important;
-    font-weight: 900 !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 🔐 CONTROL DE ACCESO CENTRALIZADO (LOGIN) ---
+# --- 🔐 CONTROL DE ACCESO ---
 if not st.session_state['autenticado']:
     st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -176,7 +129,7 @@ if not st.session_state['autenticado']:
                     st.error("🚨 Credenciales incorrectas.")
     st.stop() 
 
-# --- 4. 🛰️ HUB DE CONEXIONES GLOBALES ---
+# --- CONEXIONES ---
 @st.cache_resource(show_spinner=False)
 def conectar_satelite():
     try:
@@ -185,8 +138,7 @@ def conectar_satelite():
         elif "gcp_credentials" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
-    except Exception:
-        return None
+    except Exception: return None
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def descargar_matriz_rapida(url, pestaña):
@@ -212,17 +164,14 @@ def conectar_supabase():
 supabase_client = conectar_supabase()
 st.session_state['supabase'] = supabase_client
 
-# --- 5. MENÚ MAESTRO TÁCTICO ---
+# --- MENÚ LATERAL ---
 with st.sidebar:
     col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
     with col_img2:
         try: 
-            if os.path.exists("escudo.png"):
-                st.image("escudo.png", use_container_width=True)
-            else:
-                st.markdown("<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
-        except Exception: 
-            st.markdown("<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
+            if os.path.exists("escudo.png"): st.image("escudo.png", use_container_width=True)
+            else: st.markdown("<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
+        except Exception: st.markdown("<h3 style='text-align: center; color: #d4af37;'>🚀 GÉNESIS OMEGA</h3>", unsafe_allow_html=True)
             
     st.markdown(f"<p style='text-align: center; color: white; font-size:14px; font-weight: bold;'>👤 {st.session_state.get('usuario_nombre', 'Comandante')}</p>", unsafe_allow_html=True)
     st.markdown("---")
@@ -272,7 +221,7 @@ with st.sidebar:
 
     st.button("🔒 CERRAR SESIÓN", use_container_width=True, on_click=apagar_motores)
 
-# --- 6. DELEGACIÓN A ESCUADRONES ---
+# --- RUTEO ---
 menu = st.session_state.get('modulo_actual', "🏠 Centro de Mando")
 
 if menu == "🏠 Centro de Mando": m0.renderizar()
