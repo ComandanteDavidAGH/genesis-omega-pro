@@ -2,23 +2,21 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
-
-# =================================================================
-# ⚡ MOTOR DE CARGA Y PROCESAMIENTO ULTRARRÁPIDO EN CACHÉ
-# =================================================================
+import math
 
 def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        elif "gcp_credentials" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
 
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_inventario_supabase_cached():
-    """Recupera el inventario persistente de Supabase en milisegundos."""
-    if 'supabase' in st.session_state:
+    if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
         try:
             supabase_client = st.session_state['supabase']
             respuesta = supabase_client.table("inventario_sap").select("*").execute()
@@ -30,10 +28,6 @@ def cargar_inventario_supabase_cached():
 
 @st.cache_data(show_spinner=False)
 def procesar_radar_logistico_cached(df_sabana):
-    """
-    Procesa, consolida y aplica reglas de seguridad sobre la Sábana SAP
-    a velocidad luz usando vectorización pura.
-    """
     if df_sabana.empty:
         return None, "VACIO", 0, 0, 0, pd.DataFrame()
 
@@ -124,6 +118,28 @@ def ordenar_base_datos_global():
         st.error("🚨 Sin conexión activa a Supabase.")
         return
 
+    def limpiar_cabecera(h):
+        # Transforma "COCTEL" en "CÓCTEL", quita saltos de línea, etc.
+        h = str(h).replace('\n', ' ').strip()
+        h = ' '.join(h.split())
+        mapeos = {
+            "COCTEL": "CÓCTEL",
+            "DÌA SEM": "DÍA SEM",
+            "DIA SEM": "DÍA SEM",
+            "COSTO AVIÒN ($)": "COSTO AVIÓN ($)",
+            "COSTO AVIÒN ($/ha)": "COSTO AVIÓN ($/ha)",
+            "COSTO AVIÒN ($/finca)": "COSTO AVIÓN ($/finca)",
+            "TOTAL PAGO AVIÒN": "TOTAL PAGO AVIÓN"
+        }
+        return mapeos.get(h, h)
+
+    def sanitizar(v):
+        if pd.isna(v) or v is None: return ""
+        if isinstance(v, (float, int)):
+            if math.isnan(v) or math.isinf(v): return 0
+            return v
+        return str(v).strip()
+
     try:
         supabase = st.session_state['supabase']
         gc = inicializar_cliente_gspread()
@@ -131,60 +147,83 @@ def ordenar_base_datos_global():
             st.error("🚨 Sin conexión a Google Drive.")
             return
 
-        with st.status("🔄 Iniciando Protocolo de Ordenamiento Cronológico...", expanded=True) as status:
-            st.write("📥 Descargando TABLA 1 desde Google Drive (Protegiendo fórmulas)...")
+        with st.spinner("🔄 Rescatando Sábana de Drive y restaurando Supabase..."):
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
-            t1_raw = ws_t1.get_all_values(value_render_option='FORMULA')
+            t1_formulas = ws_t1.get_all_values(value_render_option='FORMULA')
+            t1_valores = ws_t1.get_all_values(value_render_option='UNFORMATTED_VALUE')
             
             idx_header = 4
-            for i in range(min(10, len(t1_raw))):
-                if "FINCA" in [str(x).upper().strip() for x in t1_raw[i]]:
+            for i in range(min(10, len(t1_formulas))):
+                if "FINCA" in [str(x).upper().strip() for x in t1_formulas[i]]:
                     idx_header = i
                     break
                     
-            cols_raw = [str(x).strip() for x in t1_raw[idx_header]]
-            datos_filas = t1_raw[idx_header+1:]
-            max_len = len(cols_raw)
-            datos_pad = [r + [""] * (max_len - len(r)) for r in datos_filas]
+            # APLICAMOS EL LIMPIADOR DE CABECERAS PARA QUE COINCIDA CON SUPABASE
+            headers_excel = [str(x) for x in t1_valores[idx_header]]
+            headers_limpios = [limpiar_cabecera(x) for x in headers_excel]
+            num_cols = len(headers_limpios)
             
-            df_t1 = pd.DataFrame(datos_pad, columns=cols_raw)
+            datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
+            datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
             
-            col_primer_id = cols_raw[0] if cols_raw else df_t1.columns[0]
-            df_t1 = df_t1[df_t1[col_primer_id].astype(str).str.strip() != ""].copy()
+            df_form = pd.DataFrame(datos_form, columns=headers_excel) # Drive usa los de excel
+            df_val = pd.DataFrame(datos_val, columns=headers_limpios) # Supabase usa los limpios
+            
+            col_id_limpio = headers_limpios[0]
+            col_id_excel = headers_excel[0]
+            
+            filas_validas = df_val[col_id_limpio].astype(str).str.strip() != ""
+            df_form = df_form[filas_validas].copy()
+            df_val = df_val[filas_validas].copy()
 
-            st.write("🧮 Ordenando registros por fecha (Más recientes primero)...")
-            col_fecha = next((c for c in cols_raw if "FECHA" in str(c).upper()), None)
-            
+            col_fecha = next((c for c in headers_limpios if "FECHA" in c.upper()), None)
+
             if col_fecha:
-                df_t1['fecha_dt'] = pd.to_datetime(df_t1[col_fecha].astype(str).str.replace("'", "").str.strip(), format='%d/%m/%Y', errors='coerce')
-                df_t1 = df_t1.sort_values(by='fecha_dt', ascending=False, na_position='last').drop(columns=['fecha_dt'])
+                df_val['fecha_dt'] = pd.to_datetime(df_val[col_fecha].astype(str).str.replace("'", "").str.strip(), format='%d/%m/%Y', errors='coerce')
+                df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
+                indices_ord = df_val_sorted.index
+                df_form_sorted = df_form.loc[indices_ord]
+                df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
+            else:
+                df_val_sorted = df_val
+                df_form_sorted = df_form
 
-            # 1. 📝 ACTUALIZAR GOOGLE DRIVE
-            st.write("📝 Reestructurando Google Sheets físicamente...")
-            valores_ordenados_drive = df_t1.fillna("").values.tolist()
-            if valores_ordenados_drive:
+            # CONSTRUIR LISTA PARA SUPABASE
+            registros = []
+            for _, row in df_val_sorted.iterrows():
+                rec = {c: sanitizar(row[c]) for c in headers_limpios if c != ""}
+                registros.append(rec)
+
+            if registros:
+                # 💥 ESCUDO ANTI-BORRADO: PRUEBA DE INYECCIÓN
+                st.info("🧪 Realizando prueba de integridad con Supabase...")
+                try:
+                    test_item = registros[0]
+                    supabase.table("TABLA_1").insert([test_item]).execute()
+                except Exception as e_test:
+                    st.error("🚨 SUPABASE RECHAZÓ LOS DATOS. Los nombres de las columnas en Python no coinciden exactamente con los de Supabase.")
+                    st.error(f"📋 Detalles del error: {e_test}")
+                    st.stop() # 🛑 EL SISTEMA SE DETIENE AQUÍ, NUNCA BORRA NADA
+
+                # Si pasó la prueba, procedemos con seguridad a borrar y reescribir
+                st.success("✅ Prueba de integridad superada. Restaurando base de datos...")
+                supabase.table("TABLA_1").delete().neq(col_id_limpio, "_VACIO_IMPOSIBLE_999_").execute()
+                
+                tamano_bloque = 250
+                for i in range(0, len(registros), tamano_bloque):
+                    supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
+
+            # ACTUALIZAR GOOGLE DRIVE
+            valores_drive = df_form_sorted[headers_excel].fillna("").values.tolist()
+            if valores_drive:
                 rango_inicio = f"A{idx_header + 2}"
                 rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
                 ws_t1.batch_clear([rango_borrar])
-                ws_t1.update(range_name=rango_inicio, values=valores_ordenados_drive, value_input_option='USER_ENTERED')
-
-            # 2. 💾 ACTUALIZAR SUPABASE (USANDO 'TABLA_1')
-            st.write("🧹 Limpiando base de datos relacional Supabase (`TABLA_1`)...")
-            registros_supa = df_t1.fillna("").to_dict(orient='records')
-            if registros_supa:
-                try:
-                    supabase.table("TABLA_1").delete().neq(col_primer_id, "VACIO_FORZADO").execute()
-                    
-                    st.write("📤 Inyectando registros ordenados en Supabase...")
-                    tamano_bloque = 500
-                    for i in range(0, len(registros_supa), tamano_bloque):
-                        supabase.table("TABLA_1").insert(registros_supa[i:i + tamano_bloque]).execute()
-                except Exception as e_sp:
-                    st.warning(f"⚠️ Nota de Supabase: {e_sp}")
-
-            status.update(label="✅ Base de Datos Ordenada y Sincronizada al 100%", state="complete", expanded=False)
+                ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
+                
+            st.success(f"🎉 ¡MISION CUMPLIDA! Base de Datos Restaurada ({len(registros)} registros) y Sincronizada al 100%.")
             st.balloons()
 
     except Exception as e:
@@ -197,32 +236,9 @@ def ordenar_base_datos_global():
 def renderizar():
     st.markdown("""
     <style>
-    .titulo-principal { 
-        color: #0d1b2a; 
-        border-bottom: 3px solid #d4af37; 
-        padding-bottom: 5px; 
-        font-family: 'Arial Black', sans-serif; 
-    }
-    
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {
-        border: 3px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important;
-        overflow: hidden !important;
-    }
-    
-    .hud-mando {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-left: 5px solid #0d1b2a;
-        padding: 12px 20px;
-        border-radius: 6px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-        border: 1px solid #dee2e6;
-    }
+    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
+    .hud-mando { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-left: 5px solid #0d1b2a; padding: 12px 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #dee2e6; }
     .hud-mando-item { text-align: center; }
     .hud-mando-title { font-size: 11px; color: #6c757d; font-family: 'Arial Black', sans-serif; text-transform: uppercase; margin: 0; }
     .hud-mando-value { font-size: 20px; color: #0d1b2a; font-weight: 900; margin: 0; }
@@ -232,28 +248,21 @@ def renderizar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-principal'>🏠 Centro de Mando y Control</h1>", unsafe_allow_html=True)
-    
     st.info("📡 **Radar Principal:** Monitoreo activo de sistemas, escuadrones y logística aérea.")
     st.markdown(f"### Bienvenido al Cuartel General, **{st.session_state.get('usuario_nombre', 'Comandante')}**.")
     st.write("El sistema Génesis Omega Pro se encuentra en línea y operando bajo parámetros óptimos. Seleccione un hangar en el menú lateral para iniciar operaciones.")
     
-    # -------------------------------------------------------------
-    # 🗄️ PANEL DE MANTENIMIENTO GLOBAL DE BASE DE DATOS
-    # -------------------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("### 🗄️ Panel de Mantenimiento de Base de Datos")
     st.info("💡 **Alineación Cronológica:** Utilice esta herramienta para ordenar físicamente todas las misiones por fecha. El sistema tomará todas las operaciones y pondrá las fechas más recientes en la parte superior tanto en Google Drive como en Supabase (`TABLA_1`).")
+    
     if st.button("🧹 ORDENAR DRIVE Y SUPABASE POR FECHA", type="primary", use_container_width=True):
         ordenar_base_datos_global()
 
-    # -------------------------------------------------------------
-    # 🚨 RADAR LOGÍSTICO DE INVENTARIOS
-    # -------------------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("### 🚨 Radar Logístico: Alerta Temprana de Inventarios")
     
     df_sabana = st.session_state.get('df_sabana', pd.DataFrame())
-    
     if df_sabana.empty:
         df_sabana = cargar_inventario_supabase_cached()
         if not df_sabana.empty:
@@ -289,7 +298,6 @@ def renderizar():
             
             if conteo_alertas > 0:
                 st.error("🚨 **¡ALERTA ROJA! MÁRGENES OPERATIVOS CRÍTICOS DETECTADOS:**")
-                
                 df_render_display = df_alertas_render.copy()
                 df_render_display["⚠️ SALDO ACTUAL"] = df_render_display["⚠️ SALDO ACTUAL"].apply(lambda x: f"{x:,.1f}".replace(",", "."))
                 df_render_display["🛡️ LÍMITE DE SEGURIDAD"] = df_render_display["🛡️ LÍMITE DE SEGURIDAD"].apply(lambda x: f"{x:,.0f}".replace(",", "."))
