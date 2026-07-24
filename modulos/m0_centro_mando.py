@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import gspread
 import math
+import re
+import unicodedata
 
 # =================================================================
 # ⚡ MOTOR DE CARGA Y PROCESAMIENTO ULTRARRÁPIDO EN CACHÉ
@@ -18,21 +20,25 @@ def inicializar_cliente_gspread():
     except Exception:
         return None
 
+def norm_str(s):
+    """ Normaliza un texto para comparación: quita tildes, mayúsculas, espacios y símbolos """
+    if not s: return ""
+    s = str(s).replace('\n', ' ').strip()
+    s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    return re.sub(r'[^a-zA-Z0-9]', '', s).lower()
+
 def convertir_fecha_excel(val):
     """ Convierte número de serie de Excel (ej: 46219) o texto a DD/MM/YYYY """
     if pd.isna(val) or val is None or str(val).strip() == "":
         return ""
     val_str = str(val).strip()
-    
-    # Si viene como serial numérico de Excel
-    if val_str.replace('.', '').isdigit():
-        try:
-            num = float(val_str)
-            if 30000 < num < 60000:
-                dt = pd.to_datetime(num, unit='D', origin='1899-12-30')
-                return dt.strftime('%d/%m/%Y')
-        except Exception:
-            pass
+    try:
+        num = float(val_str)
+        if 30000 < num < 60000:
+            dt = pd.to_datetime(num, unit='D', origin='1899-12-30')
+            return dt.strftime('%d/%m/%Y')
+    except Exception:
+        pass
     return val_str
 
 @st.cache_data(show_spinner=False, ttl=600)
@@ -131,7 +137,7 @@ def procesar_radar_logistico_cached(df_sabana):
     return df_alertas_render, "EXITO", total_almacenes, total_insumos, conteo_alertas, df_alertas_raw
 
 # =================================================================
-# 🗄️ ORDENAMIENTO GLOBAL Y REPARACIÓN TOTAL DE DATOS
+# 🗄️ ORDENAMIENTO GLOBAL Y RESTAURACIÓN PERFECTA DE COLUMNAS
 # =================================================================
 
 def ordenar_base_datos_global():
@@ -153,11 +159,19 @@ def ordenar_base_datos_global():
             st.error("🚨 Sin conexión a Google Drive.")
             return
 
-        with st.spinner("🔄 Rescatando Sábana con formato correcto de fechas..."):
+        with st.spinner("🔄 Consultando esquema exacto de Supabase y descargando Drive..."):
+            # 1. Obtener la lista exacta de columnas que tiene la tabla en Supabase
+            db_cols = []
+            try:
+                res_db = supabase.table("TABLA_1").select("*").limit(1).execute()
+                if res_db.data and len(res_db.data) > 0:
+                    db_cols = list(res_db.data[0].keys())
+            except Exception:
+                pass
+
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
-            # Descargamos FÓRMULAS para Drive y FORMATTED_VALUE para Supabase
             t1_formulas = ws_t1.get_all_values(value_render_option='FORMULA')
             t1_valores = ws_t1.get_all_values(value_render_option='FORMATTED_VALUE')
             
@@ -167,30 +181,41 @@ def ordenar_base_datos_global():
                     idx_header = i
                     break
                     
-            headers_exactos = [str(x).replace('\n', ' ').strip() for x in t1_valores[idx_header]]
-            num_cols = len(headers_exactos)
+            headers_excel = [str(x).replace('\n', ' ').strip() for x in t1_valores[idx_header]]
+            num_cols = len(headers_excel)
             
             datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
             datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
             
-            df_form = pd.DataFrame(datos_form, columns=headers_exactos)
-            df_val = pd.DataFrame(datos_val, columns=headers_exactos)
+            df_form = pd.DataFrame(datos_form, columns=headers_excel)
+            df_val = pd.DataFrame(datos_val, columns=headers_excel)
             
-            col_id = headers_exactos[0]
+            col_id = headers_excel[0]
             filas_validas = df_val[col_id].astype(str).str.strip() != ""
             df_form = df_form[filas_validas].copy()
             df_val = df_val[filas_validas].copy()
 
-            col_fecha = next((c for c in headers_exactos if "FECHA" in c.upper()), None)
+            # 2. CONSTRUIR MAPEO INTELIGENTE DE COLUMNAS (Excel -> DB)
+            # Normalizamos ambos lados para encontrar las parejas perfectas
+            col_map = {}
+            if db_cols:
+                db_norm_map = {norm_str(c): c for c in db_cols}
+                for h_ex in headers_excel:
+                    h_norm = norm_str(h_ex)
+                    if h_norm in db_norm_map:
+                        col_map[h_ex] = db_norm_map[h_norm]
+                    else:
+                        col_map[h_ex] = h_ex
+            else:
+                col_map = {h: h for h in headers_excel}
+
+            # 3. CONVERSIÓN Y ORDENAMIENTO POR FECHA
+            col_fecha = next((c for c in headers_excel if "FECHA" in c.upper()), None)
 
             if col_fecha:
-                # Normalizamos fechas (convirtiendo posibles números de serie 46219 a formato DD/MM/YYYY)
                 df_val[col_fecha] = df_val[col_fecha].apply(convertir_fecha_excel)
-                
-                # Parseo robusto para ordenar cronológicamente
                 df_val['fecha_dt'] = pd.to_datetime(df_val[col_fecha], format='%d/%m/%Y', errors='coerce')
                 
-                # Ordenamos de más reciente a más antiguo
                 df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
                 indices_ord = df_val_sorted.index
                 df_form_sorted = df_form.loc[indices_ord]
@@ -199,29 +224,35 @@ def ordenar_base_datos_global():
                 df_val_sorted = df_val
                 df_form_sorted = df_form
 
-            # CONSTRUCCIÓN COMPLETA SIN BORRAR CAMPOS
+            # 4. ARMADO DE DICCIONARIOS CON LAS LLAVES EXACTAS DE SUPABASE
             registros = []
             for _, row in df_val_sorted.iterrows():
-                rec = {c: sanitizar(row[c]) for c in headers_exactos if c != ""}
+                rec = {}
+                for h_ex in headers_excel:
+                    if h_ex != "":
+                        db_key = col_map.get(h_ex, h_ex)
+                        rec[db_key] = sanitizar(row[h_ex])
                 registros.append(rec)
 
             if registros:
-                st.info("📤 Limpiando e inyectando datos completos a Supabase...")
-                supabase.table("TABLA_1").delete().neq(col_id, "_VACIO_IMPOSIBLE_999_").execute()
+                st.info("📤 Limpiando e inyectando datos mapeados a Supabase...")
+                # Determinar la clave ID real para el delete
+                col_id_db = col_map.get(col_id, col_id)
+                supabase.table("TABLA_1").delete().neq(col_id_db, "_VACIO_IMPOSIBLE_999_").execute()
                 
                 tamano_bloque = 250
                 for i in range(0, len(registros), tamano_bloque):
                     supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
 
-            # ACTUALIZACIÓN EN GOOGLE DRIVE
-            valores_drive = df_form_sorted[headers_exactos].fillna("").values.tolist()
+            # 5. ACTUALIZACIÓN EN GOOGLE DRIVE (MANTIENE SUS FÓRMULAS)
+            valores_drive = df_form_sorted[headers_excel].fillna("").values.tolist()
             if valores_drive:
                 rango_inicio = f"A{idx_header + 2}"
                 rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
                 ws_t1.batch_clear([rango_borrar])
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-            st.success(f"🎉 ¡MUNICIÓN RESTAURADA! Se sincronizaron {len(registros)} registros con fechas reales y cero campos NULL.")
+            st.success(f"🎉 ¡MUNICIÓN RESTAURADA AL 100%! {len(registros)} registros sincronizados con fechas reales y datos completos.")
             st.balloons()
 
     except Exception as e:
