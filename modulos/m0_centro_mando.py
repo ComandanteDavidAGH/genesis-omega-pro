@@ -88,7 +88,7 @@ def procesar_radar_logistico_cached(df_sabana):
     return df_alertas_render, "EXITO", inventario_agrupado[col_pista].nunique(), inventario_agrupado['PRODUCTO_RADAR'].nunique(), len(df_alertas_render), df_alertas
 
 # =================================================================
-# 🗄️ ORDENAMIENTO GLOBAL Y SINCRONIZACIÓN DINÁMICA POR CEBO
+# 🗄️ ORDENAMIENTO GLOBAL (DE MÁS ANTIGUO A MÁS NUEVO)
 # =================================================================
 
 def ordenar_base_datos_global():
@@ -103,9 +103,9 @@ def ordenar_base_datos_global():
             st.error("🚨 Sin conexión a Google Drive.")
             return
 
-        with st.spinner("🔄 Extrayendo ADN de la base de datos y descargando Drive..."):
+        with st.spinner("🔄 Extrayendo esquema de Supabase y descargando Drive..."):
             
-            # 1. 🎯 EXTRAER LAS CLAVES REALES DIRECTAS DE SUPABASE (TÁCTICA CEBO)
+            # 1. Capturar claves reales
             supabase.table("TABLA_1").insert({"Nº ORDEN": "_SONDA_"}).execute()
             res_sonda = supabase.table("TABLA_1").select("*").eq("Nº ORDEN", "_SONDA_").execute()
             
@@ -116,7 +116,7 @@ def ordenar_base_datos_global():
             db_cols = list(res_sonda.data[0].keys())
             supabase.table("TABLA_1").delete().eq("Nº ORDEN", "_SONDA_").execute()
 
-            # 2. LECTURA DE DATOS EN GOOGLE DRIVE
+            # 2. Descargar Drive
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
@@ -131,7 +131,6 @@ def ordenar_base_datos_global():
                     
             num_cols = len(db_cols)
             
-            # Normalizar filas
             datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
             datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
             
@@ -145,19 +144,18 @@ def ordenar_base_datos_global():
             df_form = df_form[filas_validas].copy()
             df_val = df_val[filas_validas].copy()
 
-            # Identificar columna de Fecha por posición (Columna 8 / índice 7) o nombre
             col_fecha = db_cols[7] if len(db_cols) > 7 else next((c for c in db_cols if "FECHA" in c.upper()), db_cols[0])
 
             df_val[col_fecha] = df_val[col_fecha].apply(normalizar_fecha_texto)
             df_val['fecha_dt'] = pd.to_datetime(df_val[col_fecha], format='%d/%m/%Y', errors='coerce')
             
-            # Ordenar de más reciente a más antiguo
-            df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=False, na_position='last')
+            # 🎯 CORRECCIÓN CLAVE: ascending=True (Fechas antiguas primero, nuevas al final)
+            df_val_sorted = df_val.sort_values(by='fecha_dt', ascending=True, na_position='last')
             indices_ord = df_val_sorted.index
             df_form_sorted = df_form.loc[indices_ord]
             df_val_sorted = df_val_sorted.drop(columns=['fecha_dt'])
 
-            # Construir payload perfecto con las claves que Supabase exige
+            # Construir registros
             registros = []
             for _, row in df_val_sorted.iterrows():
                 rec = {}
@@ -175,14 +173,14 @@ def ordenar_base_datos_global():
                 registros.append(rec)
 
             if registros:
-                st.info("📤 Vaciando tabla anterior e inyectando data purificada...")
+                st.info("📤 Actualizando Supabase cronológicamente...")
                 supabase.table("TABLA_1").delete().neq(col_id, "_VACIO_IMPOSIBLE_999_").execute()
                 
                 tamano_bloque = 250
                 for i in range(0, len(registros), tamano_bloque):
                     supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
 
-            # Escribir formulas ordenadas de vuelta en Drive
+            # Reescribir Drive (Antiguas arriba -> Nuevas abajo)
             valores_drive = df_form_sorted[db_cols].fillna("").values.tolist()
             if valores_drive:
                 rango_inicio = f"A{idx_header + 2}"
@@ -190,7 +188,7 @@ def ordenar_base_datos_global():
                 ws_t1.batch_clear([rango_borrar])
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-            st.success(f"🎉 ¡MUNICIÓN RESTAURADA! Se cargaron {len(registros)} registros formateados sin un solo NULL.")
+            st.success(f"🎉 ¡MUNICIÓN RESTAURADA Y ORDENADA! {len(registros)} registros alineados desde la fecha más antigua hasta la más reciente.")
             st.balloons()
 
     except Exception as e:
@@ -222,7 +220,7 @@ def renderizar():
     
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("### 🗄️ Panel de Mantenimiento de Base de Datos")
-    st.info("💡 **Alineación Cronológica Definitiva:** Sincroniza Google Drive y Supabase mapeando dinámicamente el esquema extraído.")
+    st.info("💡 **Alineación Cronológica (Antiguas ➔ Nuevas):** Sincroniza Google Drive y Supabase ordenando desde la fecha más antigua en la parte superior hasta la más reciente abajo.")
     
     if st.button("🧹 ORDENAR DRIVE Y SUPABASE POR FECHA", type="primary", use_container_width=True):
         ordenar_base_datos_global()
