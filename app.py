@@ -57,7 +57,7 @@ if 'modulo_actual' not in st.session_state: st.session_state['modulo_actual'] = 
 
 HAS_MATPLOTLIB = True
 
-# --- 🛡️ MARCA DE AGUA ---
+# --- 🛡️ MARCA DE AGUA FANTASMA ---
 try:
     if os.path.exists("escudo.png"):
         with open("escudo.png", "rb") as image_file:
@@ -73,7 +73,7 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 ESTILOS VISUALES DORADO / AZUL MARINO ---
+# --- 🎯 BLINDAJE VISUAL: CASILLAS DE INPUT CON BORDES SÓLIDOS Y RESALTADOS ---
 st.markdown("""
 <style>
 [data-testid="stToolbarActions"] { display: none !important; }
@@ -87,21 +87,50 @@ footer { display: none !important; visibility: hidden !important; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-[data-testid="stSidebar"] input { color: #0d1b2a !important; background-color: #ffffff !important; }
-[data-testid="stSidebar"] button svg { fill: #0d1b2a !important; color: #0d1b2a !important; }
-
-[data-testid="stSidebar"] button[kind="secondary"] {
-    background-color: #ef4444 !important; border: 2px solid #b91c1c !important; border-radius: 8px !important; color: #ffffff !important;
+/* 🌟 CORRECCIÓN MAESTRA PARA CASILLAS DE ENTRADA (LOGIN Y FORMULARIOS) */
+div[data-baseweb="input"], 
+div[data-testid="stTextInput"] div[data-baseweb="input"],
+div[data-testid="stNumberInput"] div[data-baseweb="input"],
+div[data-testid="stSelectbox"] [data-baseweb="select"] {
+    border: 2px solid #0d1b2a !important;
+    background-color: #ffffff !important;
+    border-radius: 8px !important;
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.05) !important;
 }
-[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #dc2626 !important; }
 
-button[kind="primary"] { background-color: #0d1b2a !important; color: #d4af37 !important; border: 2px solid #d4af37 !important; }
+/* Efecto al hacer clic / enfocar la casilla (Resaltado Dorado) */
+div[data-baseweb="input"]:focus-within {
+    border-color: #d4af37 !important;
+    box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.6) !important;
+}
 
-.titulo-principal { color: #0d1b2a; font-family: 'Arial Black', sans-serif; border-bottom: 3px solid #d4af37; text-transform: uppercase; position: relative; z-index: 1;}
+/* Texto interno en negro extra negrita */
+div[data-baseweb="input"] input {
+    color: #0d1b2a !important;
+    font-weight: 900 !important;
+    font-size: 15px !important;
+    background-color: #ffffff !important;
+}
+
+button[kind="primary"] { 
+    background-color: #0d1b2a !important; 
+    color: #d4af37 !important; 
+    border: 2px solid #d4af37 !important; 
+    font-weight: bold !important;
+}
+
+.titulo-principal { 
+    color: #0d1b2a; 
+    font-family: 'Arial Black', sans-serif; 
+    border-bottom: 3px solid #d4af37; 
+    text-transform: uppercase; 
+    position: relative; 
+    z-index: 1;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# --- 🔐 CONTROL DE ACCESO ---
+# --- 3. 🔐 CONTROL DE ACCESO CENTRALIZADO (LOGIN) ---
 if not st.session_state['autenticado']:
     st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
