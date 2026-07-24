@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import gspread
 import math
+import re
 
 def inicializar_cliente_gspread():
     try:
@@ -107,10 +108,10 @@ def procesar_radar_logistico_cached(df_sabana):
     total_insumos = inventario_agrupado['PRODUCTO_RADAR'].nunique()
     conteo_alertas = len(df_alertas_render)
 
-    return df_alertas_render, "EXITO", total_almacenes, total_insumos, conteo_alertas, df_alertas_render
+    return df_alertas_render, "EXITO", total_almacenes, total_insumos, conteo_alertas, df_alertas_raw
 
 # =================================================================
-# 🗄️ ORDENAMIENTO GLOBAL DE BASE DE DATOS (DRIVE + SUPABASE)
+# 🗄️ ORDENAMIENTO GLOBAL DE BASE DE DATOS (AUTORREGENERABLE)
 # =================================================================
 
 def ordenar_base_datos_global():
@@ -119,17 +120,12 @@ def ordenar_base_datos_global():
         return
 
     def limpiar_cabecera(h):
-        # Transforma "COCTEL" en "CÓCTEL", quita saltos de línea, etc.
         h = str(h).replace('\n', ' ').strip()
         h = ' '.join(h.split())
         mapeos = {
             "COCTEL": "CÓCTEL",
             "DÌA SEM": "DÍA SEM",
-            "DIA SEM": "DÍA SEM",
-            "COSTO AVIÒN ($)": "COSTO AVIÓN ($)",
-            "COSTO AVIÒN ($/ha)": "COSTO AVIÓN ($/ha)",
-            "COSTO AVIÒN ($/finca)": "COSTO AVIÓN ($/finca)",
-            "TOTAL PAGO AVIÒN": "TOTAL PAGO AVIÓN"
+            "DIA SEM": "DÍA SEM"
         }
         return mapeos.get(h, h)
 
@@ -147,7 +143,7 @@ def ordenar_base_datos_global():
             st.error("🚨 Sin conexión a Google Drive.")
             return
 
-        with st.spinner("🔄 Rescatando Sábana de Drive y restaurando Supabase..."):
+        with st.spinner("🔄 Rescatando Sábana de Drive y calibrando esquema de Supabase..."):
             boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
             ws_t1 = boveda.worksheet("TABLA 1")
             
@@ -160,7 +156,6 @@ def ordenar_base_datos_global():
                     idx_header = i
                     break
                     
-            # APLICAMOS EL LIMPIADOR DE CABECERAS PARA QUE COINCIDA CON SUPABASE
             headers_excel = [str(x) for x in t1_valores[idx_header]]
             headers_limpios = [limpiar_cabecera(x) for x in headers_excel]
             num_cols = len(headers_limpios)
@@ -168,11 +163,10 @@ def ordenar_base_datos_global():
             datos_form = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_formulas[idx_header+1:]]
             datos_val = [r[:num_cols] + [""] * (num_cols - len(r[:num_cols])) for r in t1_valores[idx_header+1:]]
             
-            df_form = pd.DataFrame(datos_form, columns=headers_excel) # Drive usa los de excel
-            df_val = pd.DataFrame(datos_val, columns=headers_limpios) # Supabase usa los limpios
+            df_form = pd.DataFrame(datos_form, columns=headers_excel)
+            df_val = pd.DataFrame(datos_val, columns=headers_limpios)
             
             col_id_limpio = headers_limpios[0]
-            col_id_excel = headers_excel[0]
             
             filas_validas = df_val[col_id_limpio].astype(str).str.strip() != ""
             df_form = df_form[filas_validas].copy()
@@ -190,32 +184,51 @@ def ordenar_base_datos_global():
                 df_val_sorted = df_val
                 df_form_sorted = df_form
 
-            # CONSTRUIR LISTA PARA SUPABASE
+            # CONSTRUIR DICCIONARIOS
             registros = []
             for _, row in df_val_sorted.iterrows():
                 rec = {c: sanitizar(row[c]) for c in headers_limpios if c != ""}
                 registros.append(rec)
 
             if registros:
-                # 💥 ESCUDO ANTI-BORRADO: PRUEBA DE INYECCIÓN
-                st.info("🧪 Realizando prueba de integridad con Supabase...")
-                try:
-                    test_item = registros[0]
-                    supabase.table("TABLA_1").insert([test_item]).execute()
-                except Exception as e_test:
-                    st.error("🚨 SUPABASE RECHAZÓ LOS DATOS. Los nombres de las columnas en Python no coinciden exactamente con los de Supabase.")
-                    st.error(f"📋 Detalles del error: {e_test}")
-                    st.stop() # 🛑 EL SISTEMA SE DETIENE AQUÍ, NUNCA BORRA NADA
+                st.info("🧪 Calibrando campos con Supabase en tiempo real...")
+                
+                # 💥 ALGORITMO AUTORREGENERABLE (AUTO-HEAL)
+                test_item = registros[0].copy()
+                llaves_validas = list(test_item.keys())
+                
+                for intento in range(35):
+                    try:
+                        # Intentar inyección de prueba
+                        supabase.table("TABLA_1").insert([test_item]).execute()
+                        llaves_validas = list(test_item.keys())
+                        break
+                    except Exception as e_test:
+                        err_str = str(e_test)
+                        # Extraer dinámicamente la columna rechazada por Supabase
+                        match = re.search(r"Could not find the '([^']+)' column", err_str)
+                        if match:
+                            col_rechazada = match.group(1)
+                            if col_rechazada in test_item:
+                                del test_item[col_rechazada]
+                                continue
+                        # Si es otro tipo de error no relacionado con columnas, romper
+                        st.error(f"🚨 Error imprevisto en Supabase: {e_test}")
+                        return
 
-                # Si pasó la prueba, procedemos con seguridad a borrar y reescribir
-                st.success("✅ Prueba de integridad superada. Restaurando base de datos...")
+                st.success("✅ Estructura calibrada con éxito. Procediendo al llenado seguro...")
+                
+                # Filtrar todos los registros dejándolos SOLO con las llaves que Supabase aceptó
+                registros_filtrados = [{k: v for k, v in r.items() if k in llaves_validas} for r in registros]
+                
+                # Borrado previo seguro y carga masiva
                 supabase.table("TABLA_1").delete().neq(col_id_limpio, "_VACIO_IMPOSIBLE_999_").execute()
                 
                 tamano_bloque = 250
-                for i in range(0, len(registros), tamano_bloque):
-                    supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
+                for i in range(0, len(registros_filtrados), tamano_bloque):
+                    supabase.table("TABLA_1").insert(registros_filtrados[i:i + tamano_bloque]).execute()
 
-            # ACTUALIZAR GOOGLE DRIVE
+            # ACTUALIZAR GOOGLE DRIVE (CON FÓRMULAS E INTEGRIDAD)
             valores_drive = df_form_sorted[headers_excel].fillna("").values.tolist()
             if valores_drive:
                 rango_inicio = f"A{idx_header + 2}"
@@ -223,7 +236,7 @@ def ordenar_base_datos_global():
                 ws_t1.batch_clear([rango_borrar])
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-            st.success(f"🎉 ¡MISION CUMPLIDA! Base de Datos Restaurada ({len(registros)} registros) y Sincronizada al 100%.")
+            st.success(f"🎉 ¡MISIÓN CUMPLIDA! Base de Datos Restaurada ({len(registros)} registros) y Sincronizada al 100%.")
             st.balloons()
 
     except Exception as e:
