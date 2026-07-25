@@ -166,7 +166,7 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 15px !important;
     }
 
-    /* 📦 RECUADRO ENVOLVENTE (EXPANDER) */
+    /* 📦 RECUADRO ENVOLVENTE (EXPANDER "1. DATOS DE LA ORDEN") */
     div[data-testid="stExpander"], details[data-testid="stExpander"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 10px !important;
@@ -186,57 +186,58 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* =========================================================
-       💥 TÁCTICA DE CRISTAL: TODOS LOS SELECTORES Y FECHAS
-       ========================================================= */
-
-    /* 1. BORDE AZUL AL CONTENEDOR PADRE EXTERNO */
-    div[data-testid="stSelectbox"] > div:first-child,
-    div[data-testid="stDateInput"] > div:first-child,
-    div[data-testid="stTextInput"] > div:first-child,
-    div[data-testid="stNumberInput"] > div:first-child {
+    /* ==================================================================
+       🎯 1. CAMPOS DE TEXTO, NÚMEROS Y FECHA (Text/Date/Number Inputs)
+       ================================================================== */
+    div[data-testid="stTextInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="input"],
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
-        padding: 0 !important;
-        overflow: hidden !important;
     }
 
-    /* 2. HACER TRANSPARENTES TODAS LAS CAPAS GRISES INTERNAS */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-    div[data-testid="stSelectbox"] div[role="combobox"],
-    div[data-testid="stDateInput"] div[data-baseweb="input"],
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div,
-    div[data-testid="stTextInput"] div[data-baseweb="input"],
-    div[data-testid="stNumberInput"] div[data-baseweb="input"] {
+    /* Fondo transparente interno para que se vea la caja blanca */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stDateInput"] input {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
         background-color: transparent !important;
         border: none !important;
-        box-shadow: none !important;
-        outline: none !important;
     }
 
-    /* 3. FORZAR COLOR DE TEXTO EXTRA NEGRITA */
-    div[data-testid="stSelectbox"] *, 
-    div[data-testid="stDateInput"] input,
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input {
+    /* ==================================================================
+       💥 2. EL BAZUCAZO AL SELECTBOX (Listas Desplegables de BaseWeb)
+       ================================================================== */
+    /* Ataque exacto al "hijo" principal del selector */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:nth-child(1) {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        box-shadow: none !important;
+    }
+
+    /* Color de los textos dentro del selector (Piloto, Matrícula) */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
         color: #0d1b2a !important;
         font-weight: 900 !important;
         font-size: 15px !important;
     }
 
-    /* 4. EFECTO ILUMINADO DORADO AL SELECCIONAR */
-    div[data-testid="stSelectbox"] > div:first-child:focus-within,
-    div[data-testid="stDateInput"] > div:first-child:focus-within,
-    div[data-testid="stTextInput"] > div:first-child:focus-within,
-    div[data-testid="stNumberInput"] > div:first-child:focus-within {
+    /* ==================================================================
+       🌟 3. EFECTO DORADO AL HACER CLIC EN CUALQUIER CAMPO
+       ================================================================== */
+    div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:nth-child(1):focus-within {
         border: 2px solid #d4af37 !important;
         box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
     }
 
-    /* ========================================================= */
+    /* ================================================================== */
 
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
