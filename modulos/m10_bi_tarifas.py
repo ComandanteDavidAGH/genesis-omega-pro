@@ -313,6 +313,14 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.header("", anchor="inicio_modulo")
     
+    # 🎣 CEBO VISUAL #1: BANNER ROJO FOSFORESCENTE ARRIBA DEL TODO
+    st.markdown("""
+    <div style='background-color: #ff0000; color: #ffffff; border: 5px solid #ffff00; padding: 15px; text-align: center; border-radius: 10px; margin-bottom: 20px;'>
+        <h1 style='color: #ffff00; margin: 0; font-size: 28px; font-family: "Arial Black";'>🚨 TRAMPA DE CEBO DETECTADA EN MÓDULO 10 🚨</h1>
+        <h3 style='color: #ffffff; margin: 5px 0 0 0;'>⚠️ SI VES ESTE BANNER ROJO Y AMARILLO, EL CÓDIGO SÍ SE ACTUALIZÓ EN RAM ⚠️</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -535,7 +543,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             </div>
             """, unsafe_allow_html=True)
 
-            # 🔎 CONTROL INTERACTIVO DE LUPA TÁCTICA
             c_lupa1, _ = st.columns([2, 1])
             lupa_rango = c_lupa1.checkbox("🔎 Activar Lupa Táctica (Enfoque y Amplificación 10x de Franja Avión)", key="lupa_rango_key")
 
@@ -547,11 +554,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
                 ])
                 
-                # 🔍 APLICACIÓN DE RANGO SI LA LUPA ESTÁ ACTIVADA
                 range_y_val = [0, vuelo_b * 1.35] if (lupa_rango and vuelo_b > 0) else None
                 
+                # 🎣 CEBO VISUAL #2: FONDO AMARILLO NEÓN EN LA GRÁFICA
                 fig_unit.update_layout(
-                    barmode='stack', plot_bgcolor='rgba(0,0,0,0)', 
+                    barmode='stack', 
+                    plot_bgcolor='#ffff00', # AMARILLO FOSFORESCENTE
+                    paper_bgcolor='#ffffaa',
                     yaxis_title="Valor COP / Ha", hovermode="closest", 
                     margin=dict(t=50, b=50, l=50, r=50),
                     yaxis=dict(range=range_y_val)
@@ -693,7 +702,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             </div>
             """, unsafe_allow_html=True)
 
-            # 🔎 CONTROL INTERACTIVO DE LUPA TÁCTICA PARA AÑOS COMPARATIVOS
             c_lupa2, _ = st.columns([2, 1])
             lupa_comp = c_lupa2.checkbox("🔎 Activar Lupa Táctica (Enfoque y Amplificación 10x de Franja Avión)", key="lupa_comp_key")
 
@@ -705,12 +713,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
                 ])
                 
-                # 🔍 APLICACIÓN DE RANGO SI LA LUPA ESTÁ ACTIVADA
                 max_vuelo_comp = max(vuelo_a, vuelo_b)
                 range_y_comp = [0, max_vuelo_comp * 1.35] if (lupa_comp and max_vuelo_comp > 0) else None
 
+                # 🎣 CEBO VISUAL #2: FONDO AMARILLO NEÓN EN LA GRÁFICA COMPARATIVA
                 fig_unit.update_layout(
-                    barmode='stack', plot_bgcolor='rgba(0,0,0,0)', 
+                    barmode='stack', 
+                    plot_bgcolor='#ffff00', # AMARILLO FOSFORESCENTE
+                    paper_bgcolor='#ffffaa',
                     yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", 
                     margin=dict(t=60, b=60, l=60, r=60),
                     yaxis=dict(range=range_y_comp)
