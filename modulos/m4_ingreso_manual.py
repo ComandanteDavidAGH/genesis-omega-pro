@@ -184,6 +184,7 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
+    /* 🎯 1. CAMPOS DE TEXTO, NÚMEROS Y FECHA */
     div[data-testid="stTextInput"] div[data-baseweb="input"],
     div[data-testid="stNumberInput"] div[data-baseweb="input"],
     div[data-testid="stDateInput"] div[data-baseweb="input"] {
@@ -203,32 +204,42 @@ def ejecutar(extraer_numero, purificar_lote):
     }
 
     /* ==================================================================
-       🎣 CEBO VISUAL DE DIAGNÓSTICO (RADAR MULTICOLOR DE CAPAS)
+       💥 IMPACTO DIRECTO AL CONTENEDOR INTERMEDIO DEL SELECTBOX
        ================================================================== */
-    
-    /* CAPA 1 (Contenedor Estándar Streamlit): ROJO NEÓN */
-    div[data-testid="stSelectbox"] {
-        border: 4px solid #ff0000 !important;
-        padding: 4px !important;
-        background-color: #ffe6e6 !important;
+    /* Target al contenedor donde residía el fondo gris */
+    div[data-testid="stSelectbox"] > div {
+        background-color: #ffffff !important;
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+        overflow: hidden !important;
     }
 
-    /* CAPA 2 (Caja BaseWeb Directa): VERDE NEÓN */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-        border: 4px solid #00ff00 !important;
-        background-color: #e6ffe6 !important;
+    /* Transparentar todas las sub-capas internas */
+    div[data-testid="stSelectbox"] > div * {
+        background-color: transparent !important;
     }
 
-    /* CAPA 3 (Hijo Directo de Select): AZUL CÍAN */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        border: 4px solid #00ffff !important;
-        background-color: #e6ffff !important;
+    /* Estilo del texto e íconos internos */
+    div[data-testid="stSelectbox"] span,
+    div[data-testid="stSelectbox"] p {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
     }
 
-    /* CAPA 4 (Role Combobox / Caja Interactiva): MAGENTA */
-    div[data-testid="stSelectbox"] [role="combobox"] {
-        border: 4px solid #ff00ff !important;
-        background-color: #ffe6ff !important;
+    div[data-testid="stSelectbox"] svg {
+        fill: #0d1b2a !important;
+        color: #0d1b2a !important;
+    }
+
+    /* 🌟 ENFOQUE DORADO AL HACER CLIC */
+    div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stSelectbox"] > div:focus-within {
+        border-color: #d4af37 !important;
+        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
     }
 
     /* ================================================================== */
