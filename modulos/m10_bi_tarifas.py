@@ -388,11 +388,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =================================================================
         # 2. CANDADO ANTI-DUPLICIDAD SOBRE VALORES CONVERTIDOS
         # =================================================================
-        # Al estar FECHA_DT, FINCA_MAESTRA, AREA_NUM y COCTEL_CLEAN 100% homogenizados,
-        # la eliminación de duplicados entre HISTORICO y ACTUAL es INFALIBLE.
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
-            keep='last' # Conserva el registro de TABLA 1 si existe en ambas fuentes
+            keep='last'
         ).reset_index(drop=True)
 
         def sanear_valores_sap(val):
@@ -517,20 +515,36 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
+            
+            # =====================================================================
+            # 🎯 VISTA RANGO PERSONALIZADO: CON GLOBO TÁCTICO PARA EL AVIÓN
+            # =====================================================================
             with tab_unit:
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')),
                     go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", hovermode="closest")
-                st.plotly_chart(fig_unit, use_container_width=True)
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50))
+                
+                # 🌟 GLOBO TÁCTICO CON VALOR EXPLICITO DE AVIÓN
+                if vuelo_b > 0:
+                    fig_unit.add_annotation(
+                        x='Periodo Seleccionado', y=vuelo_b / 2 if vuelo_b > 0 else 0,
+                        text=f"<b>✈️ Avión: {fmt_cop_vertical(vuelo_b)}</b>",
+                        showarrow=True, arrowhead=2, arrowcolor="#2F75B5",
+                        ax=90, ay=-30,
+                        bgcolor="#0d1b2a", bordercolor="#d4af37", borderwidth=2,
+                        font=dict(color="#ffffff", size=13, family="Arial Black")
+                    )
+                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+
             with tab_glob:
                 fig_glob = go.Figure(data=[
                     go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')),
                     go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", hovermode="closest")
-                st.plotly_chart(fig_glob, use_container_width=True)
+                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
             col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
@@ -626,13 +640,31 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
+            # =====================================================================
+            # 🎯 VISTA COMPARATIVA AÑOS: CON GLOBOS TÁCTICOS TIPO LUPA
+            # =====================================================================
             with tab_unit:
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')), 
                     go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest")
-                st.plotly_chart(fig_unit, use_container_width=True)
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=50))
+                
+                # 🌟 APLICACIÓN DE GLOBOS LUPA FLOTANTES PARA EL COSTO DE AVIÓN EN AMBOS AÑOS
+                vals_av = [vuelo_a, vuelo_b]
+                for idx, cat in enumerate(categorias):
+                    v_av = vals_av[idx]
+                    if v_av > 0:
+                        fig_unit.add_annotation(
+                            x=cat, y=v_av / 2 if v_av > 0 else 0,
+                            text=f"<b>✈️ Avión: {fmt_cop_vertical(v_av)}</b>",
+                            showarrow=True, arrowhead=2, arrowsize=1, arrowcolor="#2F75B5",
+                            ax=-90 if idx == 0 else 90, ay=-35,
+                            bgcolor="#0d1b2a", bordercolor="#d4af37", borderwidth=2,
+                            font=dict(color="#ffffff", size=13, family="Arial Black")
+                        )
+
+                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             with tab_glob:
                 insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
@@ -643,7 +675,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
-                st.plotly_chart(fig_glob, use_container_width=True)
+                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
             
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
             col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
