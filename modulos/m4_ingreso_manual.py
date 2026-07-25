@@ -166,7 +166,7 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 15px !important;
     }
 
-    /* 📦 RECUADRO ENVOLVENTE (EXPANDER "1. DATOS DE LA ORDEN") */
+    /* 📦 RECUADRO ENVOLVENTE (EXPANDER) */
     div[data-testid="stExpander"], details[data-testid="stExpander"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 10px !important;
@@ -186,13 +186,14 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* 🎯 BLINDAJE DE CAMPOS DE TEXTO Y NÚMEROS */
+    /* 🎯 CAMPOS DE TEXTO Y NÚMEROS (st.text_input & st.number_input) */
     div[data-testid="stTextInput"] > div, 
-    div[data-testid="stNumberInput"] > div {
+    div[data-testid="stNumberInput"] > div,
+    div[data-testid="stTextInput"] [data-baseweb="input"],
+    div[data-testid="stNumberInput"] [data-baseweb="input"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        overflow: hidden !important;
     }
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input {
@@ -202,31 +203,33 @@ def ejecutar(extraer_numero, purificar_lote):
         background-color: #ffffff !important;
     }
 
-    /* 💥 IMPACTO DIRECTO EN SELECTBOX (PILOTO Y HK): ATACANDO LA CAPA HIJA INTERNA */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    /* 💥 CONTRAATAQUE A BASEWEB SELECTBOX (PILOTO Y HK) */
+    /* Target directo a la caja gris interna (ControlContainer) */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stSelectbox"] div[role="combobox"],
+    div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
-        background-color: #ffffff !important;
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-    }
-    
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-        background-color: #ffffff !important;
-        border-radius: 8px !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
 
-    div[data-testid="stSelectbox"] * {
+    /* Texto interno de las opciones del Selectbox */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
+    div[data-testid="stSelectbox"] span,
+    div[data-testid="stSelectbox"] p {
         color: #0d1b2a !important;
         font-weight: 900 !important;
+        font-size: 15px !important;
     }
 
-    /* 📅 BLINDAJE DE DATE INPUT (FECHA DE OPERACIÓN) */
-    div[data-testid="stDateInput"] > div,
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {
+    /* 📅 FECHA DE OPERACIÓN (st.date_input) */
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stDateInput"] > div {
+        background-color: #ffffff !important;
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
-        background-color: #ffffff !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
     div[data-testid="stDateInput"] input {
         color: #0d1b2a !important;
@@ -234,7 +237,7 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 15px !important;
         background-color: #ffffff !important;
     }
-    
+
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 12px; border-radius: 6px; color: white;
