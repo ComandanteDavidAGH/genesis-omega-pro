@@ -416,10 +416,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             return v
             
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
+        
+        # 🎯 EXTRACCIÓN DIRECTA Y LIMPIA DE TARIFA AVIÓN + DOMINICAL (SIN DIVISIONES DAÑINAS)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
-
-        super_base_bi['AVION_NUM'] = super_base_bi.apply(lambda r: r['AVION_NUM']/r['AREA_NUM'] if (r['AVION_NUM'] > 90000 and r['AREA_NUM'] > 0) else r['AVION_NUM'], axis=1)
-        super_base_bi['AVION_NUM'] = super_base_bi['AVION_NUM'].apply(lambda v: 55000 if v > 90000 else v)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
         costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
@@ -533,6 +532,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
+            
+            # CÁLCULOS EXACTOS DE TARIFAS Y MEZCLAS
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
             costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
             vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
@@ -548,16 +549,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
-                # 🌟 SIN TEXTO INTERNO EN AVIÓN (textposition='none')
                 fig_unit = go.Figure(data=[
                     go.Bar(
                         name='Costo Avión / Ha', 
                         x=['Periodo Seleccionado'], 
                         y=[vuelo_b], 
                         marker_color='#2F75B5', 
-                        textposition='none', 
-                        hovertemplate="<b>✈️ COSTO AVIÓN / HA</b><br>Valor Exacto: <b>%{customdata} COP</b><extra></extra>",
-                        customdata=[fmt_cop_vertical(vuelo_b)]
+                        text=[fmt_cop_vertical(vuelo_b)], 
+                        textposition='auto', 
+                        textfont=dict(color='white', size=13, family='Arial Black')
                     ),
                     go.Bar(
                         name='Costo Insumos / Ha', 
@@ -566,8 +566,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         marker_color='#27AE60', 
                         text=[fmt_cop_vertical(insumos_b)], 
                         textposition='inside', 
-                        textfont=dict(color='white', size=14, family='Arial Black'),
-                        hovertemplate="<b>🧪 COSTO INSUMOS / HA</b><br>Valor Exacto: <b>%{text} COP</b><extra></extra>"
+                        textfont=dict(color='white', size=14, family='Arial Black')
                     )
                 ])
                 
@@ -577,20 +576,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     paper_bgcolor='#ffffff',
                     yaxis_title="Valor COP / Ha", 
                     hovermode="closest",
-                    margin=dict(t=40, b=40, l=40, r=40)
+                    margin=dict(t=30, b=30, l=40, r=40)
                 )
                 
-                # 🌟 BADGE EJECUTIVO ELEGANTE
-                if vuelo_b > 0:
-                    fig_unit.add_annotation(
-                        x='Periodo Seleccionado', y=vuelo_b / 2,
-                        text=f" ✈️ Avión: <b>{fmt_cop_vertical(vuelo_b)}</b> ",
-                        showarrow=True, arrowhead=1, arrowsize=1, arrowwidth=1.2, arrowcolor="#2F75B5",
-                        ax=110, ay=-25,
-                        bgcolor="#0d1b2a", bordercolor="#d4af37", borderwidth=1.5, borderpad=6,
-                        font=dict(color="#ffffff", size=12, family="Arial Black")
-                    )
-                fig_unit.update_traces(cliponaxis=False)
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             with tab_glob:
@@ -700,6 +688,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
             costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
             costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
+            
             vuelo_a = vuelo_tot_a / area_a if area_a > 0 else 0
             vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
             insumos_a = max(0, (costo_tot_a / area_a if area_a > 0 else 0) - vuelo_a)
@@ -716,16 +705,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
-                # 🌟 SIN TEXTO INTERNO EN AVIÓN PARA EVITAR CIFRAS BORROSAS
                 fig_unit = go.Figure(data=[
                     go.Bar(
                         name='Costo Avión / Ha', 
                         x=categorias, 
                         y=[vuelo_a, vuelo_b], 
                         marker_color='#2F75B5', 
-                        textposition='none', 
-                        hovertemplate="<b>✈️ COSTO AVIÓN / HA</b><br>%{x}<br>Valor Exacto: <b>%{customdata} COP</b><extra></extra>",
-                        customdata=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)]
+                        text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], 
+                        textposition='auto', 
+                        textfont=dict(color='white', size=12, family='Arial Black')
                     ), 
                     go.Bar(
                         name='Costo Insumos / Ha', 
@@ -734,8 +722,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         marker_color='#27AE60', 
                         text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], 
                         textposition='inside', 
-                        textfont=dict(color='white', size=13, family='Arial Black'),
-                        hovertemplate="<b>🧪 COSTO INSUMOS / HA</b><br>%{x}<br>Valor Exacto: <b>%{text} COP</b><extra></extra>"
+                        textfont=dict(color='white', size=13, family='Arial Black')
                     )
                 ])
 
@@ -747,21 +734,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     margin=dict(t=40, b=40, l=40, r=40)
                 )
                 
-                # 🌟 BADGES EJECUTIVOS FLOTANTES (100% IMPECABLES Y LEGIBLES)
-                vals_av = [vuelo_a, vuelo_b]
-                for idx, cat in enumerate(categorias):
-                    v_av = vals_av[idx]
-                    if v_av > 0:
-                        fig_unit.add_annotation(
-                            x=cat, y=v_av / 2,
-                            text=f" ✈️ Avión: <b>{fmt_cop_vertical(v_av)}</b> ",
-                            showarrow=True, arrowhead=1, arrowsize=1, arrowwidth=1.2, arrowcolor="#2F75B5",
-                            ax=-100 if idx == 0 else 100, ay=-25,
-                            bgcolor="#0d1b2a", bordercolor="#d4af37", borderwidth=1.5, borderpad=6,
-                            font=dict(color="#ffffff", size=12, family="Arial Black")
-                        )
-
-                fig_unit.update_traces(cliponaxis=False)
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             with tab_glob:
