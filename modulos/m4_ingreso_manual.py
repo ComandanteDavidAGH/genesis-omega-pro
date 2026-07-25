@@ -138,7 +138,6 @@ def obtener_vuelos_virtuales_cached():
         
         pendientes = []
         if not df_t1_temp.empty and len(df_t1_temp.columns) > 19:
-            # ⚡ Vectorización pura de búsqueda VIRT-
             mask_virt = df_t1_temp.iloc[:, 0].astype(str).str.upper().str.startswith("VIRT-")
             df_virt = df_t1_temp[mask_virt]
             
@@ -166,18 +165,74 @@ def obtener_vuelos_virtuales_cached():
 def ejecutar(extraer_numero, purificar_lote):
     st.markdown("""
     <style>
-    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] {
+    /* 🌟 ETIQUETAS DE TEXTO EXTRA NEGRITA */
+    label[data-testid="stWidgetLabel"] p, label[data-testid="stWidgetLabel"] {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
+    }
+
+    /* 📦 RECUADRO DE EXPANDER (DATOS DE LA ORDEN) */
+    div[data-testid="stExpander"] {
         border: 2px solid #0d1b2a !important;
-        border-radius: 6px !important;
+        border-radius: 10px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
+        overflow: hidden !important;
+    }
+    div[data-testid="stExpander"] summary {
+        background-color: #f4f6f9 !important;
+        border-bottom: 2px solid #0d1b2a !important;
+        font-weight: 900 !important;
+        color: #0d1b2a !important;
+    }
+
+    /* 🎯 BLINDAJE DE CAMPOS DE TEXTO Y NÚMEROS */
+    div[data-testid="stTextInput"] > div, 
+    div[data-testid="stNumberInput"] > div {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        overflow: hidden !important;
+    }
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
+        background-color: #ffffff !important;
+    }
+
+    /* ✈️ BLINDAJE DE SELECTBOX (PILOTO Y HK) */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
         background-color: #ffffff !important;
         color: #0d1b2a !important;
-        font-weight: 800 !important;
+        font-weight: 900 !important;
+    }
+    div[data-testid="stSelectbox"] * {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+    }
+
+    /* 📅 BLINDAJE DE DATE INPUT (FECHA DE OPERACIÓN) */
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+    }
+    div[data-testid="stDateInput"] input {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
         font-size: 15px !important;
+        background-color: #ffffff !important;
     }
     
     .hud-legalizador {
@@ -186,7 +241,7 @@ def ejecutar(extraer_numero, purificar_lote):
         box-shadow: 0px 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; text-align: center;
     }
     .hud-leg-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; }
-    .hud-leg-value { font-size: 20px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    .hud-leg-value { font-size: 20px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -287,10 +342,6 @@ def ejecutar(extraer_numero, purificar_lote):
                             coctel_final = str(f.get('coctel', '')).strip()
                             if (not coctel_final or coctel_final in ["None", ""]) and not df_apoyo_m4.empty:
                                 try:
-                                    col_f_ap = 1 if len(df_apoyo_m4.columns) > 1 else 'col_1'
-                                    col_d_ap = 5 if len(df_apoyo_m4.columns) > 5 else 'col_5'
-                                    col_c_ap = 8 if len(df_apoyo_m4.columns) > 8 else 'col_8'
-                                    
                                     mask = (df_apoyo_m4.iloc[:, 1].astype(str).str.upper().str.strip() == n_finca) & (df_apoyo_m4.iloc[:, 5].astype(str).str.strip() == f_str)
                                     match_ap = df_apoyo_m4[mask]
                                     if not match_ap.empty:
