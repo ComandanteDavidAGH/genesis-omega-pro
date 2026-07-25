@@ -514,28 +514,46 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except: return str(val)
                 
             st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
+            
+            # 💳 BANDEJA EJECUTIVA DE RESUMEN (100% VISIBLE EN PRESENTACIONES)
+            st.markdown(f"""
+            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 25px; border-radius: 8px; margin-bottom: 20px; color: white; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                <div style="text-align: center;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 13px; text-transform: uppercase;">🛩️ COSTO AVIÓN / HA</span><br>
+                    <span style="font-size: 24px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_b)}</span>
+                </div>
+                <div style="border-left: 2px solid #1e293b; height: 40px;"></div>
+                <div style="text-align: center;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 13px; text-transform: uppercase;">🧪 COSTO INSUMOS / HA</span><br>
+                    <span style="font-size: 24px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_b)}</span>
+                </div>
+                <div style="border-left: 2px solid #1e293b; height: 40px;"></div>
+                <div style="text-align: center;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 13px; text-transform: uppercase;">💰 COSTO TOTAL / HA</span><br>
+                    <span style="font-size: 24px; font-weight: 900; color: #22c55e;">{fmt_cop_vertical(vuelo_b + insumos_b)}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
-            # =====================================================================
-            # 🎯 VISTA RANGO PERSONALIZADO: CON GLOBO TÁCTICO PARA EL AVIÓN
-            # =====================================================================
             with tab_unit:
                 fig_unit = go.Figure(data=[
-                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')),
-                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
+                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='outside', textfont=dict(color='#0d1b2a', size=14, family='Arial Black')),
+                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50))
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=50, l=50, r=50))
                 
-                # 🌟 GLOBO TÁCTICO CON VALOR EXPLICITO DE AVIÓN
                 if vuelo_b > 0:
                     fig_unit.add_annotation(
-                        x='Periodo Seleccionado', y=vuelo_b / 2 if vuelo_b > 0 else 0,
-                        text=f"<b>✈️ Avión: {fmt_cop_vertical(vuelo_b)}</b>",
-                        showarrow=True, arrowhead=2, arrowcolor="#2F75B5",
-                        ax=90, ay=-30,
-                        bgcolor="#0d1b2a", bordercolor="#d4af37", borderwidth=2,
-                        font=dict(color="#ffffff", size=13, family="Arial Black")
+                        x='Periodo Seleccionado', y=vuelo_b,
+                        text=f"<b>✈️ AVIÓN: {fmt_cop_vertical(vuelo_b)}</b>",
+                        showarrow=True, arrowhead=2, arrowcolor="#0d1b2a",
+                        ax=110, ay=-30,
+                        bgcolor="#ffffff", bordercolor="#0d1b2a", borderwidth=2,
+                        font=dict(color="#0d1b2a", size=13, family="Arial Black")
                     )
+                fig_unit.update_traces(cliponaxis=False)
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             with tab_glob:
@@ -638,32 +656,56 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except: return str(val)
             
             st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
+            
+            # 💳 BANDEJA EJECUTIVA DE RESUMEN (IMPOSIBLE DE PERDER EN PRESENTACIÓN)
+            diff_vuelo = vuelo_b - vuelo_a
+            diff_insumos = insumos_b - insumos_a
+            st.markdown(f"""
+            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; color: white; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2); flex-wrap: wrap;">
+                <div style="text-align: center; padding: 5px 10px;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🛩️ COSTO AVIÓN ({año_base})</span><br>
+                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_a)}</span>
+                </div>
+                <div style="text-align: center; padding: 5px 10px;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🛩️ COSTO AVIÓN ({año_comp})</span><br>
+                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_b)}</span>
+                </div>
+                <div style="border-left: 2px solid #1e293b; height: 35px;"></div>
+                <div style="text-align: center; padding: 5px 10px;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🧪 INSUMOS ({año_base})</span><br>
+                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_a)}</span>
+                </div>
+                <div style="text-align: center; padding: 5px 10px;">
+                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🧪 INSUMOS ({año_comp})</span><br>
+                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_b)}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
-            # =====================================================================
-            # 🎯 VISTA COMPARATIVA AÑOS: CON GLOBOS TÁCTICOS TIPO LUPA
-            # =====================================================================
             with tab_unit:
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')), 
                     go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=50))
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=60, b=60, l=60, r=60))
                 
-                # 🌟 APLICACIÓN DE GLOBOS LUPA FLOTANTES PARA EL COSTO DE AVIÓN EN AMBOS AÑOS
+                # 🌟 GLOBOS APUNTADORES CON DESPLAZAMIENTO Y MÁRGENES EXTENDIDOS
                 vals_av = [vuelo_a, vuelo_b]
                 for idx, cat in enumerate(categorias):
                     v_av = vals_av[idx]
                     if v_av > 0:
                         fig_unit.add_annotation(
-                            x=cat, y=v_av / 2 if v_av > 0 else 0,
-                            text=f"<b>✈️ Avión: {fmt_cop_vertical(v_av)}</b>",
-                            showarrow=True, arrowhead=2, arrowsize=1, arrowcolor="#2F75B5",
-                            ax=-90 if idx == 0 else 90, ay=-35,
-                            bgcolor="#0d1b2a", bordercolor="#d4af37", borderwidth=2,
-                            font=dict(color="#ffffff", size=13, family="Arial Black")
+                            x=cat, y=v_av,
+                            text=f"<b>✈️ AVIÓN:<br>{fmt_cop_vertical(v_av)}</b>",
+                            showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#0d1b2a",
+                            ax=-100 if idx == 0 else 100, ay=-40,
+                            bgcolor="#ffffff", bordercolor="#0d1b2a", borderwidth=2,
+                            font=dict(color="#0d1b2a", size=13, family="Arial Black")
                         )
 
+                fig_unit.update_traces(cliponaxis=False)
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             with tab_glob:
