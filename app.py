@@ -73,7 +73,7 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 BLINDAJE VISUAL: ESTILIZADO DE CONTENEDOR PADRE ---
+# --- 🎯 ARTILLERÍA VISUAL Y ESTILIZACIÓN DE BOTONES ---
 st.markdown("""
 <style>
 /* Ocultar elementos nativos innecesarios */
@@ -83,6 +83,36 @@ st.markdown("""
 .stApp { background-color: #f4f6f9; }
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
+
+/* 🚨 BLINDAJE VISUAL DEL BOTÓN CERRAR SESIÓN (ROJO TÁCTICO) */
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #dc2626 !important;
+    border: 2px solid #991b1b !important;
+    border-radius: 8px !important;
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.3) !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background-color: #b91c1c !important;
+    border-color: #7f1d1d !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"] p,
+[data-testid="stSidebar"] button[kind="secondary"] span {
+    color: #ffffff !important;
+    font-weight: 900 !important;
+}
+
+/* 🌟 BOTÓN PRINCIPAL EN SIDEBAR (SINCRONIZAR NUBE) */
+[data-testid="stSidebar"] button[kind="primary"] { 
+    background-color: #0d1b2a !important; 
+    color: #d4af37 !important; 
+    border: 2px solid #d4af37 !important; 
+    font-weight: bold !important; 
+}
+[data-testid="stSidebar"] button[kind="primary"] p {
+    color: #d4af37 !important;
+}
 
 /* 1. Limpiar el <input> interno para evitar recortar los bordes */
 div[data-testid="stTextInput"] input,
@@ -116,13 +146,6 @@ div[data-testid="stNumberInput"] > div:focus-within,
 div[data-baseweb="select"]:focus-within {
     border: 2px solid #d4af37 !important;
     box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
-}
-
-button[kind="primary"] { 
-    background-color: #0d1b2a !important; 
-    color: #d4af37 !important; 
-    border: 2px solid #d4af37 !important; 
-    font-weight: bold !important; 
 }
 
 .titulo-principal { 
@@ -254,7 +277,7 @@ with st.sidebar:
         st.session_state['usuario_nombre'] = None
         st.session_state['modulo_actual'] = "🏠 Centro de Mando"
 
-    st.button("🔒 CERRAR SESIÓN", use_container_width=True, on_click=apagar_motores)
+    st.button("🔒 CERRAR SESIÓN", type="secondary", use_container_width=True, on_click=apagar_motores)
 
 # --- RUTEO ---
 menu = st.session_state.get('modulo_actual', "🏠 Centro de Mando")
