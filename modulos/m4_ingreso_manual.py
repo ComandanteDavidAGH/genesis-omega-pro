@@ -172,12 +172,12 @@ def ejecutar(extraer_numero, purificar_lote):
         border-radius: 10px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
+        overflow: hidden !important;
     }
     summary[data-testid="stExpanderSummary"], summary {
         background-color: #0d1b2a !important;
         color: #d4af37 !important;
         font-weight: 900 !important;
-        border-radius: 8px 8px 0 0 !important;
         padding: 10px !important;
     }
     summary[data-testid="stExpanderSummary"] *, summary * {
@@ -186,57 +186,57 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* 🎯 CAMPOS DE TEXTO Y NÚMEROS (st.text_input & st.number_input) */
-    div[data-testid="stTextInput"] > div, 
-    div[data-testid="stNumberInput"] > div,
-    div[data-testid="stTextInput"] [data-baseweb="input"],
-    div[data-testid="stNumberInput"] [data-baseweb="input"] {
+    /* =========================================================
+       💥 TÁCTICA DE CRISTAL: TODOS LOS SELECTORES Y FECHAS
+       ========================================================= */
+
+    /* 1. BORDE AZUL AL CONTENEDOR PADRE EXTERNO */
+    div[data-testid="stSelectbox"] > div:first-child,
+    div[data-testid="stDateInput"] > div:first-child,
+    div[data-testid="stTextInput"] > div:first-child,
+    div[data-testid="stNumberInput"] > div:first-child {
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+        padding: 0 !important;
+        overflow: hidden !important;
     }
+
+    /* 2. HACER TRANSPARENTES TODAS LAS CAPAS GRISES INTERNAS */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stSelectbox"] div[role="combobox"],
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div,
+    div[data-testid="stTextInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    /* 3. FORZAR COLOR DE TEXTO EXTRA NEGRITA */
+    div[data-testid="stSelectbox"] *, 
+    div[data-testid="stDateInput"] input,
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input {
         color: #0d1b2a !important;
         font-weight: 900 !important;
         font-size: 15px !important;
-        background-color: #ffffff !important;
     }
 
-    /* 💥 CONTRAATAQUE A BASEWEB SELECTBOX (PILOTO Y HK) */
-    /* Target directo a la caja gris interna (ControlContainer) */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-    div[data-testid="stSelectbox"] div[role="combobox"],
-    div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-        border: 2px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+    /* 4. EFECTO ILUMINADO DORADO AL SELECCIONAR */
+    div[data-testid="stSelectbox"] > div:first-child:focus-within,
+    div[data-testid="stDateInput"] > div:first-child:focus-within,
+    div[data-testid="stTextInput"] > div:first-child:focus-within,
+    div[data-testid="stNumberInput"] > div:first-child:focus-within {
+        border: 2px solid #d4af37 !important;
+        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
     }
 
-    /* Texto interno de las opciones del Selectbox */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
-    div[data-testid="stSelectbox"] span,
-    div[data-testid="stSelectbox"] p {
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-        font-size: 15px !important;
-    }
-
-    /* 📅 FECHA DE OPERACIÓN (st.date_input) */
-    div[data-testid="stDateInput"] div[data-baseweb="input"],
-    div[data-testid="stDateInput"] > div {
-        background-color: #ffffff !important;
-        border: 2px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
-    }
-    div[data-testid="stDateInput"] input {
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-        font-size: 15px !important;
-        background-color: #ffffff !important;
-    }
+    /* ========================================================= */
 
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
