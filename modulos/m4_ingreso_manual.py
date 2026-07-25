@@ -186,39 +186,55 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* 💥 PENETRACIÓN PROFUNDA: FORZAR BORDES Y FONDO BLANCO EN TODOS LOS SELECTBOX, DATEINPUT Y INPUTS */
-    div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stSelectbox"] [data-baseweb="select"] *,
-    div[data-testid="stDateInput"] [data-baseweb="input"],
-    div[data-testid="stDateInput"] [data-baseweb="input"] *,
-    div[data-testid="stTextInput"] [data-baseweb="input"],
-    div[data-testid="stTextInput"] [data-baseweb="input"] *,
-    div[data-testid="stNumberInput"] [data-baseweb="input"],
-    div[data-testid="stNumberInput"] [data-baseweb="input"] * {
+    /* 🎯 BLINDAJE DE CAMPOS DE TEXTO Y NÚMEROS */
+    div[data-testid="stTextInput"] > div, 
+    div[data-testid="stNumberInput"] > div {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        overflow: hidden !important;
+    }
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
+        background-color: #ffffff !important;
+    }
+
+    /* 💥 IMPACTO DIRECTO EN SELECTBOX (PILOTO Y HK): ATACANDO LA CAPA HIJA INTERNA */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
         background-color: #ffffff !important;
         color: #0d1b2a !important;
         font-weight: 900 !important;
     }
+    
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+        background-color: #ffffff !important;
+        border-radius: 8px !important;
+    }
 
-    /* Asignación de Borde Oscuro Estructurado */
-    div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stDateInput"] [data-baseweb="input"],
-    div[data-testid="stTextInput"] [data-baseweb="input"],
-    div[data-testid="stNumberInput"] [data-baseweb="input"] {
+    div[data-testid="stSelectbox"] * {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+    }
+
+    /* 📅 BLINDAJE DE DATE INPUT (FECHA DE OPERACIÓN) */
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+        background-color: #ffffff !important;
     }
-
-    /* Enfoque dorado al hacer clic */
-    div[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within,
-    div[data-testid="stDateInput"] [data-baseweb="input"]:focus-within,
-    div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
-    div[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within {
-        border: 2px solid #d4af37 !important;
-        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
+    div[data-testid="stDateInput"] input {
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
+        background-color: #ffffff !important;
     }
-
+    
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 12px; border-radius: 6px; color: white;
