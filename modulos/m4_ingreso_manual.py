@@ -166,7 +166,7 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 15px !important;
     }
 
-    /* 📦 RECUADRO ENVOLVENTE (EXPANDER "1. DATOS DE LA ORDEN") */
+    /* 📦 RECUADRO ENVOLVENTE (EXPANDER) */
     div[data-testid="stExpander"], details[data-testid="stExpander"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 10px !important;
@@ -186,9 +186,7 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* ==================================================================
-       🎯 1. CAMPOS DE TEXTO, NÚMEROS Y FECHA (Text/Date/Number Inputs)
-       ================================================================== */
+    /* 🎯 1. BORDES PARA TEXTO, NÚMEROS Y FECHA */
     div[data-testid="stTextInput"] div[data-baseweb="input"],
     div[data-testid="stNumberInput"] div[data-baseweb="input"],
     div[data-testid="stDateInput"] div[data-baseweb="input"] {
@@ -197,7 +195,6 @@ def ejecutar(extraer_numero, purificar_lote):
         background-color: #ffffff !important;
     }
 
-    /* Fondo transparente interno para que se vea la caja blanca */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input,
     div[data-testid="stDateInput"] input {
@@ -209,35 +206,40 @@ def ejecutar(extraer_numero, purificar_lote):
     }
 
     /* ==================================================================
-       💥 2. EL BAZUCAZO AL SELECTBOX (Listas Desplegables de BaseWeb)
+       💥 IMPACTO DIRECTO AL SELECTBOX (PILOTO Y MATRÍCULA HK)
        ================================================================== */
-    /* Ataque exacto al "hijo" principal del selector */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:nth-child(1) {
+    /* Target a la caja real de BaseWeb */
+    div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
-        box-shadow: none !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
 
-    /* Color de los textos dentro del selector (Piloto, Matrícula) */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+    /* Blanquear todas las subcapas internas que generaban el fondo gris */
+    div[data-testid="stSelectbox"] [data-baseweb="select"] * {
+        background-color: transparent !important;
         color: #0d1b2a !important;
         font-weight: 900 !important;
         font-size: 15px !important;
     }
 
-    /* ==================================================================
-       🌟 3. EFECTO DORADO AL HACER CLIC EN CUALQUIER CAMPO
-       ================================================================== */
+    /* Color de la flecha del desplegable */
+    div[data-testid="stSelectbox"] svg {
+        fill: #0d1b2a !important;
+        color: #0d1b2a !important;
+    }
+
+    /* 🌟 ENFOQUE DORADO AL SELECCIONAR CUALQUIER CAMPO */
     div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
     div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within,
     div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:nth-child(1):focus-within {
+    div[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within {
         border: 2px solid #d4af37 !important;
         box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
     }
-
-    /* ================================================================== */
 
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
