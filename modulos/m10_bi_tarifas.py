@@ -515,25 +515,29 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
             
-            # 💳 BANDEJA EJECUTIVA DE RESUMEN (100% VISIBLE EN PRESENTACIONES)
+            # 💳 BANDEJA EJECUTIVA DE RESUMEN
             st.markdown(f"""
-            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 25px; border-radius: 8px; margin-bottom: 20px; color: white; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 25px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
                 <div style="text-align: center;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 13px; text-transform: uppercase;">🛩️ COSTO AVIÓN / HA</span><br>
+                    <span style="color: #d4af37; font-weight: bold; font-size: 12px; text-transform: uppercase;">🛩️ COSTO AVIÓN / HA</span><br>
                     <span style="font-size: 24px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_b)}</span>
                 </div>
                 <div style="border-left: 2px solid #1e293b; height: 40px;"></div>
                 <div style="text-align: center;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 13px; text-transform: uppercase;">🧪 COSTO INSUMOS / HA</span><br>
+                    <span style="color: #d4af37; font-weight: bold; font-size: 12px; text-transform: uppercase;">🧪 COSTO INSUMOS / HA</span><br>
                     <span style="font-size: 24px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_b)}</span>
                 </div>
                 <div style="border-left: 2px solid #1e293b; height: 40px;"></div>
                 <div style="text-align: center;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 13px; text-transform: uppercase;">💰 COSTO TOTAL / HA</span><br>
+                    <span style="color: #d4af37; font-weight: bold; font-size: 12px; text-transform: uppercase;">💰 COSTO TOTAL / HA</span><br>
                     <span style="font-size: 24px; font-weight: 900; color: #22c55e;">{fmt_cop_vertical(vuelo_b + insumos_b)}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+            # 🔎 CONTROL INTERACTIVO DE LUPA TÁCTICA
+            c_lupa1, _ = st.columns([2, 1])
+            lupa_rango = c_lupa1.checkbox("🔎 Activar Lupa Táctica (Enfoque y Amplificación 10x de Franja Avión)", key="lupa_rango_key")
 
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
@@ -542,7 +546,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='outside', textfont=dict(color='#0d1b2a', size=14, family='Arial Black')),
                     go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=50, l=50, r=50))
+                
+                # 🔍 APLICACIÓN DE RANGO SI LA LUPA ESTÁ ACTIVADA
+                range_y_val = [0, vuelo_b * 1.35] if (lupa_rango and vuelo_b > 0) else None
+                
+                fig_unit.update_layout(
+                    barmode='stack', plot_bgcolor='rgba(0,0,0,0)', 
+                    yaxis_title="Valor COP / Ha", hovermode="closest", 
+                    margin=dict(t=50, b=50, l=50, r=50),
+                    yaxis=dict(range=range_y_val)
+                )
                 
                 if vuelo_b > 0:
                     fig_unit.add_annotation(
@@ -657,11 +670,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
             
-            # 💳 BANDEJA EJECUTIVA DE RESUMEN (IMPOSIBLE DE PERDER EN PRESENTACIÓN)
-            diff_vuelo = vuelo_b - vuelo_a
-            diff_insumos = insumos_b - insumos_a
+            # 💳 BANDEJA EJECUTIVA DE RESUMEN
             st.markdown(f"""
-            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; color: white; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2); flex-wrap: wrap;">
+            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2); flex-wrap: wrap;">
                 <div style="text-align: center; padding: 5px 10px;">
                     <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🛩️ COSTO AVIÓN ({año_base})</span><br>
                     <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_a)}</span>
@@ -682,6 +693,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             </div>
             """, unsafe_allow_html=True)
 
+            # 🔎 CONTROL INTERACTIVO DE LUPA TÁCTICA PARA AÑOS COMPARATIVOS
+            c_lupa2, _ = st.columns([2, 1])
+            lupa_comp = c_lupa2.checkbox("🔎 Activar Lupa Táctica (Enfoque y Amplificación 10x de Franja Avión)", key="lupa_comp_key")
+
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
@@ -689,9 +704,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')), 
                     go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=60, b=60, l=60, r=60))
                 
-                # 🌟 GLOBOS APUNTADORES CON DESPLAZAMIENTO Y MÁRGENES EXTENDIDOS
+                # 🔍 APLICACIÓN DE RANGO SI LA LUPA ESTÁ ACTIVADA
+                max_vuelo_comp = max(vuelo_a, vuelo_b)
+                range_y_comp = [0, max_vuelo_comp * 1.35] if (lupa_comp and max_vuelo_comp > 0) else None
+
+                fig_unit.update_layout(
+                    barmode='stack', plot_bgcolor='rgba(0,0,0,0)', 
+                    yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", 
+                    margin=dict(t=60, b=60, l=60, r=60),
+                    yaxis=dict(range=range_y_comp)
+                )
+                
                 vals_av = [vuelo_a, vuelo_b]
                 for idx, cat in enumerate(categorias):
                     v_av = vals_av[idx]
