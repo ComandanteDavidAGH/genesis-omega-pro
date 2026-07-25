@@ -73,7 +73,7 @@ try:
         """, unsafe_allow_html=True)
 except Exception: pass
 
-# --- 🎯 ARTILLERÍA VISUAL Y ESTILIZACIÓN DE BOTONES ---
+# --- 🎯 ESTILIZACIÓN UNIFICADA TOTAL (AZUL MARINO & DORADO) ---
 st.markdown("""
 <style>
 /* Ocultar elementos nativos innecesarios */
@@ -84,37 +84,44 @@ st.markdown("""
 [data-testid="stSidebar"] { background-color: #0d1b2a !important; border-right: 4px solid #d4af37; }
 [data-testid="stSidebar"] * { color: white !important; font-weight: bold; }
 
-/* 🚨 BLINDAJE VISUAL DEL BOTÓN CERRAR SESIÓN (ROJO TÁCTICO) */
-[data-testid="stSidebar"] button[kind="secondary"] {
-    background-color: #dc2626 !important;
-    border: 2px solid #991b1b !important;
-    border-radius: 8px !important;
-    color: #ffffff !important;
-    font-weight: 900 !important;
-    box-shadow: 0px 4px 6px rgba(0,0,0,0.3) !important;
-}
-[data-testid="stSidebar"] button[kind="secondary"]:hover {
-    background-color: #b91c1c !important;
-    border-color: #7f1d1d !important;
-}
-[data-testid="stSidebar"] button[kind="secondary"] p,
-[data-testid="stSidebar"] button[kind="secondary"] span {
-    color: #ffffff !important;
-    font-weight: 900 !important;
-}
-
-/* 🌟 BOTÓN PRINCIPAL EN SIDEBAR (SINCRONIZAR NUBE) */
-[data-testid="stSidebar"] button[kind="primary"] { 
-    background-color: #0d1b2a !important; 
-    color: #d4af37 !important; 
-    border: 2px solid #d4af37 !important; 
-    font-weight: bold !important; 
-}
-[data-testid="stSidebar"] button[kind="primary"] p {
+/* =====================================================================
+   🥇 REGLA MAESTRA UNIFICADA PARA TODOS LOS BOTONES DEL SISTEMA
+   ===================================================================== */
+div.stButton > button,
+button[kind="primary"],
+button[kind="secondary"],
+[data-testid="stSidebar"] button {
+    background-color: #0d1b2a !important;
     color: #d4af37 !important;
+    border: 2px solid #d4af37 !important;
+    border-radius: 8px !important;
+    font-weight: 900 !important;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.15) !important;
+    transition: all 0.3s ease !important;
 }
 
-/* 1. Limpiar el <input> interno para evitar recortar los bordes */
+/* Efecto al pasar el mouse por encima (Hover) */
+div.stButton > button:hover,
+button[kind="primary"]:hover,
+button[kind="secondary"]:hover,
+[data-testid="stSidebar"] button:hover {
+    background-color: #15283c !important;
+    border-color: #f1c40f !important;
+    box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.6) !important;
+}
+
+/* Asegurar que el texto interno de los botones siempre sea Dorado */
+div.stButton > button *,
+button[kind="primary"] *,
+button[kind="secondary"] *,
+[data-testid="stSidebar"] button * {
+    color: #d4af37 !important;
+    font-weight: 900 !important;
+}
+
+/* =====================================================================
+   📦 CASILLAS DE ENTRADA (INPUTS Y SELECTS)
+   ===================================================================== */
 div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input,
 input[type="text"], 
@@ -129,7 +136,6 @@ input[type="password"] {
     padding: 8px 12px !important;
 }
 
-/* 2. Asignar el Borde Azul Marino directamente al CONTENEDOR PADRE */
 div[data-testid="stTextInput"] > div,
 div[data-testid="stNumberInput"] > div,
 div[data-baseweb="select"] {
@@ -140,7 +146,6 @@ div[data-baseweb="select"] {
     overflow: hidden !important;
 }
 
-/* 3. Efecto Dorado de Resaltado al seleccionar la casilla */
 div[data-testid="stTextInput"] > div:focus-within,
 div[data-testid="stNumberInput"] > div:focus-within,
 div[data-baseweb="select"]:focus-within {
@@ -235,7 +240,7 @@ with st.sidebar:
     st.markdown("---")
     
     if st.session_state.get('usuario_rol') == "ADMIN":
-        if st.button("🔄 Sincronizar Nube", type="primary", use_container_width=True):
+        if st.button("🔄 Sincronizar Nube", use_container_width=True):
             st.cache_data.clear()
             st.cache_resource.clear()
             m0.ordenar_base_datos_global()
@@ -277,9 +282,9 @@ with st.sidebar:
         st.session_state['usuario_nombre'] = None
         st.session_state['modulo_actual'] = "🏠 Centro de Mando"
 
-    st.button("🔒 CERRAR SESIÓN", type="secondary", use_container_width=True, on_click=apagar_motores)
+    st.button("🔒 CERRAR SESIÓN", use_container_width=True, on_click=apagar_motores)
 
-# --- RUTEO ---
+# --- RUTEO DE MÓDULOS ---
 menu = st.session_state.get('modulo_actual', "🏠 Centro de Mando")
 
 if menu == "🏠 Centro de Mando": m0.renderizar()
