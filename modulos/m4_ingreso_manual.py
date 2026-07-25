@@ -40,10 +40,6 @@ def a_numero_limpio(val):
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def cargar_memoria_referencias_m4_cached():
-    """
-    Carga acelerada de Pilotos, HKs, Fincas y Cócteles desde Supabase.
-    Fallback automático a Google Sheets.
-    """
     memoria = {
         'col_os': [],
         'lista_pilotos': [],
@@ -54,7 +50,6 @@ def cargar_memoria_referencias_m4_cached():
         'lista_cocteles_oficiales': []
     }
     
-    # 1. Intentar recuperación instantánea desde Supabase
     if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
         try:
             sb = st.session_state['supabase']
@@ -93,7 +88,6 @@ def cargar_memoria_referencias_m4_cached():
         except Exception:
             pass
 
-    # 2. Fallback a Google Sheets solo si falla Supabase
     gc = inicializar_cliente_gspread()
     if gc is not None:
         try:
@@ -123,9 +117,6 @@ def cargar_memoria_referencias_m4_cached():
 
 @st.cache_data(show_spinner=False, ttl=600)
 def obtener_vuelos_virtuales_cached():
-    """
-    Escaneo vectorizado instantáneo de órdenes virtuales (VIRT-)
-    """
     gc = inicializar_cliente_gspread()
     if not gc:
         return [], [], []
@@ -175,66 +166,59 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 15px !important;
     }
 
-    /* 📦 RECUADRO DE EXPANDER (DATOS DE LA ORDEN) */
-    div[data-testid="stExpander"] {
+    /* 📦 RECUADRO ENVOLVENTE (EXPANDER "1. DATOS DE LA ORDEN") */
+    div[data-testid="stExpander"], details[data-testid="stExpander"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 10px !important;
         background-color: #ffffff !important;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
-        overflow: hidden !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
     }
-    div[data-testid="stExpander"] summary {
-        background-color: #f4f6f9 !important;
-        border-bottom: 2px solid #0d1b2a !important;
+    summary[data-testid="stExpanderSummary"], summary {
+        background-color: #0d1b2a !important;
+        color: #d4af37 !important;
         font-weight: 900 !important;
-        color: #0d1b2a !important;
+        border-radius: 8px 8px 0 0 !important;
+        padding: 10px !important;
+    }
+    summary[data-testid="stExpanderSummary"] *, summary * {
+        color: #d4af37 !important;
+        font-weight: 900 !important;
+        font-size: 16px !important;
     }
 
-    /* 🎯 BLINDAJE DE CAMPOS DE TEXTO Y NÚMEROS */
-    div[data-testid="stTextInput"] > div, 
-    div[data-testid="stNumberInput"] > div {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 8px !important;
+    /* 💥 PENETRACIÓN PROFUNDA: FORZAR BORDES Y FONDO BLANCO EN TODOS LOS SELECTBOX, DATEINPUT Y INPUTS */
+    div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stSelectbox"] [data-baseweb="select"] *,
+    div[data-testid="stDateInput"] [data-baseweb="input"],
+    div[data-testid="stDateInput"] [data-baseweb="input"] *,
+    div[data-testid="stTextInput"] [data-baseweb="input"],
+    div[data-testid="stTextInput"] [data-baseweb="input"] *,
+    div[data-testid="stNumberInput"] [data-baseweb="input"],
+    div[data-testid="stNumberInput"] [data-baseweb="input"] * {
         background-color: #ffffff !important;
-        overflow: hidden !important;
-    }
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input {
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-        font-size: 15px !important;
-        background-color: #ffffff !important;
-    }
-
-    /* ✈️ BLINDAJE DE SELECTBOX (PILOTO Y HK) */
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        background-color: #ffffff !important;
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-    }
-    div[data-testid="stSelectbox"] * {
         color: #0d1b2a !important;
         font-weight: 900 !important;
     }
 
-    /* 📅 BLINDAJE DE DATE INPUT (FECHA DE OPERACIÓN) */
-    div[data-testid="stDateInput"] > div,
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {
+    /* Asignación de Borde Oscuro Estructurado */
+    div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stDateInput"] [data-baseweb="input"],
+    div[data-testid="stTextInput"] [data-baseweb="input"],
+    div[data-testid="stNumberInput"] [data-baseweb="input"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
-        background-color: #ffffff !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
-    div[data-testid="stDateInput"] input {
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-        font-size: 15px !important;
-        background-color: #ffffff !important;
+
+    /* Enfoque dorado al hacer clic */
+    div[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within,
+    div[data-testid="stDateInput"] [data-baseweb="input"]:focus-within,
+    div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+    div[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within {
+        border: 2px solid #d4af37 !important;
+        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
     }
-    
+
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 12px; border-radius: 6px; color: white;
@@ -265,7 +249,6 @@ def ejecutar(extraer_numero, purificar_lote):
                 st.cache_data.clear()
                 st.rerun()
 
-        # ⚡ Carga ultrarrápida en memoria RAM
         mem = cargar_memoria_referencias_m4_cached()
         lista_os_existentes = [str(os).strip() for os in mem.get('col_os', []) if str(os).strip() != ""]
         df_t2_m4 = mem.get('df_t2', pd.DataFrame())
@@ -364,7 +347,6 @@ def ejecutar(extraer_numero, purificar_lote):
                             row[17], row[18], row[19], row[20], row[21], row[23] = mod_av, round(costo_f,2), p_tar, p_rec, round(costo_f,2), pist_av
                             row[28], row[32], row[33] = round(ha_n * p_tar,2), t_prod, "GENESIS_INTELIGENTE"
                             
-                            # Fórmulas Inteligentes de Excel
                             row[24] = '=INDIRECT("Y"&(ROW()-1))'  
                             row[25] = '=INDIRECT("Z"&(ROW()-1))'  
                             row[26] = '=IFERROR(INDIRECT("S"&ROW())/INDIRECT("F"&ROW()), 0)' 
@@ -400,7 +382,7 @@ def ejecutar(extraer_numero, purificar_lote):
                     st.error(f"Error en inyección: {e}")
 
     # -----------------------------------------------------------------
-    # PESTAÑA 2: ESCÁNER DE LEGALIZACIÓN MULTI-OS (MEMORIA RAM ACELERADA)
+    # PESTAÑA 2: ESCÁNER DE LEGALIZACIÓN MULTI-OS
     # -----------------------------------------------------------------
     with tab2:
         st.markdown("### 🔄 Escáner de Legalización Multi-OS")
@@ -411,7 +393,6 @@ def ejecutar(extraer_numero, purificar_lote):
                 st.cache_data.clear()
                 st.rerun()
 
-        # ⚡ Recuperación en Caché Ultrarrápida
         pendientes, datos_t1, datos_apoyo = obtener_vuelos_virtuales_cached()
 
         if not pendientes:
@@ -435,7 +416,6 @@ def ejecutar(extraer_numero, purificar_lote):
             st.markdown("---")
             st.subheader(f"🛠️ Desglose de OS para: {vuelo_sel['finca']}")
             
-            # Extraer lista de fincas de forma eficiente
             lista_todas_fincas = sorted(list(set([r[1] for r in datos_apoyo[3:] if len(r) > 1 and r[1]])))
 
             if 'legalizador_rows' not in st.session_state:
