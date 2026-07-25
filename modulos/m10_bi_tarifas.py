@@ -355,21 +355,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     }
     
     div[data-testid="stPlotlyChart"]:hover {
-        transform: scale(1.05) !important; /* Agranda todo el gráfico de forma elegante */
+        transform: scale(1.05) !important;
         z-index: 9999 !important;
         position: relative !important;
         box-shadow: 0px 16px 32px rgba(0, 0, 0, 0.2) !important;
-        border: 2px solid #d4af37 !important; /* Borde dorado de enfoque */
+        border: 2px solid #d4af37 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    c_tit, c_sync = st.columns([4, 1])
+    c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:#d4af37;'>(v4.0 - TARIFAS REALES GLOBAL)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
-        if st.button("🔄 Sincronizar Nube", use_container_width=True):
+        if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -388,7 +388,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
         # =================================================================
-        # 1. PASO QUIRÚRGICO DE NORMALIZACIÓN DE TIPOS DE DATOS
+        # 1. NORMALIZACIÓN QUIRÚRGICA SIN BUGS
         # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
@@ -403,7 +403,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
         # =================================================================
-        # 2. CANDADO ANTI-DUPLICIDAD SOBRE VALORES CONVERTIDOS
+        # 2. CANDADO ANTI-DUPLICIDAD
         # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
@@ -417,7 +417,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
         
-        # 🎯 EXTRACCIÓN DIRECTA Y LIMPIA DE TARIFA AVIÓN + DOMINICAL (SIN DIVISIONES DAÑINAS)
+        # 🎯 EXTRACCIÓN PURA DE TARIFA UNIFICADA (SIN DIVIDIR NUNCA ENTRE HECTÁREAS)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
@@ -533,7 +533,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("<hr>", unsafe_allow_html=True)
             
-            # CÁLCULOS EXACTOS DE TARIFAS Y MEZCLAS
+            # CÁLCULOS PONDERADOS EXACTOS
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
             costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
             vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
@@ -684,6 +684,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
+            
+            # CÁLCULOS PONDERADOS DIRECTOS Y FIABLES
             vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
             costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
