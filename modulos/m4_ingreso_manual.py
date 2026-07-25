@@ -159,14 +159,12 @@ def ejecutar(extraer_numero, purificar_lote):
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 🌟 ETIQUETAS DE TEXTO EXTRA NEGRITA */
     label[data-testid="stWidgetLabel"] p, label[data-testid="stWidgetLabel"] {
         color: #0d1b2a !important;
         font-weight: 900 !important;
         font-size: 15px !important;
     }
 
-    /* 📦 RECUADRO ENVOLVENTE (EXPANDER) */
     div[data-testid="stExpander"], details[data-testid="stExpander"] {
         border: 2px solid #0d1b2a !important;
         border-radius: 10px !important;
@@ -186,7 +184,6 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* 🎯 1. BORDES PARA TEXTO, NÚMEROS Y FECHA */
     div[data-testid="stTextInput"] div[data-baseweb="input"],
     div[data-testid="stNumberInput"] div[data-baseweb="input"],
     div[data-testid="stDateInput"] div[data-baseweb="input"] {
@@ -206,40 +203,35 @@ def ejecutar(extraer_numero, purificar_lote):
     }
 
     /* ==================================================================
-       💥 IMPACTO DIRECTO AL SELECTBOX (PILOTO Y MATRÍCULA HK)
+       🎣 CEBO VISUAL DE DIAGNÓSTICO (RADAR MULTICOLOR DE CAPAS)
        ================================================================== */
-    /* Target a la caja real de BaseWeb */
-    div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        background-color: #ffffff !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+    
+    /* CAPA 1 (Contenedor Estándar Streamlit): ROJO NEÓN */
+    div[data-testid="stSelectbox"] {
+        border: 4px solid #ff0000 !important;
+        padding: 4px !important;
+        background-color: #ffe6e6 !important;
     }
 
-    /* Blanquear todas las subcapas internas que generaban el fondo gris */
-    div[data-testid="stSelectbox"] [data-baseweb="select"] * {
-        background-color: transparent !important;
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-        font-size: 15px !important;
+    /* CAPA 2 (Caja BaseWeb Directa): VERDE NEÓN */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+        border: 4px solid #00ff00 !important;
+        background-color: #e6ffe6 !important;
     }
 
-    /* Color de la flecha del desplegable */
-    div[data-testid="stSelectbox"] svg {
-        fill: #0d1b2a !important;
-        color: #0d1b2a !important;
+    /* CAPA 3 (Hijo Directo de Select): AZUL CÍAN */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        border: 4px solid #00ffff !important;
+        background-color: #e6ffff !important;
     }
 
-    /* 🌟 ENFOQUE DORADO AL SELECCIONAR CUALQUIER CAMPO */
-    div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
-    div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within,
-    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
-    div[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within,
-    div[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within {
-        border: 2px solid #d4af37 !important;
-        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
+    /* CAPA 4 (Role Combobox / Caja Interactiva): MAGENTA */
+    div[data-testid="stSelectbox"] [role="combobox"] {
+        border: 4px solid #ff00ff !important;
+        background-color: #ffe6ff !important;
     }
+
+    /* ================================================================== */
 
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
