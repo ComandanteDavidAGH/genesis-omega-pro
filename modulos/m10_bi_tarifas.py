@@ -344,6 +344,23 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         font-weight: 800 !important;
         text-transform: uppercase !important;
     }
+
+    /* 🔍 EFECTO LUPA MAGNIFICADOR EN TODOS LOS GRÁFICOS DEL MÓDULO 10 */
+    div[data-testid="stPlotlyChart"] {
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
+        border-radius: 12px !important;
+        background-color: #ffffff !important;
+        padding: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    div[data-testid="stPlotlyChart"]:hover {
+        transform: scale(1.06) !important; /* Agranda todo el gráfico un 6% */
+        z-index: 9999 !important;
+        position: relative !important;
+        box-shadow: 0px 16px 32px rgba(0, 0, 0, 0.22) !important;
+        border: 2px solid #d4af37 !important; /* Borde dorado de enfoque */
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -528,58 +545,39 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
             
-            # 💳 BANDEJA EJECUTIVA DE RESUMEN
-            st.markdown(f"""
-            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 25px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-                <div style="text-align: center;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 12px; text-transform: uppercase;">🛩️ COSTO AVIÓN / HA</span><br>
-                    <span style="font-size: 24px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_b)}</span>
-                </div>
-                <div style="border-left: 2px solid #1e293b; height: 40px;"></div>
-                <div style="text-align: center;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 12px; text-transform: uppercase;">🧪 COSTO INSUMOS / HA</span><br>
-                    <span style="font-size: 24px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_b)}</span>
-                </div>
-                <div style="border-left: 2px solid #1e293b; height: 40px;"></div>
-                <div style="text-align: center;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 12px; text-transform: uppercase;">💰 COSTO TOTAL / HA</span><br>
-                    <span style="font-size: 24px; font-weight: 900; color: #22c55e;">{fmt_cop_vertical(vuelo_b + insumos_b)}</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            c_lupa1, _ = st.columns([2, 1])
-            lupa_rango = c_lupa1.checkbox("🔎 Activar Lupa Táctica (Enfoque y Amplificación 10x de Franja Avión)", key="lupa_rango_key")
-
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
                 fig_unit = go.Figure(data=[
-                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='outside', textfont=dict(color='#0d1b2a', size=14, family='Arial Black')),
-                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
+                    go.Bar(
+                        name='Costo Avión / Ha', 
+                        x=['Periodo Seleccionado'], 
+                        y=[vuelo_b], 
+                        marker_color='#2F75B5', 
+                        text=[fmt_cop_vertical(vuelo_b)], 
+                        textposition='auto', 
+                        textfont=dict(color='white', size=13, family='Arial Black')
+                    ),
+                    go.Bar(
+                        name='Costo Insumos / Ha', 
+                        x=['Periodo Seleccionado'], 
+                        y=[insumos_b], 
+                        marker_color='#27AE60', 
+                        text=[fmt_cop_vertical(insumos_b)], 
+                        textposition='inside', 
+                        textfont=dict(color='white', size=14, family='Arial Black')
+                    )
                 ])
-                
-                range_y_val = [0, vuelo_b * 1.35] if (lupa_rango and vuelo_b > 0) else None
                 
                 fig_unit.update_layout(
                     barmode='stack', 
                     plot_bgcolor='rgba(0,0,0,0)', 
                     paper_bgcolor='#ffffff',
-                    yaxis_title="Valor COP / Ha", hovermode="closest", 
-                    margin=dict(t=50, b=50, l=50, r=50),
-                    yaxis=dict(range=range_y_val)
+                    yaxis_title="Valor COP / Ha", 
+                    hovermode="closest",
+                    margin=dict(t=30, b=30, l=40, r=40)
                 )
                 
-                if vuelo_b > 0:
-                    fig_unit.add_annotation(
-                        x='Periodo Seleccionado', y=vuelo_b,
-                        text=f"<b>✈️ AVIÓN: {fmt_cop_vertical(vuelo_b)}</b>",
-                        showarrow=True, arrowhead=2, arrowcolor="#0d1b2a",
-                        ax=110, ay=-30,
-                        bgcolor="#ffffff", bordercolor="#0d1b2a", borderwidth=2,
-                        font=dict(color="#0d1b2a", size=13, family="Arial Black")
-                    )
-                fig_unit.update_traces(cliponaxis=False)
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             with tab_glob:
@@ -587,7 +585,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')),
                     go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest")
+                fig_glob.update_layout(
+                    barmode='stack', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='#ffffff', 
+                    yaxis_title="Valor Total COP", 
+                    hovermode="closest"
+                )
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -674,8 +678,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     marker=dict(size=9), 
                     texttemplate="$ %{y:,.0f}", 
                     textposition="top center", 
-                    textfont=dict(size=12, family="Arial Black", color="#0d1b2a"),
-                    hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>"
+                    textfont=dict(size=12, family="Arial Black", color="#0d1b2a")
                 )
                 st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
@@ -696,67 +699,39 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 except: return str(val)
             
             st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
-            
-            # 💳 BANDEJA EJECUTIVA DE RESUMEN
-            st.markdown(f"""
-            <div style="background-color: #0d1b2a; border-left: 6px solid #d4af37; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2); flex-wrap: wrap;">
-                <div style="text-align: center; padding: 5px 10px;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🛩️ COSTO AVIÓN ({año_base})</span><br>
-                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_a)}</span>
-                </div>
-                <div style="text-align: center; padding: 5px 10px;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🛩️ COSTO AVIÓN ({año_comp})</span><br>
-                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(vuelo_b)}</span>
-                </div>
-                <div style="border-left: 2px solid #1e293b; height: 35px;"></div>
-                <div style="text-align: center; padding: 5px 10px;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🧪 INSUMOS ({año_base})</span><br>
-                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_a)}</span>
-                </div>
-                <div style="text-align: center; padding: 5px 10px;">
-                    <span style="color: #d4af37; font-weight: bold; font-size: 11px; text-transform: uppercase;">🧪 INSUMOS ({año_comp})</span><br>
-                    <span style="font-size: 20px; font-weight: 900; color: #ffffff;">{fmt_cop_vertical(insumos_b)}</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            c_lupa2, _ = st.columns([2, 1])
-            lupa_comp = c_lupa2.checkbox("🔎 Activar Lupa Táctica (Enfoque y Amplificación 10x de Franja Avión)", key="lupa_comp_key")
 
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
                 fig_unit = go.Figure(data=[
-                    go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black')), 
-                    go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=12, family='Arial Black'))
+                    go.Bar(
+                        name='Costo Avión / Ha', 
+                        x=categorias, 
+                        y=[vuelo_a, vuelo_b], 
+                        marker_color='#2F75B5', 
+                        text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], 
+                        textposition='auto', 
+                        textfont=dict(color='white', size=12, family='Arial Black')
+                    ), 
+                    go.Bar(
+                        name='Costo Insumos / Ha', 
+                        x=categorias, 
+                        y=[insumos_a, insumos_b], 
+                        marker_color='#27AE60', 
+                        text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], 
+                        textposition='inside', 
+                        textfont=dict(color='white', size=13, family='Arial Black')
+                    )
                 ])
-                
-                max_vuelo_comp = max(vuelo_a, vuelo_b)
-                range_y_comp = [0, max_vuelo_comp * 1.35] if (lupa_comp and max_vuelo_comp > 0) else None
 
                 fig_unit.update_layout(
                     barmode='stack', 
                     plot_bgcolor='rgba(0,0,0,0)', 
                     paper_bgcolor='#ffffff',
-                    yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", 
-                    margin=dict(t=60, b=60, l=60, r=60),
-                    yaxis=dict(range=range_y_comp)
+                    yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest",
+                    margin=dict(t=40, b=40, l=40, r=40)
                 )
                 
-                vals_av = [vuelo_a, vuelo_b]
-                for idx, cat in enumerate(categorias):
-                    v_av = vals_av[idx]
-                    if v_av > 0:
-                        fig_unit.add_annotation(
-                            x=cat, y=v_av,
-                            text=f"<b>✈️ AVIÓN:<br>{fmt_cop_vertical(v_av)}</b>",
-                            showarrow=True, arrowhead=2, arrowsize=1.2, arrowcolor="#0d1b2a",
-                            ax=-100 if idx == 0 else 100, ay=-40,
-                            bgcolor="#ffffff", bordercolor="#0d1b2a", borderwidth=2,
-                            font=dict(color="#0d1b2a", size=13, family="Arial Black")
-                        )
-
-                fig_unit.update_traces(cliponaxis=False)
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             with tab_glob:
@@ -767,7 +742,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')), 
                     go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
+                fig_glob.update_layout(
+                    barmode='stack', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='#ffffff', 
+                    yaxis_title="Valor Total COP", 
+                    separators=",.", 
+                    hovermode="closest"
+                )
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
             
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -940,17 +922,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                     )
                                     fig.update_traces(
                                         textposition='outside', 
-                                        textfont=dict(size=12, family="Arial Black", color="#0d1b2a"),
-                                        cliponaxis=False
+                                        textfont=dict(size=11, family="Arial Black", color="#0d1b2a")
                                     )
                                     fig.update_layout(
                                         yaxis={'categoryorder':'total ascending'}, 
                                         plot_bgcolor='rgba(0,0,0,0)', 
                                         paper_bgcolor='#ffffff',
-                                        margin=dict(l=180, r=120, t=40, b=40), 
+                                        margin=dict(l=180, r=80, t=40, b=40), 
                                         separators=",.", 
-                                        hovermode="closest",
-                                        font=dict(family="Arial Black", size=11, color="#0d1b2a")
+                                        hovermode="closest"
                                     )
                                     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                             else:
