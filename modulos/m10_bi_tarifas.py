@@ -312,22 +312,14 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 # =================================================================
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.header("", anchor="inicio_modulo")
-    
-    # 🎣 CEBO VISUAL #1: BANNER ROJO FOSFORESCENTE ARRIBA DEL TODO
-    st.markdown("""
-    <div style='background-color: #ff0000; color: #ffffff; border: 5px solid #ffff00; padding: 15px; text-align: center; border-radius: 10px; margin-bottom: 20px;'>
-        <h1 style='color: #ffff00; margin: 0; font-size: 28px; font-family: "Arial Black";'>🚨 TRAMPA DE CEBO DETECTADA EN MÓDULO 10 🚨</h1>
-        <h3 style='color: #ffffff; margin: 5px 0 0 0;'>⚠️ SI VES ESTE BANNER ROJO Y AMARILLO, EL CÓDIGO SÍ SE ACTUALIZÓ EN RAM ⚠️</h3>
-    </div>
-    """, unsafe_allow_html=True)
 
     st.markdown("""
     <style>
-    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
+    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     .hud-bi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-    .hud-bi-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
@@ -505,10 +497,23 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 tendencia_agrupa = tendencia_agrupa.sort_values('FECHA_REAL')
                 
                 fig_tendencia = px.line(tendencia_agrupa, x='FECHA_FORMAT', y='COSTO_NUM', markers=True, color_discrete_sequence=['#2F75B5'])
-                fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title="Línea de Tiempo Exacta", plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
+                fig_tendencia.update_layout(
+                    yaxis_title="Costo Promedio ($ COP / Ha)", 
+                    xaxis_title="Línea de Tiempo Exacta", 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='#ffffff',
+                    hovermode="x unified",
+                    font=dict(family="Arial Black", size=12, color="#0d1b2a")
+                )
                 if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
-                fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center")
-                st.plotly_chart(fig_tendencia, use_container_width=True)
+                fig_tendencia.update_traces(
+                    line=dict(width=3.5), 
+                    marker=dict(size=9), 
+                    texttemplate="$ %{y:,.0f}", 
+                    textposition="top center",
+                    textfont=dict(size=12, family="Arial Black", color="#0d1b2a")
+                )
+                st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
@@ -556,11 +561,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 range_y_val = [0, vuelo_b * 1.35] if (lupa_rango and vuelo_b > 0) else None
                 
-                # 🎣 CEBO VISUAL #2: FONDO AMARILLO NEÓN EN LA GRÁFICA
                 fig_unit.update_layout(
                     barmode='stack', 
-                    plot_bgcolor='#ffff00', # AMARILLO FOSFORESCENTE
-                    paper_bgcolor='#ffffaa',
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='#ffffff',
                     yaxis_title="Valor COP / Ha", hovermode="closest", 
                     margin=dict(t=50, b=50, l=50, r=50),
                     yaxis=dict(range=range_y_val)
@@ -583,7 +587,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')),
                     go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", hovermode="closest")
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest")
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -656,10 +660,24 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
                 fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
-                fig_tendencia.update_layout(yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
+                fig_tendencia.update_layout(
+                    yaxis_title="Costo Promedio ($ COP / Ha)", 
+                    xaxis_title=titulo_x, 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='#ffffff',
+                    hovermode="x unified",
+                    font=dict(family="Arial Black", size=12, color="#0d1b2a")
+                )
                 if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
-                fig_tendencia.update_traces(line=dict(width=3), marker=dict(size=8), texttemplate="$ %{y:,.0f}", textposition="top center", hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>")
-                st.plotly_chart(fig_tendencia, use_container_width=True)
+                fig_tendencia.update_traces(
+                    line=dict(width=3.5), 
+                    marker=dict(size=9), 
+                    texttemplate="$ %{y:,.0f}", 
+                    textposition="top center", 
+                    textfont=dict(size=12, family="Arial Black", color="#0d1b2a"),
+                    hovertemplate="<b>%{x}</b><br>Costo: $ %{y:,.0f} COP/Ha<extra></extra>"
+                )
+                st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
             vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
@@ -716,11 +734,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 max_vuelo_comp = max(vuelo_a, vuelo_b)
                 range_y_comp = [0, max_vuelo_comp * 1.35] if (lupa_comp and max_vuelo_comp > 0) else None
 
-                # 🎣 CEBO VISUAL #2: FONDO AMARILLO NEÓN EN LA GRÁFICA COMPARATIVA
                 fig_unit.update_layout(
                     barmode='stack', 
-                    plot_bgcolor='#ffff00', # AMARILLO FOSFORESCENTE
-                    paper_bgcolor='#ffffaa',
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='#ffffff',
                     yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", 
                     margin=dict(t=60, b=60, l=60, r=60),
                     yaxis=dict(range=range_y_comp)
@@ -750,7 +767,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')), 
                     go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
             
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -921,9 +938,21 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                         color_continuous_scale="GnBu", 
                                         title=f"Top 15 Insumos - Pista: {pista_inv_sel}"
                                     )
-                                    fig.update_traces(textposition='outside', textfont_size=11)
-                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100), separators=",.", hovermode="closest")
-                                    st.plotly_chart(fig, use_container_width=True)
+                                    fig.update_traces(
+                                        textposition='outside', 
+                                        textfont=dict(size=12, family="Arial Black", color="#0d1b2a"),
+                                        cliponaxis=False
+                                    )
+                                    fig.update_layout(
+                                        yaxis={'categoryorder':'total ascending'}, 
+                                        plot_bgcolor='rgba(0,0,0,0)', 
+                                        paper_bgcolor='#ffffff',
+                                        margin=dict(l=180, r=120, t=40, b=40), 
+                                        separators=",.", 
+                                        hovermode="closest",
+                                        font=dict(family="Arial Black", size=11, color="#0d1b2a")
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                             else:
                                 vol_especifico = consumo_log[insumo_filtrado]
                                 vol_formateado = formatear_numero_latino(vol_especifico)
