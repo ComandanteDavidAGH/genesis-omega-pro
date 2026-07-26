@@ -499,39 +499,42 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown(html_cards, unsafe_allow_html=True)
 
     # =================================================================
-    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA)
+    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA FORZADO)
     # =================================================================
     st.markdown("### 📋 Resumen Detallado y Auditoría Financiera")
     
     df_visual = df_agrupado.copy()
     df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
-    # Función de color condicional: Rojo = Pérdida (Brecha Positiva), Verde = Ganancia/Ideal (Brecha Negativa)
+    # Regla de Negocios para el Color:
+    # Rojo (> 0) = La Ideal era más cara que la Real (Pérdida de dinero)
+    # Verde (< 0) = Cobramos más que la Ideal (Ganancia / Excelencia)
     def color_fuga(val):
-        if isinstance(val, (int, float)):
-            if val > 0: return 'color: #D32F2F; font-weight: 900;'
-            elif val < 0: return 'color: #198754; font-weight: 900;'
+        if pd.isna(val): return ''
+        if val > 0: return 'color: #D32F2F; font-weight: bold;'
+        elif val < 0: return 'color: #198754; font-weight: bold;'
         return 'color: #424242;'
 
-    try:
-        styled_visual = df_visual.style.format({
-            "Hectareas": "{:,.2f}",
-            "Tarifa Real Prom/Ha": "$ {:,.0f}",
-            "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
-            "Brecha por Ha": "$ {:,.0f}",
-            "Total Real Facturado": "$ {:,.0f}",
-            "Total Simulado Ideal": "$ {:,.0f}",
-            "Lucro Cesante": "$ {:,.0f}"
-        }).applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha']) \
-          .background_gradient(cmap='Blues', subset=['Hectareas']) \
-          .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal'])
-    except Exception:
-        styled_visual = df_visual.style.format({
-            "Hectareas": "{:,.2f}", "Tarifa Real Prom/Ha": "$ {:,.0f}", "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
-            "Brecha por Ha": "$ {:,.0f}", "Total Real Facturado": "$ {:,.0f}", "Total Simulado Ideal": "$ {:,.0f}", "Lucro Cesante": "$ {:,.0f}"
-        })
+    # Se aplica .map para Pandas nuevos, o .applymap para versiones anteriores
+    estilo_visual = df_visual.style.format({
+        "Hectareas": "{:,.2f}",
+        "Tarifa Real Prom/Ha": "$ {:,.0f}",
+        "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
+        "Brecha por Ha": "$ {:,.0f}",
+        "Total Real Facturado": "$ {:,.0f}",
+        "Total Simulado Ideal": "$ {:,.0f}",
+        "Lucro Cesante": "$ {:,.0f}"
+    })
+    
+    if hasattr(estilo_visual, "map"):
+        estilo_visual = estilo_visual.map(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
+    else:
+        estilo_visual = estilo_visual.applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
+        
+    estilo_visual = estilo_visual.background_gradient(cmap='Blues', subset=['Hectareas']) \
+                                 .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal'])
 
-    st.dataframe(styled_visual, use_container_width=True, height=400, hide_index=True)
+    st.dataframe(estilo_visual, use_container_width=True, height=400, hide_index=True)
 
     # =================================================================
     # 🪤 EL CEBO RODADO HACIA ABAJO (HERRAMIENTA TÉCNICA)
@@ -547,18 +550,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
         ).reset_index()
         
-        try:
-            styled_cebo = df_cebo.style.format({
-                "Horas_Calculadas_OS": "{:,.3f} hrs",
-                "Suma_Hectareas_OS": "{:,.2f} ha",
-                "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
-            }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
-              .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS']) \
-              .background_gradient(cmap='YlOrBr', subset=['Tarifa_Ideal_Final_Ha'])
-        except Exception:
-            styled_cebo = df_cebo.style.format({"Horas_Calculadas_OS": "{:,.3f} hrs", "Suma_Hectareas_OS": "{:,.2f} ha", "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"})
+        estilo_cebo = df_cebo.style.format({
+            "Horas_Calculadas_OS": "{:,.3f} hrs",
+            "Suma_Hectareas_OS": "{:,.2f} ha",
+            "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
+        }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
+          .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS']) \
+          .background_gradient(cmap='YlOrBr', subset=['Tarifa_Ideal_Final_Ha'])
 
-        st.dataframe(styled_cebo, use_container_width=True, hide_index=True)
+        st.dataframe(estilo_cebo, use_container_width=True, hide_index=True)
 
     # =================================================================
     # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
