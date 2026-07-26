@@ -238,8 +238,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Odómetro Real OS)</h1>", unsafe_allow_html=True)
-        st.caption("Cálculo exacto basado en el Odómetro real (ODÓM.) prorrateado por Orden de Servicio.")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Consolidado por Jornada)</h1>", unsafe_allow_html=True)
+        st.caption("Prorrateo exacto del Odómetro por Jornada de Vuelo (Fecha + Pista + Equipo).")
     with c_btn:
         st.write("")
         if st.button("🔄 Sincronizar Datos", use_container_width=True):
@@ -262,7 +262,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     col_orden = "Nº ORDEN"
     col_rend = "RENDIMIENTO (horas)"
     
-    # 🎯 IDENTIFICACIÓN DINÁMICA DE LA COLUMNA ODÓMETRO
     col_odom = None
     cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
     for c, c_up in cols_upper.items():
@@ -330,7 +329,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "DRONE DATAROT", "DRONE GENESYS", "DRONE NORTE", "DRONE AVIL"
     ]
 
-    if 'tarifas_agro_estables_v6' not in st.session_state:
+    if 'tarifas_agro_estables_v7' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
@@ -345,7 +344,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "DRONE NORTE": 75518.0,
                 "DRONE AVIL": 71280.0
             }.get(av, 4606562.0))
-        st.session_state['tarifas_agro_estables_v6'] = True
+        st.session_state['tarifas_agro_estables_v7'] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
@@ -409,38 +408,48 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MATEMÁTICA PURA UNIFICADA POR ODÓMETRO OS
+    # 🧠 AGRUPACIÓN Y PRORRATEO POR JORNADA DIARIA (FECHA + PISTA + EQUIPO)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # 🎯 RESUMEN DE LA OS: Suma de Hectáreas y Máximo Odómetro (para no duplicar vuelos)
-    df_os_resumen = df_sim.groupby("Nº ORDEN", as_index=False).agg(
-        Ha_OS_Total=("Hectareas", "sum"),
-        Odom_OS_Max=("Odometro", "max"),
-        Horas_Rend_OS_Max=("RendimientoHoras", "max")
+    # Agrupamos por FECHA + PISTA + EQUIPO para obtener las Hectáreas Totales del día y el Odómetro real
+    df_jornada = df_sim.groupby(["Fecha", "Pista", "Equipo"], as_index=False).agg(
+        Ha_Jornada_Total=("Hectareas", "sum"),
+        Odom_Jornada_Max=("Odometro", "max"),
+        Horas_Rend_Jornada_Max=("RendimientoHoras", "max")
     )
-    df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
+    
+    df_filtrado = df_filtrado.merge(df_jornada, on=["Fecha", "Pista", "Equipo"], how="left")
 
-    def calcular_tarifa_ideal_odometro(row):
+    def calcular_tarifa_ideal_jornada(row):
+        equipo = str(row["Equipo"]).upper()
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-        ha_totales_os = float(row["Ha_OS_Total"]) if pd.notna(row["Ha_OS_Total"]) else 0.0
-        odom_os = float(row["Odom_OS_Max"]) if pd.notna(row["Odom_OS_Max"]) else 0.0
-        rend_os = float(row["Horas_Rend_OS_Max"]) if pd.notna(row["Horas_Rend_OS_Max"]) else 0.0
+        
+        # 🛸 1. Drones: Mantiene el cálculo exacto por fila
+        if "DRONE" in equipo:
+            rend_dron = float(row["RendimientoHoras"]) if pd.notna(row["RendimientoHoras"]) else 0.0
+            ha_fila = float(row["Hectareas"]) if pd.notna(row["Hectareas"]) else 0.0
+            if ha_fila > 0 and rend_dron > 0:
+                return (tarifa_hora * rend_dron) / ha_fila
+            return tarifa_hora
 
-        if ha_totales_os > 0:
-            # Prioridad 1: Odómetro real si existe (> 0)
-            if odom_os > 0:
-                return (tarifa_hora * odom_os) / ha_totales_os
-            # Prioridad 2: Rendimiento horas si el Odómetro vino vacío
-            elif rend_os > 0:
-                return (tarifa_hora * rend_os) / ha_totales_os
+        # 🛩️ 2. Aviones: Prorrateo sobre la Jornada Completa del Día
+        ha_totales_jornada = float(row["Ha_Jornada_Total"]) if pd.notna(row["Ha_Jornada_Total"]) else 0.0
+        odom_jornada = float(row["Odom_Jornada_Max"]) if pd.notna(row["Odom_Jornada_Max"]) else 0.0
+        rend_jornada = float(row["Horas_Rend_Jornada_Max"]) if pd.notna(row["Horas_Rend_Jornada_Max"]) else 0.0
+
+        if ha_totales_jornada > 0:
+            if odom_jornada > 0:
+                return (tarifa_hora * odom_jornada) / ha_totales_jornada
+            elif rend_jornada > 0:
+                return (tarifa_hora * rend_jornada) / ha_totales_jornada
 
         return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
 
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_odometro, axis=1)
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_jornada, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
@@ -600,7 +609,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera con precisión basada en el Odómetro real.")
+    st.success("🏁 Proceso completado. La simulación consolida las horas sobre la jornada diaria completa por equipo.")
 
 if __name__ == "__main__":
     pass
