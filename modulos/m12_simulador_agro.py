@@ -211,18 +211,16 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
     return buffer.getvalue()
 
 # =================================================================
-# 🚁 MOTOR DEL SIMULADOR PRINCIPAL
+# 🛩️ MOTOR DEL SIMULADOR PRINCIPAL
 # =================================================================
 def ejecutar(procesar_fecha_pesada, extraer_numero):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
     
-    # 🚀 CEBO MAESTRO ANTI-PALIDEZ: Fuerza Bruta de Contornos e Inputs Opacos para el M12
     st.markdown(f"""
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
     
-    /* Enmarcar selectores y text inputs con contorno sólido de 3px e interior blanco opaco */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
     div[data-testid="stDateInput"] input,
@@ -247,7 +245,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-simulador'>🚁 Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
     st.caption("Auditoría de Lucro Cesante basada en la totalización del Horómetro por Orden de Servicio.")
 
     with st.spinner("📥 Cargando matrices base desde la Bóveda..."):
@@ -353,7 +351,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         modo_calculo = f6.selectbox("🧮 Analizar Contra:", ["Venta Ideal (+Margen Inteligente)", "Costo Puro Operativo"])
 
         st.markdown("---")
-        st.markdown("#### ✈️ Gestor de Tarifas Base de Aeronaves")
+        st.markdown("#### 🛩️ Gestor de Tarifas Base de Flota y Drones")
         
         equipos_a_mostrar = [av for av in lista_aviones_dinamica if av != "✈️ TODOS LOS EQUIPOS"]
         if not equipos_a_mostrar:
@@ -361,7 +359,11 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         else:
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
-                c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>🚁 {avion_editar}</div>", unsafe_allow_html=True)
+                
+                # 🌟 DISCRIMINACIÓN INTELIGENTE DE EMOJI (DRON VS AVIÓN)
+                emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
+                c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
+                
                 tarifa_actual_num = float(st.session_state.tarifas_simulador.get(avion_editar, 0.0))
                 tarifa_inicial_formateada = f"$ {tarifa_actual_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 
@@ -393,7 +395,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MATEMÁTICA PURA DE ORDEN DE SERVICIO (Sincronizada a 200M)
+    # 🧠 MATEMÁTICA PURA DE ORDEN DE SERVICIO
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
@@ -446,7 +448,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"])
 
     # =================================================================
-    # 💎 TARJETAS ELÁSTICAS EN HTML/CSS (Cero cortes numéricos)
+    # 💎 TARJETAS ELÁSTICAS EN HTML/CSS
     # =================================================================
     st.markdown("---")
     st.markdown("### 💎 Impacto Financiero de la Operación")
@@ -501,7 +503,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     )
 
     # =================================================================
-    # 📈 GRÁFICOS HIGH-END PREMIUM (Efecto Hover de Aumento Activo)
+    # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
     # =================================================================
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
@@ -534,7 +536,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         yaxis=dict(showgrid=True, gridcolor="#EAEAEA", zeroline=True, zerolinecolor="#CCCCCC", title="Valor por Hectárea ($)"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=30, t=70, b=70),
-        hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
+        hovermode="closest"
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
 
@@ -555,7 +557,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         xaxis=dict(showgrid=False, title=None),
         yaxis=dict(showgrid=True, gridcolor="#EAEAEA", title="Monto de Fuga ($)"),
         margin=dict(l=50, r=30, t=70, b=50),
-        hovermode="closest" # ⚡ Restablece la interactividad responsiva de resalte al pasar el mouse
+        hovermode="closest"
     )
     st.plotly_chart(fig_lucro, use_container_width=True)
 
@@ -586,7 +588,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La brecha volvió a sus 200 millones reales y los reportes e interfaz operan bajo estándares corporativos.")
+    st.success("🏁 Proceso completado. La interfaz opera bajo la flota oficial de Aviones y Drones de Génesis.")
 
 if __name__ == "__main__":
     pass
