@@ -360,7 +360,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
-                # 🌟 DISCRIMINACIÓN INTELIGENTE DE EMOJI (DRON VS AVIÓN)
+                # 🌟 EMOJIS DE FLOTA REAL (SINFONÍA DE AVIONES Y DRONES)
                 emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
                 
@@ -395,38 +395,65 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MATEMÁTICA PURA DE ORDEN DE SERVICIO
+    # 🧠 MOTOR DUAL INTELIGENTE (FILA ÚNICA VS OS MULTI-LOTES REPETIDA)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    for col_extra in ["TiempoTotalOS", "HectareasTotalOS", "TiempoTotalOS_x", "TiempoTotalOS_y", "HectareasTotalOS_x", "HectareasTotalOS_y"]:
-        if col_extra in df_filtrado.columns: df_filtrado = df_filtrado.drop(columns=[col_extra])
+    # Limpieza de columnas de cálculo para evitar colisiones
+    cols_a_borrar = [c for c in df_filtrado.columns if c in ["TiempoEfectivoFila", "Costo Simulado HA"]]
+    if cols_a_borrar:
+        df_filtrado = df_filtrado.drop(columns=cols_a_borrar)
 
-    df_os_universo = df_sim.groupby("Nº ORDEN").agg(
-        TiempoTotalOS    = ("FactorTiempo", "sum"),
-        HectareasTotalOS = ("Hectareas",    "sum")
-    ).reset_index()
+    def calcular_tiempo_efectivo_os(sub_df):
+        num_filas = len(sub_df)
+        ha_tot_os = sub_df["Hectareas"].sum()
+        tiempos_unicos = sub_df["FactorTiempo"].nunique()
+        
+        # CASO B: Múltiples lotes de una misma OS donde repitieron el Horómetro Total en cada fila
+        if num_filas > 1 and tiempos_unicos == 1:
+            tiempo_os_base = sub_df["FactorTiempo"].iloc[0]
+            if ha_tot_os > 0:
+                return tiempo_os_base * (sub_df["Hectareas"] / ha_tot_os)
+            else:
+                return sub_df["FactorTiempo"] / num_filas
+        else:
+            # CASO A: Fila única (OS Virtual o Individual) O tiempos ya fraccionados por lote
+            return sub_df["FactorTiempo"]
 
-    df_filtrado = df_filtrado.merge(df_os_universo, on="Nº ORDEN", how="left")
+    tiempos_procesados = []
+    for os_id, grupo_os in df_filtrado.groupby("Nº ORDEN", sort=False):
+        t_efectivo_serie = calcular_tiempo_efectivo_os(grupo_os)
+        tiempos_procesados.append(pd.Series(t_efectivo_serie, index=grupo_os.index))
 
-    def precio_ha_por_os_puro(row):
+    if tiempos_procesados:
+        df_filtrado["TiempoEfectivoFila"] = pd.concat(tiempos_procesados)
+    else:
+        df_filtrado["TiempoEfectivoFila"] = df_filtrado["FactorTiempo"]
+
+    def calcular_simulacion_fila(row):
         try:
-            valor_hora    = float(row["Tarifa_Aplicada"])   if pd.notna(row["Tarifa_Aplicada"])   else 0.0
-            horas_os      = float(row["TiempoTotalOS"])      if pd.notna(row["TiempoTotalOS"])      else 0.0
-            hectareas_os  = float(row["HectareasTotalOS"])   if pd.notna(row["HectareasTotalOS"])   else 0.0
-            cobro_real    = float(row["CobroReal"])          if pd.notna(row["CobroReal"])          else 0.0
+            valor_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
+            tiempo_fila = float(row["TiempoEfectivoFila"]) if pd.notna(row["TiempoEfectivoFila"]) else 0.0
+            hectareas_fila = float(row["Hectareas"]) if pd.notna(row["Hectareas"]) else 0.0
+            cobro_real = float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
 
-            if hectareas_os == 0: return cobro_real
-            precio_simulado = (valor_hora * horas_os) / hectareas_os
-            if cobro_real >= precio_simulado: return cobro_real
-            return precio_simulado
+            if hectareas_fila <= 0:
+                return cobro_real
+
+            # Costo simulación unitario por hectárea
+            costo_simulado_ha = (valor_hora * tiempo_fila) / hectareas_fila
+            
+            # Candado de cordura: si el cobro real supera el ideal simulado, se respeta la tarifa facturada
+            if cobro_real >= costo_simulado_ha:
+                return cobro_real
+            return costo_simulado_ha
         except:
             return 0.0
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(precio_ha_por_os_puro, axis=1)
+    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_simulacion_fila, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
@@ -569,7 +596,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     df_detalle_export = df_filtrado[[
         "Fecha Operación", "Semana", "Nº ORDEN", "Finca", "Pista", "Equipo",
-        "Hectareas", "FactorTiempo", "TiempoTotalOS", "HectareasTotalOS",
+        "Hectareas", "FactorTiempo", "TiempoEfectivoFila",
         "Tarifa_Aplicada", "CobroReal", "Costo Simulado HA", 
         "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
     ]].copy()
@@ -588,7 +615,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera bajo la flota oficial de Aviones y Drones de Génesis.")
+    st.success("🏁 Proceso completado. La simulación opera bajo el Motor Dual Inteligente sin distorsiones.")
 
 if __name__ == "__main__":
     pass
