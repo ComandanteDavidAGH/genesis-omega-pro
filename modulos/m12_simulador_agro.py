@@ -120,6 +120,14 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
         return "CESSNA O PIPER PA 25", "AEROPENORT"
     return "IGNORAR", "IGNORAR"
 
+def purificar_orden(val, idx):
+    v = str(val).strip().upper()
+    if v.endswith('.0'): 
+        v = v[:-2]
+    if v in ["", "0", "NAN", "NONE", "NULL"]:
+        return f"INDIVIDUAL_{idx}"
+    return v
+
 # =================================================================
 # 💾 EXPORTADOR EXCEL MULTI-HOJA GERENCIAL
 # =================================================================
@@ -238,8 +246,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Consolidado OS)</h1>", unsafe_allow_html=True)
-        st.caption("Prorrateo exacto por Orden de Servicio: (Horas Totales OS * Tarifa Equipo) / Suma Hectáreas OS")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Agrupación OS Absoluta)</h1>", unsafe_allow_html=True)
+        st.caption("Ecuación unificada: (Suma Horas OS * Tarifa Equipo) / Suma Hectáreas de la misma Orden")
     with c_btn:
         st.write("")
         if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
@@ -253,6 +261,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Error de enlace: TABLA 1 no contiene registros o está desconectada.")
         return
 
+    # LIMPIEZA EXTREMA DE NOMBRES DE COLUMNAS
     cols_limpias = []
     for c in df_base.columns:
         c_str = str(c).upper().replace('\n', ' ').replace('\r', '').strip()
@@ -260,24 +269,29 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         cols_limpias.append(c_str)
     df_base.columns = cols_limpias
 
-    col_fecha = "FECHA" if "FECHA" in df_base.columns else df_base.columns[0]
-    col_finca = "FINCA" if "FINCA" in df_base.columns else df_base.columns[1]
-    col_pista = "PISTA" if "PISTA" in df_base.columns else df_base.columns[2]
-    col_avion = "MODELO" if "MODELO" in df_base.columns else df_base.columns[3]
-    col_orden = "Nº ORDEN" if "Nº ORDEN" in df_base.columns else df_base.columns[0]
+    # DETECCIÓN DE COLUMNAS A PRUEBA DE FALLOS
+    col_orden_matches = [c for c in df_base.columns if "ORDEN" in c]
+    col_orden = col_orden_matches[0] if col_orden_matches else df_base.columns[0]
+    col_fecha = "FECHA" if "FECHA" in df_base.columns else df_base.columns[1]
+    col_finca = "FINCA" if "FINCA" in df_base.columns else df_base.columns[2]
+    col_pista = "PISTA" if "PISTA" in df_base.columns else df_base.columns[3]
+    col_avion = "MODELO" if "MODELO" in df_base.columns else df_base.columns[4]
 
     col_ha_matches = [c for c in df_base.columns if "ÁREA FUMIG" in c or "AREA FUMIG" in c]
-    col_ha = col_ha_matches[0] if col_ha_matches else df_base.columns[4]
+    col_ha = col_ha_matches[0] if col_ha_matches else df_base.columns[5]
 
     col_rend_matches = [c for c in df_base.columns if "RENDIMIENTO" in c and "HORA" in c]
-    col_rend_h = col_rend_matches[0] if col_rend_matches else df_base.columns[5]
+    col_rend_h = col_rend_matches[0] if col_rend_matches else df_base.columns[6]
 
     col_vuelo_matches = [c for c in df_base.columns if "COSTO AVI" in c and "$/HA" in c]
-    col_vuelo = col_vuelo_matches[0] if col_vuelo_matches else df_base.columns[6]
+    col_vuelo = col_vuelo_matches[0] if col_vuelo_matches else df_base.columns[7]
 
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy().reset_index(drop=True)
     renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN"}
     df_sim = df_sim.rename(columns=renombres)
+
+    # 🛡️ LIMPIEZA ABSOLUTA DEL NÚMERO DE ORDEN PARA GARANTIZAR AGRUPACIÓN PERFECTA
+    df_sim["Nº ORDEN"] = [purificar_orden(x, i) for i, x in enumerate(df_sim["Nº ORDEN"])]
 
     mask_valida = (df_sim["Finca"].astype(str).str.strip() != "") & (df_sim["Equipo_Raw"].astype(str).str.strip() != "")
     df_sim = df_sim[mask_valida].reset_index(drop=True)
@@ -377,36 +391,41 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         tarifas_aviones = st.session_state.tarifas_simulador
 
     # =================================================================
-    # 🧠 MOTOR DE CONSOLIDACIÓN INTELIGENTE POR Nº ORDEN
+    # 🧠 MOTOR DE CONSOLIDACIÓN UNIFICADO POR ORDEN DE SERVICIO (OS)
+    # Se calcula ANTES de aplicar los filtros de finca para no perder las Hectareas globales
     # =================================================================
-    # Calculamos el acumulado de Hectáreas y Horas por Nº ORDEN sobre la base completa
-    records_os = []
-    for orden, sub_df in df_sim.groupby("Nº ORDEN"):
-        ha_tot = float(sub_df["Hectareas"].sum())
-        rend_list = [float(x) for x in sub_df["RendimientoHoras"] if pd.notna(x) and float(x) > 0]
-        
-        if not rend_list:
-            h_tot = 0.0
-        elif len(set([round(r, 4) for r in rend_list])) == 1:
-            # Si todas las filas de la orden tienen el mismo tiempo (ej: 0.83 hrs repetidas)
-            h_tot = rend_list[0]
-        else:
-            # Si el tiempo viene desglosado por finca (ej: 0.37 + 0.23)
-            h_tot = sum(rend_list)
+    def consolidar_os(df):
+        records = []
+        for orden, sub_df in df.groupby("Nº ORDEN"):
+            ha_sum = float(sub_df["Hectareas"].sum())
+            rend_list = [float(x) for x in sub_df["RendimientoHoras"] if pd.notna(x) and float(x) > 0]
             
-        records_os.append({
-            "Nº ORDEN": orden,
-            "Ha_OS_Total": ha_tot,
-            "Horas_OS_Total": h_tot
-        })
-    
-    df_os_resumen = pd.DataFrame(records_os)
+            if not rend_list:
+                h_tot = 0.0
+            elif len(set([round(r, 4) for r in rend_list])) == 1:
+                # Si el excel tiene el mismo tiempo global repetido en todas las fincas de la orden
+                h_tot = rend_list[0]
+            else:
+                # Si el excel tiene los tiempos ya desglosados para cada finca
+                h_tot = sum(rend_list)
+                
+            records.append({
+                "Nº ORDEN": orden,
+                "Ha_OS_Total": ha_sum,
+                "Horas_OS_Total": h_tot
+            })
+        return pd.DataFrame(records)
 
-    # Filtrado por UI
+    df_os_resumen = consolidar_os(df_sim)
+
+    # 🛡️ AHORA SÍ APLICAMOS LOS FILTROS DE PANTALLA
     mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
-    if finca_sel != "🌍 TODAS LAS FINCAS": mask_filtro = mask_filtro & (df_sim["Finca"] == finca_sel)
-    if pista_sel != "🛣️ TODAS LAS PISTAS": mask_filtro = mask_filtro & (df_sim["Pista"] == pista_sel.replace("🛣️ ", ""))
-    if equipo_sel != "✈️ TODOS LOS EQUIPOS": mask_filtro = mask_filtro & (df_sim["Equipo"] == equipo_sel)
+    if finca_sel != "🌍 TODAS LAS FINCAS":
+        mask_filtro = mask_filtro & (df_sim["Finca"] == finca_sel)
+    if pista_sel != "🛣️ TODAS LAS PISTAS":
+        mask_filtro = mask_filtro & (df_sim["Pista"] == pista_sel.replace("🛣️ ", ""))
+    if equipo_sel != "✈️ TODOS LOS EQUIPOS":
+        mask_filtro = mask_filtro & (df_sim["Equipo"] == equipo_sel)
 
     df_filtrado = df_sim[mask_filtro].copy().reset_index(drop=True)
 
@@ -414,6 +433,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.warning("📭 No hay vuelos registrados con esos criterios de búsqueda.")
         return
 
+    # Inyectamos el Consolidado a las filas filtradas
     df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
 
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
@@ -421,17 +441,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # CALCULO TARIFA UNIFICADA POR ORDEN
-    def calcular_tarifa_unificada(row):
+    # LA FÓRMULA FINAL APROBADA
+    def calcular_tarifa_ideal_unificada(row):
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-        ha_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
-        h_os = float(row["Horas_OS_Total"]) if (pd.notna(row["Horas_OS_Total"]) and row["Horas_OS_Total"] > 0) else float(row["RendimientoHoras"])
+        ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
+        horas_totales_os = float(row["Horas_OS_Total"]) if (pd.notna(row["Horas_OS_Total"]) and row["Horas_OS_Total"] > 0) else float(row["RendimientoHoras"])
 
-        if ha_os > 0 and h_os > 0:
-            return (h_os * tarifa_hora) / ha_os
-        return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
+        if ha_totales_os > 0 and horas_totales_os > 0:
+            return (horas_totales_os * tarifa_hora) / ha_totales_os
+        return 0.0
 
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_unificada, axis=1)
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_unificada, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
@@ -581,7 +601,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera consolidando hectáreas por Orden de Servicio.")
+    st.success("🏁 Proceso completado con precisión total.")
 
 if __name__ == "__main__":
     pass
