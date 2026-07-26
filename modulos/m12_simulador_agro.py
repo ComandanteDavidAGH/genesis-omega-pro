@@ -499,23 +499,32 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown(html_cards, unsafe_allow_html=True)
 
     # =================================================================
-    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA FORZADO)
+    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA)
     # =================================================================
     st.markdown("### 📋 Resumen Detallado y Auditoría Financiera")
     
     df_visual = df_agrupado.copy()
     df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
-    # Regla de Negocios para el Color:
-    # Rojo (> 0) = La Ideal era más cara que la Real (Pérdida de dinero)
-    # Verde (< 0) = Cobramos más que la Ideal (Ganancia / Excelencia)
     def color_fuga(val):
         if pd.isna(val): return ''
         if val > 0: return 'color: #D32F2F; font-weight: bold;'
         elif val < 0: return 'color: #198754; font-weight: bold;'
         return 'color: #424242;'
 
-    # Se aplica .map para Pandas nuevos, o .applymap para versiones anteriores
+    # ESTILOS DE ENCABEZADO: Negrita, fondo sutil y subrayado dorado.
+    header_styles = [{
+        'selector': 'th',
+        'props': [
+            ('font-weight', 'bold'),
+            ('color', '#0d1b2a'),
+            ('background-color', '#f4f6f9'),
+            ('font-size', '13px'),
+            ('text-transform', 'uppercase'),
+            ('border-bottom', '3px solid #d4af37')
+        ]
+    }]
+
     estilo_visual = df_visual.style.format({
         "Hectareas": "{:,.2f}",
         "Tarifa Real Prom/Ha": "$ {:,.0f}",
@@ -532,7 +541,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         estilo_visual = estilo_visual.applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
         
     estilo_visual = estilo_visual.background_gradient(cmap='Blues', subset=['Hectareas']) \
-                                 .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal'])
+                                 .background_gradient(cmap='Greens', subset=['Tarifa Real Prom/Ha', 'Total Real Facturado']) \
+                                 .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal']) \
+                                 .set_table_styles(header_styles)
 
     st.dataframe(estilo_visual, use_container_width=True, height=400, hide_index=True)
 
@@ -550,13 +561,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
         ).reset_index()
         
-        estilo_cebo = df_cebo.style.format({
-            "Horas_Calculadas_OS": "{:,.3f} hrs",
-            "Suma_Hectareas_OS": "{:,.2f} ha",
-            "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
-        }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
-          .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS']) \
-          .background_gradient(cmap='YlOrBr', subset=['Tarifa_Ideal_Final_Ha'])
+        try:
+            estilo_cebo = df_cebo.style.format({
+                "Horas_Calculadas_OS": "{:,.3f} hrs",
+                "Suma_Hectareas_OS": "{:,.2f} ha",
+                "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
+            }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
+              .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS']) \
+              .background_gradient(cmap='YlOrBr', subset=['Tarifa_Ideal_Final_Ha']) \
+              .set_table_styles(header_styles)
+        except Exception:
+            estilo_cebo = df_cebo.style.format({"Horas_Calculadas_OS": "{:,.3f} hrs", "Suma_Hectareas_OS": "{:,.2f} ha", "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"}).set_table_styles(header_styles)
 
         st.dataframe(estilo_cebo, use_container_width=True, hide_index=True)
 
