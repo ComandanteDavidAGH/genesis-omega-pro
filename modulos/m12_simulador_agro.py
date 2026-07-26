@@ -21,7 +21,7 @@ def obtener_cliente_gspread_unificado():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
 @st.cache_data(show_spinner=False, ttl=10)
@@ -45,7 +45,7 @@ def extraer_datos_boveda():
         df_t2 = pd.DataFrame(t2)
         
         return df_t1, df_t2
-    except:
+    except Exception:
         return pd.DataFrame(), pd.DataFrame()
 
 # 🌟 MOTORES DE LIMPIEZA MATEMÁTICA
@@ -60,7 +60,7 @@ def limpiar_cantidad(val):
         elif "," in texto:
             texto = texto.replace(",", ".")
         return float(texto)
-    except:
+    except Exception:
         return 0.0
 
 def limpiar_moneda(val):
@@ -81,7 +81,7 @@ def limpiar_moneda(val):
                 else: 
                     texto = texto.replace(sep, ".")
         return float(texto) if texto else 0.0
-    except:
+    except Exception:
         return 0.0
 
 def parsear_fecha_robusta(val):
@@ -99,7 +99,7 @@ def parsear_fecha_robusta(val):
         if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
     try: 
         return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
-    except: 
+    except Exception: 
         return pd.NaT
 
 def purificar_datos_vuelo(eq_raw, pista_raw):
@@ -163,7 +163,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_header = Font(color="FFFFFF", bold=True)
-        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC'),
+        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
         ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
@@ -260,24 +260,22 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         cols_limpias.append(c_str)
     df_base.columns = cols_limpias
 
-    try:
-        col_fecha = "FECHA"
-        col_finca = "FINCA"
-        col_pista = "PISTA"
-        col_avion = "MODELO"
-        col_orden = "Nº ORDEN"
-        
-        col_ha = next(c for c in df_base.columns if "ÁREA FUMIG" in c or "AREA FUMIG" in c)
-        col_rend_h = next(c for c in df_base.columns if "RENDIMIENTO (HORAS)" in c or "RENDIMIENTO(HORAS)" in c or ("RENDIMIENTO" in c and "HORA" in c))
-        col_vuelo = next(c for c in df_base.columns if "COSTO AVI" in c and "$/HA" in c)
+    col_fecha = "FECHA" if "FECHA" in df_base.columns else df_base.columns[0]
+    col_finca = "FINCA" if "FINCA" in df_base.columns else df_base.columns[1]
+    col_pista = "PISTA" if "PISTA" in df_base.columns else df_base.columns[2]
+    col_avion = "MODELO" if "MODELO" in df_base.columns else df_base.columns[3]
+    col_orden = "Nº ORDEN" if "Nº ORDEN" in df_base.columns else df_base.columns[0]
 
-    except StopIteration:
-        st.error("🚨 Error de mapeo de columnas en la TABLA 1.")
-        return
+    col_ha_matches = [c for c in df_base.columns if "ÁREA FUMIG" in c or "AREA FUMIG" in c]
+    col_ha = col_ha_matches[0] if col_ha_matches else df_base.columns[4]
 
-    # 🛡️ ALINEACIÓN DE ÍNDICES DESDE EL INICIO
+    col_rend_matches = [c for c in df_base.columns if "RENDIMIENTO" in c and "HORA" in c]
+    col_rend_h = col_rend_matches[0] if col_rend_matches else df_base.columns[5]
+
+    col_vuelo_matches = [c for c in df_base.columns if "COSTO AVI" in c and "$/HA" in c]
+    col_vuelo = col_vuelo_matches[0] if col_vuelo_matches else df_base.columns[6]
+
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy().reset_index(drop=True)
-    
     renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN"}
     df_sim = df_sim.rename(columns=renombres)
 
@@ -316,27 +314,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     }
     
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
-    
-    lista_aviones_maestra = [
-        "THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", 
-        "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", 
-        "DRONE DATAROT", "DRONE GENESYS", "DRONE NORTE", "DRONE AVIL"
-    ]
+    lista_aviones_maestra = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", "DRONE DATAROT", "DRONE GENESYS", "DRONE NORTE", "DRONE AVIL"]
 
     if 'tarifas_simulador' not in st.session_state:
         st.session_state.tarifas_simulador = {}
 
     tarifas_base_oficiales = {
-        "THRUS SR2": 4606562.0,
-        "PIPER PA 36-375": 3985831.0,
-        "CESSNA O PIPER PA 25": 3036525.0,
-        "AIR TRACTOR": 4665109.0, # Actualizado al centavo exacto
-        "CESSNA ASA": 3666600.0,
-        "CESSNA FUMIGARAY": 3065952.0,
-        "DRONE DATAROT": 84427.0,
-        "DRONE GENESYS": 71280.0,
-        "DRONE NORTE": 75518.0,
-        "DRONE AVIL": 71280.0
+        "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0,
+        "AIR TRACTOR": 4665109.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
+        "DRONE DATAROT": 84427.0, "DRONE GENESYS": 71280.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0
     }
 
     for k, v in tarifas_base_oficiales.items():
@@ -370,7 +356,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         else:
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
-                
                 emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
                 
@@ -387,11 +372,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                         elif "," in limpio: limpio = limpio.replace(",", ".")
                         st.session_state.tarifas_simulador[avion_editar] = float(limpio)
                         st.rerun()
-                    except: pass
+                    except Exception: pass
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
-    # 🛡️ MÁSCARA Y FILTRADO CON RESETEO DE ÍNDICE
     mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
 
     if finca_sel != "🌍 TODAS LAS FINCAS":
@@ -408,40 +392,36 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR UNIFICADO POR ORDEN DE SERVICIO (OS)
+    # 🧠 MOTOR UNIFICADO Y ROBUSTO DE AGRUPACIÓN OS
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # 🎯 CONSOLIDACIÓN INTELIGENTE DE TIEMPO POR OS:
-    # Evalúa si las filas de una OS tienen el mismo tiempo repetido o desglosado
-    def consolidar_tiempo_os(df_os):
-        rend_h = df_os["RendimientoHoras"].tolist()
-        if not rend_h: return 0.0
-        # Si todas las filas de la OS tienen EXACTAMENTE el mismo tiempo (ej: 2.2 hrs repetidas en las 3 fincas)
-        if len(set(rend_h)) == 1 and rend_h[0] > 0:
-            return float(rend_h[0])
-        else:
-            # Si tienen tiempos desglosados (ej: 0.37 y 0.23), los suma
-            return float(sum(rend_h))
+    def consolidar_os(df):
+        records = []
+        for orden, sub_df in df.groupby("Nº ORDEN"):
+            ha_sum = float(sub_df["Hectareas"].sum())
+            rend_list = [float(x) for x in sub_df["RendimientoHoras"] if pd.notna(x)]
+            if not rend_list:
+                h_tot = 0.0
+            elif len(set(rend_list)) == 1 and rend_list[0] > 0:
+                h_tot = rend_list[0]
+            else:
+                h_tot = sum(rend_list)
+            records.append({"Nº ORDEN": orden, "Ha_OS_Total": ha_sum, "Horas_OS_Total": h_tot})
+        return pd.DataFrame(records)
 
-    # Agrupamos por Nº ORDEN sobre la base total para no perder las hectáreas de fincas vecinas
-    df_os_resumen = df_sim.groupby("Nº ORDEN").apply(lambda x: pd.Series({
-        "Ha_OS_Total": float(x["Hectareas"].sum()),
-        "Horas_OS_Total": consolidar_tiempo_os(x)
-    })).reset_index()
-
+    df_os_resumen = consolidar_os(df_sim)
     df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
 
     def calcular_tarifa_ideal_unificada(row):
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
         ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
-        horas_totales_os = float(row["Horas_OS_Total"]) if pd.notna(row["Horas_OS_Total"]) else float(row["RendimientoHoras"])
+        horas_totales_os = float(row["Horas_OS_Total"]) if (pd.notna(row["Horas_OS_Total"]) and row["Horas_OS_Total"] > 0) else float(row["RendimientoHoras"])
 
         if ha_totales_os > 0 and horas_totales_os > 0:
-            # Formula Maestra: (Horas OS * Tarifa Hora Equipo) / Hectáreas Totales OS
             return (horas_totales_os * tarifa_hora) / ha_totales_os
         return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
 
@@ -450,7 +430,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA MOSTRAR EN PANTALLA
+    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
