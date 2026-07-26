@@ -133,6 +133,11 @@ def ejecutar(purificar_lote, extraer_numero):
         color: #000000 !important;
         font-weight: bold !important;
     }}
+    /* 👇 CORRECCIÓN QUIRÚRGICA: Letra blanca exclusivamente para el botón de Upload */
+    div[data-testid="stFileUploader"] button, div[data-testid="stFileUploader"] button * {{
+        color: #ffffff !important;
+    }}
+    /* 👆 FIN CORRECCIÓN */
     div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
