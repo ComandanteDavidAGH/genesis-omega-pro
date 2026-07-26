@@ -275,23 +275,28 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Error de mapeo de columnas en la TABLA 1.")
         return
 
-    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy()
+    # 🛡️ ALINEACIÓN DE ÍNDICE INICIAL
+    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy().reset_index(drop=True)
     
     renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN"}
     df_sim = df_sim.rename(columns=renombres)
 
-    df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
-    df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
+    # 🛡️ FILTRADO CON RESETEO DE ÍNDICE
+    mask_valida = (df_sim["Finca"].astype(str).str.strip() != "") & (df_sim["Equipo_Raw"].astype(str).str.strip() != "")
+    df_sim = df_sim[mask_valida].reset_index(drop=True)
 
-    df_sim["Equipo"] = df_sim.apply(lambda r: purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])[0], axis=1)
-    df_sim["Pista"] = df_sim.apply(lambda r: purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])[1], axis=1)
+    # Transformación fila por fila garantizando alineación
+    res_vuelo = [purificar_datos_vuelo(eq, p) for eq, p in zip(df_sim["Equipo_Raw"], df_sim["Pista_Raw"])]
+    df_sim["Equipo"] = [r[0] for r in res_vuelo]
+    df_sim["Pista"] = [r[1] for r in res_vuelo]
     
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
     df_sim["RendimientoHoras"] = df_sim["RendimientoHoras"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
     df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
-    df_sim = df_sim[(df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())]
+    mask_final = (df_sim["Hectareas"] > 0) & (df_sim["Equipo"] != "IGNORAR") & (df_sim['Fecha_DT'].notna())
+    df_sim = df_sim[mask_final].reset_index(drop=True)
 
     if df_sim.empty:
         st.warning("⚠️ No hay registros matemáticamente válidos en la TABLA 1.")
@@ -388,14 +393,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
-    df_filtrado = df_sim[
-        (df_sim["Fecha_DT"].dt.date >= fecha_ini) &
-        (df_sim["Fecha_DT"].dt.date <= fecha_fin)
-    ].copy()
+    # 🛡️ FILTRADO SEGURO DE FECHAS E INDEXACIÓN ALINEADA
+    mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
 
-    if finca_sel != "🌍 TODAS LAS FINCAS": df_filtrado = df_filtrado[df_filtrado["Finca"] == finca_sel]
-    if pista_sel != "🛣️ TODAS LAS PISTAS": df_filtrado = df_filtrado[df_filtrado["Pista"] == pista_sel.replace("🛣️ ", "")]
-    if equipo_sel != "✈️ TODOS LOS EQUIPOS": df_filtrado = df_filtrado[df_filtrado["Equipo"] == equipo_sel]
+    if finca_sel != "🌍 TODAS LAS FINCAS":
+        mask_filtro = mask_filtro & (df_sim["Finca"] == finca_sel)
+    if pista_sel != "🛣️ TODAS LAS PISTAS":
+        mask_filtro = mask_filtro & (df_sim["Pista"] == pista_sel.replace("🛣️ ", ""))
+    if equipo_sel != "✈️ TODOS LOS EQUIPOS":
+        mask_filtro = mask_filtro & (df_sim["Equipo"] == equipo_sel)
+
+    df_filtrado = df_sim[mask_filtro].copy().reset_index(drop=True)
 
     if df_filtrado.empty:
         st.warning("📭 No hay vuelos registrados con esos criterios de búsqueda.")
@@ -429,7 +437,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
 
     df_agrupado = df_agrupado[["Fecha Operación", "Semana", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
-    df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"])
+    df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"]).reset_index(drop=True)
 
     # =================================================================
     # 💎 TARJETAS DE MANDO FINANCIERO
@@ -489,9 +497,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
     # =================================================================
     st.markdown("---")
-    st.markdown("### 📈 Dashboard Analítico de Tendencias")
+    st.markdown("### 📈 Dashboard Analítico de TendENCIAS")
 
-    df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy()
+    df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
     df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
     fig_tarifas = px.bar(
@@ -560,7 +568,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. Lectura estricta y directa de la Columna N.")
+    st.success("🏁 Proceso completado. Alineación de índices corregida exitosamente.")
 
 if __name__ == "__main__":
     pass
