@@ -208,6 +208,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
 
+    # 🎣 TRAMPA / CEBO VISUAL DE VERIFICACIÓN FOSFORESCENTE
+    st.markdown("""
+    <div style='background-color: #00ff00; color: #000000; border: 5px solid #000000; padding: 20px; text-align: center; border-radius: 10px; margin-bottom: 25px;'>
+        <h1 style='color: #000000; margin: 0; font-size: 26px; font-family: "Arial Black";'>⚡ CEBO DE VERIFICACIÓN ACTIVO - VERSIÓN V7.5 MATEMÁTICA PURA OS ⚡</h1>
+        <h3 style='color: #000000; margin: 8px 0 0 0;'>SI VES ESTE BANNER VERDE FOSFORESCENTE, EL CÓDIGO SE CARGÓ EN MEMORIA</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown(f"""
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
@@ -238,7 +246,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (v7.0 - Matemática Pura OS)</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (v7.5 - Cebo Activo)</h1>", unsafe_allow_html=True)
         st.caption("Cálculo exacto: (Sumatoria Horas OS * Tarifa Equipo) / Sumatoria Hectáreas OS.")
     with c_btn:
         st.write("")
@@ -309,14 +317,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
     
-    # 🌟 TARIFAS BASE EXACTAS (Mapeadas de AT:AU y AW:AX)
     lista_aviones_maestra = [
         "THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", 
         "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", 
         "DRONE DATAROT", "DRONE GENESYS", "DRONE NORTE", "DRONE AVIL"
     ]
 
-    if 'tarifas_agro_estables_v4' not in st.session_state:
+    if 'tarifas_agro_estables_v5' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
@@ -331,7 +338,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "DRONE NORTE": 75518.0,
                 "DRONE AVIL": 71280.0
             }.get(av, 4606562.0))
-        st.session_state['tarifas_agro_estables_v4'] = True
+        st.session_state['tarifas_agro_estables_v5'] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
@@ -361,7 +368,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
-                # Emojis homologados: Dron vs Avión
                 emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
                 
@@ -396,14 +402,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MATEMÁTICA PURA (SIN TOPES) SOLICITADA POR EL COMANDANTE
+    # 🧠 MATEMÁTICA PURA (SIN TOPES)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # "se saca el rendimento total (suma) de esa orden por la hora del avion entre las hectareas totales"
+    # Suma de Hectáreas y Horas de la OS
     df_os_resumen = df_sim.groupby("Nº ORDEN", as_index=False).agg(
         Ha_OS_Total=("Hectareas", "sum"),
         Horas_OS_Total=("RendimientoHoras", "sum")
@@ -416,13 +422,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         horas_totales_os = float(row["Horas_OS_Total"]) if pd.notna(row["Horas_OS_Total"]) else 0.0
 
         if ha_totales_os > 0:
-            # FÓRMULA DIRECTA: (Tarifa Hora * Suma Horas de OS) / Suma Hectáreas de OS
             return (tarifa_hora * horas_totales_os) / ha_totales_os
         return 0.0
 
     df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_pura, axis=1)
-    
-    # Cero Topes y Cero Candados. La matemática es libre y desnuda.
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
@@ -582,7 +585,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera bajo Matemática Pura de OS.")
+    st.success("🏁 Proceso completado. La interfaz opera bajo Cebo y Matemática Pura de OS.")
 
 if __name__ == "__main__":
     pass
