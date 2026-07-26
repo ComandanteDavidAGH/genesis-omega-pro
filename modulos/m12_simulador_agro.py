@@ -48,7 +48,15 @@ def extraer_datos_boveda():
     except Exception:
         return pd.DataFrame(), pd.DataFrame()
 
-# 🌟 MOTORES DE LIMPIEZA MATEMÁTICA
+# 🌟 MOTORES DE LIMPIEZA MATEMÁTICA Y PURIFICACIÓN EXTREMA
+def limpiar_orden_extrema(val):
+    """El cebo: Elimina cualquier carácter invisible, espacio o .0 fantasma"""
+    if pd.isna(val) or str(val).strip() == "": return "SIN_ORDEN"
+    v = str(val).upper().strip()
+    v = re.sub(r'\s+', '', v) # Destruye espacios intermedios e invisibles
+    if v.endswith('.0'): v = v[:-2] # Destruye decimales inútiles
+    return v
+
 def limpiar_cantidad(val):
     if isinstance(val, pd.Series): val = val.iloc[0]
     if pd.isna(val) or str(val).strip() == "": return 0.0
@@ -119,14 +127,6 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
         if "FUMIGARAY" in p or "FUMIGARAY" in eq: return "CESSNA FUMIGARAY", "FUMIGARAY"
         return "CESSNA O PIPER PA 25", "AEROPENORT"
     return "IGNORAR", "IGNORAR"
-
-def purificar_orden(val, idx):
-    v = str(val).strip().upper()
-    if v.endswith('.0'): 
-        v = v[:-2]
-    if v in ["", "0", "NAN", "NONE", "NULL"]:
-        return f"INDIVIDUAL_{idx}"
-    return v
 
 # =================================================================
 # 💾 EXPORTADOR EXCEL MULTI-HOJA GERENCIAL
@@ -247,21 +247,20 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     c_t, c_btn = st.columns([3, 1])
     with c_t:
         st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Agrupación OS Absoluta)</h1>", unsafe_allow_html=True)
-        st.caption("Ecuación unificada: (Suma Horas OS * Tarifa Equipo) / Suma Hectáreas de la misma Orden")
+        st.caption("Fórmula: (Horas Totales OS Limpia * Tarifa Equipo) / Hectáreas Totales OS Limpia")
     with c_btn:
         st.write("")
         if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
-    with st.spinner("📥 Extrayendo matriz exacta desde Google Sheets..."):
+    with st.spinner("📥 Extrayendo y purificando matriz desde Google Sheets..."):
         df_base, df_t2_raw = extraer_datos_boveda()
 
     if df_base.empty:
         st.error("🚨 Error de enlace: TABLA 1 no contiene registros o está desconectada.")
         return
 
-    # LIMPIEZA EXTREMA DE NOMBRES DE COLUMNAS
     cols_limpias = []
     for c in df_base.columns:
         c_str = str(c).upper().replace('\n', ' ').replace('\r', '').strip()
@@ -269,29 +268,29 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         cols_limpias.append(c_str)
     df_base.columns = cols_limpias
 
-    # DETECCIÓN DE COLUMNAS A PRUEBA DE FALLOS
+    col_fecha = "FECHA" if "FECHA" in df_base.columns else df_base.columns[0]
+    col_finca = "FINCA" if "FINCA" in df_base.columns else df_base.columns[1]
+    col_pista = "PISTA" if "PISTA" in df_base.columns else df_base.columns[2]
+    col_avion = "MODELO" if "MODELO" in df_base.columns else df_base.columns[3]
+    
     col_orden_matches = [c for c in df_base.columns if "ORDEN" in c]
     col_orden = col_orden_matches[0] if col_orden_matches else df_base.columns[0]
-    col_fecha = "FECHA" if "FECHA" in df_base.columns else df_base.columns[1]
-    col_finca = "FINCA" if "FINCA" in df_base.columns else df_base.columns[2]
-    col_pista = "PISTA" if "PISTA" in df_base.columns else df_base.columns[3]
-    col_avion = "MODELO" if "MODELO" in df_base.columns else df_base.columns[4]
 
     col_ha_matches = [c for c in df_base.columns if "ÁREA FUMIG" in c or "AREA FUMIG" in c]
-    col_ha = col_ha_matches[0] if col_ha_matches else df_base.columns[5]
+    col_ha = col_ha_matches[0] if col_ha_matches else df_base.columns[4]
 
     col_rend_matches = [c for c in df_base.columns if "RENDIMIENTO" in c and "HORA" in c]
-    col_rend_h = col_rend_matches[0] if col_rend_matches else df_base.columns[6]
+    col_rend_h = col_rend_matches[0] if col_rend_matches else df_base.columns[5]
 
     col_vuelo_matches = [c for c in df_base.columns if "COSTO AVI" in c and "$/HA" in c]
-    col_vuelo = col_vuelo_matches[0] if col_vuelo_matches else df_base.columns[7]
+    col_vuelo = col_vuelo_matches[0] if col_vuelo_matches else df_base.columns[6]
 
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy().reset_index(drop=True)
-    renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN"}
+    renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN RAW"}
     df_sim = df_sim.rename(columns=renombres)
 
-    # 🛡️ LIMPIEZA ABSOLUTA DEL NÚMERO DE ORDEN PARA GARANTIZAR AGRUPACIÓN PERFECTA
-    df_sim["Nº ORDEN"] = [purificar_orden(x, i) for i, x in enumerate(df_sim["Nº ORDEN"])]
+    # 🛡️ LA PURIFICACIÓN EXTREMA DE LA ORDEN DE SERVICIO (EL CEBO ACTÚA AQUÍ)
+    df_sim["Nº ORDEN"] = df_sim["Nº ORDEN RAW"].apply(limpiar_orden_extrema)
 
     mask_valida = (df_sim["Finca"].astype(str).str.strip() != "") & (df_sim["Equipo_Raw"].astype(str).str.strip() != "")
     df_sim = df_sim[mask_valida].reset_index(drop=True)
@@ -391,10 +390,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         tarifas_aviones = st.session_state.tarifas_simulador
 
     # =================================================================
-    # 🧠 MOTOR DE CONSOLIDACIÓN UNIFICADO POR ORDEN DE SERVICIO (OS)
-    # Se calcula ANTES de aplicar los filtros de finca para no perder las Hectareas globales
+    # 🧠 MOTOR DE CONSOLIDACIÓN ESTRICTA POR Nº ORDEN
     # =================================================================
-    def consolidar_os(df):
+    def consolidar_os_estricto(df):
         records = []
         for orden, sub_df in df.groupby("Nº ORDEN"):
             ha_sum = float(sub_df["Hectareas"].sum())
@@ -403,22 +401,23 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             if not rend_list:
                 h_tot = 0.0
             elif len(set([round(r, 4) for r in rend_list])) == 1:
-                # Si el excel tiene el mismo tiempo global repetido en todas las fincas de la orden
+                # Tiempo repetido en cada fila
                 h_tot = rend_list[0]
             else:
-                # Si el excel tiene los tiempos ya desglosados para cada finca
+                # Tiempos desglosados
                 h_tot = sum(rend_list)
                 
             records.append({
                 "Nº ORDEN": orden,
                 "Ha_OS_Total": ha_sum,
-                "Horas_OS_Total": h_tot
+                "Horas_OS_Total": h_tot,
+                "Fincas_En_La_OS": " | ".join(sub_df["Finca"].unique())
             })
         return pd.DataFrame(records)
 
-    df_os_resumen = consolidar_os(df_sim)
+    df_os_resumen = consolidar_os_estricto(df_sim)
 
-    # 🛡️ AHORA SÍ APLICAMOS LOS FILTROS DE PANTALLA
+    # 🛡️ FILTRADO DE PANTALLA
     mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
     if finca_sel != "🌍 TODAS LAS FINCAS":
         mask_filtro = mask_filtro & (df_sim["Finca"] == finca_sel)
@@ -433,7 +432,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.warning("📭 No hay vuelos registrados con esos criterios de búsqueda.")
         return
 
-    # Inyectamos el Consolidado a las filas filtradas
+    # Inyectamos los totales unificados
     df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
 
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
@@ -441,7 +440,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # LA FÓRMULA FINAL APROBADA
+    # FÓRMULA MAESTRA CON LA OS PURIFICADA
     def calcular_tarifa_ideal_unificada(row):
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
         ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
@@ -456,7 +455,28 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY
+    # 🪤 EL CEBO (RADIOGRAFÍA DE ÓRDENES EN PANTALLA)
+    # =================================================================
+    with st.expander("🩺 RADIOGRAFÍA DEL MOTOR (EL CEBO) - Abre aquí para auditar el agrupamiento"):
+        st.markdown("**🔍 Verificación Estricta de la purificación de Órdenes de Servicio:**")
+        df_cebo = df_filtrado.groupby(["Nº ORDEN", "Fincas_En_La_OS", "Equipo", "Fecha Operación"]).agg(
+            Horas_Calculadas_OS=("Horas_OS_Total", "max"),
+            Suma_Hectareas_OS=("Ha_OS_Total", "max"),
+            Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
+        ).reset_index()
+        
+        st.dataframe(
+            df_cebo.style.format({
+                "Horas_Calculadas_OS": "{:,.3f}",
+                "Suma_Hectareas_OS": "{:,.2f}",
+                "Tarifa_Ideal_Final_Ha": "${:,.0f}"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    # =================================================================
+    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN FINAL
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
@@ -601,7 +621,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado con precisión total.")
+    st.success("🏁 Proceso completado. Órdenes purificadas en origen.")
 
 if __name__ == "__main__":
     pass
