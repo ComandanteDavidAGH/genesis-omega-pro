@@ -388,9 +388,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         tarifas_aviones = st.session_state.tarifas_simulador
 
     # =================================================================
-    # 🧠 MOTOR DE CONSOLIDACIÓN ESTRICTA POR Nº ORDEN
+    # 🧠 MOTOR DE CONSOLIDACIÓN UNIFICADO POR ORDEN DE SERVICIO (OS)
     # =================================================================
-    def consolidar_os_estricto(df):
+    def consolidar_os(df):
         records = []
         for orden, sub_df in df.groupby("Nº ORDEN"):
             ha_sum = float(sub_df["Hectareas"].sum())
@@ -411,7 +411,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             })
         return pd.DataFrame(records)
 
-    df_os_resumen = consolidar_os_estricto(df_sim)
+    df_os_resumen = consolidar_os(df_sim)
 
     # 🛡️ FILTRADO DE PANTALLA
     mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
@@ -428,7 +428,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.warning("📭 No hay vuelos registrados con esos criterios de búsqueda.")
         return
 
-    # Inyectamos los totales unificados
+    # Inyectamos el Consolidado a las filas filtradas
     df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
 
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
@@ -436,7 +436,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # FÓRMULA MAESTRA CON LA OS PURIFICADA
+    # FÓRMULA MAESTRA
     def calcular_tarifa_ideal_unificada(row):
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
         ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
@@ -451,7 +451,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN FINAL PARA DISPLAY
+    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
@@ -506,14 +506,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_visual = df_agrupado.copy()
     df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
-    # Función de color condicional: Rojo = Pérdida, Verde = Ganancia/Ideal
+    # Función de color condicional: Rojo = Pérdida (Brecha Positiva), Verde = Ganancia/Ideal (Brecha Negativa)
     def color_fuga(val):
         if isinstance(val, (int, float)):
             if val > 0: return 'color: #D32F2F; font-weight: 900;'
             elif val < 0: return 'color: #198754; font-weight: 900;'
         return 'color: #424242;'
 
-    # Aplicación de Estilos Pandas (Formato de Gala)
     try:
         styled_visual = df_visual.style.format({
             "Hectareas": "{:,.2f}",
@@ -525,9 +524,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             "Lucro Cesante": "$ {:,.0f}"
         }).applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha']) \
           .background_gradient(cmap='Blues', subset=['Hectareas']) \
-          .background_gradient(cmap='OrRd', subset=['Total Simulado Ideal'])
-    except:
-        # Fallback de compatibilidad
+          .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal'])
+    except Exception:
         styled_visual = df_visual.style.format({
             "Hectareas": "{:,.2f}", "Tarifa Real Prom/Ha": "$ {:,.0f}", "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
             "Brecha por Ha": "$ {:,.0f}", "Total Real Facturado": "$ {:,.0f}", "Total Simulado Ideal": "$ {:,.0f}", "Lucro Cesante": "$ {:,.0f}"
@@ -555,8 +553,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "Suma_Hectareas_OS": "{:,.2f} ha",
                 "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
             }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
-              .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS'])
-        except:
+              .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS']) \
+              .background_gradient(cmap='YlOrBr', subset=['Tarifa_Ideal_Final_Ha'])
+        except Exception:
             styled_cebo = df_cebo.style.format({"Horas_Calculadas_OS": "{:,.3f} hrs", "Suma_Hectareas_OS": "{:,.2f} ha", "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"})
 
         st.dataframe(styled_cebo, use_container_width=True, hide_index=True)
@@ -636,7 +635,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado.")
+    st.success("🏁 Proceso completado. La interfaz opera con Formato Gerencial Dinámico.")
 
 if __name__ == "__main__":
     pass
