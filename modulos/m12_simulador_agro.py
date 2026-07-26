@@ -163,7 +163,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_header = Font(color="FFFFFF", bold=True)
-        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
+        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC'),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
         ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
@@ -238,8 +238,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Lógica OS Unificada)</h1>", unsafe_allow_html=True)
-        st.caption("Prorrateo exacto por Orden de Servicio: (Tiempo OS * Tarifa Equipo) / Suma Hectáreas OS")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Matemática Pura Auditable)</h1>", unsafe_allow_html=True)
+        st.caption("Ecuación estricta fila por fila: (RENDIMIENTO (horas) * Tarifa Hora Equipo) / ÁREA FUMIGADA (ha)")
     with c_btn:
         st.write("")
         if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
@@ -392,41 +392,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR UNIFICADO Y ROBUSTO DE AGRUPACIÓN OS
+    # 🧠 MATEMÁTICA PURA DIRECTA FILA POR FILA (AUDITABLE AL 100%)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    def consolidar_os(df):
-        records = []
-        for orden, sub_df in df.groupby("Nº ORDEN"):
-            ha_sum = float(sub_df["Hectareas"].sum())
-            rend_list = [float(x) for x in sub_df["RendimientoHoras"] if pd.notna(x)]
-            if not rend_list:
-                h_tot = 0.0
-            elif len(set(rend_list)) == 1 and rend_list[0] > 0:
-                h_tot = rend_list[0]
-            else:
-                h_tot = sum(rend_list)
-            records.append({"Nº ORDEN": orden, "Ha_OS_Total": ha_sum, "Horas_OS_Total": h_tot})
-        return pd.DataFrame(records)
-
-    df_os_resumen = consolidar_os(df_sim)
-    df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
-
-    def calcular_tarifa_ideal_unificada(row):
-        tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-        ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
-        horas_totales_os = float(row["Horas_OS_Total"]) if (pd.notna(row["Horas_OS_Total"]) and row["Horas_OS_Total"] > 0) else float(row["RendimientoHoras"])
-
-        if ha_totales_os > 0 and horas_totales_os > 0:
-            return (horas_totales_os * tarifa_hora) / ha_totales_os
-        return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
-
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_unificada, axis=1)
-    df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
+    # FÓRMULA DIRECTA DESNUDA: (RendimientoHoras * Tarifa_Hora_Equipo) / Hectareas
+    df_filtrado["Total Simulado Ideal"] = df_filtrado["RendimientoHoras"] * df_filtrado["Tarifa_Aplicada"]
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado["Total Simulado Ideal"] / df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
@@ -575,7 +550,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz calcula con matemática pura unificada por Orden de Servicio.")
+    st.success("🏁 Proceso completado. La interfaz opera bajo Matemática Pura Directa Fila a Fila.")
 
 if __name__ == "__main__":
     pass
