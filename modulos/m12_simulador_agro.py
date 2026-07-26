@@ -208,14 +208,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
 
-    # 🎣 TRAMPA / CEBO VISUAL DE VERIFICACIÓN FOSFORESCENTE
-    st.markdown("""
-    <div style='background-color: #00ff00; color: #000000; border: 5px solid #000000; padding: 20px; text-align: center; border-radius: 10px; margin-bottom: 25px;'>
-        <h1 style='color: #000000; margin: 0; font-size: 26px; font-family: "Arial Black";'>⚡ CEBO DE VERIFICACIÓN ACTIVO - VERSIÓN V7.5 MATEMÁTICA PURA OS ⚡</h1>
-        <h3 style='color: #000000; margin: 8px 0 0 0;'>SI VES ESTE BANNER VERDE FOSFORESCENTE, EL CÓDIGO SE CARGÓ EN MEMORIA</h3>
-    </div>
-    """, unsafe_allow_html=True)
-
     st.markdown(f"""
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
@@ -246,11 +238,11 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (v7.5 - Cebo Activo)</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
         st.caption("Cálculo exacto: (Sumatoria Horas OS * Tarifa Equipo) / Sumatoria Hectáreas OS.")
     with c_btn:
         st.write("")
-        if st.button("🔄 Recargar Memoria RAM", use_container_width=True):
+        if st.button("🔄 Sincronizar Datos", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -585,7 +577,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera bajo Cebo y Matemática Pura de OS.")
+    st.success("🏁 Proceso completado. Sistema operando bajo Matemática Pura de OS.")
 
 if __name__ == "__main__":
     pass
