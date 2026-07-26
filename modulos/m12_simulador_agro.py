@@ -163,7 +163,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_header = Font(color="FFFFFF", bold=True)
-        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC'),
+        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
         ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
