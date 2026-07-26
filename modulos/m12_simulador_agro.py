@@ -207,14 +207,6 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 def ejecutar(procesar_fecha_pesada, extraer_numero):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
-    
-    # 🎣 CEBO VISUAL: BANNER ROJO FOSFORESCENTE
-    st.markdown("""
-    <div style='background-color: #ff0000; color: #ffffff; border: 5px solid #ffff00; padding: 15px; text-align: center; border-radius: 10px; margin-bottom: 20px;'>
-        <h1 style='color: #ffff00; margin: 0; font-size: 26px; font-family: "Arial Black";'>🚨 TRAMPA DE CEBO DETECTADA EN MÓDULO 12 🚨</h1>
-        <h3 style='color: #ffffff; margin: 5px 0 0 0;'>⚠️ SI VES ESTE BANNER ROJO Y AMARILLO, EL CÓDIGO DEL MÓDULO 12 SÍ SE ACTUALIZÓ EN RAM ⚠️</h3>
-    </div>
-    """, unsafe_allow_html=True)
 
     st.markdown(f"""
     <style>
@@ -244,8 +236,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Motor Dual Activo)</h1>", unsafe_allow_html=True)
-    st.caption("Auditoría de Lucro Cesante basada en la totalización del Horómetro por Orden de Servicio.")
+    st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Matemática Específica)</h1>", unsafe_allow_html=True)
+    st.caption("Auditoría de Lucro Cesante basada en la discriminación operacional real (Drones vs Aviones).")
 
     with st.spinner("📥 Cargando matrices base desde la Bóveda..."):
         df_base, df_t2_raw = extraer_datos_boveda()
@@ -261,30 +253,33 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     col_ha = "ÁREA FUMIG.\n(ha)"
     col_vuelo = " COSTO AVIÒN\n($/ha) "
     col_orden = "Nº ORDEN"
-    col_rend_horas = "RENDIMIENTO (horas)"
+    col_rend = "RENDIMIENTO (horas)"
+    
+    col_htotal = None
+    cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
+    for c, c_up in cols_upper.items():
+        if "H_TOTAL" in c_up or "HOROM" in c_up or "H.TOTAL" in c_up:
+            col_htotal = c
+            break
 
-    if col_rend_horas in df_base.columns:
-        col_tiempo = col_rend_horas
-    else:
-        col_tiempo = None
-        cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
-        for c, c_up in cols_upper.items():
-            if "HORO" in c_up: col_tiempo = c; break
-        if not col_tiempo:
-            for c, c_up in cols_upper.items():
-                if "HORAS" in c_up and "HA" not in c_up and "REND" not in c_up: col_tiempo = c; break
-
-    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_tiempo]:
+    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_rend]:
         if c_req not in df_base.columns:
             posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
             if posible_match:
                 if c_req == col_ha: col_ha = posible_match[0]
                 if c_req == col_vuelo: col_vuelo = posible_match[0]
                 if c_req == col_orden: col_orden = posible_match[0]
-                if c_req == col_tiempo: col_tiempo = posible_match[0]
+                if c_req == col_rend: col_rend = posible_match[0]
 
-    df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_tiempo, col_vuelo, col_orden]].copy()
-    df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "FactorTiempo", "CobroReal", "Nº ORDEN"]
+    cols_a_extraer = [col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend, col_vuelo, col_orden]
+    if col_htotal and col_htotal in df_base.columns:
+        cols_a_extraer.append(col_htotal)
+        df_sim = df_base[cols_a_extraer].copy()
+        df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "RendimientoHoras", "CobroReal", "Nº ORDEN", "HTotalOS"]
+    else:
+        df_sim = df_base[cols_a_extraer].copy()
+        df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "RendimientoHoras", "CobroReal", "Nº ORDEN"]
+        df_sim["HTotalOS"] = 0.0
     
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
@@ -293,7 +288,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim["Pista"] = df_sim.apply(lambda r: purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])[1], axis=1)
     
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
-    df_sim["FactorTiempo"] = df_sim["FactorTiempo"].apply(limpiar_cantidad)
+    df_sim["RendimientoHoras"] = df_sim["RendimientoHoras"].apply(limpiar_cantidad)
+    df_sim["HTotalOS"] = df_sim["HTotalOS"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
     df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
@@ -359,7 +355,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
-                # EMOJIS HOMOLOGADOS
                 emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
                 
@@ -394,63 +389,62 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MOTOR DUAL INTELIGENTE (FILA ÚNICA VS OS MULTI-LOTES REPETIDA)
+    # 🧠 BIFURCACIÓN MATEMÁTICA DEFINITIVA (DRON VS AVIÓN)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    cols_a_borrar = [c for c in df_filtrado.columns if c in ["TiempoEfectivoFila", "Costo Simulado HA"]]
-    if cols_a_borrar:
-        df_filtrado = df_filtrado.drop(columns=cols_a_borrar)
+    # Totales agrupados por OS para prórroga de Aviones
+    df_os_totales = df_sim.groupby("Nº ORDEN", as_index=False).agg(
+        HectareasOS_Totales=("Hectareas", "sum"),
+        HTotal_Max=("HTotalOS", "max")
+    )
+    df_filtrado = df_filtrado.merge(df_os_totales, on="Nº ORDEN", how="left")
 
-    def calcular_tiempo_efectivo_os(sub_df):
-        num_filas = len(sub_df)
-        ha_tot_os = sub_df["Hectareas"].sum()
-        tiempos_unicos = sub_df["FactorTiempo"].nunique()
-        
-        # CASO B: Múltiples lotes de una misma OS donde repitieron el Horómetro Total en cada fila
-        if num_filas > 1 and tiempos_unicos == 1:
-            tiempo_os_base = sub_df["FactorTiempo"].iloc[0]
-            if ha_tot_os > 0:
-                return tiempo_os_base * (sub_df["Hectareas"] / ha_tot_os)
-            else:
-                return sub_df["FactorTiempo"] / num_filas
-        else:
-            # CASO A: Fila única (OS Virtual o Individual) O tiempos ya fraccionados por lote
-            return sub_df["FactorTiempo"]
-
-    tiempos_procesados = []
-    for os_id, grupo_os in df_filtrado.groupby("Nº ORDEN", sort=False):
-        t_efectivo_serie = calcular_tiempo_efectivo_os(grupo_os)
-        tiempos_procesados.append(pd.Series(t_efectivo_serie, index=grupo_os.index))
-
-    if tiempos_procesados:
-        df_filtrado["TiempoEfectivoFila"] = pd.concat(tiempos_procesados)
-    else:
-        df_filtrado["TiempoEfectivoFila"] = df_filtrado["FactorTiempo"]
-
-    def calcular_simulacion_fila(row):
+    def calcular_tarifa_ideal_discriminada(row):
         try:
-            valor_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-            tiempo_fila = float(row["TiempoEfectivoFila"]) if pd.notna(row["TiempoEfectivoFila"]) else 0.0
+            equipo_nombre = str(row["Equipo"]).upper()
+            tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
             hectareas_fila = float(row["Hectareas"]) if pd.notna(row["Hectareas"]) else 0.0
             cobro_real = float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
 
-            if hectareas_fila <= 0:
-                return cobro_real
+            # -------------------------------------------------------------
+            # 🛸 CASO 1: REGLA SAGRADA DE DRONES (1 HORAS = 1 HECTÁREA)
+            # -------------------------------------------------------------
+            if "DRONE" in equipo_nombre:
+                rendimiento_dron = float(row["RendimientoHoras"]) if pd.notna(row["RendimientoHoras"]) else 0.0
+                if hectareas_fila > 0 and rendimiento_dron > 0:
+                    # Tarifa Ideal/Ha = (Tarifa Dron/Hora * Horas Dron) / Hectáreas
+                    tarifa_ideal_ha = (tarifa_hora * rendimiento_dron) / hectareas_fila
+                else:
+                    tarifa_ideal_ha = tarifa_hora  # Dron aprox 1 hr por Ha ($71k - $84k)
 
-            costo_simulado_ha = (valor_hora * tiempo_fila) / hectareas_fila
-            
-            if cobro_real >= costo_simulado_ha:
+            # -------------------------------------------------------------
+            # 🛩️ CASO 2: AVIONES DE ALA FIJA (RENDIMIENTO AERONÁUTICO REAL)
+            # -------------------------------------------------------------
+            else:
+                h_total_os = float(row["HTotal_Max"]) if pd.notna(row["HTotal_Max"]) else 0.0
+                ha_totales_os = float(row["HectareasOS_Totales"]) if pd.notna(row["HectareasOS_Totales"]) else 0.0
+                
+                # Si el Horómetro H_TOTAL de la OS existe y no es igual a las hectáreas
+                if ha_totales_os > 0 and h_total_os > 0 and h_total_os != ha_totales_os:
+                    tarifa_ideal_ha = (tarifa_hora * h_total_os) / ha_totales_os
+                else:
+                    # Rendimiento estándar real de avión: 43.5 Ha / Hora
+                    tarifa_ideal_ha = tarifa_hora / 43.5
+
+            # Candado de Cordura Comercial
+            if cobro_real >= tarifa_ideal_ha:
                 return cobro_real
-            return costo_simulado_ha
+            return tarifa_ideal_ha
+
         except:
-            return 0.0
+            return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
 
-    df_filtrado["Costo Simulado HA"] = df_filtrado.apply(calcular_simulacion_fila, axis=1)
-    df_filtrado["Total Simulado Ideal"] = df_filtrado["Costo Simulado HA"] * df_filtrado["Hectareas"]
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_discriminada, axis=1)
+    df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
@@ -482,7 +476,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
 
     def f_h(val): return f"{val:,.0f}".replace(",", ".")
-    titulo_ideal = "Precio de Venta Ideal" if modo_calculo == "Venta Ideal (+Margen Inteligente)" else "Costo Operativo Puro"
 
     html_cards = f"""
     <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
@@ -592,9 +585,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     df_detalle_export = df_filtrado[[
         "Fecha Operación", "Semana", "Nº ORDEN", "Finca", "Pista", "Equipo",
-        "Hectareas", "FactorTiempo", "TiempoEfectivoFila",
-        "Tarifa_Aplicada", "CobroReal", "Costo Simulado HA", 
-        "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
+        "Hectareas", "RendimientoHoras", "Tarifa_Aplicada", "CobroReal", 
+        "Tarifa Ideal Prom/Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
     ]].copy()
     
     df_detalle_export["Fecha Operación"] = pd.to_datetime(df_detalle_export["Fecha Operación"]).dt.strftime('%Y-%m-%d')
@@ -611,7 +603,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La simulación opera bajo el Motor Dual Inteligente sin distorsiones.")
+    st.success("🏁 Proceso completado. La regla del Dron se respeta al 100% y los Aviones operan bajo métricas reales de rendimiento.")
 
 if __name__ == "__main__":
     pass
