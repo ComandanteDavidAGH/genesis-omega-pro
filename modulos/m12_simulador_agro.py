@@ -163,7 +163,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_header = Font(color="FFFFFF", bold=True)
-        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
+        borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC'),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
         ws1.cell(row=1, column=1, value="📊 RESUMEN GENERAL DIRECTIVO: CONSOLIDADO MENSUAL").font = Font(size=14, bold=True, color="0D1B2A")
@@ -238,8 +238,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Matemática Estricta Columna N)</h1>", unsafe_allow_html=True)
-        st.caption("Cálculo puro: (RENDIMIENTO (horas) [Col N] * Tarifa Equipo) / ÁREA FUMIGADA [Col F]")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Lógica OS Unificada)</h1>", unsafe_allow_html=True)
+        st.caption("Prorrateo exacto por Orden de Servicio: (Tiempo OS * Tarifa Equipo) / Suma Hectáreas OS")
     with c_btn:
         st.write("")
         if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
@@ -275,17 +275,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Error de mapeo de columnas en la TABLA 1.")
         return
 
-    # 🛡️ ALINEACIÓN DE ÍNDICE INICIAL
+    # 🛡️ ALINEACIÓN DE ÍNDICES DESDE EL INICIO
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy().reset_index(drop=True)
     
     renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN"}
     df_sim = df_sim.rename(columns=renombres)
 
-    # 🛡️ FILTRADO CON RESETEO DE ÍNDICE
     mask_valida = (df_sim["Finca"].astype(str).str.strip() != "") & (df_sim["Equipo_Raw"].astype(str).str.strip() != "")
     df_sim = df_sim[mask_valida].reset_index(drop=True)
 
-    # Transformación fila por fila garantizando alineación
     res_vuelo = [purificar_datos_vuelo(eq, p) for eq, p in zip(df_sim["Equipo_Raw"], df_sim["Pista_Raw"])]
     df_sim["Equipo"] = [r[0] for r in res_vuelo]
     df_sim["Pista"] = [r[1] for r in res_vuelo]
@@ -332,7 +330,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "THRUS SR2": 4606562.0,
         "PIPER PA 36-375": 3985831.0,
         "CESSNA O PIPER PA 25": 3036525.0,
-        "AIR TRACTOR": 4665107.0,
+        "AIR TRACTOR": 4665109.0, # Actualizado al centavo exacto
         "CESSNA ASA": 3666600.0,
         "CESSNA FUMIGARAY": 3065952.0,
         "DRONE DATAROT": 84427.0,
@@ -393,7 +391,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
-    # 🛡️ FILTRADO SEGURO DE FECHAS E INDEXACIÓN ALINEADA
+    # 🛡️ MÁSCARA Y FILTRADO CON RESETEO DE ÍNDICE
     mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
 
     if finca_sel != "🌍 TODAS LAS FINCAS":
@@ -410,16 +408,45 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MATEMÁTICA PURA SOBRE LA COLUMNA N (RENDIMIENTO HORAS)
+    # 🧠 MOTOR UNIFICADO POR ORDEN DE SERVICIO (OS)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # FÓRMULA ESTRICTA: Rendimiento_Horas (Col N) * Tarifa_Hora_Equipo
-    df_filtrado["Total Simulado Ideal"] = df_filtrado["RendimientoHoras"] * df_filtrado["Tarifa_Aplicada"]
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado["Total Simulado Ideal"] / df_filtrado["Hectareas"]
+    # 🎯 CONSOLIDACIÓN INTELIGENTE DE TIEMPO POR OS:
+    # Evalúa si las filas de una OS tienen el mismo tiempo repetido o desglosado
+    def consolidar_tiempo_os(df_os):
+        rend_h = df_os["RendimientoHoras"].tolist()
+        if not rend_h: return 0.0
+        # Si todas las filas de la OS tienen EXACTAMENTE el mismo tiempo (ej: 2.2 hrs repetidas en las 3 fincas)
+        if len(set(rend_h)) == 1 and rend_h[0] > 0:
+            return float(rend_h[0])
+        else:
+            # Si tienen tiempos desglosados (ej: 0.37 y 0.23), los suma
+            return float(sum(rend_h))
+
+    # Agrupamos por Nº ORDEN sobre la base total para no perder las hectáreas de fincas vecinas
+    df_os_resumen = df_sim.groupby("Nº ORDEN").apply(lambda x: pd.Series({
+        "Ha_OS_Total": float(x["Hectareas"].sum()),
+        "Horas_OS_Total": consolidar_tiempo_os(x)
+    })).reset_index()
+
+    df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
+
+    def calcular_tarifa_ideal_unificada(row):
+        tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
+        ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
+        horas_totales_os = float(row["Horas_OS_Total"]) if pd.notna(row["Horas_OS_Total"]) else float(row["RendimientoHoras"])
+
+        if ha_totales_os > 0 and horas_totales_os > 0:
+            # Formula Maestra: (Horas OS * Tarifa Hora Equipo) / Hectáreas Totales OS
+            return (horas_totales_os * tarifa_hora) / ha_totales_os
+        return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
+
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_unificada, axis=1)
+    df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
@@ -497,7 +524,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
     # =================================================================
     st.markdown("---")
-    st.markdown("### 📈 Dashboard Analítico de TendENCIAS")
+    st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
     df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
     df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"]).dt.strftime('%d/%m/%Y')
@@ -568,7 +595,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. Alineación de índices corregida exitosamente.")
+    st.success("🏁 Proceso completado. La interfaz calcula con matemática pura unificada por Orden de Servicio.")
 
 if __name__ == "__main__":
     pass
