@@ -238,8 +238,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (v6.0 - Cálculo Dinámico Puro)</h1>", unsafe_allow_html=True)
-        st.caption("Auditoría de Lucro Cesante basada en la discriminación operacional libre sin topes inventados.")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (v7.0 - Matemática Pura OS)</h1>", unsafe_allow_html=True)
+        st.caption("Cálculo exacto: (Sumatoria Horas OS * Tarifa Equipo) / Sumatoria Hectáreas OS.")
     with c_btn:
         st.write("")
         if st.button("🔄 Recargar Memoria RAM", use_container_width=True):
@@ -308,17 +308,30 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     }
     
     opciones_pista = ["🛣️ TODAS LAS PISTAS"] + list(FLOTA_OFICIAL_POR_PISTA.keys())
-    lista_aviones_maestra = ["THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", "DRONE DATAROT", "DRONE NORTE", "DRONE AVIL", "DRONE GENESYS"]
+    
+    # 🌟 TARIFAS BASE EXACTAS (Mapeadas de AT:AU y AW:AX)
+    lista_aviones_maestra = [
+        "THRUS SR2", "PIPER PA 36-375", "CESSNA O PIPER PA 25", 
+        "AIR TRACTOR", "CESSNA ASA", "CESSNA FUMIGARAY", 
+        "DRONE DATAROT", "DRONE GENESYS", "DRONE NORTE", "DRONE AVIL"
+    ]
 
-    if 'tarifas_agro_estables_v3' not in st.session_state:
+    if 'tarifas_agro_estables_v4' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
-                "THRUS SR2": 4606562.0, "PIPER PA 36-375": 3985831.0, "CESSNA O PIPER PA 25": 3036525.0,
-                "AIR TRACTOR": 4665107.0, "CESSNA ASA": 3666600.0, "CESSNA FUMIGARAY": 3065952.0,
-                "DRONE DATAROT": 84427.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0, "DRONE GENESYS": 71280.0
+                "THRUS SR2": 4606562.0,
+                "PIPER PA 36-375": 3985831.0,
+                "CESSNA O PIPER PA 25": 3036525.0,
+                "AIR TRACTOR": 4665107.0,
+                "CESSNA ASA": 3666600.0,
+                "CESSNA FUMIGARAY": 3065952.0,
+                "DRONE DATAROT": 84427.0,
+                "DRONE GENESYS": 71280.0,
+                "DRONE NORTE": 75518.0,
+                "DRONE AVIL": 71280.0
             }.get(av, 4606562.0))
-        st.session_state['tarifas_agro_estables_v3'] = True
+        st.session_state['tarifas_agro_estables_v4'] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
@@ -348,6 +361,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
+                # Emojis homologados: Dron vs Avión
                 emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
                 
@@ -382,43 +396,33 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 MATEMÁTICA LIBRE Y DINÁMICA POR ORDEN DE SERVICIO (SIN TOPES)
+    # 🧠 MATEMÁTICA PURA (SIN TOPES) SOLICITADA POR EL COMANDANTE
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # 1. Agrupamos por Nº ORDEN para sumar hectáreas totales y tiempo real de la OS
+    # "se saca el rendimento total (suma) de esa orden por la hora del avion entre las hectareas totales"
     df_os_resumen = df_sim.groupby("Nº ORDEN", as_index=False).agg(
         Ha_OS_Total=("Hectareas", "sum"),
-        Horas_OS_Max=("RendimientoHoras", "max") # Toma el tiempo real de la OS una sola vez
+        Horas_OS_Total=("RendimientoHoras", "sum")
     )
     df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
 
-    def calcular_tarifa_ideal_libre_sin_topes(row):
-        try:
-            tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-            ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
-            horas_totales_os = float(row["Horas_OS_Max"]) if (pd.notna(row["Horas_OS_Max"]) and row["Horas_OS_Max"] > 0) else float(row["RendimientoHoras"])
-            cobro_real = float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
+    def calcular_tarifa_ideal_pura(row):
+        tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
+        ha_totales_os = float(row["Ha_OS_Total"]) if pd.notna(row["Ha_OS_Total"]) else 0.0
+        horas_totales_os = float(row["Horas_OS_Total"]) if pd.notna(row["Horas_OS_Total"]) else 0.0
 
-            if ha_totales_os > 0 and horas_totales_os > 0:
-                # 🎯 FÓRMULA DINÁMICA PURA (SIN DIVISIONES ESTÁTICAS):
-                # Tarifa Ideal/Ha = (Tarifa Hora * Horas Totales OS) / Hectáreas Totales OS
-                tarifa_ideal_ha = (tarifa_hora * horas_totales_os) / ha_totales_os
-            else:
-                tarifa_ideal_ha = cobro_real
+        if ha_totales_os > 0:
+            # FÓRMULA DIRECTA: (Tarifa Hora * Suma Horas de OS) / Suma Hectáreas de OS
+            return (tarifa_hora * horas_totales_os) / ha_totales_os
+        return 0.0
 
-            # Candado Comercial: Si el cobro real superó el ideal, respetamos el cobro real
-            if cobro_real >= tarifa_ideal_ha:
-                return cobro_real
-            return tarifa_ideal_ha
-
-        except:
-            return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
-
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_libre_sin_topes, axis=1)
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_pura, axis=1)
+    
+    # Cero Topes y Cero Candados. La matemática es libre y desnuda.
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
@@ -578,7 +582,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La tarifa ideal calcula de forma 100% libre y dinámica sobre cada Orden de Servicio.")
+    st.success("🏁 Proceso completado. La interfaz opera bajo Matemática Pura de OS.")
 
 if __name__ == "__main__":
     pass
