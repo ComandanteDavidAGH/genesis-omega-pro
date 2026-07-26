@@ -50,11 +50,10 @@ def extraer_datos_boveda():
 
 # 🌟 MOTORES DE LIMPIEZA MATEMÁTICA Y PURIFICACIÓN EXTREMA
 def limpiar_orden_extrema(val):
-    """El cebo: Elimina cualquier carácter invisible, espacio o .0 fantasma"""
     if pd.isna(val) or str(val).strip() == "": return "SIN_ORDEN"
     v = str(val).upper().strip()
-    v = re.sub(r'\s+', '', v) # Destruye espacios intermedios e invisibles
-    if v.endswith('.0'): v = v[:-2] # Destruye decimales inútiles
+    v = re.sub(r'\s+', '', v) 
+    if v.endswith('.0'): v = v[:-2] 
     return v
 
 def limpiar_cantidad(val):
@@ -246,8 +245,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Agrupación OS Absoluta)</h1>", unsafe_allow_html=True)
-        st.caption("Fórmula: (Horas Totales OS Limpia * Tarifa Equipo) / Hectáreas Totales OS Limpia")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (OS Unificada)</h1>", unsafe_allow_html=True)
+        st.caption("Consolidación Matemática y Proyección Gerencial con Formato Condicional")
     with c_btn:
         st.write("")
         if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
@@ -289,7 +288,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN RAW"}
     df_sim = df_sim.rename(columns=renombres)
 
-    # 🛡️ LA PURIFICACIÓN EXTREMA DE LA ORDEN DE SERVICIO (EL CEBO ACTÚA AQUÍ)
     df_sim["Nº ORDEN"] = df_sim["Nº ORDEN RAW"].apply(limpiar_orden_extrema)
 
     mask_valida = (df_sim["Finca"].astype(str).str.strip() != "") & (df_sim["Equipo_Raw"].astype(str).str.strip() != "")
@@ -401,10 +399,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             if not rend_list:
                 h_tot = 0.0
             elif len(set([round(r, 4) for r in rend_list])) == 1:
-                # Tiempo repetido en cada fila
                 h_tot = rend_list[0]
             else:
-                # Tiempos desglosados
                 h_tot = sum(rend_list)
                 
             records.append({
@@ -455,28 +451,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 🪤 EL CEBO (RADIOGRAFÍA DE ÓRDENES EN PANTALLA)
-    # =================================================================
-    with st.expander("🩺 RADIOGRAFÍA DEL MOTOR (EL CEBO) - Abre aquí para auditar el agrupamiento"):
-        st.markdown("**🔍 Verificación Estricta de la purificación de Órdenes de Servicio:**")
-        df_cebo = df_filtrado.groupby(["Nº ORDEN", "Fincas_En_La_OS", "Equipo", "Fecha Operación"]).agg(
-            Horas_Calculadas_OS=("Horas_OS_Total", "max"),
-            Suma_Hectareas_OS=("Ha_OS_Total", "max"),
-            Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
-        ).reset_index()
-        
-        st.dataframe(
-            df_cebo.style.format({
-                "Horas_Calculadas_OS": "{:,.3f}",
-                "Suma_Hectareas_OS": "{:,.2f}",
-                "Tarifa_Ideal_Final_Ha": "${:,.0f}"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-
-    # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN FINAL
+    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN FINAL PARA DISPLAY
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
@@ -524,27 +499,67 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown(html_cards, unsafe_allow_html=True)
 
     # =================================================================
-    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE
+    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA)
     # =================================================================
-    st.markdown("### 📋 Resumen Detallado por Fecha y Semanas")
+    st.markdown("### 📋 Resumen Detallado y Auditoría Financiera")
     
     df_visual = df_agrupado.copy()
     df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
-    st.dataframe(
-        df_visual.style.format({
+    # Función de color condicional: Rojo = Pérdida, Verde = Ganancia/Ideal
+    def color_fuga(val):
+        if isinstance(val, (int, float)):
+            if val > 0: return 'color: #D32F2F; font-weight: 900;'
+            elif val < 0: return 'color: #198754; font-weight: 900;'
+        return 'color: #424242;'
+
+    # Aplicación de Estilos Pandas (Formato de Gala)
+    try:
+        styled_visual = df_visual.style.format({
             "Hectareas": "{:,.2f}",
-            "Tarifa Real Prom/Ha": "{:,.0f}",
-            "Tarifa Ideal Prom/Ha": "{:,.0f}",
-            "Brecha por Ha": "{:,.0f}",
-            "Total Real Facturado": "{:,.0f}",
-            "Total Simulado Ideal": "{:,.0f}",
-            "Lucro Cesante": "{:,.0f}"
-        }),
-        use_container_width=True,
-        height=400,
-        hide_index=True
-    )
+            "Tarifa Real Prom/Ha": "$ {:,.0f}",
+            "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
+            "Brecha por Ha": "$ {:,.0f}",
+            "Total Real Facturado": "$ {:,.0f}",
+            "Total Simulado Ideal": "$ {:,.0f}",
+            "Lucro Cesante": "$ {:,.0f}"
+        }).applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha']) \
+          .background_gradient(cmap='Blues', subset=['Hectareas']) \
+          .background_gradient(cmap='OrRd', subset=['Total Simulado Ideal'])
+    except:
+        # Fallback de compatibilidad
+        styled_visual = df_visual.style.format({
+            "Hectareas": "{:,.2f}", "Tarifa Real Prom/Ha": "$ {:,.0f}", "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
+            "Brecha por Ha": "$ {:,.0f}", "Total Real Facturado": "$ {:,.0f}", "Total Simulado Ideal": "$ {:,.0f}", "Lucro Cesante": "$ {:,.0f}"
+        })
+
+    st.dataframe(styled_visual, use_container_width=True, height=400, hide_index=True)
+
+    # =================================================================
+    # 🪤 EL CEBO RODADO HACIA ABAJO (HERRAMIENTA TÉCNICA)
+    # =================================================================
+    st.markdown("---")
+    with st.expander("🩺 RADIOGRAFÍA DEL MOTOR (EL CEBO) - Verificador de OS Unificadas"):
+        st.markdown("**🔍 Verificación Estricta de la purificación de Órdenes de Servicio:**")
+        st.caption("Esta tabla técnica detalla cómo el sistema sumó y vinculó las fincas que compartían número de Orden para el prorrateo exacto.")
+        
+        df_cebo = df_filtrado.groupby(["Nº ORDEN", "Fincas_En_La_OS", "Equipo", "Fecha Operación"]).agg(
+            Horas_Calculadas_OS=("Horas_OS_Total", "max"),
+            Suma_Hectareas_OS=("Ha_OS_Total", "max"),
+            Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
+        ).reset_index()
+        
+        try:
+            styled_cebo = df_cebo.style.format({
+                "Horas_Calculadas_OS": "{:,.3f} hrs",
+                "Suma_Hectareas_OS": "{:,.2f} ha",
+                "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
+            }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
+              .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS'])
+        except:
+            styled_cebo = df_cebo.style.format({"Horas_Calculadas_OS": "{:,.3f} hrs", "Suma_Hectareas_OS": "{:,.2f} ha", "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"})
+
+        st.dataframe(styled_cebo, use_container_width=True, hide_index=True)
 
     # =================================================================
     # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
@@ -621,7 +636,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. Órdenes purificadas en origen.")
+    st.success("🏁 Proceso completado.")
 
 if __name__ == "__main__":
     pass
