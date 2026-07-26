@@ -120,15 +120,6 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
         return "CESSNA O PIPER PA 25", "AEROPENORT"
     return "IGNORAR", "IGNORAR"
 
-def obtener_mult(prod):
-    p = str(prod).upper()
-    if "TERCERO" in p: return 1.451
-    if "AFILIADO" in p: return 1.164
-    if "COOPERATIVA" in p: return 1.112
-    if "SOCIO" in p: return 1.112
-    if "ORGANICO" in p: return 1.011
-    return 1.112 
-
 # =================================================================
 # 💾 EXPORTADOR EXCEL MULTI-HOJA GERENCIAL
 # =================================================================
@@ -217,6 +208,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
     
+    # 🎣 CEBO VISUAL: BANNER ROJO FOSFORESCENTE
+    st.markdown("""
+    <div style='background-color: #ff0000; color: #ffffff; border: 5px solid #ffff00; padding: 15px; text-align: center; border-radius: 10px; margin-bottom: 20px;'>
+        <h1 style='color: #ffff00; margin: 0; font-size: 26px; font-family: "Arial Black";'>🚨 TRAMPA DE CEBO DETECTADA EN MÓDULO 12 🚨</h1>
+        <h3 style='color: #ffffff; margin: 5px 0 0 0;'>⚠️ SI VES ESTE BANNER ROJO Y AMARILLO, EL CÓDIGO DEL MÓDULO 12 SÍ SE ACTUALIZÓ EN RAM ⚠️</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown(f"""
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
@@ -245,7 +244,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Sin Topes)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Motor Dual Activo)</h1>", unsafe_allow_html=True)
     st.caption("Auditoría de Lucro Cesante basada en la totalización del Horómetro por Orden de Servicio.")
 
     with st.spinner("📥 Cargando matrices base desde la Bóveda..."):
@@ -360,7 +359,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             for avion_editar in equipos_a_mostrar:
                 c_nombre, c_precio = st.columns([1.5, 2])
                 
-                # 🌟 EMOJIS DE FLOTA REAL (SINFONÍA DE AVIONES Y DRONES)
+                # EMOJIS HOMOLOGADOS
                 emoji_equipo = "🛸" if "DRONE" in avion_editar.upper() else "🛩️"
                 c_nombre.markdown(f"<div style='margin-top: 5px; font-weight: bold; color: #1a365d; font-size: 15px;'>{emoji_equipo} {avion_editar}</div>", unsafe_allow_html=True)
                 
@@ -402,7 +401,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # Limpieza de columnas de cálculo para evitar colisiones
     cols_a_borrar = [c for c in df_filtrado.columns if c in ["TiempoEfectivoFila", "Costo Simulado HA"]]
     if cols_a_borrar:
         df_filtrado = df_filtrado.drop(columns=cols_a_borrar)
@@ -443,10 +441,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             if hectareas_fila <= 0:
                 return cobro_real
 
-            # Costo simulación unitario por hectárea
             costo_simulado_ha = (valor_hora * tiempo_fila) / hectareas_fila
             
-            # Candado de cordura: si el cobro real supera el ideal simulado, se respeta la tarifa facturada
             if cobro_real >= costo_simulado_ha:
                 return cobro_real
             return costo_simulado_ha
