@@ -238,8 +238,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Cálculo Fila a Fila Directo)</h1>", unsafe_allow_html=True)
-        st.caption("Fórmula exacta: (RENDIMIENTO (horas) * Tarifa Hora Equipo) / ÁREA FUMIGADA (ha).")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Matemática Estricta Columna N)</h1>", unsafe_allow_html=True)
+        st.caption("Cálculo puro: (RENDIMIENTO (horas) [Col N] * Tarifa Equipo) / ÁREA FUMIGADA [Col F]")
     with c_btn:
         st.write("")
         if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
@@ -253,15 +253,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.error("🚨 Error de enlace: TABLA 1 no contiene registros o está desconectada.")
         return
 
-    # -------------------------------------------------------------
-    # 🕵️‍♂️ MAPEADO DE COLUMNAS ESTRICTO Y FORENSE (SIN ADIVINANZAS)
-    # -------------------------------------------------------------
-    
-    # Normalizar los encabezados (borrar saltos de linea y mayúsculas puras)
     cols_limpias = []
     for c in df_base.columns:
         c_str = str(c).upper().replace('\n', ' ').replace('\r', '').strip()
-        c_str = ' '.join(c_str.split()) # Quita espacios dobles
+        c_str = ' '.join(c_str.split())
         cols_limpias.append(c_str)
     df_base.columns = cols_limpias
 
@@ -272,21 +267,18 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         col_avion = "MODELO"
         col_orden = "Nº ORDEN"
         
-        # Búsqueda implacable por palabras exactas de tu lista
         col_ha = next(c for c in df_base.columns if "ÁREA FUMIG" in c or "AREA FUMIG" in c)
         col_rend_h = next(c for c in df_base.columns if "RENDIMIENTO (HORAS)" in c or "RENDIMIENTO(HORAS)" in c or ("RENDIMIENTO" in c and "HORA" in c))
-        # ¡Clave! Exigir "$/HA" y "COSTO AVI" para no agarrar el total de la finca o el bruto.
         col_vuelo = next(c for c in df_base.columns if "COSTO AVI" in c and "$/HA" in c)
 
-    except StopIteration as e:
-        st.error(f"🚨 Error: No se encontró la columna exacta en tu Excel. Revisa los encabezados.\n\nEncabezados detectados: {', '.join(df_base.columns)}")
+    except StopIteration:
+        st.error("🚨 Error de mapeo de columnas en la TABLA 1.")
         return
 
-    # Extraemos solo lo que necesitamos
     df_sim = df_base[[col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend_h, col_vuelo, col_orden]].copy()
     
-    # Renombramos para usar en Python
-    df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "RendimientoHoras", "CobroReal", "Nº ORDEN"]
+    renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_rend_h: "RendimientoHoras", col_vuelo: "CobroReal", col_orden: "Nº ORDEN"}
+    df_sim = df_sim.rename(columns=renombres)
 
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
@@ -331,7 +323,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     if 'tarifas_simulador' not in st.session_state:
         st.session_state.tarifas_simulador = {}
 
-    # Matriz oficial fija mapeada
     tarifas_base_oficiales = {
         "THRUS SR2": 4606562.0,
         "PIPER PA 36-375": 3985831.0,
@@ -411,28 +402,16 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 FÓRMULA MATEMÁTICA PURA Y DIRECTA FILA POR FILA
+    # 🧠 MATEMÁTICA PURA SOBRE LA COLUMNA N (RENDIMIENTO HORAS)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
-    
-    # Cobro Real de esa fila (Multiplicamos Tarifa Real/Ha por Hectareas)
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # FÓRMULA PEDIDA: (Rendimiento_Horas * Tarifa_Hora) / Hectáreas de esa misma celda
-    def calcular_tarifa_ideal_directa_fila(row):
-        tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-        rend_horas_fila = float(row["RendimientoHoras"]) if pd.notna(row["RendimientoHoras"]) else 0.0
-        ha_fila = float(row["Hectareas"]) if pd.notna(row["Hectareas"]) else 0.0
-
-        if ha_fila > 0:
-            return (rend_horas_fila * tarifa_hora) / ha_fila
-        return 0.0
-
-    # Ejecutamos la matemática y totalizamos
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_directa_fila, axis=1)
-    df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
+    # FÓRMULA ESTRICTA: Rendimiento_Horas (Col N) * Tarifa_Hora_Equipo
+    df_filtrado["Total Simulado Ideal"] = df_filtrado["RendimientoHoras"] * df_filtrado["Tarifa_Aplicada"]
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado["Total Simulado Ideal"] / df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
@@ -445,7 +424,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "Lucro Cesante": "sum"
     }).reset_index()
     
-    # Ya en el resumen agrupado, sacamos los promedios globales de la finca ese día
     df_agrupado["Tarifa Real Prom/Ha"] = df_agrupado["Total Real Facturado"] / df_agrupado["Hectareas"]
     df_agrupado["Tarifa Ideal Prom/Ha"] = df_agrupado["Total Simulado Ideal"] / df_agrupado["Hectareas"]
     df_agrupado["Brecha por Ha"] = df_agrupado["Tarifa Ideal Prom/Ha"] - df_agrupado["Tarifa Real Prom/Ha"]
@@ -582,7 +560,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. Extracción directa y blindada sobre tu listado de columnas.")
+    st.success("🏁 Proceso completado. Lectura estricta y directa de la Columna N.")
 
 if __name__ == "__main__":
     pass
