@@ -238,8 +238,8 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
-        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Cálculo Fila a Fila Directo)</h1>", unsafe_allow_html=True)
-        st.caption("Fórmula directa: (Rendimiento horas * Tarifa Hora Equipo) / Hectáreas de la celda.")
+        st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (Motor Forense Anti-Error)</h1>", unsafe_allow_html=True)
+        st.caption("Cálculo exacto basado en la lectura limpia del Odómetro OS Sanado.")
     with c_btn:
         st.write("")
         if st.button("🔄 Sincronizar Datos", use_container_width=True):
@@ -260,20 +260,40 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     col_ha = "ÁREA FUMIG.\n(ha)"
     col_vuelo = " COSTO AVIÒN\n($/ha) "
     col_orden = "Nº ORDEN"
-    col_rend = "RENDIMIENTO (horas)"
+    col_rend_h = "RENDIMIENTO (horas)"
+    
+    col_odom = None
+    col_rend_m = None
+    cols_upper = {c: str(c).replace("\n", "").strip().upper() for c in df_base.columns}
+    for c, c_up in cols_upper.items():
+        if "ODOM" in c_up or "ODÒM" in c_up or "ODÓM" in c_up: col_odom = c
+        if "RENDIMIENTO (MIN)" in c_up or "(MIN)" in c_up: col_rend_m = c
 
-    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_rend]:
+    for c_req in [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_rend_h]:
         if c_req not in df_base.columns:
             posible_match = [c for c in df_base.columns if c_req.replace("\n", "").strip() in c.replace("\n", "").strip()]
             if posible_match:
                 if c_req == col_ha: col_ha = posible_match[0]
                 if c_req == col_vuelo: col_vuelo = posible_match[0]
                 if c_req == col_orden: col_orden = posible_match[0]
-                if c_req == col_rend: col_rend = posible_match[0]
+                if c_req == col_rend_h: col_rend_h = posible_match[0]
 
-    cols_a_extraer = [col_fecha, col_finca, col_pista, col_avion, col_ha, col_rend, col_vuelo, col_orden]
+    cols_a_extraer = [col_fecha, col_finca, col_pista, col_avion, col_ha, col_vuelo, col_orden, col_rend_h]
+    
+    if col_odom and col_odom in df_base.columns: cols_a_extraer.append(col_odom)
+    if col_rend_m and col_rend_m in df_base.columns: cols_a_extraer.append(col_rend_m)
+
     df_sim = df_base[cols_a_extraer].copy()
-    df_sim.columns = ["Fecha", "Finca", "Pista_Raw", "Equipo_Raw", "Hectareas", "RendimientoHoras", "CobroReal", "Nº ORDEN"]
+    
+    # Renombrado seguro
+    renombres = {col_fecha: "Fecha", col_finca: "Finca", col_pista: "Pista_Raw", col_avion: "Equipo_Raw", col_ha: "Hectareas", col_vuelo: "CobroReal", col_orden: "Nº ORDEN", col_rend_h: "RendHoras"}
+    if col_odom and col_odom in df_base.columns: renombres[col_odom] = "Odometro"
+    if col_rend_m and col_rend_m in df_base.columns: renombres[col_rend_m] = "RendMinutos"
+    
+    df_sim = df_sim.rename(columns=renombres)
+    
+    if "Odometro" not in df_sim.columns: df_sim["Odometro"] = 0.0
+    if "RendMinutos" not in df_sim.columns: df_sim["RendMinutos"] = 0.0
 
     df_sim = df_sim[df_sim["Finca"].astype(str).str.strip() != ""]
     df_sim = df_sim[df_sim["Equipo_Raw"].astype(str).str.strip() != ""]
@@ -282,7 +302,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_sim["Pista"] = df_sim.apply(lambda r: purificar_datos_vuelo(r["Equipo_Raw"], r["Pista_Raw"])[1], axis=1)
     
     df_sim["Hectareas"] = df_sim["Hectareas"].apply(limpiar_cantidad)
-    df_sim["RendimientoHoras"] = df_sim["RendimientoHoras"].apply(limpiar_cantidad)
+    df_sim["RendHoras"] = df_sim["RendHoras"].apply(limpiar_cantidad)
+    df_sim["RendMinutos"] = df_sim["RendMinutos"].apply(limpiar_cantidad)
+    df_sim["Odometro"] = df_sim["Odometro"].apply(limpiar_cantidad)
     df_sim["CobroReal"] = df_sim["CobroReal"].apply(limpiar_moneda)
     df_sim['Fecha_DT'] = df_sim["Fecha"].apply(parsear_fecha_robusta)
     
@@ -315,7 +337,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "DRONE DATAROT", "DRONE GENESYS", "DRONE NORTE", "DRONE AVIL"
     ]
 
-    if 'tarifas_agro_estables_v8' not in st.session_state:
+    if 'tarifas_agro_estables_v9' not in st.session_state:
         st.session_state.tarifas_simulador = {}
         for av in lista_aviones_maestra:
             st.session_state.tarifas_simulador[av] = float({
@@ -330,7 +352,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
                 "DRONE NORTE": 75518.0,
                 "DRONE AVIL": 71280.0
             }.get(av, 4606562.0))
-        st.session_state['tarifas_agro_estables_v8'] = True
+        st.session_state['tarifas_agro_estables_v9'] = True
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
@@ -394,25 +416,46 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         return
 
     # =================================================================
-    # 🧠 FÓRMULA MATEMÁTICA PURA Y DIRECTA FILA POR FILA
+    # 🧠 MOTOR DE SANADO FORENSE POR ORDEN DE SERVICIO (OS)
     # =================================================================
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
     df_filtrado["Fecha Operación"] = df_filtrado["Fecha_DT"].dt.strftime("%Y-%m-%d")
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # 🎯 FÓRMULA ESTRICTA CASILLA POR CASILLA SOLICITADA POR EL COMANDANTE
-    def calcular_tarifa_ideal_directa_fila(row):
+    # 1. Determinación de la hora real por fila
+    def extraer_horas_puras_fila(row):
+        odom = float(row["Odometro"]) if pd.notna(row["Odometro"]) else 0.0
+        rend_m = float(row["RendMinutos"]) if pd.notna(row["RendMinutos"]) else 0.0
+        rend_h = float(row["RendHoras"]) if pd.notna(row["RendHoras"]) else 0.0
+
+        # Prioridad 1: Odómetro real
+        if odom > 0: return odom
+        # Prioridad 2: Minutos / 60 (Previene el error de 7.76)
+        if rend_m > 0: return rend_m / 60.0
+        # Prioridad 3: Horas directas
+        return rend_h
+
+    df_sim["HorasLimpias"] = df_sim.applyextraer_horas_puras_fila if hasattr(df_sim, 'applyextraer_horas_puras_fila') else df_sim.apply(extraer_horas_puras_fila, axis=1)
+
+    # 2. Agrupamiento limpio por Nº ORDEN
+    df_os_totales = df_sim.groupby("Nº ORDEN", as_index=False).agg(
+        Ha_OS_Total=("Hectareas", "sum"),
+        Horas_OS_Sana=("HorasLimpias", "max") # Toma el tiempo de la OS una sola vez
+    )
+
+    df_filtrado = df_filtrado.merge(df_os_totales, on="Nº ORDEN", how="left")
+
+    def calcular_tarifa_ideal_sana(row):
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
-        rend_horas_fila = float(row["RendimientoHoras"]) if pd.notna(row["RendimientoHoras"]) else 0.0
-        ha_fila = float(row["Hectareas"]) if pd.notna(row["Hectareas"]) else 0.0
+        ha_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
+        horas_os = float(row["Horas_OS_Sana"]) if pd.notna(row["Horas_OS_Sana"]) else 0.0
 
-        if ha_fila > 0:
-            # (Rendimiento_Horas * Tarifa_Hora_Equipo) / Hectareas_Fila
-            return (rend_horas_fila * tarifa_hora) / ha_fila
-        return 0.0
+        if ha_os > 0 and horas_os > 0:
+            return (tarifa_hora * horas_os) / ha_os
+        return float(row["CobroReal"]) if pd.notna(row["CobroReal"]) else 0.0
 
-    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_directa_fila, axis=1)
+    df_filtrado["Tarifa Ideal Prom/Ha"] = df_filtrado.apply(calcular_tarifa_ideal_sana, axis=1)
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
@@ -554,7 +597,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     
     df_detalle_export = df_filtrado[[
         "Fecha Operación", "Semana", "Nº ORDEN", "Finca", "Pista", "Equipo",
-        "Hectareas", "RendimientoHoras", "Tarifa_Aplicada", "CobroReal", 
+        "Hectareas", "RendHoras", "Tarifa_Aplicada", "CobroReal", 
         "Tarifa Ideal Prom/Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"
     ]].copy()
     
@@ -572,7 +615,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. Cálculo ejecutado directamente fila por fila.")
+    st.success("🏁 Proceso completado. Sistema blindado contra errores de la columna Rendimiento.")
 
 if __name__ == "__main__":
     pass
