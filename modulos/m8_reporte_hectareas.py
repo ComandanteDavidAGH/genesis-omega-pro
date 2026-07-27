@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, date
 import io
 
@@ -13,12 +12,12 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL EN LA CÚSPIDE
     st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO: No afecta al menú lateral
     st.markdown("""
     <style>
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios */
+    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios de la pantalla central */
     div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
     div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
@@ -44,9 +43,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     # ====================================================================
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Datos", type="primary", use_container_width=True, key="btn_sync_m8"):
-        st.cache_data.clear()
+        st.cache_data.clear() # 1. Destruye la foto vieja de Google Sheets
         if 'm8_datos_crudos' in st.session_state:
-            del st.session_state['m8_datos_crudos']
+            del st.session_state['m8_datos_crudos'] # 2. Destruye la memoria de la pantalla
         st.toast("✅ Memoria vieja destruida. Descargando datos frescos de Drive...", icon="🔄")
         st.rerun()
     st.markdown("---")
@@ -172,7 +171,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         # --- 🎛️ PANEL DE CONTROL ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
-        # EVOLUCIÓN: Agregada la vista de Dashboard Ejecutivo
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.2])
         vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v7")
         
@@ -207,11 +205,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
             st.markdown(f"#### 📈 Dashboard Ejecutivo y Participación Global ({rango_txt})")
             
-            # Cálculos base para el Dashboard
             total_ha = df_filt['HA_NETAS'].sum()
             total_vuelos = len(df_filt)
             
-            # Agrupación por Pista
             df_dash = df_filt.groupby('PISTA').agg(
                 VUELOS=('PISTA', 'count'),
                 HECTAREAS=('HA_NETAS', 'sum')
@@ -221,17 +217,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
             df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
             
-            # 1. TARJETAS DE INDICADORES (KPIs)
             k1, k2, k3 = st.columns(3)
             k1.markdown(f"<div style='background-color:#0d1b2a; color:white; padding:15px; border-radius:8px; text-align:center;'><h5 style='margin:0; color:#d4af37;'>Total Hectáreas</h5><h2 style='margin:0;'>{total_ha:,.2f}</h2></div>", unsafe_allow_html=True)
             k2.markdown(f"<div style='background-color:#0d1b2a; color:white; padding:15px; border-radius:8px; text-align:center;'><h5 style='margin:0; color:#d4af37;'>Total Misiones (Registros)</h5><h2 style='margin:0;'>{total_vuelos:,.0f}</h2></div>", unsafe_allow_html=True)
             k3.markdown(f"<div style='background-color:#0d1b2a; color:white; padding:15px; border-radius:8px; text-align:center;'><h5 style='margin:0; color:#d4af37;'>Promedio Ha/Misión</h5><h2 style='margin:0;'>{(total_ha/total_vuelos if total_vuelos>0 else 0):,.2f}</h2></div>", unsafe_allow_html=True)
             st.write("")
 
-            # 2. GRÁFICOS DE NUEVA GENERACIÓN (Plotly)
             g1, g2 = st.columns(2)
             
-            # Gráfico de Dona (Reemplazo del Pastel)
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>",
                              color_discrete_sequence=px.colors.qualitative.Prism)
@@ -239,7 +232,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
-            # Gráfico de Barras Horizontales Ordenadas (Reemplazo de las barras amontonadas)
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
                              title="<b>Volumen de Hectáreas por Pista</b>",
@@ -248,7 +240,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             fig_bar.update_layout(xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
             g2.plotly_chart(fig_bar, use_container_width=True)
 
-            # 3. TABLA RESUMEN CON BARRAS INTEGRADAS (Data Bars)
             st.markdown("##### 📋 Desglose de Participación Total")
             df_tabla_dash = df_dash.copy()
             df_tabla_dash.loc['TOTAL'] = ['👑 TOTAL GENERAL', df_tabla_dash['VUELOS'].sum(), df_tabla_dash['HECTAREAS'].sum(), 100.0, 100.0]
@@ -264,24 +255,20 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 use_container_width=True, hide_index=True
             )
 
-            # 4. MATRIZ DE CALOR: PORCENTAJE DE PARTICIPACIÓN MENSUAL
             st.markdown("---")
             st.markdown("##### 🗓️ Matriz de Participación Mensual (%)")
             st.caption("Esta matriz muestra qué porcentaje del trabajo de CADA MES se realizó en cada pista. Cada columna suma 100%.")
             
-            # Pivot table: Hectáreas por Pista (Filas) y Mes (Columnas)
             matriz_ha = pd.pivot_table(df_filt, values='HA_NETAS', index='PISTA', columns='MES', aggfunc='sum', fill_value=0)
-            
-            # Ordenar columnas lógicamente
             cols_ordenadas = sorted(matriz_ha.columns, key=lambda x: int(str(x).split("-")[0]) if "-" in str(x) else 999)
             matriz_ha = matriz_ha[cols_ordenadas]
             
-            # Convertir a porcentajes por columna (mes)
             matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
-            
-            # Agregar totales
             matriz_pct = matriz_pct.round(1)
-            matriz_pct.loc['TOTAL MES'] = matriz_pct.sum(axis=0)
+            
+            # 🚨 REGLA DE ORO INYECTADA: El Total de los Meses SIEMPRE será 100.0 (Fuerza Bruta contra el 99.9%)
+            totales_exactos = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
+            matriz_pct.loc['TOTAL MES'] = totales_exactos
             
             st.dataframe(
                 matriz_pct.style.format("{:.1f}%")
@@ -412,17 +399,20 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 st.plotly_chart(fig, use_container_width=True)
 
         # =================================================================
-        # 🎯 EXPORTACIÓN EXCEL GENERAL
+        # 🎯 EXPORTACIÓN EXCEL GENERAL (CORREGIDA PARA INCLUIR TOTALES)
         # =================================================================
         st.markdown("---")
         buffer_rep = io.BytesIO()
         nombre_hoja = 'Reporte'
         
-        # Dependiendo de la vista activa, exportamos esa data específica
         if vista_seleccionada == "📊 Resumen Gerencial":
             df_export = df_visual
         elif vista_seleccionada == "📈 Dashboard Ejecutivo":
-            df_export = df_dash # Exporta el resumen del dashboard
+            # Extrae la tabla purificada que YA INCLUYE el Total General para Excel
+            df_export = df_tabla_dash.copy()
+            df_export['HECTAREAS'] = df_export['HECTAREAS'].round(2)
+            df_export['% VUELOS'] = df_export['% VUELOS'].round(2)
+            df_export['% HECTAREAS'] = df_export['% HECTAREAS'].round(2)
         else:
             df_export = matriz
             
