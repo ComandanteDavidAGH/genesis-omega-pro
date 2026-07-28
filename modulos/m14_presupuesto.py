@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.3]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.4]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v43"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v44"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -303,7 +303,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 ha_total_detectada = df_t1['HA_CALCULO'].sum()
                 ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
                 
-                # Base Histórica Estática
                 ha_total_por_coctel['HA_PROYECTADA'] = ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda
 
                 for _, row_c in ha_total_por_coctel.iterrows():
@@ -376,7 +375,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes individuales, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v43"
+        llave_editor = "laboratorio_estrategico_v44"
 
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
@@ -541,14 +540,12 @@ def ejecutar(purificar_lote, extraer_numero):
             
             ws = writer.sheets['Estrategia_Presupuesto']
             
-            # 💥 CORRECCIÓN FINAL OPENPYXL: Formateo de celdas y alineación sin índices
-            for col in ["A", "B", "C", "D", "E"]:
-                for cell in ws[col]:
+            # 💥 CORRECCIÓN FINAL OPENPYXL: Código 100% blindado (iter_rows)
+            for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=5):
+                for cell in row:
                     cell.alignment = Alignment(horizontal='center')
-                    
-            for col in ["B", "C", "D", "E"]:
-                for cell in ws[col]:
-                    if cell.row > 1: 
+                    # Aplicar formato de moneda a las columnas B, C, D y E si no es la cabecera
+                    if cell.row > 1 and cell.column in [2, 3, 4, 5]:
                         cell.number_format = '#,##0.00'
                 
             ws.column_dimensions['A'].width = 25
