@@ -21,6 +21,7 @@ def inicializar_cliente_gspread():
         return None
 
 def a_numero_limpio(val):
+    """Convierte strings colombianos (Ej: 1.250,50) a floats puros (1250.50)"""
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip().replace(',', '.')
@@ -65,6 +66,7 @@ def procesar_fecha_pesada(val):
     except: return pd.NaT
 
 def fmt_latino(val, decimales=1):
+    """Aplica formato colombiano: Puntos miles, Comas decimales"""
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
@@ -213,7 +215,6 @@ def extraer_precios_maestros(df_cfg):
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
     
-    # 🚀 ESTÉTICA VIP Y EFECTO LUPA SC
     st.markdown(f"""
     <style>
     .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
@@ -224,7 +225,6 @@ def ejecutar(purificar_lote, extraer_numero):
     .kpi-titulo {{ color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }}
     .kpi-valor {{ font-size: 28px; font-weight: 900; margin: 0; }}
     
-    /* Efecto lupa en gráficos */
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
 
@@ -237,9 +237,8 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.2]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.3]</span></h1>", unsafe_allow_html=True)
     
-    # 🧹 EL BOTÓN PURIFICADOR DE MEMORIA
     if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master"):
         st.cache_data.clear()
         for key in ['lab_df', 'total_inercial_base', 'ha_proyectada_base']:
@@ -376,18 +375,29 @@ def ejecutar(purificar_lote, extraer_numero):
     # ==========================================
     if 'lab_df' in st.session_state and not st.session_state['lab_df'].empty:
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
-        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales frente a las proyecciones del sistema.")
+        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales.")
+
+        # 💥 SOLUCIÓN ESTÉTICA: Aplicamos el Styler con formato colombiano puro
+        fmt_editor = {
+            "📦 Vol. Sist. (Base)": lambda x: fmt_latino(x, 2),
+            "🎯 Vol. Irreal (Modificable)": lambda x: fmt_latino(x, 2),
+            "💵 Precio Base (Histórico)": lambda x: fmt_latino(x, 0),
+            "📈 Precio Sist. (+Inflación)": lambda x: fmt_latino(x, 0),
+            "🎯 Precio Irreal (Modificable)": lambda x: fmt_latino(x, 0)
+        }
+        
+        df_lab_estilizado = st.session_state['lab_df'].style.format(fmt_editor)
 
         df_editado = st.data_editor(
-            st.session_state['lab_df'],
+            df_lab_estilizado,
             column_config={
                 "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Enciende o apaga esta molécula para el presupuesto."),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
-                "📦 Vol. Sist. (Base)": st.column_config.NumberColumn("Vol. Sist. (Base)", format="%.2f"),
-                "🎯 Vol. Irreal (Modificable)": st.column_config.NumberColumn("🎯 Vol. Irreal (Modificable)", min_value=0.0, format="%.2f"),
-                "💵 Precio Base (Histórico)": st.column_config.NumberColumn("Precio Base (Histórico)", format="%.0f"),
-                "📈 Precio Sist. (+Inflación)": st.column_config.NumberColumn("Precio Sist. (+Inflación)", format="%.0f"),
-                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0, format="%.0f")
+                "📦 Vol. Sist. (Base)": st.column_config.NumberColumn("Vol. Sist. (Base)"),
+                "🎯 Vol. Irreal (Modificable)": st.column_config.NumberColumn("🎯 Vol. Irreal (Modificable)", min_value=0.0),
+                "💵 Precio Base (Histórico)": st.column_config.NumberColumn("Precio Base (Histórico)"),
+                "📈 Precio Sist. (+Inflación)": st.column_config.NumberColumn("Precio Sist. (+Inflación)"),
+                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0)
             },
             disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)"],
             hide_index=True,
@@ -421,7 +431,11 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
+        # 💥 PURIFICADOR MATEMÁTICO: Nos aseguramos de limpiar los números editados por si acaso el Styler metió texto
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
+        df_estrategico['🎯 Vol. Irreal (Modificable)'] = df_estrategico['🎯 Vol. Irreal (Modificable)'].apply(a_numero_limpio)
+        df_estrategico['🎯 Precio Irreal (Modificable)'] = df_estrategico['🎯 Precio Irreal (Modificable)'].apply(a_numero_limpio)
+        
         df_estrategico['💰 Subtotal'] = df_estrategico['🎯 Vol. Irreal (Modificable)'] * df_estrategico['🎯 Precio Irreal (Modificable)']
         total_estrategico = df_estrategico['💰 Subtotal'].sum()
         
@@ -502,11 +516,10 @@ def ejecutar(purificar_lote, extraer_numero):
             df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', index=False)
             
             ws = writer.sheets['Estrategia_Presupuesto']
-            # ✅ CORRECCIÓN FINAL DE OPENPYXL: .alignment directo sobre el cell
             for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"] + ws["E"]:
-                cell.alignment = Alignment(horizontal='center')
+                cell[0].alignment = Alignment(horizontal='center')
             for cell in ws["C"] + ws["D"] + ws["E"]:
-                if cell.row > 1: cell.number_format = '#,##0'
+                if cell[0].row > 1: cell[0].number_format = '#,##0'
                 
             ws.column_dimensions['A'].width = 25
             ws.column_dimensions['B'].width = 25
