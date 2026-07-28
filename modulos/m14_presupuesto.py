@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.9]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.0]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v39"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v40"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -377,9 +377,9 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v39"
+        llave_editor = "laboratorio_estrategico_v40"
 
-        # 💥 CORRECCIÓN VITAL: Guardar las ediciones DIRECTO en la memoria principal (lab_df)
+        # Capturamos las ediciones y las guardamos en memoria
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
             if edits:
@@ -390,11 +390,16 @@ def ejecutar(purificar_lote, extraer_numero):
 
         df_para_editor = st.session_state['lab_df'].copy()
 
-        # Matemáticas en tiempo real (Base de cálculo segura)
+        # 💥 MATEMÁTICAS EN TIEMPO REAL: Calculamos el volumen proyectado
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
+        
+        # 💥 LA REGLA DE ORO DE UX: Si "✅ Activo" es Falso, forzamos el volumen visual y subtotal a 0
+        df_para_editor['vol_final_num'] = df_para_editor.apply(lambda row: row['vol_final_num'] if row['✅ Activo'] else 0.0, axis=1)
+
+        # Calculamos subtotal
         df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
 
-        # Cadenas Formateadas para mostrar (El traje de gala)
+        # Cadenas Formateadas (El traje de gala)
         df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
         df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
 
@@ -414,7 +419,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 "precio_sist_num": None,
                 "vol_final_num": None,
                 "subtotal_num": None,
-                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para eliminar."),
+                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para llevar todo a cero y eliminar del presupuesto."),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
                 "📦 Vol. Sist. (Base)": st.column_config.TextColumn("Vol. Sist. (Base)"),
                 "🎯 Ajuste Vol. (%)": st.column_config.NumberColumn("🎯 Ajuste Vol. (%)", format="%d%%", step=1.0),
@@ -458,9 +463,10 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
+        # Filtramos solo los activos para la matemática final del Dashboard
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
-        total_estrategico = df_estrategico['subtotal_num'].sum()
         
+        total_estrategico = df_estrategico['subtotal_num'].sum()
         total_inercial = st.session_state.get('total_inercial_base', 0)
         diferencia = total_estrategico - total_inercial
         
@@ -534,6 +540,7 @@ def ejecutar(purificar_lote, extraer_numero):
         })
         df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO L/Kg)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
         
+        # Formateamos para el Excel
         df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
         
         buffer = io.BytesIO()
