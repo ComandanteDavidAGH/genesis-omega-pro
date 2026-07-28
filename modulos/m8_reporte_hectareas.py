@@ -5,6 +5,7 @@ from datetime import datetime, date
 import io
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, DoughnutChart, Reference
+from openpyxl.chart.label import DataLabelList
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -16,7 +17,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL EN LA CÚSPIDE
     st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO Y EFECTO LUPA
     st.markdown("""
     <style>
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
@@ -34,10 +35,39 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         font-size: 15px !important;
     }
     
-    /* Acentuación de contraste para las etiquetas st.radio EXCLUSIVAMENTE en el bloque central */
+    /* Acentuación de contraste para las etiquetas st.radio */
     div[data-testid="stMainBlockContainer"] div[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
+    }
+
+    /* 🔍 EFECTO LUPA (HOVER) PARA TARJETAS KPI */
+    .kpi-card {
+        background-color: #0d1b2a; 
+        color: white; 
+        padding: 20px; 
+        border-radius: 10px; 
+        text-align: center;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border: 1px solid #1a365d;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .kpi-card:hover {
+        transform: translateY(-5px) scale(1.03);
+        box-shadow: 0 12px 20px rgba(212, 175, 55, 0.3); /* Resplandor dorado */
+        border: 1px solid #d4af37;
+    }
+    .kpi-title {
+        margin: 0; 
+        color: #d4af37; 
+        font-size: 16px; 
+        font-weight: bold; 
+        text-transform: uppercase;
+    }
+    .kpi-value {
+        margin: 10px 0 0 0; 
+        font-size: 32px; 
+        font-weight: 900;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -74,8 +104,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             except: pass
         return None
 
-    def fmt_latino(val):
-        try: return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    def fmt_latino(val, decimales=2):
+        try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except: return str(val) if val is not None else ""
 
     if descargar_matriz_rapida is None:
@@ -206,6 +236,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             total_ha = df_filt['HA_NETAS'].sum()
             total_vuelos = len(df_filt)
+            promedio_ha = total_ha/total_vuelos if total_vuelos>0 else 0
             
             df_dash = df_filt.groupby('PISTA').agg(
                 VUELOS=('PISTA', 'count'),
@@ -216,23 +247,32 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
             df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
             
+            # FORMATO COLOMBIANO ESTRICTO EN KPIs
+            ha_str = fmt_latino(total_ha, 2)
+            vuelos_str = fmt_latino(total_vuelos, 0)
+            prom_str = fmt_latino(promedio_ha, 2)
+            
             k1, k2, k3 = st.columns(3)
-            k1.markdown(f"<div style='background-color:#0d1b2a; color:white; padding:15px; border-radius:8px; text-align:center;'><h5 style='margin:0; color:#d4af37;'>Total Hectáreas</h5><h2 style='margin:0;'>{total_ha:,.2f}</h2></div>", unsafe_allow_html=True)
-            k2.markdown(f"<div style='background-color:#0d1b2a; color:white; padding:15px; border-radius:8px; text-align:center;'><h5 style='margin:0; color:#d4af37;'>Total Misiones (Registros)</h5><h2 style='margin:0;'>{total_vuelos:,.0f}</h2></div>", unsafe_allow_html=True)
-            k3.markdown(f"<div style='background-color:#0d1b2a; color:white; padding:15px; border-radius:8px; text-align:center;'><h5 style='margin:0; color:#d4af37;'>Promedio Ha/Misión</h5><h2 style='margin:0;'>{(total_ha/total_vuelos if total_vuelos>0 else 0):,.2f}</h2></div>", unsafe_allow_html=True)
+            k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{ha_str}</p></div>", unsafe_allow_html=True)
+            k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Misiones (Registros)</p><p class='kpi-value'>{vuelos_str}</p></div>", unsafe_allow_html=True)
+            k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Promedio Ha/Misión</p><p class='kpi-value'>{prom_str}</p></div>", unsafe_allow_html=True)
             st.write("")
 
             g1, g2 = st.columns(2)
+            # Re-formato de Plotly para decimales coma
+            df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
+            
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
-            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
+            # Forzar comas en tooltips/labels de plotly es complejo, pero visualmente queda limpio.
             fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
                              title="<b>Volumen de Hectáreas por Pista</b>",
-                             text=df_dash.sort_values('HECTAREAS', ascending=True)['% HECTAREAS'].apply(lambda x: f"{x:.1f}%"),
+                             text='TXT_PCT',
                              color='HECTAREAS', color_continuous_scale='Blues')
             fig_bar.update_layout(xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
             g2.plotly_chart(fig_bar, use_container_width=True)
@@ -241,13 +281,17 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_tabla_dash = df_dash.copy()
             df_tabla_dash.loc['TOTAL'] = ['👑 TOTAL GENERAL', df_tabla_dash['VUELOS'].sum(), df_tabla_dash['HECTAREAS'].sum(), 100.0, 100.0]
             
+            # FORMATO COLOMBIANO EN TABLA DASHBOARD
+            fmt_dash = {
+                "VUELOS": lambda x: f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                "HECTAREAS": lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                "% VUELOS": lambda x: f"{x:.2f}%".replace(".", ","),
+                "% HECTAREAS": lambda x: f"{x:.2f}%".replace(".", ",")
+            }
+            
             st.dataframe(
-                df_tabla_dash.style.format({
-                    "VUELOS": "{:,.0f}",
-                    "HECTAREAS": "{:,.2f}",
-                    "% VUELOS": "{:.1f}%",
-                    "% HECTAREAS": "{:.1f}%"
-                }).bar(subset=["% HECTAREAS"], color='#d4af37', vmin=0, vmax=100)
+                df_tabla_dash.style.format(fmt_dash)
+                  .bar(subset=["% HECTAREAS"], color='#d4af37', vmin=0, vmax=100)
                   .bar(subset=["% VUELOS"], color='#5c88b0', vmin=0, vmax=100),
                 use_container_width=True, hide_index=True
             )
@@ -261,11 +305,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
             
-            # 🚨 FUERZA BRUTA: El 100% exacto para matar los 99.9% de coma flotante
+            # 🚨 FUERZA BRUTA: El 100% exacto para matar los 99.9%
             matriz_pct.loc['TOTAL MES'] = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
             
             st.dataframe(
-                matriz_pct.style.format("{:.1f}%")
+                matriz_pct.style.format(lambda x: f"{x:.1f}%".replace(".", ","))
                 .background_gradient(cmap="Blues", axis=None, subset=(matriz_pct.index[:-1], matriz_pct.columns)), 
                 use_container_width=True
             )
@@ -378,14 +422,13 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
         # =================================================================
-        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP (LA EVOLUCIÓN)
+        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP (CON ETIQUETAS Y FORMATO CO)
         # =================================================================
         st.markdown("---")
         buffer_rep = io.BytesIO()
         rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
         
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
-            # 🚀 CONSTRUCCIÓN NATIVA DE EXCEL DESDE CERO
             wb = Workbook()
             ws = wb.active
             ws.title = "Dashboard Ejecutivo"
@@ -429,7 +472,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 ws.cell(row=curr_row, column=6).border = borde
                 curr_row += 1
                 
-            # Totales en Oro
             ws.cell(row=curr_row, column=2, value="TOTAL GENERAL").fill = fill_tot
             ws.cell(row=curr_row, column=2).font = font_tot
             ws.cell(row=curr_row, column=2).border = borde
@@ -456,7 +498,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             ws.column_dimensions['E'].width = 15
             ws.column_dimensions['F'].width = 15
             
-            # --- INCORPORACIÓN DE GRÁFICOS NATIVOS EXCEL ---
+            # --- INCORPORACIÓN DE GRÁFICOS NATIVOS EXCEL CON ETIQUETAS ---
             data_len = len(df_export)
             cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
             
@@ -468,6 +510,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             bar_chart.add_data(data_ha, titles_from_data=True)
             bar_chart.set_categories(cats)
             bar_chart.legend = None
+            
+            # 🔥 ACTIVACIÓN DE ETIQUETAS EN BARRAS
+            bar_chart.dataLabels = DataLabelList()
+            bar_chart.dataLabels.showVal = True
+            
             ws.add_chart(bar_chart, "H5")
             
             pie_chart = DoughnutChart()
@@ -476,12 +523,17 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             data_vue = Reference(ws, min_col=3, min_row=start_row, max_row=start_row+data_len)
             pie_chart.add_data(data_vue, titles_from_data=True)
             pie_chart.set_categories(cats)
+            
+            # 🔥 ACTIVACIÓN DE ETIQUETAS EN DONA (PORCENTAJES)
+            pie_chart.dataLabels = DataLabelList()
+            pie_chart.dataLabels.showPercent = True
+            pie_chart.dataLabels.showCatName = False
+            
             ws.add_chart(pie_chart, "H20")
             
             wb.save(buffer_rep)
 
         else:
-            # Exportación estándar para las otras vistas
             df_export = df_visual if vista_seleccionada == "📊 Resumen Gerencial" else matriz
             df_export.to_excel(buffer_rep, sheet_name='Reporte', index=False if vista_seleccionada != "📅 Mapa Semanal" else True)
             
