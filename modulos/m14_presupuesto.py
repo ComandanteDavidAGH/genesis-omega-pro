@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.2]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.3]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v42"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v43"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -303,7 +303,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 ha_total_detectada = df_t1['HA_CALCULO'].sum()
                 ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
                 
-                # 💥 LA CORRECCIÓN DE LA BASE: Se extrae el promedio histórico PURO. El Ajuste de Frecuencia no toca esta base.
+                # Base Histórica Estática
                 ha_total_por_coctel['HA_PROYECTADA'] = ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda
 
                 for _, row_c in ha_total_por_coctel.iterrows():
@@ -355,9 +355,9 @@ def ejecutar(purificar_lote, extraer_numero):
                     resultados.append({
                         "✅ Activo": True,
                         "🧪 Insumo Químico": producto,
-                        "vol_sist_num": float(volumen), # Volumen histórico puro
+                        "vol_sist_num": float(volumen),
                         "precio_sist_num": float(precio_unitario_final),
-                        "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2), # Base visual blindada
+                        "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2),
                         "🎯 Ajuste Vol. (%)": 0.0,
                         "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0),
                         "📈 Precio Sist. (+Inflación)": fmt_latino(precio_unitario_final, 0),
@@ -366,7 +366,6 @@ def ejecutar(purificar_lote, extraer_numero):
             
             st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True).reset_index(drop=True)
             
-            # El Presupuesto Inercial es la historia pura a los precios proyectados (NO INCLUYE el extra de vuelos)
             df_inercial = st.session_state['lab_df'].copy()
             st.session_state['total_inercial_base'] = (df_inercial['vol_sist_num'] * df_inercial['precio_sist_num']).sum()
 
@@ -377,9 +376,8 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes individuales, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v42"
+        llave_editor = "laboratorio_estrategico_v43"
 
-        # Capturamos las ediciones y las guardamos en memoria principal
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
             if edits:
@@ -390,16 +388,12 @@ def ejecutar(purificar_lote, extraer_numero):
 
         df_para_editor = st.session_state['lab_df'].copy()
 
-        # 💥 MATEMÁTICAS EN TIEMPO REAL: Se aplica el Factor Global de Vuelos + El Factor Individual
         factor_frecuencia_global = 1 + (frecuencia_vuelos / 100.0)
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * factor_frecuencia_global * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
         
-        # UX: Si "✅ Activo" es Falso, forzamos el volumen final a 0
         df_para_editor['vol_final_num'] = df_para_editor.apply(lambda row: row['vol_final_num'] if row['✅ Activo'] else 0.0, axis=1)
-        
         df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
 
-        # Cadenas Formateadas (El traje de gala)
         df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
         df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
 
@@ -463,7 +457,6 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # Filtramos solo los activos para la matemática final del Dashboard
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
         
         total_estrategico = df_estrategico['subtotal_num'].sum()
@@ -547,10 +540,16 @@ def ejecutar(purificar_lote, extraer_numero):
             df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', index=False)
             
             ws = writer.sheets['Estrategia_Presupuesto']
-            for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"] + ws["E"]:
-                cell[0].alignment = Alignment(horizontal='center')
-            for cell in ws["B"] + ws["C"] + ws["D"] + ws["E"]:
-                if cell[0].row > 1: cell[0].number_format = '#,##0.00'
+            
+            # 💥 CORRECCIÓN FINAL OPENPYXL: Formateo de celdas y alineación sin índices
+            for col in ["A", "B", "C", "D", "E"]:
+                for cell in ws[col]:
+                    cell.alignment = Alignment(horizontal='center')
+                    
+            for col in ["B", "C", "D", "E"]:
+                for cell in ws[col]:
+                    if cell.row > 1: 
+                        cell.number_format = '#,##0.00'
                 
             ws.column_dimensions['A'].width = 25
             ws.column_dimensions['B'].width = 25
