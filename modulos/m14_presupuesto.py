@@ -235,7 +235,7 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.5]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.7]</span></h1>", unsafe_allow_html=True)
     
     if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master"):
         st.cache_data.clear()
@@ -245,7 +245,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.toast("✅ Memoria de simulación reiniciada. Listo para un nuevo escenario.", icon="🧹")
         st.rerun()
 
-    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, ajustes porcentuales de volumen y precios en tiempo real.")
+    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios en tiempo real.")
 
     # ==========================================
     # FASE 1: PARÁMETROS BASE
@@ -266,6 +266,7 @@ def ejecutar(purificar_lote, extraer_numero):
         
         btn_generar = st.button("🧬 GENERAR MATRIZ BASE (EXTRAER DATOS)", type="primary", use_container_width=True)
 
+    # Lógica de Extracción de Base
     if btn_generar:
         with st.spinner("Compilando historia y cruzando precios..."):
             df_t1_base, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master = descargar_y_masticar_bases()
@@ -302,7 +303,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 ha_total_detectada = df_t1['HA_CALCULO'].sum()
                 ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
                 
-                # Multiplicador estratégico de Frecuencia
                 factor_frecuencia = 1 + (frecuencia_vuelos / 100.0)
                 ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_frecuencia
 
@@ -352,17 +352,16 @@ def ejecutar(purificar_lote, extraer_numero):
                             anios_pasados = max(0, anio_presupuesto - anio_actual)
                             precio_unitario_final = precio_bk * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
-                    # 💥 Mantenemos la matemática invisible pero proyectamos strings formateados para la tabla
                     resultados.append({
                         "✅ Activo": True,
                         "🧪 Insumo Químico": producto,
-                        "vol_sist_num": float(volumen),                # Invisible, para matemáticas puras
-                        "precio_sist_num": float(precio_unitario_final), # Invisible, para matemáticas puras
-                        "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2), # Visible, solo lectura
-                        "🎯 Ajuste Vol. (%)": 0.0,                     # Editable numérico
-                        "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0), # Visible
-                        "📈 Precio Sist. (+Inflación)": fmt_latino(precio_unitario_final, 0), # Visible
-                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0) # Editable
+                        "vol_sist_num": float(volumen),
+                        "precio_sist_num": float(precio_unitario_final),
+                        "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2),
+                        "🎯 Ajuste Vol. (%)": 0.0,
+                        "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0),
+                        "📈 Precio Sist. (+Inflación)": fmt_latino(precio_unitario_final, 0),
+                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0)
                     })
             
             st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True)
@@ -380,20 +379,52 @@ def ejecutar(purificar_lote, extraer_numero):
 
         df_para_editor = st.session_state['lab_df'].copy()
 
+        # 💥 HACK DE STREAMLIT: Pre-aplicamos las ediciones del usuario ANTES de mostrar la tabla para calcular columnas dependientes en Tiempo Real
+        if "editor_lab" in st.session_state:
+            edits = st.session_state["editor_lab"].get("edited_rows", {})
+            for row_idx_str, changes in edits.items():
+                row_idx = int(row_idx_str)
+                if "🎯 Ajuste Vol. (%)" in changes:
+                    df_para_editor.at[row_idx, "🎯 Ajuste Vol. (%)"] = changes["🎯 Ajuste Vol. (%)"]
+                if "🎯 Precio Irreal (Modificable)" in changes:
+                    df_para_editor.at[row_idx, "🎯 Precio Irreal (Modificable)"] = changes["🎯 Precio Irreal (Modificable)"]
+
+        # 💥 Matemáticas en tiempo real: Se calcula la columna final proyectada
+        df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
+        df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
+
+        # Cadenas Formateadas (El traje de gala colombiano para la tabla)
+        df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
+        df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
+
+        # ORDENAMOS LAS COLUMNAS PARA QUE "VOL. FINAL" SALGA JUSTO DESPUÉS DEL "%"
+        cols_ordenadas = [
+            "✅ Activo", "🧪 Insumo Químico", 
+            "📦 Vol. Sist. (Base)", "🎯 Ajuste Vol. (%)", "📊 Vol. Final (Calc)", 
+            "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)", "🎯 Precio Irreal (Modificable)", 
+            "💰 Subtotal (Calc)", 
+            "vol_sist_num", "precio_sist_num", "vol_final_num", "subtotal_num"
+        ]
+        df_para_editor = df_para_editor[cols_ordenadas]
+
         df_editado = st.data_editor(
             df_para_editor,
             column_config={
-                "vol_sist_num": None, # Oculta
-                "precio_sist_num": None, # Oculta
-                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Enciende o apaga esta molécula para el presupuesto."),
+                "vol_sist_num": None,
+                "precio_sist_num": None,
+                "vol_final_num": None,
+                "subtotal_num": None,
+                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para eliminar."),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
                 "📦 Vol. Sist. (Base)": st.column_config.TextColumn("Vol. Sist. (Base)"),
                 "🎯 Ajuste Vol. (%)": st.column_config.NumberColumn("🎯 Ajuste Vol. (%)", format="%d%%", step=1.0),
+                "📊 Vol. Final (Calc)": st.column_config.TextColumn("📊 Vol. Proyectado"),
                 "💵 Precio Base (Histórico)": st.column_config.TextColumn("Precio Base (Histórico)"),
                 "📈 Precio Sist. (+Inflación)": st.column_config.TextColumn("Precio Sist. (+Inflación)"),
-                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0, format="%d")
+                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0, format="%d"),
+                "💰 Subtotal (Calc)": st.column_config.TextColumn("💰 Subtotal")
             },
-            disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)"],
+            disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "📊 Vol. Final (Calc)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)", "💰 Subtotal (Calc)"],
             hide_index=True,
             use_container_width=True,
             key="editor_lab"
@@ -410,19 +441,14 @@ def ejecutar(purificar_lote, extraer_numero):
                     nueva_fila = pd.DataFrame([{
                         "✅ Activo": True,
                         "🧪 Insumo Químico": nuevo_nombre.upper(),
-                        "vol_sist_num": 0.0,
+                        "vol_sist_num": nuevo_vol,
                         "precio_sist_num": 0.0,
-                        "📦 Vol. Sist. (Base)": fmt_latino(0, 2),
+                        "📦 Vol. Sist. (Base)": fmt_latino(nuevo_vol, 2),
                         "🎯 Ajuste Vol. (%)": 0.0,
                         "💵 Precio Base (Histórico)": fmt_latino(0, 0),
                         "📈 Precio Sist. (+Inflación)": fmt_latino(0, 0),
                         "🎯 Precio Irreal (Modificable)": round(nuevo_precio, 0)
                     }])
-                    # Si es nuevo, asumimos que el ajuste del volumen es sumarle el 100% de lo que digitó el usuario
-                    # Para simplificar matematicas, ponemos el volumen ingresado directo en vol_sist_num
-                    nueva_fila["vol_sist_num"] = nuevo_vol
-                    nueva_fila["📦 Vol. Sist. (Base)"] = fmt_latino(nuevo_vol, 2)
-                    
                     st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
                     st.rerun()
 
@@ -434,15 +460,9 @@ def ejecutar(purificar_lote, extraer_numero):
         
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
         
-        # 💥 MATEMÁTICA PURA: Calculamos el volumen proyectado aplicando el porcentaje de ajuste al volumen sistémico oculto
-        df_estrategico['vol_sist_num'] = pd.to_numeric(df_estrategico['vol_sist_num'], errors='coerce').fillna(0)
-        df_estrategico['🎯 Ajuste Vol. (%)'] = pd.to_numeric(df_estrategico['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0)
-        df_estrategico['🎯 Precio Irreal (Modificable)'] = pd.to_numeric(df_estrategico['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
+        # Las columnas "subtotal_num" ya están en memoria gracias a la pre-aplicación en Fase 2
+        total_estrategico = df_estrategico['subtotal_num'].sum()
         
-        df_estrategico['Volumen_Final_Proyectado'] = df_estrategico['vol_sist_num'] * (1 + (df_estrategico['🎯 Ajuste Vol. (%)'] / 100.0))
-        df_estrategico['💰 Subtotal'] = df_estrategico['Volumen_Final_Proyectado'] * df_estrategico['🎯 Precio Irreal (Modificable)']
-        
-        total_estrategico = df_estrategico['💰 Subtotal'].sum()
         total_inercial = st.session_state.get('total_inercial_base', 0)
         diferencia = total_estrategico - total_inercial
         
@@ -492,14 +512,14 @@ def ejecutar(purificar_lote, extraer_numero):
         fig_bar.update_layout(showlegend=False, yaxis_title="COP", xaxis_title="")
         g_col1.plotly_chart(fig_bar, use_container_width=True)
 
-        df_pie = df_estrategico.copy().sort_values('💰 Subtotal', ascending=False)
+        df_pie = df_estrategico.copy().sort_values('subtotal_num', ascending=False)
         if len(df_pie) > 7:
             top_6 = df_pie.head(6)
-            otros_sub = df_pie.iloc[6:]['💰 Subtotal'].sum()
-            fila_otros = pd.DataFrame([{"🧪 Insumo Químico": "OTROS INSUMOS", "💰 Subtotal": otros_sub}])
+            otros_sub = df_pie.iloc[6:]['subtotal_num'].sum()
+            fila_otros = pd.DataFrame([{"🧪 Insumo Químico": "OTROS INSUMOS", "subtotal_num": otros_sub}])
             df_pie = pd.concat([top_6, fila_otros], ignore_index=True)
             
-        fig_pie = px.pie(df_pie, values='💰 Subtotal', names='🧪 Insumo Químico', hole=0.45, 
+        fig_pie = px.pie(df_pie, values='subtotal_num', names='🧪 Insumo Químico', hole=0.45, 
                          title="<b>Peso Financiero por Molécula (Estratégico)</b>", color_discrete_sequence=px.colors.qualitative.Prism)
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
         fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
@@ -510,9 +530,9 @@ def ejecutar(purificar_lote, extraer_numero):
         
         df_export = df_export.rename(columns={
             "🧪 Insumo Químico": "PRODUCTO", 
-            "Volumen_Final_Proyectado": "VOLUMEN (PROYECTADO L/Kg)", 
+            "vol_final_num": "VOLUMEN (PROYECTADO L/Kg)", 
             "🎯 Precio Irreal (Modificable)": "PRECIO UNITARIO (PROYECTADO)", 
-            "💰 Subtotal": "PRESUPUESTO TOTAL"
+            "subtotal_num": "PRESUPUESTO TOTAL"
         })
         df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO L/Kg)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
         
