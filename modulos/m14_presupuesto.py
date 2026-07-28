@@ -235,7 +235,7 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.4]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.5]</span></h1>", unsafe_allow_html=True)
     
     if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master"):
         st.cache_data.clear()
@@ -245,7 +245,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.toast("✅ Memoria de simulación reiniciada. Listo para un nuevo escenario.", icon="🧹")
         st.rerun()
 
-    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios en tiempo real.")
+    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, ajustes porcentuales de volumen y precios en tiempo real.")
 
     # ==========================================
     # FASE 1: PARÁMETROS BASE
@@ -261,12 +261,11 @@ def ejecutar(purificar_lote, extraer_numero):
         
         f4, f5, f6 = st.columns(3)
         profundidad_sel = f4.selectbox("🔍 Base Histórica:", ["Último Año", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"])
-        frecuencia_vuelos = f5.number_input("✈️ Ajuste de Frecuencia/Ciclos (%)", min_value=-80, max_value=300, value=0, step=5, help="Si planeas dar más pases este año, sube el porcentaje.")
+        frecuencia_vuelos = f5.number_input("✈️ Ajuste de Frecuencia/Ciclos (%)", min_value=-80, max_value=300, value=0, step=5, help="Simula un escenario futuro con más o menos pases respecto a la Tabla 1.")
         inflacion_sel = f6.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=8.0, step=1.0)
         
         btn_generar = st.button("🧬 GENERAR MATRIZ BASE (EXTRAER DATOS)", type="primary", use_container_width=True)
 
-    # Lógica de Extracción de Base
     if btn_generar:
         with st.spinner("Compilando historia y cruzando precios..."):
             df_t1_base, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master = descargar_y_masticar_bases()
@@ -303,6 +302,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 ha_total_detectada = df_t1['HA_CALCULO'].sum()
                 ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
                 
+                # Multiplicador estratégico de Frecuencia
                 factor_frecuencia = 1 + (frecuencia_vuelos / 100.0)
                 ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_frecuencia
 
@@ -352,48 +352,46 @@ def ejecutar(purificar_lote, extraer_numero):
                             anios_pasados = max(0, anio_presupuesto - anio_actual)
                             precio_unitario_final = precio_bk * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
+                    # 💥 Mantenemos la matemática invisible pero proyectamos strings formateados para la tabla
                     resultados.append({
                         "✅ Activo": True,
                         "🧪 Insumo Químico": producto,
-                        "📦 Vol. Sist. (Base)": round(volumen, 2),
-                        "🎯 Vol. Irreal (Modificable)": round(volumen, 2),
-                        "💵 Precio Base (Histórico)": round(precio_hist_base, 0),
-                        "📈 Precio Sist. (+Inflación)": round(precio_unitario_final, 0),
-                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0)
+                        "vol_sist_num": float(volumen),                # Invisible, para matemáticas puras
+                        "precio_sist_num": float(precio_unitario_final), # Invisible, para matemáticas puras
+                        "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2), # Visible, solo lectura
+                        "🎯 Ajuste Vol. (%)": 0.0,                     # Editable numérico
+                        "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0), # Visible
+                        "📈 Precio Sist. (+Inflación)": fmt_latino(precio_unitario_final, 0), # Visible
+                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0) # Editable
                     })
             
             st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True)
             st.session_state['ha_proyectada_base'] = (ha_total_detectada/total_anios_boveda) * (1 + frecuencia_vuelos/100)
             
             df_inercial = st.session_state['lab_df'].copy()
-            st.session_state['total_inercial_base'] = (df_inercial['📦 Vol. Sist. (Base)'] * df_inercial['📈 Precio Sist. (+Inflación)']).sum()
+            st.session_state['total_inercial_base'] = (df_inercial['vol_sist_num'] * df_inercial['precio_sist_num']).sum()
 
     # ==========================================
     # FASE 2: EL LABORATORIO (INTERACTIVO)
     # ==========================================
     if 'lab_df' in st.session_state and not st.session_state['lab_df'].empty:
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
-        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales.")
+        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes, o sobre el precio final para simular negociaciones.")
 
-        # 💥 BLINDAJE VISUAL: Convertimos todo a texto puro con formato colombiano para engañar a Streamlit
-        df_for_editor = st.session_state['lab_df'].copy()
-        df_for_editor['📦 Vol. Sist. (Base)'] = df_for_editor['📦 Vol. Sist. (Base)'].apply(lambda x: fmt_latino(x, 2))
-        df_for_editor['🎯 Vol. Irreal (Modificable)'] = df_for_editor['🎯 Vol. Irreal (Modificable)'].apply(lambda x: fmt_latino(x, 2))
-        df_for_editor['💵 Precio Base (Histórico)'] = df_for_editor['💵 Precio Base (Histórico)'].apply(lambda x: fmt_latino(x, 0))
-        df_for_editor['📈 Precio Sist. (+Inflación)'] = df_for_editor['📈 Precio Sist. (+Inflación)'].apply(lambda x: fmt_latino(x, 0))
-        df_for_editor['🎯 Precio Irreal (Modificable)'] = df_for_editor['🎯 Precio Irreal (Modificable)'].apply(lambda x: fmt_latino(x, 0))
+        df_para_editor = st.session_state['lab_df'].copy()
 
-        # Configuramos TODO como TextColumn para que Streamlit no se atreva a borrar nuestros puntos y comas
         df_editado = st.data_editor(
-            df_for_editor,
+            df_para_editor,
             column_config={
-                "✅ Activo": st.column_config.CheckboxColumn("Activo"),
+                "vol_sist_num": None, # Oculta
+                "precio_sist_num": None, # Oculta
+                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Enciende o apaga esta molécula para el presupuesto."),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
                 "📦 Vol. Sist. (Base)": st.column_config.TextColumn("Vol. Sist. (Base)"),
-                "🎯 Vol. Irreal (Modificable)": st.column_config.TextColumn("🎯 Vol. Irreal (Modificable)"),
+                "🎯 Ajuste Vol. (%)": st.column_config.NumberColumn("🎯 Ajuste Vol. (%)", format="%d%%", step=1.0),
                 "💵 Precio Base (Histórico)": st.column_config.TextColumn("Precio Base (Histórico)"),
                 "📈 Precio Sist. (+Inflación)": st.column_config.TextColumn("Precio Sist. (+Inflación)"),
-                "🎯 Precio Irreal (Modificable)": st.column_config.TextColumn("🎯 Precio Irreal (Modificable)")
+                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0, format="%d")
             },
             disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)"],
             hide_index=True,
@@ -412,12 +410,19 @@ def ejecutar(purificar_lote, extraer_numero):
                     nueva_fila = pd.DataFrame([{
                         "✅ Activo": True,
                         "🧪 Insumo Químico": nuevo_nombre.upper(),
-                        "📦 Vol. Sist. (Base)": 0.0,
-                        "🎯 Vol. Irreal (Modificable)": round(nuevo_vol, 2),
-                        "💵 Precio Base (Histórico)": 0.0,
-                        "📈 Precio Sist. (+Inflación)": 0.0,
+                        "vol_sist_num": 0.0,
+                        "precio_sist_num": 0.0,
+                        "📦 Vol. Sist. (Base)": fmt_latino(0, 2),
+                        "🎯 Ajuste Vol. (%)": 0.0,
+                        "💵 Precio Base (Histórico)": fmt_latino(0, 0),
+                        "📈 Precio Sist. (+Inflación)": fmt_latino(0, 0),
                         "🎯 Precio Irreal (Modificable)": round(nuevo_precio, 0)
                     }])
+                    # Si es nuevo, asumimos que el ajuste del volumen es sumarle el 100% de lo que digitó el usuario
+                    # Para simplificar matematicas, ponemos el volumen ingresado directo en vol_sist_num
+                    nueva_fila["vol_sist_num"] = nuevo_vol
+                    nueva_fila["📦 Vol. Sist. (Base)"] = fmt_latino(nuevo_vol, 2)
+                    
                     st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
                     st.rerun()
 
@@ -427,14 +432,17 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # 💥 PURIFICADOR MATEMÁTICO INVISIBLE: Tomamos los textos editados y los volvemos números limpios
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
-        df_estrategico['🎯 Vol. Irreal (Modificable)'] = df_estrategico['🎯 Vol. Irreal (Modificable)'].apply(a_numero_limpio)
-        df_estrategico['🎯 Precio Irreal (Modificable)'] = df_estrategico['🎯 Precio Irreal (Modificable)'].apply(a_numero_limpio)
         
-        df_estrategico['💰 Subtotal'] = df_estrategico['🎯 Vol. Irreal (Modificable)'] * df_estrategico['🎯 Precio Irreal (Modificable)']
+        # 💥 MATEMÁTICA PURA: Calculamos el volumen proyectado aplicando el porcentaje de ajuste al volumen sistémico oculto
+        df_estrategico['vol_sist_num'] = pd.to_numeric(df_estrategico['vol_sist_num'], errors='coerce').fillna(0)
+        df_estrategico['🎯 Ajuste Vol. (%)'] = pd.to_numeric(df_estrategico['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0)
+        df_estrategico['🎯 Precio Irreal (Modificable)'] = pd.to_numeric(df_estrategico['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
+        
+        df_estrategico['Volumen_Final_Proyectado'] = df_estrategico['vol_sist_num'] * (1 + (df_estrategico['🎯 Ajuste Vol. (%)'] / 100.0))
+        df_estrategico['💰 Subtotal'] = df_estrategico['Volumen_Final_Proyectado'] * df_estrategico['🎯 Precio Irreal (Modificable)']
+        
         total_estrategico = df_estrategico['💰 Subtotal'].sum()
-        
         total_inercial = st.session_state.get('total_inercial_base', 0)
         diferencia = total_estrategico - total_inercial
         
@@ -500,16 +508,16 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         df_export = df_estrategico.copy()
         
-        # Para el Excel, devolvemos las columnas a números puros para que se pueda sumar
-        df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
-        
         df_export = df_export.rename(columns={
             "🧪 Insumo Químico": "PRODUCTO", 
-            "🎯 Vol. Irreal (Modificable)": "VOLUMEN (PROYECTADO)", 
+            "Volumen_Final_Proyectado": "VOLUMEN (PROYECTADO L/Kg)", 
             "🎯 Precio Irreal (Modificable)": "PRECIO UNITARIO (PROYECTADO)", 
             "💰 Subtotal": "PRESUPUESTO TOTAL"
         })
-        df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
+        df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO L/Kg)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
+        
+        # Formateamos para el Excel
+        df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
