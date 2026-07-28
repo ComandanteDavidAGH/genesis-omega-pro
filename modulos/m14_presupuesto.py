@@ -212,14 +212,13 @@ def extraer_precios_maestros(df_cfg):
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
-    VERDE_INTENSO = '#143521'
-    DORADO = '#d4af37'
-
-    # 🚀 TRATAMIENTO ESTÉ_TICO DE CONTRASTE INDUSTRIAL: Contornos sólidos de 3px e inputs opacos
+    
+    # 🚀 ESTÉTICA VIP Y EFECTO LUPA SC
     st.markdown(f"""
     <style>
-    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }}
+    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    
     .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; transition: transform 0.3s ease, box-shadow 0.3s ease;}}
     .kpi-presupuesto:hover {{ transform: translateY(-5px) scale(1.02); box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37;}}
     .kpi-titulo {{ color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }}
@@ -229,31 +228,15 @@ def ejecutar(purificar_lote, extraer_numero):
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
 
-    /* 💥 CONTROLES BLINDADOS M14: Acabado en Verde Intenso puro contra transparencias de BaseWeb */
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stNumberInput"] input {{
-        background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
-        border-radius: 8px !important;
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input, div[data-testid="stTextInput"] input {{
+        background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; color: #000000 !important; font-weight: bold !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
-        background-color: transparent !important;
-        border: none !important;
-    }}
-    div[data-testid="stSelectbox"] *, div[data-testid="stNumberInput"] * {{
-        color: #000000 !important;
-        font-weight: bold !important;
-    }}
-    div[data-testid="stMainBlockContainer"] label p {{
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background-color: transparent !important; border: none !important; }}
+    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-presupuesto'>💰 Simulador de Presupuestos <span style='color:#d4af37; font-size:16px;'>[VERSIÓN GERENCIAL 3.0]</span></h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.1]</span></h1>", unsafe_allow_html=True)
     st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios en tiempo real.")
 
     # ==========================================
@@ -327,22 +310,25 @@ def ejecutar(purificar_lote, extraer_numero):
 
             for producto, volumen in consumo_esperado.items():
                 if volumen > 0:
+                    precio_hist_base = 0.0
                     precio_unitario_final = 0.0
                     p_clean = re.sub(r'[^\w]', '', producto.upper().strip())
                     
                     for r_db in precios_records:
                         if r_db['AÑO'] == año_base:
                             if p_clean in r_db['PROD_CLEAN'] or r_db['PROD_CLEAN'] in p_clean:
+                                precio_hist_base = r_db['PRECIO']
                                 anios_pasados = max(0, anio_presupuesto - año_base)
-                                precio_unitario_final = r_db['PRECIO'] * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
+                                precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
                                 break
                     
                     if precio_unitario_final == 0.0 and precios_records:
                         matches_hist = [r for r in precios_records if r['AÑO'] < año_base and (p_clean in r['PROD_CLEAN'] or r['PROD_CLEAN'] in p_clean)]
                         if matches_hist:
                             best_match = max(matches_hist, key=lambda x: x['AÑO'])
+                            precio_hist_base = best_match['PRECIO']
                             anios_pasados = max(0, anio_presupuesto - int(best_match['AÑO']))
-                            precio_unitario_final = best_match['PRECIO'] * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
+                            precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
                     if precio_unitario_final == 0.0:
                         precio_bk = dict_precios_backup.get(producto, 0.0)
@@ -354,40 +340,49 @@ def ejecutar(purificar_lote, extraer_numero):
                                         precio_bk = val_bk
                                         break
                         if precio_bk >= 1000:
+                            precio_hist_base = precio_bk
                             anios_pasados = max(0, anio_presupuesto - anio_actual)
                             precio_unitario_final = precio_bk * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
+                    # 💥 GUARDAMOS TODAS LAS REFERENCIAS PARA LA TABLA
                     resultados.append({
                         "✅ Activo": True,
                         "🧪 Insumo Químico": producto,
-                        "📦 Volumen L/Kg": round(volumen, 2),
-                        "💵 Precio Unitario": round(precio_unitario_final, 0)
+                        "📦 Vol. Sist. (Base)": round(volumen, 2),            # Solo lectura
+                        "🎯 Vol. Irreal (Modificable)": round(volumen, 2),    # Editable
+                        "💵 Precio Base (Histórico)": round(precio_hist_base, 0), # Solo lectura
+                        "📈 Precio Sist. (+Inflación)": round(precio_unitario_final, 0), # Solo lectura
+                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0) # Editable
                     })
             
             # Guardamos en memoria para el Data Editor
             st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True)
             st.session_state['ha_proyectada_base'] = (ha_total_detectada/total_anios_boveda) * (1 + frecuencia_vuelos/100)
             
-            # Guardamos el total base inercial para comparar
+            # 💥 Guardamos el total base inercial (Volumen Sist * Precio Sist) para comparar siempre la misma base vs la modificación del usuario
             df_inercial = st.session_state['lab_df'].copy()
-            st.session_state['total_inercial_base'] = (df_inercial['📦 Volumen L/Kg'] * df_inercial['💵 Precio Unitario']).sum()
+            st.session_state['total_inercial_base'] = (df_inercial['📦 Vol. Sist. (Base)'] * df_inercial['📈 Precio Sist. (+Inflación)']).sum()
 
     # ==========================================
     # FASE 2: EL LABORATORIO (INTERACTIVO)
     # ==========================================
     if 'lab_df' in st.session_state and not st.session_state['lab_df'].empty:
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
-        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre el **Volumen** o el **Precio** para probar escenarios comerciales.")
+        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales frente a las proyecciones del sistema.")
 
-        # El Data Editor Interactivo (Donde sucede la magia)
+        # El Data Editor Interactivo con Columnas de Auditoría
         df_editado = st.data_editor(
             st.session_state['lab_df'],
             column_config={
                 "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Enciende o apaga esta molécula para el presupuesto."),
-                "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo", disabled=True),
-                "📦 Volumen L/Kg": st.column_config.NumberColumn("Volumen Estimado (Modificable)", min_value=0.0, format="%.2f"),
-                "💵 Precio Unitario": st.column_config.NumberColumn("Precio Irreal (Modificable)", min_value=0.0, format="%.0f")
+                "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
+                "📦 Vol. Sist. (Base)": st.column_config.NumberColumn("Vol. Sist. (Base)", format="%.2f"),
+                "🎯 Vol. Irreal (Modificable)": st.column_config.NumberColumn("🎯 Vol. Irreal (Modificable)", min_value=0.0, format="%.2f"),
+                "💵 Precio Base (Histórico)": st.column_config.NumberColumn("Precio Base (Histórico)", format="%.0f"),
+                "📈 Precio Sist. (+Inflación)": st.column_config.NumberColumn("Precio Sist. (+Inflación)", format="%.0f"),
+                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0, format="%.0f")
             },
+            disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)"],
             hide_index=True,
             use_container_width=True,
             key="editor_lab"
@@ -405,8 +400,11 @@ def ejecutar(purificar_lote, extraer_numero):
                     nueva_fila = pd.DataFrame([{
                         "✅ Activo": True,
                         "🧪 Insumo Químico": nuevo_nombre.upper(),
-                        "📦 Volumen L/Kg": round(nuevo_vol, 2),
-                        "💵 Precio Unitario": round(nuevo_precio, 0)
+                        "📦 Vol. Sist. (Base)": 0.0,
+                        "🎯 Vol. Irreal (Modificable)": round(nuevo_vol, 2),
+                        "💵 Precio Base (Histórico)": 0.0,
+                        "📈 Precio Sist. (+Inflación)": 0.0,
+                        "🎯 Precio Irreal (Modificable)": round(nuevo_precio, 0)
                     }])
                     st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
                     st.rerun()
@@ -417,9 +415,9 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # Filtramos solo los activos y calculamos el nuevo total
+        # Filtramos solo los activos y calculamos el nuevo total usando las columnas Modificables (🎯)
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
-        df_estrategico['💰 Subtotal'] = df_estrategico['📦 Volumen L/Kg'] * df_estrategico['💵 Precio Unitario']
+        df_estrategico['💰 Subtotal'] = df_estrategico['🎯 Vol. Irreal (Modificable)'] * df_estrategico['🎯 Precio Irreal (Modificable)']
         total_estrategico = df_estrategico['💰 Subtotal'].sum()
         
         total_inercial = st.session_state.get('total_inercial_base', 0)
@@ -475,6 +473,7 @@ def ejecutar(purificar_lote, extraer_numero):
         g_col1.plotly_chart(fig_bar, use_container_width=True)
 
         # 2. Dona de Distribución Estratégica
+        # Agrupamos productos muy pequeños en "OTROS" para que la dona sea limpia
         df_pie = df_estrategico.copy().sort_values('💰 Subtotal', ascending=False)
         if len(df_pie) > 7:
             top_6 = df_pie.head(6)
@@ -487,6 +486,42 @@ def ejecutar(purificar_lote, extraer_numero):
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
         fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
         g_col2.plotly_chart(fig_pie, use_container_width=True)
+
+        # Botón de Descarga Ejecutiva
+        st.markdown("---")
+        df_export = df_estrategico.copy()
+        df_export = df_export.rename(columns={
+            "🧪 Insumo Químico": "PRODUCTO", 
+            "🎯 Vol. Irreal (Modificable)": "VOLUMEN (PROYECTADO)", 
+            "🎯 Precio Irreal (Modificable)": "PRECIO UNITARIO (PROYECTADO)", 
+            "💰 Subtotal": "PRESUPUESTO TOTAL"
+        })
+        # Conservamos solo las columnas vitales para la junta
+        df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
+        
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', index=False)
+            
+            # Formato al Excel
+            ws = writer.sheets['Estrategia_Presupuesto']
+            for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"] + ws["E"]:
+                cell[0].alignment = Alignment(horizontal='center')
+            for cell in ws["C"] + ws["D"] + ws["E"]:
+                if cell[0].row > 1: cell[0].number_format = '#,##0'
+            ws.column_dimensions['A'].width = 25
+            ws.column_dimensions['B'].width = 25
+            ws.column_dimensions['C'].width = 25
+            ws.column_dimensions['D'].width = 30
+            ws.column_dimensions['E'].width = 25
+        
+        st.download_button(
+            label="💾 DESCARGAR ESTRATEGIA EN EXCEL (PARA JUNTA DIRECTIVA)",
+            data=buffer.getvalue(),
+            file_name=f"Estrategia_Presupuesto_{anio_presupuesto}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     pass
