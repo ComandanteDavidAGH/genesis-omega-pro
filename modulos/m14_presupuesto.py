@@ -236,7 +236,18 @@ def ejecutar(purificar_lote, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.1]</span></h1>", unsafe_allow_html=True)
+    c_tit, c_btn = st.columns([3, 1])
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.2]</span></h1>", unsafe_allow_html=True)
+    
+    # 🧹 EL BOTÓN PURIFICADOR DE MEMORIA
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master"):
+        st.cache_data.clear()
+        for key in ['lab_df', 'total_inercial_base', 'ha_proyectada_base']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.toast("✅ Memoria de simulación reiniciada. Listo para un nuevo escenario.", icon="🧹")
+        st.rerun()
+
     st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios en tiempo real.")
 
     # ==========================================
@@ -294,7 +305,7 @@ def ejecutar(purificar_lote, extraer_numero):
             if not df_t1.empty:
                 ha_total_detectada = df_t1['HA_CALCULO'].sum()
                 ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
-                # 💥 Aquí aplicamos el ajuste de Frecuencia
+                
                 factor_frecuencia = 1 + (frecuencia_vuelos / 100.0)
                 ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_frecuencia
 
@@ -344,22 +355,19 @@ def ejecutar(purificar_lote, extraer_numero):
                             anios_pasados = max(0, anio_presupuesto - anio_actual)
                             precio_unitario_final = precio_bk * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
-                    # 💥 GUARDAMOS TODAS LAS REFERENCIAS PARA LA TABLA
                     resultados.append({
                         "✅ Activo": True,
                         "🧪 Insumo Químico": producto,
-                        "📦 Vol. Sist. (Base)": round(volumen, 2),            # Solo lectura
-                        "🎯 Vol. Irreal (Modificable)": round(volumen, 2),    # Editable
-                        "💵 Precio Base (Histórico)": round(precio_hist_base, 0), # Solo lectura
-                        "📈 Precio Sist. (+Inflación)": round(precio_unitario_final, 0), # Solo lectura
-                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0) # Editable
+                        "📦 Vol. Sist. (Base)": round(volumen, 2),
+                        "🎯 Vol. Irreal (Modificable)": round(volumen, 2),
+                        "💵 Precio Base (Histórico)": round(precio_hist_base, 0),
+                        "📈 Precio Sist. (+Inflación)": round(precio_unitario_final, 0),
+                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0)
                     })
             
-            # Guardamos en memoria para el Data Editor
             st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True)
             st.session_state['ha_proyectada_base'] = (ha_total_detectada/total_anios_boveda) * (1 + frecuencia_vuelos/100)
             
-            # 💥 Guardamos el total base inercial (Volumen Sist * Precio Sist) para comparar siempre la misma base vs la modificación del usuario
             df_inercial = st.session_state['lab_df'].copy()
             st.session_state['total_inercial_base'] = (df_inercial['📦 Vol. Sist. (Base)'] * df_inercial['📈 Precio Sist. (+Inflación)']).sum()
 
@@ -370,7 +378,6 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales frente a las proyecciones del sistema.")
 
-        # El Data Editor Interactivo con Columnas de Auditoría
         df_editado = st.data_editor(
             st.session_state['lab_df'],
             column_config={
@@ -388,7 +395,6 @@ def ejecutar(purificar_lote, extraer_numero):
             key="editor_lab"
         )
 
-        # Inyector de Moléculas Nuevas (Comodín)
         with st.expander("➕ Inyectar Nueva Molécula al Escenario"):
             i1, i2, i3, i4 = st.columns([2, 1, 1, 1])
             nuevo_nombre = i1.text_input("Nombre del Insumo", placeholder="Ej: NUEVO FUNGICIDA X")
@@ -415,7 +421,6 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # Filtramos solo los activos y calculamos el nuevo total usando las columnas Modificables (🎯)
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
         df_estrategico['💰 Subtotal'] = df_estrategico['🎯 Vol. Irreal (Modificable)'] * df_estrategico['🎯 Precio Irreal (Modificable)']
         total_estrategico = df_estrategico['💰 Subtotal'].sum()
@@ -428,7 +433,6 @@ def ejecutar(purificar_lote, extraer_numero):
         else:
             pct_dif = 0.0
 
-        # Tarjetas de Impacto
         col_k1, col_k2, col_k3 = st.columns(3)
         
         col_k1.markdown(f"""
@@ -457,10 +461,8 @@ def ejecutar(purificar_lote, extraer_numero):
         </div>
         """, unsafe_allow_html=True)
 
-        # Gráficos Analíticos
         g_col1, g_col2 = st.columns(2)
         
-        # 1. Comparativo de Barras
         df_comp = pd.DataFrame({
             "Escenario": ["Tradicional (Inercial)", "Estratégico (Modificado)"],
             "Presupuesto": [total_inercial, total_estrategico]
@@ -472,8 +474,6 @@ def ejecutar(purificar_lote, extraer_numero):
         fig_bar.update_layout(showlegend=False, yaxis_title="COP", xaxis_title="")
         g_col1.plotly_chart(fig_bar, use_container_width=True)
 
-        # 2. Dona de Distribución Estratégica
-        # Agrupamos productos muy pequeños en "OTROS" para que la dona sea limpia
         df_pie = df_estrategico.copy().sort_values('💰 Subtotal', ascending=False)
         if len(df_pie) > 7:
             top_6 = df_pie.head(6)
@@ -487,7 +487,6 @@ def ejecutar(purificar_lote, extraer_numero):
         fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
         g_col2.plotly_chart(fig_pie, use_container_width=True)
 
-        # Botón de Descarga Ejecutiva
         st.markdown("---")
         df_export = df_estrategico.copy()
         df_export = df_export.rename(columns={
@@ -496,19 +495,19 @@ def ejecutar(purificar_lote, extraer_numero):
             "🎯 Precio Irreal (Modificable)": "PRECIO UNITARIO (PROYECTADO)", 
             "💰 Subtotal": "PRESUPUESTO TOTAL"
         })
-        # Conservamos solo las columnas vitales para la junta
         df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', index=False)
             
-            # Formato al Excel
             ws = writer.sheets['Estrategia_Presupuesto']
+            # ✅ CORRECCIÓN FINAL DE OPENPYXL: .alignment directo sobre el cell
             for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"] + ws["E"]:
-                cell[0].alignment = Alignment(horizontal='center')
+                cell.alignment = Alignment(horizontal='center')
             for cell in ws["C"] + ws["D"] + ws["E"]:
-                if cell[0].row > 1: cell[0].number_format = '#,##0'
+                if cell.row > 1: cell.number_format = '#,##0'
+                
             ws.column_dimensions['A'].width = 25
             ws.column_dimensions['B'].width = 25
             ws.column_dimensions['C'].width = 25
