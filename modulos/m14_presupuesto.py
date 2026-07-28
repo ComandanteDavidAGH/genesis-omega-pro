@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import gspread
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 import io
 from oauth2client.service_account import ServiceAccountCredentials
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # --- 🔌 CONEXIÓN Y UTILIDADES ---
 @st.cache_resource(show_spinner=False)
@@ -64,7 +68,6 @@ def fmt_latino(val, decimales=1):
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
-# 💥 PURIFICADOR DE ADITIVOS (Elimina "O", "ONM", etc)
 def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fertilizantes_dinamico):
     coctel_u = str(coctel_sel).upper().strip().replace("+", " ").replace("-", " ")
     partes = coctel_u.split()
@@ -75,19 +78,13 @@ def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fert
 
     for aditivo in aditivos:
         nombre_fert = dict_fertilizantes_dinamico.get(aditivo)
-        
         if nombre_fert:
-            # Si lo encontró exactamente, trae su dosis o asume 0.5
             dosis_fert = dict_aditivos_dosis.get(nombre_fert, 0.5)
             dict_prods[nombre_fert] = dict_prods.get(nombre_fert, 0.0) + dosis_fert
         else:
-            # Si el aditivo es un error de digitación ("ONM", "OZN", "O")
-            if "NM" in aditivo:
-                dict_prods["NATURAMIN WSP"] = dict_prods.get("NATURAMIN WSP", 0.0) + 0.2
-            elif "ZN" in aditivo:
-                dict_prods["ZINTRAC X LITRO SV"] = dict_prods.get("ZINTRAC X LITRO SV", 0.0) + 0.5
-            elif "BT" in aditivo:
-                dict_prods["BANATREL SC"] = dict_prods.get("BANATREL SC", 0.0) + 0.5
+            if "NM" in aditivo: dict_prods["NATURAMIN WSP"] = dict_prods.get("NATURAMIN WSP", 0.0) + 0.2
+            elif "ZN" in aditivo: dict_prods["ZINTRAC X LITRO SV"] = dict_prods.get("ZINTRAC X LITRO SV", 0.0) + 0.5
+            elif "BT" in aditivo: dict_prods["BANATREL SC"] = dict_prods.get("BANATREL SC", 0.0) + 0.5
     
     if not any("ADHERENTE" in k for k in dict_prods.keys()): dict_prods["ADHERENTE SV"] = 0.13
     if not any("ACONDICIONADOR" in k for k in dict_prods.keys()): 
@@ -215,255 +212,295 @@ def extraer_precios_maestros(df_cfg):
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
-    VERDE_INTENSO = '#143521'
-    DORADO = '#d4af37'
-
-    # 🚀 TRATAMIENTO ESTÉ_TICO DE CONTRASTE INDUSTRIAL: Contornos sólidos de 3px e inputs opacos
+    
+    # 🚀 ESTÉTICA VIP Y EFECTO LUPA SC
     st.markdown(f"""
     <style>
-    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }}
-    div[data-testid="stDataFrame"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
-    .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px;}}
-    .kpi-titulo {{ color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }}
-    .kpi-valor {{ font-size: 32px; font-weight: 900; margin: 0; }}
+    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
     
-    /* 💥 CONTROLES BLINDADOS M14: Acabado en Verde Intenso puro contra transparencias de BaseWeb */
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stNumberInput"] input {{
-        background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
-        border-radius: 8px !important;
+    .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; transition: transform 0.3s ease, box-shadow 0.3s ease;}}
+    .kpi-presupuesto:hover {{ transform: translateY(-5px) scale(1.02); box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37;}}
+    .kpi-titulo {{ color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }}
+    .kpi-valor {{ font-size: 28px; font-weight: 900; margin: 0; }}
+    
+    /* Efecto lupa en gráficos */
+    [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
+    [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
+
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input, div[data-testid="stTextInput"] input {{
+        background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; color: #000000 !important; font-weight: bold !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
-        background-color: transparent !important;
-        border: none !important;
-    }}
-    div[data-testid="stSelectbox"] *, div[data-testid="stNumberInput"] * {{
-        color: #000000 !important;
-        font-weight: bold !important;
-    }}
-    div[data-testid="stMainBlockContainer"] label p {{
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background-color: transparent !important; border: none !important; }}
+    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-presupuesto'>💰 Módulo 14: Pronóstico Financiero</h1>", unsafe_allow_html=True)
-    st.write("Proyección estratégica del flujo de efectivo con rastreo de precios históricos y ajuste de inflación.")
+    st.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL]</span></h1>", unsafe_allow_html=True)
+    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios.")
 
-    st.markdown("### ⚙️ Parámetros del Presupuesto")
-    
-    fila1_col1, fila1_col2, fila1_col3 = st.columns(3)
-    meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-    opciones_mes = ["📊 AÑO COMPLETO (TODOS)"] + list(meses_dict.values())
-    
-    mes_sel = fila1_col1.selectbox("📅 Mes a Proyectar:", opciones_mes)
-    pista_sel = fila1_col2.selectbox("📍 Base Operativa:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
-    anio_actual = datetime.now().year
-    anio_presupuesto = fila1_col3.selectbox("🎯 Año a Presupuestar:", [2026, 2027, 2028, 2029, 2030], index=1)
-    
-    fila2_col1, fila2_col2, fila2_col3 = st.columns(3)
-    profundidad_sel = fila2_col1.selectbox("🔍 Base Histórica de Consumo:", ["Último Año", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"])
-    crecimiento_sel = fila2_col2.number_input("📈 Crecimiento Operativo (%)", min_value=-50, max_value=200, value=0, step=5)
-    inflacion_sel = fila2_col3.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=8.0, step=1.0)
+    # ==========================================
+    # FASE 1: PARÁMETROS BASE
+    # ==========================================
+    with st.expander("⚙️ 1. Definir Escenario Base (Parámetros Históricos)", expanded=True):
+        f1, f2, f3 = st.columns(3)
+        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+        opciones_mes = ["📊 AÑO COMPLETO (TODOS)"] + list(meses_dict.values())
+        
+        mes_sel = f1.selectbox("📅 Mes a Proyectar:", opciones_mes)
+        pista_sel = f2.selectbox("📍 Base Operativa:", ["TODAS", "PLUC", "PORI", "PDIV", "TEHO", "LUCI"])
+        anio_presupuesto = f3.selectbox("🎯 Año Objetivo:", [2026, 2027, 2028, 2029, 2030], index=1)
+        
+        f4, f5, f6 = st.columns(3)
+        profundidad_sel = f4.selectbox("🔍 Base Histórica:", ["Último Año", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"])
+        frecuencia_vuelos = f5.number_input("✈️ Ajuste de Frecuencia/Ciclos (%)", min_value=-80, max_value=300, value=0, step=5, help="Si planeas dar más pases este año, sube el porcentaje.")
+        inflacion_sel = f6.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=8.0, step=1.0)
+        
+        btn_generar = st.button("🧬 GENERAR MATRIZ BASE (EXTRAER DATOS)", type="primary", use_container_width=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # Lógica de Extracción de Base
+    if btn_generar:
+        with st.spinner("Compilando historia y cruzando precios..."):
+            df_t1_base, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master = descargar_y_masticar_bases()
+            
+            if df_t1_base.empty:
+                st.error("🚨 No se pudo establecer conexión con las Bóvedas de Datos.")
+                st.stop()
 
-    if st.button("🚀 CALCULAR PRESUPUESTO FINANCIERO", type="primary", use_container_width=True):
-        with st.spinner("Compilando matriz a velocidad de memoria nativa..."):
-            try:
-                df_t1_base, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master = descargar_y_masticar_bases()
-                
-                if df_t1_base.empty:
-                    st.error("🚨 No se pudo establecer conexión con las Bóvedas de Datos.")
-                    return
+            df_t1 = df_t1_base.copy()
+            dict_precios_backup = extraer_precios_maestros(df_cfg)
+            anio_actual = datetime.now().year
+            año_base = 2026 
 
-                df_t1 = df_t1_base.copy()
-                dict_precios_backup = extraer_precios_maestros(df_cfg)
-                año_base = 2026 
+            if profundidad_sel == "Último Año": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 1)]
+            elif profundidad_sel == "Últimos 2 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 2)]
+            elif profundidad_sel == "Últimos 3 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 3)]
 
-                if profundidad_sel == "Último Año": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 1)]
-                elif profundidad_sel == "Últimos 2 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 2)]
-                elif profundidad_sel == "Últimos 3 Años": df_t1 = df_t1[df_t1['AÑO'] >= (anio_actual - 3)]
+            if mes_sel != "📊 AÑO COMPLETO (TODOS)":
+                mes_num = next(k for k, v in meses_dict.items() if v == mes_sel)
+                df_t1 = df_t1[df_t1['MES'] == mes_num]
+            
+            total_anios_boveda = df_t1['AÑO'].nunique()
+            if total_anios_boveda == 0: total_anios_boveda = 1
 
-                if mes_sel != "📊 AÑO COMPLETO (TODOS)":
-                    mes_num = next(k for k, v in meses_dict.items() if v == mes_sel)
-                    df_t1 = df_t1[df_t1['MES'] == mes_num]
-                
-                total_anios_boveda = df_t1['AÑO'].nunique()
-                if total_anios_boveda == 0: total_anios_boveda = 1
+            traductor_pistas = {"PLUC": "FUMIGARAY", "PORI": "AEROPENOR", "LUCI": "GENESYS", "TEHO": "AVIL", "PDIV": "ASA"}
+            if pista_sel != "TODAS":
+                pista_t1_esperada = traductor_pistas.get(pista_sel, pista_sel)
+                df_t1 = df_t1[df_t1['PISTA_OPERATIVA'].str.contains(pista_t1_esperada, na=False)]
 
-                traductor_pistas = {"PLUC": "FUMIGARAY", "PORI": "AEROPENOR", "LUCI": "GENESYS", "TEHO": "AVIL", "PDIV": "ASA"}
-                if pista_sel != "TODAS":
-                    pista_t1_esperada = traductor_pistas.get(pista_sel, pista_sel)
-                    df_t1 = df_t1[df_t1['PISTA_OPERATIVA'].str.contains(pista_t1_esperada, na=False)]
+            consumo_esperado = {} 
+            ha_total_detectada = 0.0
 
-                consumo_esperado = {} 
-                ha_total_detectada = 0.0
+            if not df_t1.empty:
+                ha_total_detectada = df_t1['HA_CALCULO'].sum()
+                ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
+                # 💥 Aquí aplicamos el ajuste de Frecuencia
+                factor_frecuencia = 1 + (frecuencia_vuelos / 100.0)
+                ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_frecuencia
 
-                if not df_t1.empty:
-                    ha_total_detectada = df_t1['HA_CALCULO'].sum()
-                    ha_total_por_coctel = df_t1.groupby(['PISTA_OPERATIVA', 'COCTEL_NOM'])['HA_CALCULO'].sum().reset_index()
-                    factor_crecimiento = 1 + (crecimiento_sel / 100.0)
-                    ha_total_por_coctel['HA_PROYECTADA'] = (ha_total_por_coctel['HA_CALCULO'] / total_anios_boveda) * factor_crecimiento
+                for _, row_c in ha_total_por_coctel.iterrows():
+                    coctel_completo = str(row_c['COCTEL_NOM'])
+                    ha_proyectada = row_c['HA_PROYECTADA']
+                    receta_dict = extraer_receta_rapida(coctel_completo, dict_bases, dict_aditivos_dosis, dict_fert)
+                    for prod_quimico, dosis in receta_dict.items():
+                        consumo_esperado[prod_quimico] = consumo_esperado.get(prod_quimico, 0) + (dosis * ha_proyectada)
 
-                    for _, row_c in ha_total_por_coctel.iterrows():
-                        coctel_completo = str(row_c['COCTEL_NOM'])
-                        ha_proyectada = row_c['HA_PROYECTADA']
+            resultados = []
+            precios_records = df_precios_master.to_dict('records') if not df_precios_master.empty else []
 
-                        receta_dict = extraer_receta_rapida(coctel_completo, dict_bases, dict_aditivos_dosis, dict_fert)
-                        for prod_quimico, dosis in receta_dict.items():
-                            consumo_esperado[prod_quimico] = consumo_esperado.get(prod_quimico, 0) + (dosis * ha_proyectada)
-
-                resultados = []
-                gran_total_presupuesto = 0.0
-                precios_records = df_precios_master.to_dict('records') if not df_precios_master.empty else []
-
-                for producto, volumen in consumo_esperado.items():
-                    if volumen > 0:
-                        precio_unitario_final = 0.0
-                        precio_hist_base = 0.0
-                        anio_origen = ""
-                        p_clean = re.sub(r'[^\w]', '', producto.upper().strip())
-                        
-                        for r_db in precios_records:
-                            if r_db['AÑO'] == año_base:
-                                if p_clean in r_db['PROD_CLEAN'] or r_db['PROD_CLEAN'] in p_clean:
-                                    precio_hist_base = r_db['PRECIO']
-                                    anios_pasados = max(0, anio_presupuesto - año_base)
-                                    precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
-                                    anio_origen = f"Base {año_base} (+{inflacion_sel}% x {anios_pasados}a)"
-                                    break
-                        
-                        if precio_unitario_final == 0.0 and precios_records:
-                            matches_hist = []
-                            for r_db in precios_records:
-                                if r_db['AÑO'] < año_base:
-                                    if p_clean in r_db['PROD_CLEAN'] or r_db['PROD_CLEAN'] in p_clean:
-                                        matches_hist.append(r_db)
-                            
-                            if matches_hist:
-                                best_match = max(matches_hist, key=lambda x: x['AÑO'])
-                                anio_hist = int(best_match['AÑO'])
-                                precio_hist_base = best_match['PRECIO']
-                                
-                                anios_pasados = max(0, anio_presupuesto - anio_hist)
-                                precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
-                                anio_origen = f"Rescatado {anio_hist} (+{inflacion_sel}% x {anios_pasados}a)"
-
-                        if precio_unitario_final == 0.0:
-                            precio_bk = dict_precios_backup.get(producto, 0.0)
-                            if precio_bk < 1000:
-                                for p_bk, val_bk in dict_precios_backup.items():
-                                    bk_clean = re.sub(r'[^\w]', '', p_bk.upper().strip())
-                                    if p_clean in bk_clean or bk_clean in p_clean:
-                                        if val_bk >= 1000: 
-                                            precio_hist_base = val_bk
-                                            break
-                            else:
-                                precio_hist_base = precio_bk
-                                
-                            if precio_hist_base >= 1000:
-                                anios_pasados = max(0, anio_presupuesto - anio_actual)
-                                precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
-                                anio_origen = f"Conf. Local (+{inflacion_sel}% x {anios_pasados}a)"
-
-                        if precio_unitario_final == 0.0:
-                            anio_origen = "⚠️ Falta Precio"
-
-                        presupuesto_prod = volumen * precio_unitario_final
-                        gran_total_presupuesto += presupuesto_prod
-                        
-                        resultados.append({
-                            "🧪 INSUMO QUÍMICO": producto,
-                            "📦 VOLUMEN ESTIMADO": volumen,
-                            "💵 PRECIO BASE": precio_hist_base,
-                            "📈 PRECIO AJUSTADO": precio_unitario_final,
-                            "🔎 ORIGEN": anio_origen,
-                            "💰 PRESUPUESTO TOTAL": presupuesto_prod
-                        })
-
-                df_presupuesto = pd.DataFrame(resultados)
-
-                st.markdown("---")
-                
-                if df_presupuesto.empty:
-                    st.warning("⚠️ No hay suficientes datos históricos para proyectar este escenario.")
-                else:
-                    st.markdown(f"""
-                    <div class='kpi-presupuesto'>
-                        <div class='kpi-titulo'>FLUJO DE EFECTIVO PROYECTADO PARA {anio_presupuesto} ({mes_sel})</div>
-                        <p class='kpi-valor'>$ {fmt_latino(gran_total_presupuesto, 0)} <span style='font-size: 16px; font-weight: normal;'>COP</span></p>
-                        <p style='margin: 0; margin-top: 10px; color: #a0aec0; font-size: 12px;'>Calculado sobre {fmt_latino(ha_total_detectada/total_anios_boveda * (1 + crecimiento_sel/100))} Hectáreas proyectadas. Factor Crecimiento: {crecimiento_sel}% | Inflación de ajuste: {inflacion_sel}%</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+            for producto, volumen in consumo_esperado.items():
+                if volumen > 0:
+                    precio_unitario_final = 0.0
+                    p_clean = re.sub(r'[^\w]', '', producto.upper().strip())
                     
-                    df_presupuesto = df_presupuesto.sort_values(by="🧪 INSUMO QUÍMICO", ascending=True)
-                    df_vista = df_presupuesto.copy()
+                    for r_db in precios_records:
+                        if r_db['AÑO'] == año_base:
+                            if p_clean in r_db['PROD_CLEAN'] or r_db['PROD_CLEAN'] in p_clean:
+                                anios_pasados = max(0, anio_presupuesto - año_base)
+                                precio_unitario_final = r_db['PRECIO'] * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
+                                break
                     
-                    df_vista['📦 VOLUMEN ESTIMADO'] = df_vista['📦 VOLUMEN ESTIMADO'].apply(lambda x: fmt_latino(x, 1))
-                    
-                    def formatear_precio(x): return f"$ {fmt_latino(x, 0)}" if x > 0 else "---"
-                    
-                    df_vista['💵 PRECIO BASE'] = df_vista['💵 PRECIO BASE'].apply(formatear_precio)
-                    df_vista['📈 PRECIO AJUSTADO'] = df_vista['📈 PRECIO AJUSTADO'].apply(formatear_precio)
-                    df_vista['💰 PRESUPUESTO TOTAL'] = df_vista['💰 PRESUPUESTO TOTAL'].apply(lambda x: f"$ {fmt_latino(x, 0)}" if x > 0 else "$ 0")
+                    if precio_unitario_final == 0.0 and precios_records:
+                        matches_hist = [r for r in precios_records if r['AÑO'] < año_base and (p_clean in r['PROD_CLEAN'] or r['PROD_CLEAN'] in p_clean)]
+                        if matches_hist:
+                            best_match = max(matches_hist, key=lambda x: x['AÑO'])
+                            anios_pasados = max(0, anio_presupuesto - int(best_match['AÑO']))
+                            precio_unitario_final = best_match['PRECIO'] * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
-                    st.markdown("### 📋 Desglose Financiero por Insumo")
-                    
-                    def color_origen(val):
-                        if "(+" in str(val) and "x 0a" not in str(val): return 'color: #d4af37;'
-                        if "⚠️" in str(val): return 'color: #cc0000; font-weight: bold;'
-                        return 'color: #155724;'
+                    if precio_unitario_final == 0.0:
+                        precio_bk = dict_precios_backup.get(producto, 0.0)
+                        if precio_bk < 1000:
+                            for p_bk, val_bk in dict_precios_backup.items():
+                                bk_clean = re.sub(r'[^\w]', '', p_bk.upper().strip())
+                                if p_clean in bk_clean or bk_clean in p_clean:
+                                    if val_bk >= 1000: 
+                                        precio_bk = val_bk
+                                        break
+                        if precio_bk >= 1000:
+                            anios_pasados = max(0, anio_presupuesto - anio_actual)
+                            precio_unitario_final = precio_bk * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
-                    styled_df = df_vista.style.map(color_origen, subset=['🔎 ORIGEN']).set_properties(**{'text-align': 'left'})
-                    
-                    st.dataframe(
-                        styled_df, 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "🧪 INSUMO QUÍMICO": st.column_config.TextColumn("INSUMO QUÍMICO", width="medium"),
-                            "📦 VOLUMEN ESTIMADO": st.column_config.TextColumn("VOLUMEN", width="small"),
-                            "💵 PRECIO BASE": st.column_config.TextColumn("PRECIO BASE", width="small"),
-                            "📈 PRECIO AJUSTADO": st.column_config.TextColumn("PRECIO AJUSTADO", width="small"),
-                            "🔎 ORIGEN": st.column_config.TextColumn("ORIGEN DEL DATO", width="medium"),
-                            "💰 PRESUPUESTO TOTAL": st.column_config.TextColumn("PRESUPUESTO TOTAL", width="medium")
-                        }
-                    )
+                    resultados.append({
+                        "✅ Activo": True,
+                        "🧪 Insumo Químico": producto,
+                        "📦 Volumen L/Kg": round(volumen, 2),
+                        "💵 Precio Unitario": round(precio_unitario_final, 0)
+                    })
+            
+            # Guardamos en memoria para el Data Editor
+            st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True)
+            st.session_state['ha_proyectada_base'] = (ha_total_detectada/total_anios_boveda) * (1 + frecuencia_vuelos/100)
+            
+            # Guardamos el total base inercial para comparar
+            df_inercial = st.session_state['lab_df'].copy()
+            st.session_state['total_inercial_base'] = (df_inercial['📦 Volumen L/Kg'] * df_inercial['💵 Precio Unitario']).sum()
 
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    col_down1, col_down2, col_down_vacia = st.columns([1, 1, 2])
-                    
-                    try:
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            df_presupuesto.to_excel(writer, sheet_name='Presupuesto', index=False)
-                        
-                        col_down1.download_button(
-                            label="📊 Exportar a Excel (Recomendado)",
-                            data=buffer.getvalue(),
-                            file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                    except:
-                        col_down1.error("⚠️ Instale 'openpyxl' en su entorno para habilitar Excel.")
+    # ==========================================
+    # FASE 2: EL LABORATORIO (INTERACTIVO)
+    # ==========================================
+    if 'lab_df' in st.session_state and not st.session_state['lab_df'].empty:
+        st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
+        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el **Volumen** o el **Precio** para probar escenarios irreales/comerciales.")
 
-                    csv_data = df_vista.to_csv(index=False).encode('utf-8')
-                    col_down2.download_button(
-                        label="📄 Exportar a CSV",
-                        data=csv_data,
-                        file_name=f"Presupuesto_{anio_presupuesto}_{mes_sel}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                    
-            except Exception as e:
-                st.error(f"🚨 Falla en los cálculos financieros: {e}")
+        # El Data Editor Interactivo
+        df_editado = st.data_editor(
+            st.session_state['lab_df'],
+            column_config={
+                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Enciende o apaga esta molécula para el presupuesto."),
+                "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo", disabled=True),
+                "📦 Volumen L/Kg": st.column_config.NumberColumn("Volumen Estimado (Modificable)", min_value=0.0, format="%.2f"),
+                "💵 Precio Unitario": st.column_config.NumberColumn("Precio Irreal (Modificable)", min_value=0.0, format="%.0f")
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="editor_lab"
+        )
+
+        # Inyector de Moléculas Nuevas (Comodín)
+        with st.expander("➕ Inyectar Nueva Molécula al Escenario"):
+            i1, i2, i3, i4 = st.columns([2, 1, 1, 1])
+            nuevo_nombre = i1.text_input("Nombre del Insumo", placeholder="Ej: NUEVO FUNGICIDA X")
+            nuevo_vol = i2.number_input("Volumen Proyectado", min_value=0.0, value=100.0, step=10.0)
+            nuevo_precio = i3.number_input("Precio Estimado", min_value=0.0, value=50000.0, step=5000.0)
+            
+            if i4.button("Inyectar", type="secondary", use_container_width=True):
+                if nuevo_nombre:
+                    nueva_fila = pd.DataFrame([{
+                        "✅ Activo": True,
+                        "🧪 Insumo Químico": nuevo_nombre.upper(),
+                        "📦 Volumen L/Kg": round(nuevo_vol, 2),
+                        "💵 Precio Unitario": round(nuevo_precio, 0)
+                    }])
+                    # Agregar a la sesión y recargar
+                    st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
+                    st.rerun()
+
+        # ==========================================
+        # FASE 3: DASHBOARD DE CONTRASTE GERENCIAL
+        # ==========================================
+        st.markdown("---")
+        st.markdown("### 📊 3. Panel de Contraste Gerencial")
+        
+        # Filtramos solo los activos y calculamos el nuevo total
+        df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
+        df_estrategico['💰 Subtotal'] = df_estrategico['📦 Volumen L/Kg'] * df_estrategico['💵 Precio Unitario']
+        total_estrategico = df_estrategico['💰 Subtotal'].sum()
+        
+        total_inercial = st.session_state.get('total_inercial_base', 0)
+        diferencia = total_estrategico - total_inercial
+        
+        if total_inercial > 0:
+            pct_dif = (diferencia / total_inercial) * 100
+        else:
+            pct_dif = 0.0
+
+        # Tarjetas de Impacto (Con efecto lupa SC)
+        col_k1, col_k2, col_k3 = st.columns(3)
+        
+        col_k1.markdown(f"""
+        <div class='kpi-presupuesto' style='border-left-color: #6c757d;'>
+            <div class='kpi-titulo' style='color: #a0aec0;'>Presupuesto Inercial (Tradicional)</div>
+            <p class='kpi-valor'>$ {fmt_latino(total_inercial, 0)}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_k2.markdown(f"""
+        <div class='kpi-presupuesto' style='border-left-color: #d4af37;'>
+            <div class='kpi-titulo'>Presupuesto Estratégico (Modificado)</div>
+            <p class='kpi-valor'>$ {fmt_latino(total_estrategico, 0)}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        color_dif = "#28a745" if diferencia <= 0 else "#dc3545"
+        texto_dif = "AHORRO" if diferencia <= 0 else "SOBRECOSTO"
+        signo_dif = "" if diferencia <= 0 else "+"
+        
+        col_k3.markdown(f"""
+        <div class='kpi-presupuesto' style='border-left-color: {color_dif};'>
+            <div class='kpi-titulo' style='color: {color_dif};'>Brecha ({texto_dif})</div>
+            <p class='kpi-valor' style='color: {color_dif};'>$ {fmt_latino(abs(diferencia), 0)}</p>
+            <p style='margin:0; font-size:14px; font-weight:bold; color: {color_dif};'>{signo_dif}{pct_dif:.1f}% vs Inercial</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Gráficos Analíticos
+        g_col1, g_col2 = st.columns(2)
+        
+        # 1. Comparativo de Barras
+        df_comp = pd.DataFrame({
+            "Escenario": ["Tradicional (Inercial)", "Estratégico (Modificado)"],
+            "Presupuesto": [total_inercial, total_estrategico]
+        })
+        fig_bar = px.bar(df_comp, x="Escenario", y="Presupuesto", text=df_comp['Presupuesto'].apply(lambda x: f"${fmt_latino(x,0)}"),
+                         color="Escenario", color_discrete_map={"Tradicional (Inercial)": "#6c757d", "Estratégico (Modificado)": "#d4af37"},
+                         title="<b>Comparativo Global</b>")
+        fig_bar.update_traces(textposition='auto', textfont_size=14, textfont_color="white")
+        fig_bar.update_layout(showlegend=False, yaxis_title="COP", xaxis_title="")
+        g_col1.plotly_chart(fig_bar, use_container_width=True)
+
+        # 2. Dona de Distribución Estratégica
+        # Agrupamos productos muy pequeños en "OTROS" para que la dona sea limpia
+        df_pie = df_estrategico.copy().sort_values('💰 Subtotal', ascending=False)
+        if len(df_pie) > 7:
+            top_6 = df_pie.head(6)
+            otros_sub = df_pie.iloc[6:]['💰 Subtotal'].sum()
+            fila_otros = pd.DataFrame([{"🧪 Insumo Químico": "OTROS INSUMOS", "💰 Subtotal": otros_sub}])
+            df_pie = pd.concat([top_6, fila_otros], ignore_index=True)
+            
+        fig_pie = px.pie(df_pie, values='💰 Subtotal', names='🧪 Insumo Químico', hole=0.45, 
+                         title="<b>Peso Financiero por Molécula (Estratégico)</b>", color_discrete_sequence=px.colors.qualitative.Prism)
+        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+        fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
+        g_col2.plotly_chart(fig_pie, use_container_width=True)
+
+        # Botón de Descarga Ejecutiva
+        st.markdown("---")
+        df_export = df_estrategico.copy()
+        df_export = df_export.rename(columns={"🧪 Insumo Químico": "PRODUCTO", "📦 Volumen L/Kg": "VOLUMEN", "💵 Precio Unitario": "PRECIO UNITARIO", "💰 Subtotal": "PRESUPUESTO TOTAL"})
+        df_export = df_export.drop(columns=["✅ Activo"])
+        
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_export.to_excel(writer, sheet_name='Estrategia', index=False)
+            
+            # Formato al Excel
+            ws = writer.sheets['Estrategia']
+            for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"]:
+                cell[0].alignment = Alignment(horizontal='center')
+            for cell in ws["C"] + ws["D"]:
+                if cell[0].row > 1: cell[0].number_format = '#,##0'
+            ws.column_dimensions['A'].width = 25
+            ws.column_dimensions['B'].width = 15
+            ws.column_dimensions['C'].width = 20
+            ws.column_dimensions['D'].width = 20
+        
+        st.download_button(
+            label="💾 DESCARGAR ESTRATEGIA EN EXCEL (PARA JUNTA DIRECTIVA)",
+            data=buffer.getvalue(),
+            file_name=f"Estrategia_Presupuesto_{anio_presupuesto}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     pass
