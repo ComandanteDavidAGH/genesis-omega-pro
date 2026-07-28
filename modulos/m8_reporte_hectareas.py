@@ -17,7 +17,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL EN LA CÚSPIDE
     st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO Y EFECTO LUPA
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO Y EFECTO LUPA (SC)
     st.markdown("""
     <style>
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
@@ -41,7 +41,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         font-weight: 800 !important;
     }
 
-    /* 🔍 EFECTO LUPA (HOVER) PARA TARJETAS KPI */
+    /* 🔍 EFECTO LUPA (SC) PARA TARJETAS KPI */
     .kpi-card {
         background-color: #0d1b2a; 
         color: white; 
@@ -80,7 +80,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.cache_data.clear()
         if 'm8_datos_crudos' in st.session_state:
             del st.session_state['m8_datos_crudos']
-        st.toast("✅ Memoria vieja destruida. Descargando datos frescos de Drive...", icon="🔄")
+        st.toast("✅ Memoria vieja destruida. Descargando datos frescos...", icon="🔄")
         st.rerun()
     st.markdown("---")
 
@@ -105,6 +105,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         return None
 
     def fmt_latino(val, decimales=2):
+        """FUERZA EL FORMATO COLOMBIANO: Puntos en miles, comas en decimales"""
         try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except: return str(val) if val is not None else ""
 
@@ -112,10 +113,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.error("🚨 Error técnico: No se detecta el motor de lectura de Google Sheets.")
         return
 
-    # --- 🛰️ EXTRACCIÓN DIRECTA DESDE TU ENLACE MAESTRO DE GOOGLE SHEETS ---
     if 'm8_datos_crudos' not in st.session_state:
         datos_dict = []
-        with st.spinner("🛰️ Conectando al satélite de Google Sheets (Leyendo tu Excel en vivo)..."):
+        with st.spinner("🛰️ Conectando al satélite de Google Sheets..."):
             try:
                 url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
                 filas_gspread = descargar_matriz_rapida(url_maestra, "TABLA 1")
@@ -155,7 +155,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.warning("⚠️ **Alerta de Radar:** No se pudieron procesar los registros de Google Sheets.")
             return
 
-        # 🎯 PURIFICACIÓN GENERAL
         datos_limpios = []
         for row in raw_data:
             r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
@@ -201,7 +200,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.2])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v8")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v9")
         
         fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v6")
         fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v6")
@@ -229,7 +228,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         rango_txt = f"{fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}"
         
         # =================================================================
-        # 📈 VISTA 3: DASHBOARD EJECUTIVO
+        # 📈 VISTA 3: DASHBOARD EJECUTIVO (KPIs COLOMBIANOS Y EFECTO LUPA)
         # =================================================================
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
             st.markdown(f"#### 📈 Dashboard Ejecutivo y Participación Global ({rango_txt})")
@@ -253,28 +252,30 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             prom_str = fmt_latino(promedio_ha, 2)
             
             k1, k2, k3 = st.columns(3)
+            # EFECTO LUPA Y COLORES APLICADOS DESDE EL CSS DE ARRIBA
             k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{ha_str}</p></div>", unsafe_allow_html=True)
             k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Misiones (Registros)</p><p class='kpi-value'>{vuelos_str}</p></div>", unsafe_allow_html=True)
             k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Promedio Ha/Misión</p><p class='kpi-value'>{prom_str}</p></div>", unsafe_allow_html=True)
             st.write("")
 
             g1, g2 = st.columns(2)
-            # Re-formato de Plotly para decimales coma
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
+            # Gráfico Dona
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
-            # Forzar comas en tooltips/labels de plotly es complejo, pero visualmente queda limpio.
-            fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
+            # Fuerza separadores colombianos en Plotly
+            fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
+            # Gráfico Barras
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
                              title="<b>Volumen de Hectáreas por Pista</b>",
                              text='TXT_PCT',
                              color='HECTAREAS', color_continuous_scale='Blues')
-            fig_bar.update_layout(xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
+            fig_bar.update_layout(separators=",.", xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
             g2.plotly_chart(fig_bar, use_container_width=True)
 
             st.markdown("##### 📋 Desglose de Participación Total")
@@ -304,8 +305,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             matriz_ha = matriz_ha[cols_ordenadas]
             
             matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
-            
-            # 🚨 FUERZA BRUTA: El 100% exacto para matar los 99.9%
+            # 🚨 FUERZA BRUTA: El 100.0% exacto para matar los 99.9%
             matriz_pct.loc['TOTAL MES'] = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
             
             st.dataframe(
@@ -422,7 +422,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
         # =================================================================
-        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP (CON ETIQUETAS Y FORMATO CO)
+        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP CON ETIQUETAS
         # =================================================================
         st.markdown("---")
         buffer_rep = io.BytesIO()
@@ -498,7 +498,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             ws.column_dimensions['E'].width = 15
             ws.column_dimensions['F'].width = 15
             
-            # --- INCORPORACIÓN DE GRÁFICOS NATIVOS EXCEL CON ETIQUETAS ---
+            # --- INCORPORACIÓN DE GRÁFICOS NATIVOS EXCEL CON ETIQUETAS VISIBLES ---
             data_len = len(df_export)
             cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
             
@@ -510,11 +510,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             bar_chart.add_data(data_ha, titles_from_data=True)
             bar_chart.set_categories(cats)
             bar_chart.legend = None
-            
-            # 🔥 ACTIVACIÓN DE ETIQUETAS EN BARRAS
             bar_chart.dataLabels = DataLabelList()
-            bar_chart.dataLabels.showVal = True
-            
+            bar_chart.dataLabels.showVal = True # ETIQUETAS EN BARRAS EXCEL
             ws.add_chart(bar_chart, "H5")
             
             pie_chart = DoughnutChart()
@@ -523,12 +520,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             data_vue = Reference(ws, min_col=3, min_row=start_row, max_row=start_row+data_len)
             pie_chart.add_data(data_vue, titles_from_data=True)
             pie_chart.set_categories(cats)
-            
-            # 🔥 ACTIVACIÓN DE ETIQUETAS EN DONA (PORCENTAJES)
             pie_chart.dataLabels = DataLabelList()
-            pie_chart.dataLabels.showPercent = True
+            pie_chart.dataLabels.showPercent = True # ETIQUETAS EN DONA EXCEL
             pie_chart.dataLabels.showCatName = False
-            
             ws.add_chart(pie_chart, "H20")
             
             wb.save(buffer_rep)
