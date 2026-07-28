@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.5]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.6]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v45"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v46"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -377,7 +377,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes individuales, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v45"
+        llave_editor = "laboratorio_estrategico_v46"
 
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
@@ -388,6 +388,13 @@ def ejecutar(purificar_lote, extraer_numero):
                         st.session_state['lab_df'].loc[row_idx, col_name] = new_val
 
         df_para_editor = st.session_state['lab_df'].copy()
+
+        # 🛡️ BLINDAJE CONTRA MEMORIA VIEJA: Si la memoria del usuario no tiene las columnas nuevas, el sistema se "autocura" en lugar de crashear.
+        columnas_seguridad = ["vol_sist_num", "precio_sist_num", "precio_base_num"]
+        for col in columnas_seguridad:
+            if col not in df_para_editor.columns:
+                df_para_editor[col] = 0.0
+                st.session_state['lab_df'][col] = 0.0
 
         factor_frecuencia_global = 1 + (frecuencia_vuelos / 100.0)
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * factor_frecuencia_global * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
@@ -530,7 +537,6 @@ def ejecutar(purificar_lote, extraer_numero):
         # 💥 EXPORTACIÓN A EXCEL: EL TRAJE DE GALA PARA GERENCIA 💥
         df_export = df_estrategico.copy()
         
-        # 1. Usamos SOLO las columnas numéricas puras
         df_export = df_export[[
             "🧪 Insumo Químico", 
             "vol_final_num", 
@@ -539,7 +545,6 @@ def ejecutar(purificar_lote, extraer_numero):
             "subtotal_num"
         ]]
         
-        # 2. Renombramos para el reporte formal
         df_export.columns = [
             "PRODUCTO", 
             "VOLUMEN PROYECTADO (L/Kg)", 
@@ -550,22 +555,17 @@ def ejecutar(purificar_lote, extraer_numero):
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            # Empezamos en la fila 2 para dejar espacio al gran Título
             df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', startrow=2, index=False)
             
             workbook = writer.book
             ws = workbook['Estrategia_Presupuesto']
             
-            # --- ESTILO GERENCIAL ---
-            
-            # Título Corporativo
             ws['A1'] = f"REPORTE ESTRATÉGICO DE PRESUPUESTO - {anio_presupuesto}"
             ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
             ws['A1'].fill = PatternFill(start_color="143521", end_color="143521", fill_type="solid")
             ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
             ws.merge_cells('A1:E2')
             
-            # Encabezados de la Tabla (Fila 3)
             header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
             header_font = Font(bold=True, color="FFFFFF")
             for col in range(1, 6):
@@ -574,30 +574,23 @@ def ejecutar(purificar_lote, extraer_numero):
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 
-            # Formatos de Números y Moneda en Data
             max_row = ws.max_row
             for row in range(4, max_row + 1):
-                # Volumen (Columna B)
                 ws.cell(row=row, column=2).number_format = '#,##0.00'
-                # Precios y Subtotales (Columnas C, D, E)
                 for col in [3, 4, 5]:
                     ws.cell(row=row, column=col).number_format = '"$" #,##0'
             
-            # Fila de TOTAL GENERAL Automática
             ws.cell(row=max_row + 1, column=1, value="TOTAL GENERAL").font = Font(bold=True, size=12)
             ws.cell(row=max_row + 1, column=1).alignment = Alignment(horizontal='right')
-            # Suma de la columna E
             ws.cell(row=max_row + 1, column=5, value=f"=SUM(E4:E{max_row})").font = Font(bold=True, size=12)
             ws.cell(row=max_row + 1, column=5).number_format = '"$" #,##0'
             
-            # Ajuste de Ancho de Columnas y Alineación Central
             for col_letter, width in zip(["A", "B", "C", "D", "E"], [35, 30, 25, 30, 25]):
                 ws.column_dimensions[col_letter].width = width
                 for cell in ws[col_letter]:
-                    if cell.row > 3: # Solo datos, no titulo ni encabezado
+                    if cell.row > 3:
                         cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Inmovilizar Paneles (Para que el título y encabezado no se pierdan al bajar)
             ws.freeze_panes = 'A4'
         
         st.download_button(
