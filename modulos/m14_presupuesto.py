@@ -212,13 +212,14 @@ def extraer_precios_maestros(df_cfg):
 
 # --- 🚀 EJECUCIÓN PRINCIPAL ---
 def ejecutar(purificar_lote, extraer_numero):
-    
-    # 🚀 ESTÉTICA VIP Y EFECTO LUPA SC
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
+
+    # 🚀 TRATAMIENTO ESTÉ_TICO DE CONTRASTE INDUSTRIAL: Contornos sólidos de 3px e inputs opacos
     st.markdown(f"""
     <style>
-    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
+    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }}
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
-    
     .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; transition: transform 0.3s ease, box-shadow 0.3s ease;}}
     .kpi-presupuesto:hover {{ transform: translateY(-5px) scale(1.02); box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37;}}
     .kpi-titulo {{ color: #d4af37; font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; }}
@@ -228,16 +229,32 @@ def ejecutar(purificar_lote, extraer_numero):
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
 
-    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input, div[data-testid="stTextInput"] input {{
-        background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; color: #000000 !important; font-weight: bold !important;
+    /* 💥 CONTROLES BLINDADOS M14: Acabado en Verde Intenso puro contra transparencias de BaseWeb */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stNumberInput"] input {{
+        background-color: #ffffff !important;
+        border: 3px solid {VERDE_INTENSO} !important;
+        border-radius: 8px !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background-color: transparent !important; border: none !important; }}
-    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+        background-color: transparent !important;
+        border: none !important;
+    }}
+    div[data-testid="stSelectbox"] *, div[data-testid="stNumberInput"] * {{
+        color: #000000 !important;
+        font-weight: bold !important;
+    }}
+    div[data-testid="stMainBlockContainer"] label p {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL]</span></h1>", unsafe_allow_html=True)
-    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios.")
+    st.markdown("<h1 class='titulo-presupuesto'>💰 Simulador de Presupuestos <span style='color:#d4af37; font-size:16px;'>[VERSIÓN GERENCIAL 3.0]</span></h1>", unsafe_allow_html=True)
+    st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios en tiempo real.")
 
     # ==========================================
     # FASE 1: PARÁMETROS BASE
@@ -360,9 +377,9 @@ def ejecutar(purificar_lote, extraer_numero):
     # ==========================================
     if 'lab_df' in st.session_state and not st.session_state['lab_df'].empty:
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
-        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el **Volumen** o el **Precio** para probar escenarios irreales/comerciales.")
+        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre el **Volumen** o el **Precio** para probar escenarios comerciales.")
 
-        # El Data Editor Interactivo
+        # El Data Editor Interactivo (Donde sucede la magia)
         df_editado = st.data_editor(
             st.session_state['lab_df'],
             column_config={
@@ -391,7 +408,6 @@ def ejecutar(purificar_lote, extraer_numero):
                         "📦 Volumen L/Kg": round(nuevo_vol, 2),
                         "💵 Precio Unitario": round(nuevo_precio, 0)
                     }])
-                    # Agregar a la sesión y recargar
                     st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
                     st.rerun()
 
@@ -414,7 +430,7 @@ def ejecutar(purificar_lote, extraer_numero):
         else:
             pct_dif = 0.0
 
-        # Tarjetas de Impacto (Con efecto lupa SC)
+        # Tarjetas de Impacto
         col_k1, col_k2, col_k3 = st.columns(3)
         
         col_k1.markdown(f"""
@@ -459,7 +475,6 @@ def ejecutar(purificar_lote, extraer_numero):
         g_col1.plotly_chart(fig_bar, use_container_width=True)
 
         # 2. Dona de Distribución Estratégica
-        # Agrupamos productos muy pequeños en "OTROS" para que la dona sea limpia
         df_pie = df_estrategico.copy().sort_values('💰 Subtotal', ascending=False)
         if len(df_pie) > 7:
             top_6 = df_pie.head(6)
@@ -472,35 +487,6 @@ def ejecutar(purificar_lote, extraer_numero):
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
         fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
         g_col2.plotly_chart(fig_pie, use_container_width=True)
-
-        # Botón de Descarga Ejecutiva
-        st.markdown("---")
-        df_export = df_estrategico.copy()
-        df_export = df_export.rename(columns={"🧪 Insumo Químico": "PRODUCTO", "📦 Volumen L/Kg": "VOLUMEN", "💵 Precio Unitario": "PRECIO UNITARIO", "💰 Subtotal": "PRESUPUESTO TOTAL"})
-        df_export = df_export.drop(columns=["✅ Activo"])
-        
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_export.to_excel(writer, sheet_name='Estrategia', index=False)
-            
-            # Formato al Excel
-            ws = writer.sheets['Estrategia']
-            for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"]:
-                cell[0].alignment = Alignment(horizontal='center')
-            for cell in ws["C"] + ws["D"]:
-                if cell[0].row > 1: cell[0].number_format = '#,##0'
-            ws.column_dimensions['A'].width = 25
-            ws.column_dimensions['B'].width = 15
-            ws.column_dimensions['C'].width = 20
-            ws.column_dimensions['D'].width = 20
-        
-        st.download_button(
-            label="💾 DESCARGAR ESTRATEGIA EN EXCEL (PARA JUNTA DIRECTIVA)",
-            data=buffer.getvalue(),
-            file_name=f"Estrategia_Presupuesto_{anio_presupuesto}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
 
 if __name__ == "__main__":
     pass
