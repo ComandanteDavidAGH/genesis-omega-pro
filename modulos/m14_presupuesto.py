@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.4]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.5]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v44"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v45"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -351,11 +351,13 @@ def ejecutar(purificar_lote, extraer_numero):
                             anios_pasados = max(0, anio_presupuesto - anio_actual)
                             precio_unitario_final = precio_bk * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
+                    # 💥 GUARDAMOS TODAS LAS VARIABLES NUMÉRICAS PURAS PARA EXCEL
                     resultados.append({
                         "✅ Activo": True,
                         "🧪 Insumo Químico": producto,
                         "vol_sist_num": float(volumen),
                         "precio_sist_num": float(precio_unitario_final),
+                        "precio_base_num": float(precio_hist_base), # Pura matemática
                         "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2),
                         "🎯 Ajuste Vol. (%)": 0.0,
                         "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0),
@@ -375,7 +377,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes individuales, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v44"
+        llave_editor = "laboratorio_estrategico_v45"
 
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
@@ -401,7 +403,7 @@ def ejecutar(purificar_lote, extraer_numero):
             "📦 Vol. Sist. (Base)", "🎯 Ajuste Vol. (%)", "📊 Vol. Final (Calc)", 
             "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)", "🎯 Precio Irreal (Modificable)", 
             "💰 Subtotal (Calc)", 
-            "vol_sist_num", "precio_sist_num", "vol_final_num", "subtotal_num"
+            "vol_sist_num", "precio_sist_num", "precio_base_num", "vol_final_num", "subtotal_num"
         ]
         df_para_editor = df_para_editor[cols_ordenadas]
 
@@ -410,6 +412,7 @@ def ejecutar(purificar_lote, extraer_numero):
             column_config={
                 "vol_sist_num": None,
                 "precio_sist_num": None,
+                "precio_base_num": None,
                 "vol_final_num": None,
                 "subtotal_num": None,
                 "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para llevar todo a cero y eliminar del presupuesto."),
@@ -441,6 +444,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         "🧪 Insumo Químico": nuevo_nombre.upper(),
                         "vol_sist_num": nuevo_vol,
                         "precio_sist_num": 0.0,
+                        "precio_base_num": 0.0,
                         "📦 Vol. Sist. (Base)": fmt_latino(nuevo_vol, 2),
                         "🎯 Ajuste Vol. (%)": 0.0,
                         "💵 Precio Base (Histórico)": fmt_latino(0, 0),
@@ -522,42 +526,84 @@ def ejecutar(purificar_lote, extraer_numero):
         g_col2.plotly_chart(fig_pie, use_container_width=True)
 
         st.markdown("---")
+        
+        # 💥 EXPORTACIÓN A EXCEL: EL TRAJE DE GALA PARA GERENCIA 💥
         df_export = df_estrategico.copy()
         
-        df_export = df_export.rename(columns={
-            "🧪 Insumo Químico": "PRODUCTO", 
-            "vol_final_num": "VOLUMEN (PROYECTADO L/Kg)", 
-            "🎯 Precio Irreal (Modificable)": "PRECIO UNITARIO (PROYECTADO)", 
-            "subtotal_num": "PRESUPUESTO TOTAL"
-        })
-        df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO L/Kg)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
+        # 1. Usamos SOLO las columnas numéricas puras
+        df_export = df_export[[
+            "🧪 Insumo Químico", 
+            "vol_final_num", 
+            "precio_base_num", 
+            "🎯 Precio Irreal (Modificable)", 
+            "subtotal_num"
+        ]]
         
-        df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
+        # 2. Renombramos para el reporte formal
+        df_export.columns = [
+            "PRODUCTO", 
+            "VOLUMEN PROYECTADO (L/Kg)", 
+            "PRECIO BASE HISTÓRICO", 
+            "PRECIO UNITARIO PROYECTADO", 
+            "PRESUPUESTO TOTAL"
+        ]
         
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', index=False)
+            # Empezamos en la fila 2 para dejar espacio al gran Título
+            df_export.to_excel(writer, sheet_name='Estrategia_Presupuesto', startrow=2, index=False)
             
-            ws = writer.sheets['Estrategia_Presupuesto']
+            workbook = writer.book
+            ws = workbook['Estrategia_Presupuesto']
             
-            # 💥 CORRECCIÓN FINAL OPENPYXL: Código 100% blindado (iter_rows)
-            for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=5):
-                for cell in row:
-                    cell.alignment = Alignment(horizontal='center')
-                    # Aplicar formato de moneda a las columnas B, C, D y E si no es la cabecera
-                    if cell.row > 1 and cell.column in [2, 3, 4, 5]:
-                        cell.number_format = '#,##0.00'
+            # --- ESTILO GERENCIAL ---
+            
+            # Título Corporativo
+            ws['A1'] = f"REPORTE ESTRATÉGICO DE PRESUPUESTO - {anio_presupuesto}"
+            ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+            ws['A1'].fill = PatternFill(start_color="143521", end_color="143521", fill_type="solid")
+            ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+            ws.merge_cells('A1:E2')
+            
+            # Encabezados de la Tabla (Fila 3)
+            header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+            for col in range(1, 6):
+                cell = ws.cell(row=3, column=col)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 
-            ws.column_dimensions['A'].width = 25
-            ws.column_dimensions['B'].width = 25
-            ws.column_dimensions['C'].width = 25
-            ws.column_dimensions['D'].width = 30
-            ws.column_dimensions['E'].width = 25
+            # Formatos de Números y Moneda en Data
+            max_row = ws.max_row
+            for row in range(4, max_row + 1):
+                # Volumen (Columna B)
+                ws.cell(row=row, column=2).number_format = '#,##0.00'
+                # Precios y Subtotales (Columnas C, D, E)
+                for col in [3, 4, 5]:
+                    ws.cell(row=row, column=col).number_format = '"$" #,##0'
+            
+            # Fila de TOTAL GENERAL Automática
+            ws.cell(row=max_row + 1, column=1, value="TOTAL GENERAL").font = Font(bold=True, size=12)
+            ws.cell(row=max_row + 1, column=1).alignment = Alignment(horizontal='right')
+            # Suma de la columna E
+            ws.cell(row=max_row + 1, column=5, value=f"=SUM(E4:E{max_row})").font = Font(bold=True, size=12)
+            ws.cell(row=max_row + 1, column=5).number_format = '"$" #,##0'
+            
+            # Ajuste de Ancho de Columnas y Alineación Central
+            for col_letter, width in zip(["A", "B", "C", "D", "E"], [35, 30, 25, 30, 25]):
+                ws.column_dimensions[col_letter].width = width
+                for cell in ws[col_letter]:
+                    if cell.row > 3: # Solo datos, no titulo ni encabezado
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Inmovilizar Paneles (Para que el título y encabezado no se pierdan al bajar)
+            ws.freeze_panes = 'A4'
         
         st.download_button(
             label="💾 DESCARGAR ESTRATEGIA EN EXCEL (PARA JUNTA DIRECTIVA)",
             data=buffer.getvalue(),
-            file_name=f"Estrategia_Presupuesto_{anio_presupuesto}.xlsx",
+            file_name=f"Estrategia_Presupuesto_Gerencia_{anio_presupuesto}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
