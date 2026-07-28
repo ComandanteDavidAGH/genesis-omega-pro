@@ -3,6 +3,10 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, date
 import io
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, DoughnutChart, Reference
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 # =================================================================
 # 🚁 RADAR DE HECTÁREAS - OMEGA V21 (CONEXIÓN DIRECTA A EXCEL/SHEETS)
@@ -12,12 +16,12 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL EN LA CÚSPIDE
     st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO: No afecta al menú lateral
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO
     st.markdown("""
     <style>
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios de la pantalla central */
+    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios */
     div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
     div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
@@ -39,13 +43,13 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     """, unsafe_allow_html=True)
     
     # ====================================================================
-    # 💥 DESTRUCTOR DE MEMORIA ABSOLUTO (Forzar lectura real de Drive)
+    # 💥 DESTRUCTOR DE MEMORIA ABSOLUTO
     # ====================================================================
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Datos", type="primary", use_container_width=True, key="btn_sync_m8"):
-        st.cache_data.clear() # 1. Destruye la foto vieja de Google Sheets
+        st.cache_data.clear()
         if 'm8_datos_crudos' in st.session_state:
-            del st.session_state['m8_datos_crudos'] # 2. Destruye la memoria de la pantalla
+            del st.session_state['m8_datos_crudos']
         st.toast("✅ Memoria vieja destruida. Descargando datos frescos de Drive...", icon="🔄")
         st.rerun()
     st.markdown("---")
@@ -109,7 +113,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 respuesta_cloud = supabase_client.table("sap_tabla_1_maestro").select("*").execute()
                 if respuesta_cloud.data:
                     datos_dict = [{str(k).upper().strip(): v for k, v in row.items()} for row in respuesta_cloud.data]
-                    st.toast("⚡ Contingencia Activada: Datos recuperados desde Supabase Cloud.", icon="📡")
             except Exception:
                 pass
 
@@ -119,7 +122,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
     try:
         if not raw_data:
-            st.warning("⚠️ **Alerta de Radar:** No se pudieron procesar los registros de Google Sheets ni de Supabase. Verifique la pestaña 'TABLA 1' o el estado de la base de datos relacional.")
+            st.warning("⚠️ **Alerta de Radar:** No se pudieron procesar los registros de Google Sheets.")
             return
 
         # 🎯 PURIFICACIÓN GENERAL
@@ -148,7 +151,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         df_rep = pd.DataFrame(datos_limpios)
         
         if df_rep.empty:
-            st.warning("⚠️ No se encontraron registros con fechas procesables en el Excel ni en la nube.")
+            st.warning("⚠️ No se encontraron registros con fechas procesables.")
             return
 
         mask_hk = df_rep['HK'] != ""
@@ -160,36 +163,32 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         
         df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
         
-        if df_rep.empty:
-            st.warning("⚠️ No existen registros activos con hectáreas mayores a cero.")
-            return
+        if df_rep.empty: return
 
-        min_fecha_real = df_rep['FECHA_REAL'].min()
-        max_fecha_real = df_rep['FECHA_REAL'].max()
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
         
         # --- 🎛️ PANEL DE CONTROL ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.2])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v7")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v8")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v5")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v5")
-        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v5")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v6")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v6")
+        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v6")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v5")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v5")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v5")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v6")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v6")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v6")
 
         df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
         if pista_sel != "TODAS":
             df_filt = df_filt[df_filt['PISTA'] == pista_sel]
         
         if df_filt.empty:
-            st.warning(f"⚠️ No hay registros de vuelo para {pista_sel} en el rango del {fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}.")
+            st.warning(f"⚠️ No hay registros de vuelo para {pista_sel} en el rango seleccionado.")
             return
             
         meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
@@ -200,7 +199,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         rango_txt = f"{fecha_sel_ini.strftime('%d/%m/%Y')} al {fecha_sel_fin.strftime('%d/%m/%Y')}"
         
         # =================================================================
-        # 📈 VISTA 3: DASHBOARD EJECUTIVO (LA EVOLUCIÓN DEL EXCEL)
+        # 📈 VISTA 3: DASHBOARD EJECUTIVO
         # =================================================================
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
             st.markdown(f"#### 📈 Dashboard Ejecutivo y Participación Global ({rango_txt})")
@@ -224,10 +223,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.write("")
 
             g1, g2 = st.columns(2)
-            
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
-                             title="<b>Distribución de Vuelos por Pista</b>",
-                             color_discrete_sequence=px.colors.qualitative.Prism)
+                             title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
             fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
@@ -257,18 +254,15 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
             st.markdown("---")
             st.markdown("##### 🗓️ Matriz de Participación Mensual (%)")
-            st.caption("Esta matriz muestra qué porcentaje del trabajo de CADA MES se realizó en cada pista. Cada columna suma 100%.")
             
             matriz_ha = pd.pivot_table(df_filt, values='HA_NETAS', index='PISTA', columns='MES', aggfunc='sum', fill_value=0)
             cols_ordenadas = sorted(matriz_ha.columns, key=lambda x: int(str(x).split("-")[0]) if "-" in str(x) else 999)
             matriz_ha = matriz_ha[cols_ordenadas]
             
             matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
-            matriz_pct = matriz_pct.round(1)
             
-            # 🚨 REGLA DE ORO INYECTADA: El Total de los Meses SIEMPRE será 100.0 (Fuerza Bruta contra el 99.9%)
-            totales_exactos = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
-            matriz_pct.loc['TOTAL MES'] = totales_exactos
+            # 🚨 FUERZA BRUTA: El 100% exacto para matar los 99.9% de coma flotante
+            matriz_pct.loc['TOTAL MES'] = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
             
             st.dataframe(
                 matriz_pct.style.format("{:.1f}%")
@@ -276,9 +270,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 use_container_width=True
             )
 
-
         # =================================================================
-        # 📊 VISTA 1: RESUMEN GERENCIAL (TABLA DETALLADA)
+        # 📊 VISTA 1 & 2: VISTAS CLÁSICAS
         # =================================================================
         elif vista_seleccionada == "📊 Resumen Gerencial":
             st.markdown(f"#### 📑 Consolidado Operativo ({rango_txt})")
@@ -361,10 +354,8 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_visual = pd.DataFrame(tabla_final)
             
             def aplicar_estilos_originales(row):
-                if "BASE:" in str(row['NIVEL']):
-                    return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
-                elif "TOTAL GENERAL" in str(row['NIVEL']):
-                    return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
+                if "BASE:" in str(row['NIVEL']): return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
+                elif "TOTAL GENERAL" in str(row['NIVEL']): return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
                 elif 'AVIÓN (HK)' in row and ("✈️" in str(row.get('AVIÓN (HK)','')) or "🛸" in str(row.get('AVIÓN (HK)',''))):
                     return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
                 return [''] * len(row)
@@ -375,9 +366,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             st.dataframe(df_visual.style.apply(aplicar_estilos_originales, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
 
-        # =================================================================
-        # 📅 VISTA 2: MAPA SEMANAL
-        # =================================================================
         else:
             matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
             matriz = matriz.sort_index()
@@ -388,41 +376,119 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             
             st.markdown(f"#### 🛩️ Rendimiento Semana a Semana ({rango_txt})")
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
-            
-            st.markdown("---")
-            df_grafico = matriz.drop('TOTAL ANUAL', errors='ignore').reset_index()
-            if not df_grafico.empty:
-                df_grafico['TXT'] = df_grafico['TOTAL MES'].apply(fmt_latino)
-                fig = px.bar(df_grafico, x='MES', y='TOTAL MES', text='TXT', color='TOTAL MES', color_continuous_scale='Greens')
-                fig.update_traces(textposition='outside')
-                fig.update_layout(xaxis_title="Mes", showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
 
         # =================================================================
-        # 🎯 EXPORTACIÓN EXCEL GENERAL (CORREGIDA PARA INCLUIR TOTALES)
+        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP (LA EVOLUCIÓN)
         # =================================================================
         st.markdown("---")
         buffer_rep = io.BytesIO()
-        nombre_hoja = 'Reporte'
-        
-        if vista_seleccionada == "📊 Resumen Gerencial":
-            df_export = df_visual
-        elif vista_seleccionada == "📈 Dashboard Ejecutivo":
-            # Extrae la tabla purificada que YA INCLUYE el Total General para Excel
-            df_export = df_tabla_dash.copy()
-            df_export['HECTAREAS'] = df_export['HECTAREAS'].round(2)
-            df_export['% VUELOS'] = df_export['% VUELOS'].round(2)
-            df_export['% HECTAREAS'] = df_export['% HECTAREAS'].round(2)
-        else:
-            df_export = matriz
-            
-        df_export.to_excel(buffer_rep, sheet_name=nombre_hoja, index=False if vista_seleccionada != "📅 Mapa Semanal" else True)
-            
         rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
+        
+        if vista_seleccionada == "📈 Dashboard Ejecutivo":
+            # 🚀 CONSTRUCCIÓN NATIVA DE EXCEL DESDE CERO
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Dashboard Ejecutivo"
+            
+            fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+            font_header = Font(color="FFFFFF", bold=True)
+            fill_tot = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+            font_tot = Font(color="000000", bold=True)
+            borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
+                           top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
+            align_center = Alignment(horizontal='center', vertical='center')
+            
+            ws['B2'] = "REPORTE GERENCIAL: RADAR DE HECTÁREAS Y MISIONES"
+            ws['B2'].font = Font(size=14, bold=True, color="0D1B2A")
+            ws['B3'] = f"Período Analizado: {rango_txt}"
+            ws['B3'].font = Font(italic=True, color="555555")
+            
+            df_export = df_dash.copy()
+            total_vuelos = df_export['VUELOS'].sum()
+            total_ha = df_export['HECTAREAS'].sum()
+            
+            headers = ['BASE OPERATIVA', 'TOTAL MISIONES', 'HECTÁREAS NETAS', '% MISIONES', '% HECTÁREAS']
+            start_row = 6
+            for col_idx, header in enumerate(headers, start=2):
+                cell = ws.cell(row=start_row, column=col_idx, value=header)
+                cell.fill = fill_header
+                cell.font = font_header
+                cell.alignment = align_center
+                cell.border = borde
+                
+            curr_row = start_row + 1
+            for _, row in df_export.iterrows():
+                ws.cell(row=curr_row, column=2, value=row['PISTA']).border = borde
+                ws.cell(row=curr_row, column=3, value=row['VUELOS']).number_format = '#,##0'
+                ws.cell(row=curr_row, column=3).border = borde
+                ws.cell(row=curr_row, column=4, value=row['HECTAREAS']).number_format = '#,##0.00'
+                ws.cell(row=curr_row, column=4).border = borde
+                ws.cell(row=curr_row, column=5, value=(row['VUELOS']/total_vuelos)).number_format = '0.00%'
+                ws.cell(row=curr_row, column=5).border = borde
+                ws.cell(row=curr_row, column=6, value=(row['HECTAREAS']/total_ha)).number_format = '0.00%'
+                ws.cell(row=curr_row, column=6).border = borde
+                curr_row += 1
+                
+            # Totales en Oro
+            ws.cell(row=curr_row, column=2, value="TOTAL GENERAL").fill = fill_tot
+            ws.cell(row=curr_row, column=2).font = font_tot
+            ws.cell(row=curr_row, column=2).border = borde
+            ws.cell(row=curr_row, column=3, value=total_vuelos).fill = fill_tot
+            ws.cell(row=curr_row, column=3).font = font_tot
+            ws.cell(row=curr_row, column=3).border = borde
+            ws.cell(row=curr_row, column=3).number_format = '#,##0'
+            ws.cell(row=curr_row, column=4, value=total_ha).fill = fill_tot
+            ws.cell(row=curr_row, column=4).font = font_tot
+            ws.cell(row=curr_row, column=4).border = borde
+            ws.cell(row=curr_row, column=4).number_format = '#,##0.00'
+            ws.cell(row=curr_row, column=5, value=1.0).fill = fill_tot
+            ws.cell(row=curr_row, column=5).font = font_tot
+            ws.cell(row=curr_row, column=5).border = borde
+            ws.cell(row=curr_row, column=5).number_format = '0.00%'
+            ws.cell(row=curr_row, column=6, value=1.0).fill = fill_tot
+            ws.cell(row=curr_row, column=6).font = font_tot
+            ws.cell(row=curr_row, column=6).border = borde
+            ws.cell(row=curr_row, column=6).number_format = '0.00%'
+            
+            ws.column_dimensions['B'].width = 18
+            ws.column_dimensions['C'].width = 18
+            ws.column_dimensions['D'].width = 20
+            ws.column_dimensions['E'].width = 15
+            ws.column_dimensions['F'].width = 15
+            
+            # --- INCORPORACIÓN DE GRÁFICOS NATIVOS EXCEL ---
+            data_len = len(df_export)
+            cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
+            
+            bar_chart = BarChart()
+            bar_chart.type = "bar"
+            bar_chart.style = 11
+            bar_chart.title = "Volumen de Hectáreas por Base"
+            data_ha = Reference(ws, min_col=4, min_row=start_row, max_row=start_row+data_len)
+            bar_chart.add_data(data_ha, titles_from_data=True)
+            bar_chart.set_categories(cats)
+            bar_chart.legend = None
+            ws.add_chart(bar_chart, "H5")
+            
+            pie_chart = DoughnutChart()
+            pie_chart.title = "Distribución de Misiones (Vuelos)"
+            pie_chart.style = 2
+            data_vue = Reference(ws, min_col=3, min_row=start_row, max_row=start_row+data_len)
+            pie_chart.add_data(data_vue, titles_from_data=True)
+            pie_chart.set_categories(cats)
+            ws.add_chart(pie_chart, "H20")
+            
+            wb.save(buffer_rep)
+
+        else:
+            # Exportación estándar para las otras vistas
+            df_export = df_visual if vista_seleccionada == "📊 Resumen Gerencial" else matriz
+            df_export.to_excel(buffer_rep, sheet_name='Reporte', index=False if vista_seleccionada != "📅 Mapa Semanal" else True)
+            
         st.download_button(
-            label="💾 DESCARGAR REPORTE EN EXCEL",
+            label="💾 DESCARGAR REPORTE EJECUTIVO EN EXCEL",
             data=buffer_rep.getvalue(),
-            file_name=f"Reporte_Hectareas_{rango_label}.xlsx",
+            file_name=f"Reporte_Ejecutivo_{rango_label}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )                        
