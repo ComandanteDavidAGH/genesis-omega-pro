@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.7]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.8]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v47"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v48"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -356,6 +356,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         "🧪 Insumo Químico": producto,
                         "vol_sist_num": float(volumen),
                         "precio_sist_num": float(precio_unitario_final),
+                        "precio_base_num": float(precio_hist_base), # Pura matemática guardada
                         "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2),
                         "🎯 Ajuste Vol. (%)": 0.0,
                         "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0),
@@ -375,7 +376,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes individuales, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v47"
+        llave_editor = "laboratorio_estrategico_v48"
 
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
@@ -387,8 +388,7 @@ def ejecutar(purificar_lote, extraer_numero):
 
         df_para_editor = st.session_state['lab_df'].copy()
 
-        # 🛡️ BLINDAJE CONTRA MEMORIA VIEJA
-        columnas_seguridad = ["vol_sist_num", "precio_sist_num"]
+        columnas_seguridad = ["vol_sist_num", "precio_sist_num", "precio_base_num"]
         for col in columnas_seguridad:
             if col not in df_para_editor.columns:
                 df_para_editor[col] = 0.0
@@ -408,7 +408,7 @@ def ejecutar(purificar_lote, extraer_numero):
             "📦 Vol. Sist. (Base)", "🎯 Ajuste Vol. (%)", "📊 Vol. Final (Calc)", 
             "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)", "🎯 Precio Irreal (Modificable)", 
             "💰 Subtotal (Calc)", 
-            "vol_sist_num", "precio_sist_num", "vol_final_num", "subtotal_num"
+            "vol_sist_num", "precio_sist_num", "precio_base_num", "vol_final_num", "subtotal_num"
         ]
         df_para_editor = df_para_editor[cols_ordenadas]
 
@@ -417,6 +417,7 @@ def ejecutar(purificar_lote, extraer_numero):
             column_config={
                 "vol_sist_num": None,
                 "precio_sist_num": None,
+                "precio_base_num": None,
                 "vol_final_num": None,
                 "subtotal_num": None,
                 "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para llevar todo a cero y eliminar del presupuesto."),
@@ -448,6 +449,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         "🧪 Insumo Químico": nuevo_nombre.upper(),
                         "vol_sist_num": nuevo_vol,
                         "precio_sist_num": 0.0,
+                        "precio_base_num": 0.0,
                         "📦 Vol. Sist. (Base)": fmt_latino(nuevo_vol, 2),
                         "🎯 Ajuste Vol. (%)": 0.0,
                         "💵 Precio Base (Histórico)": fmt_latino(0, 0),
@@ -530,16 +532,14 @@ def ejecutar(purificar_lote, extraer_numero):
 
         st.markdown("---")
         
-        # 💥 EXPORTACIÓN A EXCEL: MÉTODO INFALIBLE PARA EVITAR EL CERO 💥
+        # 💥 EXPORTACIÓN A EXCEL: USO DIRECTO DE NÚMEROS PUROS 💥
         df_export = df_estrategico.copy()
         
-        # Leemos el string que ves en la pantalla y lo limpiamos para obtener el número puro sí o sí
-        df_export['PRECIO_BASE_PURO'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
-        
+        # Seleccionamos las columnas matemáticas reales
         df_export = df_export[[
             "🧪 Insumo Químico", 
             "vol_final_num", 
-            "PRECIO_BASE_PURO", 
+            "precio_base_num", # <--- NÚMERO VIRGEN, SIN LIMPIEZA TEXTUAL
             "🎯 Precio Irreal (Modificable)", 
             "subtotal_num"
         ]]
@@ -588,7 +588,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 ws.column_dimensions[col_letter].width = width
                 for cell in ws[col_letter]:
                     if cell.row > 3:
-                        # 💥 ALINEACIÓN CORRECTA: Texto a la izquierda, números al centro
                         if col_letter == "A":
                             cell.alignment = Alignment(horizontal='left', vertical='center')
                         else:
