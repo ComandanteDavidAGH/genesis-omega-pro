@@ -235,9 +235,9 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.0]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.1]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v40"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v41"):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
@@ -364,7 +364,8 @@ def ejecutar(purificar_lote, extraer_numero):
                         "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0)
                     })
             
-            st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True)
+            # 💥 SOLUCIÓN DEL BUG: Usamos reset_index para destruir las etiquetas de nacimiento viejas
+            st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True).reset_index(drop=True)
             st.session_state['ha_proyectada_base'] = (ha_total_detectada/total_anios_boveda) * (1 + frecuencia_vuelos/100)
             
             df_inercial = st.session_state['lab_df'].copy()
@@ -377,29 +378,27 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes, o sobre el precio final para simular negociaciones.")
 
-        llave_editor = "laboratorio_estrategico_v40"
+        llave_editor = "laboratorio_estrategico_v41"
 
-        # Capturamos las ediciones y las guardamos en memoria
+        # 💥 BLINDAJE DE EXTRACCIÓN: Guardamos las ediciones directas a lab_df referenciando las filas purificadas
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
             if edits:
                 for row_idx_str, changes in edits.items():
-                    row_idx = int(row_idx_str)
+                    row_idx = int(row_idx_str) # Fila exacta gracias al reset_index
                     for col_name, new_val in changes.items():
-                        st.session_state['lab_df'].at[row_idx, col_name] = new_val
+                        st.session_state['lab_df'].loc[row_idx, col_name] = new_val
 
         df_para_editor = st.session_state['lab_df'].copy()
 
-        # 💥 MATEMÁTICAS EN TIEMPO REAL: Calculamos el volumen proyectado
+        # MATEMÁTICAS EN TIEMPO REAL
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
-        
-        # 💥 LA REGLA DE ORO DE UX: Si "✅ Activo" es Falso, forzamos el volumen visual y subtotal a 0
+        # REGLA DE ORO DE UX: Si "✅ Activo" es Falso, forzamos el volumen visual a 0
         df_para_editor['vol_final_num'] = df_para_editor.apply(lambda row: row['vol_final_num'] if row['✅ Activo'] else 0.0, axis=1)
-
-        # Calculamos subtotal
+        # Subtotal se basa en el volumen final condicionado
         df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
 
-        # Cadenas Formateadas (El traje de gala)
+        # Cadenas Formateadas 
         df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
         df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
 
@@ -454,6 +453,7 @@ def ejecutar(purificar_lote, extraer_numero):
                         "📈 Precio Sist. (+Inflación)": fmt_latino(0, 0),
                         "🎯 Precio Irreal (Modificable)": round(nuevo_precio, 0)
                     }])
+                    # Usamos ignore_index=True para asegurar que la nueva molécula siga la lógica de nacimiento
                     st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
                     st.rerun()
 
@@ -463,7 +463,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # Filtramos solo los activos para la matemática final del Dashboard
+        # Filtramos solo los activos
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
         
         total_estrategico = df_estrategico['subtotal_num'].sum()
@@ -540,7 +540,6 @@ def ejecutar(purificar_lote, extraer_numero):
         })
         df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO L/Kg)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
         
-        # Formateamos para el Excel
         df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
         
         buffer = io.BytesIO()
