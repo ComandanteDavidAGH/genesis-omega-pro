@@ -246,13 +246,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
             df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
             
-            # FORMATO COLOMBIANO ESTRICTO EN KPIs
             ha_str = fmt_latino(total_ha, 2)
             vuelos_str = fmt_latino(total_vuelos, 0)
             prom_str = fmt_latino(promedio_ha, 2)
             
             k1, k2, k3 = st.columns(3)
-            # EFECTO LUPA Y COLORES APLICADOS DESDE EL CSS DE ARRIBA
             k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{ha_str}</p></div>", unsafe_allow_html=True)
             k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Misiones (Registros)</p><p class='kpi-value'>{vuelos_str}</p></div>", unsafe_allow_html=True)
             k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Promedio Ha/Misión</p><p class='kpi-value'>{prom_str}</p></div>", unsafe_allow_html=True)
@@ -261,15 +259,12 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
-            # Gráfico Dona
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
-            # Fuerza separadores colombianos en Plotly
             fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
-            # Gráfico Barras
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
                              title="<b>Volumen de Hectáreas por Pista</b>",
@@ -279,10 +274,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             g2.plotly_chart(fig_bar, use_container_width=True)
 
             st.markdown("##### 📋 Desglose de Participación Total")
-            df_tabla_dash = df_dash.copy()
+            
+            # SOLUCIÓN DEL ERROR: Purgar la columna invisible antes de agregar la fila Total
+            df_tabla_dash = df_dash.drop(columns=['TXT_PCT']).copy()
             df_tabla_dash.loc['TOTAL'] = ['👑 TOTAL GENERAL', df_tabla_dash['VUELOS'].sum(), df_tabla_dash['HECTAREAS'].sum(), 100.0, 100.0]
             
-            # FORMATO COLOMBIANO EN TABLA DASHBOARD
             fmt_dash = {
                 "VUELOS": lambda x: f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 "HECTAREAS": lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
@@ -305,7 +301,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             matriz_ha = matriz_ha[cols_ordenadas]
             
             matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
-            # 🚨 FUERZA BRUTA: El 100.0% exacto para matar los 99.9%
             matriz_pct.loc['TOTAL MES'] = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
             
             st.dataframe(
