@@ -235,14 +235,16 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.7]</span></h1>", unsafe_allow_html=True)
+    # 💥 SUBIMOS LA VERSIÓN PARA ESTAR SEGUROS DEL REBOOT
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.8]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v38"):
         st.cache_data.clear()
-        for key in ['lab_df', 'total_inercial_base', 'ha_proyectada_base']:
-            if key in st.session_state:
+        # Limpieza nuclear de todas las variables de sesión del módulo
+        for key in list(st.session_state.keys()):
+            if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
                 del st.session_state[key]
-        st.toast("✅ Memoria de simulación reiniciada. Listo para un nuevo escenario.", icon="🧹")
+        st.toast("✅ Memoria de simulación purgada desde la raíz.", icon="🧹")
         st.rerun()
 
     st.write("Laboratorio interactivo para proyectar flujos de efectivo, alterando moléculas, dosis, frecuencias y precios en tiempo real.")
@@ -379,9 +381,11 @@ def ejecutar(purificar_lote, extraer_numero):
 
         df_para_editor = st.session_state['lab_df'].copy()
 
-        # 💥 HACK DE STREAMLIT: Pre-aplicamos las ediciones del usuario ANTES de mostrar la tabla para calcular columnas dependientes en Tiempo Real
-        if "editor_lab" in st.session_state:
-            edits = st.session_state["editor_lab"].get("edited_rows", {})
+        # 💥 HACK DE STREAMLIT: Pre-aplicamos las ediciones del usuario ANTES de mostrar la tabla
+        # Se cambia la KEY ("laboratorio_estrategico_v38") para que destruya la versión anterior trabada
+        llave_editor = "laboratorio_estrategico_v38"
+        if llave_editor in st.session_state:
+            edits = st.session_state[llave_editor].get("edited_rows", {})
             for row_idx_str, changes in edits.items():
                 row_idx = int(row_idx_str)
                 if "🎯 Ajuste Vol. (%)" in changes:
@@ -389,15 +393,15 @@ def ejecutar(purificar_lote, extraer_numero):
                 if "🎯 Precio Irreal (Modificable)" in changes:
                     df_para_editor.at[row_idx, "🎯 Precio Irreal (Modificable)"] = changes["🎯 Precio Irreal (Modificable)"]
 
-        # 💥 Matemáticas en tiempo real: Se calcula la columna final proyectada
+        # Matemáticas en tiempo real
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
         df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
 
-        # Cadenas Formateadas (El traje de gala colombiano para la tabla)
+        # Cadenas Formateadas
         df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
         df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
 
-        # ORDENAMOS LAS COLUMNAS PARA QUE "VOL. FINAL" SALGA JUSTO DESPUÉS DEL "%"
+        # ORDENAMOS LAS COLUMNAS 
         cols_ordenadas = [
             "✅ Activo", "🧪 Insumo Químico", 
             "📦 Vol. Sist. (Base)", "🎯 Ajuste Vol. (%)", "📊 Vol. Final (Calc)", 
@@ -427,7 +431,7 @@ def ejecutar(purificar_lote, extraer_numero):
             disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "📊 Vol. Final (Calc)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)", "💰 Subtotal (Calc)"],
             hide_index=True,
             use_container_width=True,
-            key="editor_lab"
+            key=llave_editor
         )
 
         with st.expander("➕ Inyectar Nueva Molécula al Escenario"):
@@ -459,8 +463,6 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
-        
-        # Las columnas "subtotal_num" ya están en memoria gracias a la pre-aplicación en Fase 2
         total_estrategico = df_estrategico['subtotal_num'].sum()
         
         total_inercial = st.session_state.get('total_inercial_base', 0)
