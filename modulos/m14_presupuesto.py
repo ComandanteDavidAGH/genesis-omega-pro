@@ -21,7 +21,6 @@ def inicializar_cliente_gspread():
         return None
 
 def a_numero_limpio(val):
-    """Convierte strings colombianos (Ej: 1.250,50) a floats puros (1250.50)"""
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip().replace(',', '.')
@@ -66,7 +65,6 @@ def procesar_fecha_pesada(val):
     except: return pd.NaT
 
 def fmt_latino(val, decimales=1):
-    """Aplica formato colombiano: Puntos miles, Comas decimales"""
     try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return str(val)
 
@@ -237,7 +235,7 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.3]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.4]</span></h1>", unsafe_allow_html=True)
     
     if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master"):
         st.cache_data.clear()
@@ -375,29 +373,27 @@ def ejecutar(purificar_lote, extraer_numero):
     # ==========================================
     if 'lab_df' in st.session_state and not st.session_state['lab_df'].empty:
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
-        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula del presupuesto. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales.")
+        st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre las columnas con el ícono 🎯 para probar escenarios irreales/comerciales.")
 
-        # 💥 SOLUCIÓN ESTÉTICA: Aplicamos el Styler con formato colombiano puro
-        fmt_editor = {
-            "📦 Vol. Sist. (Base)": lambda x: fmt_latino(x, 2),
-            "🎯 Vol. Irreal (Modificable)": lambda x: fmt_latino(x, 2),
-            "💵 Precio Base (Histórico)": lambda x: fmt_latino(x, 0),
-            "📈 Precio Sist. (+Inflación)": lambda x: fmt_latino(x, 0),
-            "🎯 Precio Irreal (Modificable)": lambda x: fmt_latino(x, 0)
-        }
-        
-        df_lab_estilizado = st.session_state['lab_df'].style.format(fmt_editor)
+        # 💥 BLINDAJE VISUAL: Convertimos todo a texto puro con formato colombiano para engañar a Streamlit
+        df_for_editor = st.session_state['lab_df'].copy()
+        df_for_editor['📦 Vol. Sist. (Base)'] = df_for_editor['📦 Vol. Sist. (Base)'].apply(lambda x: fmt_latino(x, 2))
+        df_for_editor['🎯 Vol. Irreal (Modificable)'] = df_for_editor['🎯 Vol. Irreal (Modificable)'].apply(lambda x: fmt_latino(x, 2))
+        df_for_editor['💵 Precio Base (Histórico)'] = df_for_editor['💵 Precio Base (Histórico)'].apply(lambda x: fmt_latino(x, 0))
+        df_for_editor['📈 Precio Sist. (+Inflación)'] = df_for_editor['📈 Precio Sist. (+Inflación)'].apply(lambda x: fmt_latino(x, 0))
+        df_for_editor['🎯 Precio Irreal (Modificable)'] = df_for_editor['🎯 Precio Irreal (Modificable)'].apply(lambda x: fmt_latino(x, 0))
 
+        # Configuramos TODO como TextColumn para que Streamlit no se atreva a borrar nuestros puntos y comas
         df_editado = st.data_editor(
-            df_lab_estilizado,
+            df_for_editor,
             column_config={
-                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Enciende o apaga esta molécula para el presupuesto."),
+                "✅ Activo": st.column_config.CheckboxColumn("Activo"),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
-                "📦 Vol. Sist. (Base)": st.column_config.NumberColumn("Vol. Sist. (Base)"),
-                "🎯 Vol. Irreal (Modificable)": st.column_config.NumberColumn("🎯 Vol. Irreal (Modificable)", min_value=0.0),
-                "💵 Precio Base (Histórico)": st.column_config.NumberColumn("Precio Base (Histórico)"),
-                "📈 Precio Sist. (+Inflación)": st.column_config.NumberColumn("Precio Sist. (+Inflación)"),
-                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0)
+                "📦 Vol. Sist. (Base)": st.column_config.TextColumn("Vol. Sist. (Base)"),
+                "🎯 Vol. Irreal (Modificable)": st.column_config.TextColumn("🎯 Vol. Irreal (Modificable)"),
+                "💵 Precio Base (Histórico)": st.column_config.TextColumn("Precio Base (Histórico)"),
+                "📈 Precio Sist. (+Inflación)": st.column_config.TextColumn("Precio Sist. (+Inflación)"),
+                "🎯 Precio Irreal (Modificable)": st.column_config.TextColumn("🎯 Precio Irreal (Modificable)")
             },
             disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)"],
             hide_index=True,
@@ -431,7 +427,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # 💥 PURIFICADOR MATEMÁTICO: Nos aseguramos de limpiar los números editados por si acaso el Styler metió texto
+        # 💥 PURIFICADOR MATEMÁTICO INVISIBLE: Tomamos los textos editados y los volvemos números limpios
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
         df_estrategico['🎯 Vol. Irreal (Modificable)'] = df_estrategico['🎯 Vol. Irreal (Modificable)'].apply(a_numero_limpio)
         df_estrategico['🎯 Precio Irreal (Modificable)'] = df_estrategico['🎯 Precio Irreal (Modificable)'].apply(a_numero_limpio)
@@ -503,6 +499,10 @@ def ejecutar(purificar_lote, extraer_numero):
 
         st.markdown("---")
         df_export = df_estrategico.copy()
+        
+        # Para el Excel, devolvemos las columnas a números puros para que se pueda sumar
+        df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
+        
         df_export = df_export.rename(columns={
             "🧪 Insumo Químico": "PRODUCTO", 
             "🎯 Vol. Irreal (Modificable)": "VOLUMEN (PROYECTADO)", 
@@ -518,8 +518,8 @@ def ejecutar(purificar_lote, extraer_numero):
             ws = writer.sheets['Estrategia_Presupuesto']
             for cell in ws["A"] + ws["B"] + ws["C"] + ws["D"] + ws["E"]:
                 cell[0].alignment = Alignment(horizontal='center')
-            for cell in ws["C"] + ws["D"] + ws["E"]:
-                if cell[0].row > 1: cell[0].number_format = '#,##0'
+            for cell in ws["B"] + ws["C"] + ws["D"] + ws["E"]:
+                if cell[0].row > 1: cell[0].number_format = '#,##0.00'
                 
             ws.column_dimensions['A'].width = 25
             ws.column_dimensions['B'].width = 25
