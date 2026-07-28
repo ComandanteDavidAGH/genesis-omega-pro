@@ -235,12 +235,10 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    # 💥 SUBIMOS LA VERSIÓN PARA ESTAR SEGUROS DEL REBOOT
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.8]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico de Presupuestos <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 3.9]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v38"):
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v39"):
         st.cache_data.clear()
-        # Limpieza nuclear de todas las variables de sesión del módulo
         for key in list(st.session_state.keys()):
             if 'lab_df' in key or 'total_inercial' in key or 'ha_proyectada' in key or 'laboratorio_estrategico' in key:
                 del st.session_state[key]
@@ -379,29 +377,27 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("### 🧪 2. El Laboratorio (Ajuste Estratégico)")
         st.caption("💡 **Instrucciones:** Apaga el interruptor '✅ Activo' para eliminar una molécula. Digita sobre el porcentaje de ajuste para alterar volúmenes, o sobre el precio final para simular negociaciones.")
 
-        df_para_editor = st.session_state['lab_df'].copy()
+        llave_editor = "laboratorio_estrategico_v39"
 
-        # 💥 HACK DE STREAMLIT: Pre-aplicamos las ediciones del usuario ANTES de mostrar la tabla
-        # Se cambia la KEY ("laboratorio_estrategico_v38") para que destruya la versión anterior trabada
-        llave_editor = "laboratorio_estrategico_v38"
+        # 💥 CORRECCIÓN VITAL: Guardar las ediciones DIRECTO en la memoria principal (lab_df)
         if llave_editor in st.session_state:
             edits = st.session_state[llave_editor].get("edited_rows", {})
-            for row_idx_str, changes in edits.items():
-                row_idx = int(row_idx_str)
-                if "🎯 Ajuste Vol. (%)" in changes:
-                    df_para_editor.at[row_idx, "🎯 Ajuste Vol. (%)"] = changes["🎯 Ajuste Vol. (%)"]
-                if "🎯 Precio Irreal (Modificable)" in changes:
-                    df_para_editor.at[row_idx, "🎯 Precio Irreal (Modificable)"] = changes["🎯 Precio Irreal (Modificable)"]
+            if edits:
+                for row_idx_str, changes in edits.items():
+                    row_idx = int(row_idx_str)
+                    for col_name, new_val in changes.items():
+                        st.session_state['lab_df'].at[row_idx, col_name] = new_val
 
-        # Matemáticas en tiempo real
+        df_para_editor = st.session_state['lab_df'].copy()
+
+        # Matemáticas en tiempo real (Base de cálculo segura)
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
         df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
 
-        # Cadenas Formateadas
+        # Cadenas Formateadas para mostrar (El traje de gala)
         df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
         df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
 
-        # ORDENAMOS LAS COLUMNAS 
         cols_ordenadas = [
             "✅ Activo", "🧪 Insumo Químico", 
             "📦 Vol. Sist. (Base)", "🎯 Ajuste Vol. (%)", "📊 Vol. Final (Calc)", 
@@ -538,7 +534,6 @@ def ejecutar(purificar_lote, extraer_numero):
         })
         df_export = df_export[["PRODUCTO", "VOLUMEN (PROYECTADO L/Kg)", "💵 Precio Base (Histórico)", "PRECIO UNITARIO (PROYECTADO)", "PRESUPUESTO TOTAL"]]
         
-        # Formateamos para el Excel
         df_export['💵 Precio Base (Histórico)'] = df_export['💵 Precio Base (Histórico)'].apply(a_numero_limpio)
         
         buffer = io.BytesIO()
