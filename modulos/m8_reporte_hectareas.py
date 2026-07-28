@@ -10,12 +10,12 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V21 (CONEXIÓN DIRECTA A EXCEL/SHEETS)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V22 (CONEXIÓN DIRECTA A EXCEL/SHEETS)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
-    # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL EN LA CÚSPIDE
-    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento</h1>", unsafe_allow_html=True)
+    # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL CON SELLO DE VERIFICACIÓN
+    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento <span style='font-size: 16px; color: #d4af37;'>[V22]</span></h1>", unsafe_allow_html=True)
     
     # 🚀 REFORZAMIENTO ESTÉTICO VIP AISLADO Y EFECTO LUPA (SC)
     st.markdown("""
@@ -200,7 +200,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.2])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v9")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v10")
         
         fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v6")
         fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v6")
@@ -246,11 +246,13 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
             df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
             
+            # FORMATO COLOMBIANO ESTRICTO EN KPIs
             ha_str = fmt_latino(total_ha, 2)
             vuelos_str = fmt_latino(total_vuelos, 0)
             prom_str = fmt_latino(promedio_ha, 2)
             
             k1, k2, k3 = st.columns(3)
+            # EFECTO LUPA Y COLORES APLICADOS DESDE EL CSS DE ARRIBA
             k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{ha_str}</p></div>", unsafe_allow_html=True)
             k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Misiones (Registros)</p><p class='kpi-value'>{vuelos_str}</p></div>", unsafe_allow_html=True)
             k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Promedio Ha/Misión</p><p class='kpi-value'>{prom_str}</p></div>", unsafe_allow_html=True)
@@ -259,12 +261,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
+            # Gráfico Dona
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
             fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
+            # Gráfico Barras
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
                              title="<b>Volumen de Hectáreas por Pista</b>",
@@ -275,9 +279,16 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
             st.markdown("##### 📋 Desglose de Participación Total")
             
-            # SOLUCIÓN DEL ERROR: Purgar la columna invisible antes de agregar la fila Total
-            df_tabla_dash = df_dash.drop(columns=['TXT_PCT']).copy()
-            df_tabla_dash.loc['TOTAL'] = ['👑 TOTAL GENERAL', df_tabla_dash['VUELOS'].sum(), df_tabla_dash['HECTAREAS'].sum(), 100.0, 100.0]
+            # 🛡️ SOLUCIÓN BLINDADA DEL ERROR "MISMATCHED COLUMNS": Se usa concat en lugar de loc
+            df_tabla_dash = df_dash[['PISTA', 'VUELOS', 'HECTAREAS', '% VUELOS', '% HECTAREAS']].copy()
+            fila_total = pd.DataFrame([{
+                'PISTA': '👑 TOTAL GENERAL', 
+                'VUELOS': df_tabla_dash['VUELOS'].sum(), 
+                'HECTAREAS': df_tabla_dash['HECTAREAS'].sum(), 
+                '% VUELOS': 100.0, 
+                '% HECTAREAS': 100.0
+            }])
+            df_tabla_dash = pd.concat([df_tabla_dash, fila_total], ignore_index=True)
             
             fmt_dash = {
                 "VUELOS": lambda x: f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
@@ -301,7 +312,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             matriz_ha = matriz_ha[cols_ordenadas]
             
             matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
-            matriz_pct.loc['TOTAL MES'] = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
+            
+            # 🚨 FUERZA BRUTA: El 100.0% exacto 
+            totales_mes = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
+            matriz_pct.loc['TOTAL MES'] = totales_mes
             
             st.dataframe(
                 matriz_pct.style.format(lambda x: f"{x:.1f}%".replace(".", ","))
