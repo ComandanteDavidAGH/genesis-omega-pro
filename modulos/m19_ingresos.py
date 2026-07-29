@@ -27,6 +27,45 @@ def procesar_fecha_estricta(val):
         except: pass
     return pd.NaT
 
+# --- DICCIONARIO BASE (Hardcodeado por seguridad) ---
+DICT_BASE_PRODUCTOS = {
+    "ACEITE DICAM": "ROYAL BIOCHEM",
+    "ACONDICIONADOR SV": "SYS TECNOLOGIES",
+    "ADHERENTE SV": "SYS TECNOLOGIES",
+    "BANADAK": "PLANDAK",
+    "BANANO Y PLATANO * LT": "INVESA S.A.S.",
+    "BANATREL SC": "YARA S.A.S.",
+    "BOSCALID 50 WG": "DVA COLOMBIA",
+    "CERAQUINT SP": "CERADIS COLOMBIA",
+    "CEROSTRESS SV * LT": "MICROFERTIZA",
+    "COMPER SV": "ADAMA",
+    "EPOXICONAZOLE DEL MONTE": "DEL MONTE SAS",
+    "FENTRIUPH AGRO 88 OL": "DEL MONTE SAS",
+    "FOSFOSTRESS SV": "MICROFERTIZA",
+    "GLOBAFOL NF": "SYNGENTA",
+    "IMBIOSIL O": "INBIOMA",
+    "KURDO 250 EC": "INVESA S.A.S.",
+    "KYVENTIQ": "CORTEVA",
+    "LONSELOR 30 SC": "BASF QUÍMICA",
+    "MANCOL 430 SC": "CASAGRO",
+    "NATURAMIN WSP": "AGRIANDES DAINSA",
+    "OPORTO": "ADAMA",
+    "OPUS 12 EC": "BASF QUÍMICA",
+    "POLYTHION SC": "UPL",
+    "POWMYL SV": "SUMITOMO",
+    "QUELAMIX": "INGEPLANT",
+    "REFLECT": "SYNGENTA",
+    "ROUTINE SC": "BAYER",
+    "SEEKER": "SYNGENTA",
+    "SICO": "SYNGENTA",
+    "SIGANEX 60 SC": "BAYER",
+    "SPRAYFIX": "AGRIANDES DAINSA",
+    "THIOPRON 825 SC": "UPL",
+    "TIMOREX PRO": "ADAMA",
+    "XILOTROM": "AGRIFOL",
+    "ZINTRAC X LITRO SV": "YARA S.A.S."
+}
+
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
     st.markdown("""
@@ -46,7 +85,7 @@ def ejecutar():
         st.cache_data.clear()
         st.rerun()
 
-    st.write("Panel táctico de auditoría. Identifica vencimientos y ejecuta anulaciones de ingresos directo a la base maestra.")
+    st.write("Panel táctico de auditoría. Ingresa lotes de manera asistida y controla tus inventarios con base en fechas de vencimiento.")
 
     gc = inicializar_cliente_gspread()
     if not gc:
@@ -55,11 +94,25 @@ def ejecutar():
 
     URL_SHEET = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
 
-    with st.spinner("📡 Escaneando Bóveda de Ingresos en Drive..."):
+    with st.spinner("📡 Escaneando Bóveda de Ingresos y Diccionario en Drive..."):
         try:
             sh = gc.open_by_url(URL_SHEET)
-            ws = sh.get_worksheet(0) 
-            datos_crudos = ws.get_all_values()
+            ws_ingresos = sh.get_worksheet(0) 
+            datos_crudos = ws_ingresos.get_all_values()
+            
+            # --- CARGAR DICCIONARIO DINÁMICO ---
+            dict_operativo = DICT_BASE_PRODUCTOS.copy()
+            try:
+                ws_dicc = sh.worksheet("DICCIONARIO")
+                datos_dicc = ws_dicc.get_all_values()
+                for row in datos_dicc[1:]: # Omitir encabezados
+                    if len(row) >= 2 and str(row[0]).strip():
+                        producto_nube = str(row[0]).strip().upper()
+                        proveedor_nube = str(row[1]).strip().upper()
+                        dict_operativo[producto_nube] = proveedor_nube
+            except Exception:
+                pass # Si no existe la pestaña DICCIONARIO, usa el diccionario base
+
         except Exception as e:
             st.error(f"🚨 Error de acceso. Detalle: {e}")
             return
@@ -79,7 +132,6 @@ def ejecutar():
     encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
     df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
     
-    # Filtro Purificador
     col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
     if col_producto:
         df = df[df[col_producto].str.strip() != ""]
@@ -117,45 +169,74 @@ def ejecutar():
 
     st.markdown("---")
 
-    # --- ➕ FORMULARIO VISIBLE DE INYECCIÓN (NUEVAS FILAS) ---
-    st.markdown("### ➕ Formulario de Registro de Ingresos")
-    st.info("Los datos digitados aquí se inyectarán como una nueva fila en Google Drive.")
+    # --- ➕ FORMULARIO DINÁMICO DE INYECCIÓN ---
+    st.markdown("### ➕ Inyector de Nuevos Ingresos")
     
-    # Se eliminó el expander oculto, ahora es un formulario directo y visible
-    with st.form("form_nuevo_ingreso", clear_on_submit=True):
+    with st.container(border=True):
+        st.markdown("<p style='color: #0d1b2a; font-weight: bold;'>1. Identificación del Químico</p>", unsafe_allow_html=True)
+        es_nuevo_producto = st.toggle("✨ Ingresar un Producto/Proveedor NUEVO (Se guardará en el Diccionario)")
+        
+        c_prod, c_prov = st.columns(2)
+        
+        # --- LÓGICA DE AUTOLLENADO ---
+        if es_nuevo_producto:
+            n_prod = c_prod.text_input("Nombre del Nuevo Producto (Ej: FUNGICIDA X)")
+            n_prov = c_prov.text_input("Nombre del Proveedor (Ej: BAYER SAS)")
+        else:
+            lista_prods_ordenada = sorted(list(dict_operativo.keys()))
+            n_prod = c_prod.selectbox("Seleccione el Producto", lista_prods_ordenada)
+            
+            # El proveedor se autocompleta basado en el diccionario
+            proveedor_asignado = dict_operativo.get(n_prod, "NO DEFINIDO")
+            n_prov = c_prov.text_input("Proveedor (Autocompletado)", value=proveedor_asignado, disabled=True)
+            
+        st.markdown("<p style='color: #0d1b2a; font-weight: bold; margin-top: 15px;'>2. Datos Operativos</p>", unsafe_allow_html=True)
         f1, f2, f3 = st.columns(3)
         n_semana = f1.text_input("Semana del Año")
-        n_prov = f2.text_input("Proveedor")
-        n_fecha_ing = f3.date_input("Fecha de Ingreso")
+        n_fecha_ing = f2.date_input("Fecha de Ingreso a SAP")
+        n_pista = f3.selectbox("Pista", ["LUCHA", "ORIHUCA", "PORI", "PLUC", "TEHO", "PDIV"])
         
         f4, f5, f6 = st.columns(3)
-        n_prod = f4.text_input("Producto")
-        n_pista = f5.selectbox("Pista", ["LUCHA", "ORIHUCA", "PORI", "PLUC", "TEHO", "PDIV"])
-        n_cant = f6.number_input("Cantidad", min_value=0.0, step=1.0)
+        n_cant = f4.number_input("Cantidad", min_value=0.0, step=1.0)
+        n_lote = f5.text_input("Lote")
+        n_ff = f6.date_input("Fecha de Fabricación (F/F)")
         
-        f7, f8, f9 = st.columns(3)
-        n_lote = f7.text_input("Lote")
-        n_ff = f8.date_input("Fecha de Fabricación (F/F)")
-        n_fv = f9.date_input("Fecha de Vencimiento (F/V)")
+        f7, f8, f9, f10 = st.columns(4)
+        n_fv = f7.date_input("Fecha de Vencimiento (F/V)")
+        n_factura = f8.text_input("Factura")
+        n_pedido = f9.text_input("Pedido")
+        n_consecutivo = f10.text_input("Consecutivo")
         
-        f10, f11, f12 = st.columns(3)
-        n_factura = f10.text_input("Factura")
-        n_pedido = f11.text_input("Pedido")
-        n_consecutivo = f12.text_input("Consecutivo")
-        
-        btn_guardar_nuevo = st.form_submit_button("🚀 INYECTAR NUEVA FILA A LA BÓVEDA", use_container_width=True)
+        btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
         
         if btn_guardar_nuevo:
-            if not n_prod:
-                st.error("🚨 El nombre del producto es obligatorio.")
+            if not n_prod or str(n_prod).strip() == "":
+                st.error("🚨 El nombre del producto no puede estar vacío.")
             else:
+                prod_limpio = str(n_prod).strip().upper()
+                prov_limpio = str(n_prov).strip().upper()
+
+                # 1. Si es nuevo, guardar en el DICCIONARIO
+                if es_nuevo_producto:
+                    try:
+                        ws_dicc = sh.worksheet("DICCIONARIO")
+                    except Exception:
+                        ws_dicc = sh.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
+                        ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                    
+                    try:
+                        ws_dicc.append_row([prod_limpio, prov_limpio])
+                    except Exception as e:
+                        st.warning(f"Se guardó el ingreso, pero falló la escritura en el Diccionario: {e}")
+
+                # 2. Preparar fila para hoja maestra
                 nueva_fila_drive = []
                 for header in encabezados:
                     h = header.upper()
                     if "SEMANA" in h: nueva_fila_drive.append(str(n_semana))
-                    elif "PROVEEDOR" in h: nueva_fila_drive.append(str(n_prov))
+                    elif "PROVEEDOR" in h: nueva_fila_drive.append(prov_limpio)
                     elif "FECHA DE INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
-                    elif "PRODUCTO" in h: nueva_fila_drive.append(str(n_prod).upper())
+                    elif "PRODUCTO" in h: nueva_fila_drive.append(prod_limpio)
                     elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
                     elif "CANTIDAD" in h: nueva_fila_drive.append(str(n_cant))
                     elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
@@ -167,14 +248,15 @@ def ejecutar():
                     elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
                     else: nueva_fila_drive.append("") 
                 
+                # 3. Inyectar en hoja maestra
                 try:
-                    with st.spinner("Enviando nueva fila al satélite..."):
-                        ws.append_row(nueva_fila_drive)
-                    st.success("✅ ¡Fila inyectada exitosamente en Drive!")
+                    with st.spinner("Enviando datos al satélite..."):
+                        ws_ingresos.append_row(nueva_fila_drive)
+                    st.success(f"✅ ¡Lote de {prod_limpio} inyectado exitosamente en Drive!")
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error al guardar: {e}")
+                    st.error(f"Error al inyectar datos: {e}")
 
     # --- 🔍 FILTROS TÁCTICOS ---
     st.markdown("---")
@@ -241,7 +323,7 @@ def ejecutar():
                 fila_excel = df_filtrado.iloc[i]['FILA_EXCEL']
                 with st.spinner(f"Inyectando Anulación en Fila {fila_excel}..."):
                     try:
-                        ws.update_cell(fila_excel, idx_col_estado, estado_nuevo)
+                        ws_ingresos.update_cell(fila_excel, idx_col_estado, estado_nuevo)
                         cambios_detectados = True
                     except Exception as e:
                         st.error(f"Error al actualizar fila {fila_excel}. Detalle: {e}")
