@@ -30,7 +30,7 @@ import modulos.m7_arqueo_inventarios as m7
 import modulos.m8_reporte_hectareas as m8
 import modulos.m9_dashboard_tactico as m9
 import modulos.m10_bi_tarifas as m10
-import modulos.m11_manual_tecnico as m11 
+import modulos.m11_manual_tecnico as m11
 import modulos.m12_simulador_agro as m12
 import modulos.m13_oraculo as m13
 import modulos.m14_presupuesto as m14
@@ -38,6 +38,8 @@ import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
 import modulos.m18_desglose_facturacion as m18
+# 💥 AQUÍ INYECTAMOS EL NUEVO MÓDULO 19:
+import modulos.m19_ingresos as m19
 
 # --- 🔐 CREDENCIALES ---
 pass_cmd = st.secrets.get("passwords", {}).get("comandante", "123") if "passwords" in st.secrets else "123"
@@ -264,7 +266,9 @@ with st.sidebar:
             "🗺️ 15. Mapa de Calor Agronómico",
             "💼 16. Comparativo Gerencial (Dron vs Avión)",
             "🚀 17. Mega-Proyección Operativa",  
-            "🔍 18. Auditoría y Desglose Financiero"
+            "🔍 18. Auditoría y Desglose Financiero",
+            # 💥 AQUÍ INYECTAMOS EL BOTÓN DEL MÓDULO 19:
+            "📦 19. Control y Auditoría de Ingresos"
         ], key="modulo_actual")
     else: 
         st.info("🛰️ Modo Consulta Gerencial Activado.")
@@ -306,3 +310,5 @@ elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lot
 elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar()
 elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar(supabase_client)
 elif menu == "🔍 18. Auditoría y Desglose Financiero": m18.ejecutar()
+# 💥 AQUÍ INYECTAMOS LA LÓGICA DE DIRECCIONAMIENTO DEL MÓDULO 19:
+elif menu == "📦 19. Control y Auditoría de Ingresos": m19.ejecutar()
