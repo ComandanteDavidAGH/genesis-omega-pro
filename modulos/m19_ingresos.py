@@ -27,8 +27,44 @@ def procesar_fecha_estricta(val):
         except: pass
     return pd.NaT
 
-# --- DICCIONARIO BASE TEMPORAL ---
-DICT_BASE_PRODUCTOS = {}
+# --- DICCIONARIO BASE (Basado EXACTAMENTE en tu imagen oficial) ---
+DICT_BASE_PRODUCTOS = {
+    "ACEITE DICAM": "ROYAL BIOCHEM",
+    "ACONDICIONADOR SV": "SYS TECNOLOGIES",
+    "ADHERENTE SV": "SYS TECNOLOGIES",
+    "BANADAK": "PLANDAK",
+    "BANANO Y PLATANO * LT": "INVESA S.A.S.",
+    "BANATREL SC": "YARA S.A.S.",
+    "BOSCALID 50 WG": "DVA COLOMBIA",
+    "CERAQUINT SP": "CERADIS COLOMBIA",
+    "CEROSTRESS SV * LT": "MICROFERTIZA",
+    "COMPER SV": "ADAMA",
+    "EPOXICONAZOLE DEL MONTE": "DEL MONTE SAS",
+    "FENTRIUPH AGRO 88 OL": "DEL MONTE SAS",
+    "FOSFOSTRESS SV": "MICROFERTIZA",
+    "GLOBAFOL nf": "SYNGENTA",
+    "IMBIOSIL O": "INBIOMA",
+    "KURDO 250 EC": "INVESA S.A.S.",
+    "KYVENTIQ": "CORTEVA",
+    "LONSELOR 30 SC": "BASF QUÍMICA",
+    "MANCOL 430 SC": "CASAGRO",
+    "NATURAMIN WSP": "AGRIANDES DAINSA",
+    "OPORTO": "ADAMA",
+    "OPUS 12 EC": "BASF QUÍMICA",
+    "POLYTHION SC": "UPL",
+    "POWMYL SV": "SUMITOMO",
+    "QUELAMIX": "INGEPLANT",
+    "REFLECT": "SYNGENTA",
+    "ROUTINE SC": "BAYER",
+    "SEEKER": "SYNGENTA",
+    "SICO": "SYNGENTA",
+    "SIGANEX 60 SC": "BAYER",
+    "SPRAYFIX": "AGRIANDES DAINSA",
+    "THIOPRON 825 SC": "UPL",
+    "TIMOREX PRO": "ADAMA",
+    "XILOTROM": "AGRIFOL",
+    "ZINTRAC x LITRO SV": "YARA S.A.S."
+}
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
@@ -38,7 +74,6 @@ def ejecutar():
     div[data-testid="metric-container"] { background-color: #0d1b2a; border: 2px solid #d4af37; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     div[data-testid="metric-container"] label { color: #a0aec0 !important; font-weight: bold !important; font-size: 14px !important; text-transform: uppercase; }
     div[data-testid="metric-container"] div[data-testid="stMetricValue"] { color: #ffffff !important; font-weight: 900 !important; font-size: 32px !important; }
-    .st-expander { border: 2px solid #0d1b2a !important; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -49,7 +84,7 @@ def ejecutar():
         st.cache_data.clear()
         st.rerun()
 
-    st.write("Panel táctico de auditoría. Ingresa lotes de manera asistida usando nomenclatura oficial SAP.")
+    st.write("Panel táctico de auditoría. Ingresa lotes de manera asistida usando nomenclatura oficial.")
 
     gc = inicializar_cliente_gspread()
     if not gc:
@@ -57,39 +92,15 @@ def ejecutar():
         return
 
     URL_SHEET_LOCAL = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
-    URL_MAESTRA_SAP = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
-    with st.spinner("📡 Escaneando Bóveda Local y Base Maestra SAP..."):
+    with st.spinner("📡 Sincronizando Bóveda y Diccionario en Drive..."):
         try:
-            # 1. Traer Bóveda Local (Ingresos)
             sh_local = gc.open_by_url(URL_SHEET_LOCAL)
             ws_ingresos = sh_local.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
-            # 2. Traer Nombres Oficiales de SAP
-            sh_sap = gc.open_by_url(URL_MAESTRA_SAP)
-            ws_cfg_sap = sh_sap.worksheet("Configuración")
-            datos_cfg_sap = ws_cfg_sap.get_all_values()
-            
-            productos_oficiales_sap = set()
-            idx_header_cfg = 0
-            for i, row in enumerate(datos_cfg_sap[:5]):
-                r_c = [str(x).upper().strip() for x in row]
-                if 'PRODUCTO' in r_c:
-                    idx_header_cfg = i
-                    break
-                    
-            encabezados_cfg = [str(x).upper().strip() for x in datos_cfg_sap[idx_header_cfg]]
-            if 'PRODUCTO' in encabezados_cfg:
-                col_prod_idx = encabezados_cfg.index('PRODUCTO')
-                for row in datos_cfg_sap[idx_header_cfg+1:]:
-                    if len(row) > col_prod_idx:
-                        p_sap = str(row[col_prod_idx]).strip().upper()
-                        if p_sap and p_sap not in ["NAN", "NONE", "", "PRODUCTO"]:
-                            productos_oficiales_sap.add(p_sap)
-            
-            # 3. Traer Diccionario de Proveedores
-            dict_operativo = DICT_BASE_PRODUCTOS.copy()
+            # --- CARGAR DICCIONARIO DINÁMICO (Prioridad Drive sobre Hardcode) ---
+            dict_operativo = {k.upper(): v.upper() for k, v in DICT_BASE_PRODUCTOS.items()}
             try:
                 ws_dicc = sh_local.worksheet("DICCIONARIO")
                 datos_dicc = ws_dicc.get_all_values()
@@ -100,11 +111,6 @@ def ejecutar():
                         dict_operativo[producto_nube] = proveedor_nube
             except Exception:
                 pass 
-            
-            # 4. Fusionar SAP + Diccionario (Aseguramos que todos los de SAP estén en la lista)
-            for p in productos_oficiales_sap:
-                if p not in dict_operativo:
-                    dict_operativo[p] = "" # Agregarlo sin proveedor asignado
 
         except Exception as e:
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
@@ -163,27 +169,30 @@ def ejecutar():
     st.markdown("---")
 
     # --- ➕ FORMULARIO DINÁMICO DE INYECCIÓN ---
-    st.markdown("### ➕ Inyector de Nuevos Ingresos (Base SAP)")
+    st.markdown("### ➕ Inyector de Nuevos Ingresos")
     
     with st.container(border=True):
         st.markdown("<p style='color: #0d1b2a; font-weight: bold;'>1. Identificación del Químico Oficial</p>", unsafe_allow_html=True)
-        es_nuevo_producto = st.toggle("✨ Ingresar un Producto Totalmente NUEVO (Aún no existe en SAP)")
+        
+        c_tog1, c_tog2 = st.columns(2)
+        es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
+        modificar_prov = False
         
         c_prod, c_prov = st.columns(2)
         
-        # --- LÓGICA DE AUTOLLENADO INTELIGENTE ---
-        proveedor_asignado = ""
+        # --- LÓGICA PURA Y EXACTA ---
         if es_nuevo_producto:
             n_prod = c_prod.text_input("Nombre del Nuevo Producto")
             n_prov = c_prov.text_input("Nombre del Proveedor")
         else:
+            modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
+            
             lista_prods_ordenada = sorted(list(dict_operativo.keys()))
-            n_prod = c_prod.selectbox("Seleccione el Producto (Catálogo SAP)", lista_prods_ordenada)
+            n_prod = c_prod.selectbox("Seleccione el Producto", lista_prods_ordenada)
             proveedor_asignado = dict_operativo.get(n_prod, "")
             
-            # 💥 SI EL PRODUCTO TIENE PROVEEDOR, LO BLOQUEA. SI NO TIENE, DEJA QUE EL USUARIO LO ESCRIBA.
-            tiene_prov = bool(proveedor_asignado.strip())
-            n_prov = c_prov.text_input("Proveedor", value=proveedor_asignado, disabled=tiene_prov, placeholder="Digite el proveedor para guardarlo en la BD")
+            # Bloquea o desbloquea según el interruptor
+            n_prov = c_prov.text_input("Proveedor", value=proveedor_asignado, disabled=not modificar_prov)
             
         st.markdown("<p style='color: #0d1b2a; font-weight: bold; margin-top: 15px;'>2. Datos Operativos</p>", unsafe_allow_html=True)
         f1, f2, f3 = st.columns(3)
@@ -214,8 +223,14 @@ def ejecutar():
                 prod_limpio = str(n_prod).strip().upper()
                 prov_limpio = str(n_prov).strip().upper()
 
-                # 1. Guardar o actualizar en DICCIONARIO si es nuevo o si se digitó el proveedor por primera vez
-                if es_nuevo_producto or (not tiene_prov and prov_limpio):
+                # --- LÓGICA PARA ACTUALIZAR EL DICCIONARIO ---
+                actualizar_dicc = False
+                if es_nuevo_producto:
+                    actualizar_dicc = True
+                elif modificar_prov and prov_limpio != proveedor_asignado.upper():
+                    actualizar_dicc = True
+                
+                if actualizar_dicc:
                     try:
                         ws_dicc = sh_local.worksheet("DICCIONARIO")
                     except Exception:
@@ -223,11 +238,22 @@ def ejecutar():
                         ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
                     
                     try:
-                        ws_dicc.append_row([prod_limpio, prov_limpio])
+                        # Buscamos si existe para actualizar, sino añadimos
+                        datos_d = ws_dicc.get_all_values()
+                        fila_a_actualizar = -1
+                        for idx_d, row_d in enumerate(datos_d):
+                            if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
+                                fila_a_actualizar = idx_d + 1
+                                break
+                        
+                        if fila_a_actualizar != -1:
+                            ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                        else:
+                            ws_dicc.append_row([prod_limpio, prov_limpio])
                     except Exception as e:
                         st.warning(f"Se guardó el ingreso, pero falló la escritura en el Diccionario: {e}")
 
-                # 2. Inyectar datos a Bóveda
+                # --- LÓGICA PARA INYECTAR A LA TABLA MAESTRA ---
                 nueva_fila_drive = []
                 for header in encabezados:
                     h = header.upper()
