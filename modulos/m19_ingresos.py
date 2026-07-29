@@ -105,13 +105,13 @@ def ejecutar():
             try:
                 ws_dicc = sh.worksheet("DICCIONARIO")
                 datos_dicc = ws_dicc.get_all_values()
-                for row in datos_dicc[1:]: # Omitir encabezados
+                for row in datos_dicc[1:]: 
                     if len(row) >= 2 and str(row[0]).strip():
                         producto_nube = str(row[0]).strip().upper()
                         proveedor_nube = str(row[1]).strip().upper()
                         dict_operativo[producto_nube] = proveedor_nube
             except Exception:
-                pass # Si no existe la pestaña DICCIONARIO, usa el diccionario base
+                pass 
 
         except Exception as e:
             st.error(f"🚨 Error de acceso. Detalle: {e}")
@@ -185,16 +185,18 @@ def ejecutar():
         else:
             lista_prods_ordenada = sorted(list(dict_operativo.keys()))
             n_prod = c_prod.selectbox("Seleccione el Producto", lista_prods_ordenada)
-            
-            # El proveedor se autocompleta basado en el diccionario
             proveedor_asignado = dict_operativo.get(n_prod, "NO DEFINIDO")
             n_prov = c_prov.text_input("Proveedor (Autocompletado)", value=proveedor_asignado, disabled=True)
             
         st.markdown("<p style='color: #0d1b2a; font-weight: bold; margin-top: 15px;'>2. Datos Operativos</p>", unsafe_allow_html=True)
         f1, f2, f3 = st.columns(3)
-        n_semana = f1.text_input("Semana del Año")
+        
+        # 💥 AUTOMATIZACIÓN DE SEMANA Y CÓDIGOS SAP
         n_fecha_ing = f2.date_input("Fecha de Ingreso a SAP")
-        n_pista = f3.selectbox("Pista", ["LUCHA", "ORIHUCA", "PORI", "PLUC", "TEHO", "PDIV"])
+        semana_calculada = n_fecha_ing.isocalendar()[1]
+        n_semana = f1.text_input("Semana del Año (Automática)", value=str(semana_calculada), disabled=True)
+        
+        n_pista = f3.selectbox("Pista (Almacén SAP)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
         
         f4, f5, f6 = st.columns(3)
         n_cant = f4.number_input("Cantidad", min_value=0.0, step=1.0)
@@ -216,7 +218,6 @@ def ejecutar():
                 prod_limpio = str(n_prod).strip().upper()
                 prov_limpio = str(n_prov).strip().upper()
 
-                # 1. Si es nuevo, guardar en el DICCIONARIO
                 if es_nuevo_producto:
                     try:
                         ws_dicc = sh.worksheet("DICCIONARIO")
@@ -229,11 +230,10 @@ def ejecutar():
                     except Exception as e:
                         st.warning(f"Se guardó el ingreso, pero falló la escritura en el Diccionario: {e}")
 
-                # 2. Preparar fila para hoja maestra
                 nueva_fila_drive = []
                 for header in encabezados:
                     h = header.upper()
-                    if "SEMANA" in h: nueva_fila_drive.append(str(n_semana))
+                    if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
                     elif "PROVEEDOR" in h: nueva_fila_drive.append(prov_limpio)
                     elif "FECHA DE INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
                     elif "PRODUCTO" in h: nueva_fila_drive.append(prod_limpio)
@@ -248,7 +248,6 @@ def ejecutar():
                     elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
                     else: nueva_fila_drive.append("") 
                 
-                # 3. Inyectar en hoja maestra
                 try:
                     with st.spinner("Enviando datos al satélite..."):
                         ws_ingresos.append_row(nueva_fila_drive)
