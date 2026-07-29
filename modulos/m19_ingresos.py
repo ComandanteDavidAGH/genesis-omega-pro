@@ -35,6 +35,7 @@ def ejecutar():
     div[data-testid="metric-container"] { background-color: #0d1b2a; border: 2px solid #d4af37; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     div[data-testid="metric-container"] label { color: #a0aec0 !important; font-weight: bold !important; font-size: 14px !important; text-transform: uppercase; }
     div[data-testid="metric-container"] div[data-testid="stMetricValue"] { color: #ffffff !important; font-weight: 900 !important; font-size: 32px !important; }
+    .st-expander { border: 2px solid #0d1b2a !important; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -78,7 +79,7 @@ def ejecutar():
     encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
     df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
     
-    # 💥 FILTRO PURIFICADOR: Destruimos filas fantasma (donde el producto está en blanco)
+    # Filtro Purificador
     col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
     if col_producto:
         df = df[df[col_producto].str.strip() != ""]
@@ -92,7 +93,7 @@ def ejecutar():
 
     idx_col_estado = encabezados.index(COL_ESTADO) + 1 
 
-    # --- 📊 1. PANEL DE RADARES (KPIs BLINDADOS) ---
+    # --- 📊 1. PANEL DE RADARES (KPIs) ---
     st.markdown("### 📡 Radares de Vencimiento")
     
     hoy = datetime.now()
@@ -116,72 +117,74 @@ def ejecutar():
 
     st.markdown("---")
 
-    # --- ➕ FORMULARIO DE INYECCIÓN DE DATOS ---
-    with st.expander("➕ REGISTRAR NUEVO INGRESO (ENVIAR A DRIVE)", expanded=False):
-        st.info("Al guardar, este ingreso se inyectará automáticamente como una nueva fila en Google Sheets.")
-        with st.form("form_nuevo_ingreso"):
-            f1, f2, f3 = st.columns(3)
-            n_semana = f1.text_input("Semana del Año")
-            n_prov = f2.text_input("Proveedor")
-            n_fecha_ing = f3.date_input("Fecha de Ingreso")
-            
-            f4, f5, f6 = st.columns(3)
-            n_prod = f4.text_input("Producto")
-            n_pista = f5.selectbox("Pista", ["LUCHA", "ORIHUCA", "PORI", "PLUC", "TEHO", "PDIV"])
-            n_cant = f6.number_input("Cantidad", min_value=0.0, step=1.0)
-            
-            f7, f8, f9 = st.columns(3)
-            n_lote = f7.text_input("Lote")
-            n_ff = f8.date_input("Fecha de Fabricación (F/F)")
-            n_fv = f9.date_input("Fecha de Vencimiento (F/V)")
-            
-            f10, f11, f12 = st.columns(3)
-            n_factura = f10.text_input("Factura")
-            n_pedido = f11.text_input("Pedido")
-            n_consecutivo = f12.text_input("Consecutivo")
-            
-            btn_guardar_nuevo = st.form_submit_button("🚀 INYECTAR A LA BÓVEDA SAP", use_container_width=True)
-            
-            if btn_guardar_nuevo:
-                if not n_prod:
-                    st.error("El nombre del producto es obligatorio.")
-                else:
-                    nueva_fila_drive = []
-                    for header in encabezados:
-                        h = header.upper()
-                        if "SEMANA" in h: nueva_fila_drive.append(str(n_semana))
-                        elif "PROVEEDOR" in h: nueva_fila_drive.append(str(n_prov))
-                        elif "FECHA DE INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
-                        elif "PRODUCTO" in h: nueva_fila_drive.append(str(n_prod).upper())
-                        elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
-                        elif "CANTIDAD" in h: nueva_fila_drive.append(str(n_cant))
-                        elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
-                        elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
-                        elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
-                        elif "FACTURA" in h: nueva_fila_drive.append(str(n_factura))
-                        elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
-                        elif "CONSECUTIVO" in h: nueva_fila_drive.append(str(n_consecutivo))
-                        elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
-                        else: nueva_fila_drive.append("") # Para columnas vacías extra
-                    
-                    try:
-                        with st.spinner("Enviando datos al satélite..."):
-                            ws.append_row(nueva_fila_drive)
-                        st.success("✅ Ingreso registrado con éxito.")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al guardar: {e}")
+    # --- ➕ FORMULARIO VISIBLE DE INYECCIÓN (NUEVAS FILAS) ---
+    st.markdown("### ➕ Formulario de Registro de Ingresos")
+    st.info("Los datos digitados aquí se inyectarán como una nueva fila en Google Drive.")
+    
+    # Se eliminó el expander oculto, ahora es un formulario directo y visible
+    with st.form("form_nuevo_ingreso", clear_on_submit=True):
+        f1, f2, f3 = st.columns(3)
+        n_semana = f1.text_input("Semana del Año")
+        n_prov = f2.text_input("Proveedor")
+        n_fecha_ing = f3.date_input("Fecha de Ingreso")
+        
+        f4, f5, f6 = st.columns(3)
+        n_prod = f4.text_input("Producto")
+        n_pista = f5.selectbox("Pista", ["LUCHA", "ORIHUCA", "PORI", "PLUC", "TEHO", "PDIV"])
+        n_cant = f6.number_input("Cantidad", min_value=0.0, step=1.0)
+        
+        f7, f8, f9 = st.columns(3)
+        n_lote = f7.text_input("Lote")
+        n_ff = f8.date_input("Fecha de Fabricación (F/F)")
+        n_fv = f9.date_input("Fecha de Vencimiento (F/V)")
+        
+        f10, f11, f12 = st.columns(3)
+        n_factura = f10.text_input("Factura")
+        n_pedido = f11.text_input("Pedido")
+        n_consecutivo = f12.text_input("Consecutivo")
+        
+        btn_guardar_nuevo = st.form_submit_button("🚀 INYECTAR NUEVA FILA A LA BÓVEDA", use_container_width=True)
+        
+        if btn_guardar_nuevo:
+            if not n_prod:
+                st.error("🚨 El nombre del producto es obligatorio.")
+            else:
+                nueva_fila_drive = []
+                for header in encabezados:
+                    h = header.upper()
+                    if "SEMANA" in h: nueva_fila_drive.append(str(n_semana))
+                    elif "PROVEEDOR" in h: nueva_fila_drive.append(str(n_prov))
+                    elif "FECHA DE INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
+                    elif "PRODUCTO" in h: nueva_fila_drive.append(str(n_prod).upper())
+                    elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
+                    elif "CANTIDAD" in h: nueva_fila_drive.append(str(n_cant))
+                    elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
+                    elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
+                    elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
+                    elif "FACTURA" in h: nueva_fila_drive.append(str(n_factura))
+                    elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
+                    elif "CONSECUTIVO" in h: nueva_fila_drive.append(str(n_consecutivo))
+                    elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
+                    else: nueva_fila_drive.append("") 
+                
+                try:
+                    with st.spinner("Enviando nueva fila al satélite..."):
+                        ws.append_row(nueva_fila_drive)
+                    st.success("✅ ¡Fila inyectada exitosamente en Drive!")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
 
     # --- 🔍 FILTROS TÁCTICOS ---
-    st.markdown("### 🔍 Filtro de Escaneo")
+    st.markdown("---")
+    st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
     filtro_seleccionado = st.radio("Mostrar ingresos:", 
                                  ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], 
                                  horizontal=True)
     
     df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
 
-    # Aplicar el filtro a la matriz
     df_filtrado = df.copy()
     if filtro_seleccionado == "✅ Solo Vigentes":
         df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("VIGENTE", case=False, na=False)]
@@ -190,8 +193,9 @@ def ejecutar():
     elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv:
         df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
 
-    # --- 🛠️ 2. TABLA DE AUDITORÍA Y ANULACIONES ---
-    st.markdown("### 🛠️ Matriz de Auditoría")
+    # --- 🛠️ TABLA DE ANULACIONES ---
+    st.markdown("### 🛠️ Matriz de Anulaciones (Solo Lectura y Edición de Estado)")
+    st.caption("🔒 Las cantidades y fechas están bloqueadas por seguridad. Solo puedes hacer doble clic en ESTADO/OBSERVACIÓN para anular.")
     
     cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT']]
     
@@ -212,7 +216,7 @@ def ejecutar():
         column_config={
             COL_ESTADO: st.column_config.SelectboxColumn(
                 "ESTADO / OBSERVACIÓN",
-                help="Doble clic para cambiar el estado operativo.",
+                help="Doble clic para anular o cambiar estado.",
                 width="large",
                 options=opciones_estado,
                 required=True
@@ -226,7 +230,7 @@ def ejecutar():
 
     # --- 💾 3. MOTOR DE SINCRONIZACIÓN ---
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 EJECUTAR Y SINCRONIZAR ANULACIONES EN DRIVE", type="primary"):
+    if st.button("💾 SINCRONIZAR ANULACIONES EN DRIVE", type="primary"):
         cambios_detectados = False
         
         for i in range(len(df_filtrado)):
@@ -243,7 +247,7 @@ def ejecutar():
                         st.error(f"Error al actualizar fila {fila_excel}. Detalle: {e}")
         
         if cambios_detectados:
-            st.success("✅ ¡Misión Cumplida! Bóveda de Drive actualizada exitosamente.")
+            st.success("✅ ¡Misión Cumplida! Bóveda de Drive actualizada exitosamente con las anulaciones.")
             st.cache_data.clear() 
             st.rerun()
         else:
@@ -256,7 +260,6 @@ def ejecutar():
         df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
         ws_excel = writer.sheets['Auditoria_Ingresos']
         
-        # Formato básico
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         for cell in ws_excel[1]:
