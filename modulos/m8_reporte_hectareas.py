@@ -212,20 +212,30 @@ def limpiar_area(val):
         return float(v) if v else 0.0
     except: return 0.0
 
+# 💥 CIRUGÍA EXTREMA: Traductor estricto para moneda colombiana
 def limpiar_dinero(val):
+    if pd.isna(val) or val is None: return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
+    if not v or v == '-': return 0.0
     try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip()
-        if not v: return 0.0
-        v = v.replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1:
-            partes = v.rsplit('.', 1)
-            v = partes[0].replace('.', '') + '.' + partes[1]
-        num = float(v) if v else 0.0
-        if 5 < num < 2000: num = num * 1000
-        return num
-    except: return 0.0
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'):
+                v = v.replace('.', '').replace(',', '.')
+            else:
+                v = v.replace(',', '')
+        elif ',' in v:
+            if len(v.split(',')[-1]) == 3:
+                v = v.replace(',', '')
+            else:
+                v = v.replace(',', '.')
+        elif '.' in v:
+            # Si hay múltiples puntos o exactamente 3 dígitos después del último punto, es separador de miles
+            if v.count('.') > 1 or len(v.split('.')[-1]) == 3:
+                v = v.replace('.', '')
+        return float(v)
+    except:
+        return 0.0
 
 def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_u = str(coctel_sel).upper().strip()
@@ -316,7 +326,6 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 # =================================================================
 def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_app=None, procesar_fecha_pesada_app=None, **kwargs):
     
-    # 💥 INYECCIÓN DE FUNCIONES LOCALES PARA EVITAR "NameError" AL PINTAR TABLAS
     def fmt_latino(val, decimales=2):
         try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except: return str(val) if val is not None else ""
@@ -359,7 +368,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         text-transform: uppercase !important;
     }
 
-    /* 🔍 EFECTO LUPA MAGNIFICADOR */
     div[data-testid="stPlotlyChart"] {
         transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
         border-radius: 12px !important;
@@ -375,7 +383,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         border: 2px solid #d4af37 !important;
     }
 
-    /* 💥 PANELES DE BATALLA DE ESCUADRONES */
     .battle-panel {
         background-color: #ffffff; border-radius: 12px; padding: 20px;
         box-shadow: 0 8px 15px rgba(0,0,0,0.1); border-top: 6px solid;
@@ -391,7 +398,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v33.0 - LIBRERÍAS EXCEL INTEGRADAS)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v34.0 - PRECISIÓN FINANCIERA)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -399,9 +406,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             st.rerun()
 
     try:
-        # Fallback de seguridad si falta el procesador de fechas
-        if procesar_fecha_pesada_app is None:
-            procesar_fecha_pesada_app = procesar_fecha_pesada
+        if procesar_fecha_pesada_app is None: procesar_fecha_pesada_app = procesar_fecha_pesada
             
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
         if df_vivos.empty and df_historico.empty:
@@ -416,9 +421,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA', 'REND_HR', 'H_PROPORCIONAL', 'SEMANA']:
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0 if col_req not in ['OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA'] else ""
 
-        # =================================================================
-        # 💥 1. NORMALIZACIÓN QUIRÚRGICA ESTRICTA
-        # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['OS_MAESTRA'] = super_base_bi['OS_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_MAESTRO'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
@@ -438,15 +440,11 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
         
-        # 💥 BLINDAJE DE NÚMEROS: Obligamos a que las horas y áreas sean floats matemáticos
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
         if 'REND_HR' in super_base_bi.columns: super_base_bi['REND_HR'] = super_base_bi['REND_HR'].apply(limpiar_area)
         if 'H_PROPORCIONAL' in super_base_bi.columns: super_base_bi['H_PROPORCIONAL'] = super_base_bi['H_PROPORCIONAL'].apply(limpiar_area)
         if 'SEMANA' in super_base_bi.columns: super_base_bi['SEMANA'] = pd.to_numeric(super_base_bi['SEMANA'], errors='coerce').fillna(0).astype(int)
 
-        # =================================================================
-        # 1.5 AUTO-COMPLETADO DE PISTAS FANTASMAS
-        # =================================================================
         if col_pista and 'HK' in super_base_bi.columns:
             mask_hk = (super_base_bi['HK'] != "") & (super_base_bi['HK'] != "NAN")
             if not super_base_bi[mask_hk].empty:
@@ -455,30 +453,30 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 mask_pista_vacia = mask_hk & ((super_base_bi[col_pista] == "") | (super_base_bi[col_pista] == "NAN"))
                 super_base_bi.loc[mask_pista_vacia, col_pista] = super_base_bi.loc[mask_pista_vacia, 'HK'].map(mapa_flota).fillna("")
 
-        # =================================================================
-        # 2. CANDADO ANTI-DUPLICIDAD BLINDADO CON HK
-        # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN', 'HK'],
             keep='last'
         ).reset_index(drop=True)
 
-        def sanear_valores_sap(val):
-            v = limpiar_dinero(val)
-            if 0 < v < 2500: return v * 1000
-            return v
-            
-        super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
-        
-        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
+        # 💥 CIRUGÍA FINANCIERA: CÁLCULO ESTRICTO DE TARIFAS REALES
+        def calcular_costo_real(r):
+            if r.get('ORIGEN_BI') == 'ACTUAL':
+                tarifa = limpiar_dinero(r.get('AVION_MAESTRO', 0)) + limpiar_dinero(r.get('DOMINIC_MAESTRO', 0))
+                area = float(r.get('AREA_NUM', 0))
+                return tarifa * area
+            else:
+                return limpiar_dinero(r.get('COSTO_MAESTRO', 0))
+                
+        super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
+        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
-        costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
+        costo_medio_historico = (super_base_bi['COSTO_NUM'].sum() / total_ha_historicas) if total_ha_historicas > 0 else 0
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
         hb1, hb2, hb3 = st.columns(3)
         with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
-        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
+        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Tarifa Media Histórica</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
         with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
         fincas_disp = ["TODAS"] + sorted([str(x) for x in super_base_bi['FINCA_MAESTRA'].dropna().unique()])
@@ -488,19 +486,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v33")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v34")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v33")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v33")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v34")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v34")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v33")
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v34")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v33")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v33")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v33")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v34")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v34")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v34")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
