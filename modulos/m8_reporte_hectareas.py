@@ -308,7 +308,7 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     return promedio_ciclos, promedio_intervalo
 
 # =================================================================
-# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO (CON FIRMA CORREGIDA)
+# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, procesar_fecha_pesada_app):
     st.header("", anchor="inicio_modulo")
@@ -377,7 +377,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v29.0 - CONEXIÓN BLINDADA)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v30.0 - BLINDAJE DE TITANIO)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -399,11 +399,22 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0 if col_req not in ['OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA'] else ""
 
         # =================================================================
-        # 1. NORMALIZACIÓN QUIRÚRGICA SIN BUGS
+        # 💥 1. NORMALIZACIÓN QUIRÚRGICA ESTRICTA (COERCIÓN DE TEXTO PARA EVITAR ERRORES DE SORT)
         # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
-        super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
-        # Usa el procesador de fechas que viene de app.py
+        super_base_bi['OS_MAESTRA'] = super_base_bi['OS_MAESTRA'].astype(str).str.strip().str.upper()
+        super_base_bi['COCTEL_MAESTRO'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
+        super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO']
+        
+        if 'HK' in super_base_bi.columns:
+            super_base_bi['HK'] = super_base_bi['HK'].astype(str).str.strip().str.upper()
+        if 'MODELO' in super_base_bi.columns:
+            super_base_bi['MODELO'] = super_base_bi['MODELO'].astype(str).str.strip().str.upper()
+
+        col_pista = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
+        if col_pista:
+            super_base_bi[col_pista] = super_base_bi[col_pista].astype(str).str.strip().str.upper()
+
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada_app)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
@@ -414,15 +425,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
         # =================================================================
-        # 1.5 AUTO-COMPLETADO DE PISTAS FANTASMAS (Evita que desaparezcan vuelos en el filtro)
+        # 1.5 AUTO-COMPLETADO DE PISTAS FANTASMAS
         # =================================================================
-        col_pista = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         if col_pista and 'HK' in super_base_bi.columns:
-            mask_hk = (super_base_bi['HK'].astype(str).str.strip() != "") & (super_base_bi['HK'].notna())
+            mask_hk = (super_base_bi['HK'] != "") & (super_base_bi['HK'] != "NAN")
             if not super_base_bi[mask_hk].empty:
-                mask_pista_llena = mask_hk & (super_base_bi[col_pista].astype(str).str.strip() != "")
+                mask_pista_llena = mask_hk & (super_base_bi[col_pista] != "") & (super_base_bi[col_pista] != "NAN")
                 mapa_flota = super_base_bi[mask_pista_llena].groupby('HK')[col_pista].agg(lambda x: x.mode()[0] if not x.mode().empty else "").to_dict()
-                mask_pista_vacia = mask_hk & (super_base_bi[col_pista].astype(str).str.strip() == "")
+                mask_pista_vacia = mask_hk & ((super_base_bi[col_pista] == "") | (super_base_bi[col_pista] == "NAN"))
                 super_base_bi.loc[mask_pista_vacia, col_pista] = super_base_bi.loc[mask_pista_vacia, 'HK'].map(mapa_flota).fillna("")
 
         # =================================================================
@@ -451,27 +461,26 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
         with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
         with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
-        fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
+        fincas_disp = ["TODAS"] + sorted([str(x) for x in super_base_bi['FINCA_MAESTRA'].dropna().unique()])
         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
-        col_modelo = 'MODELO' if 'MODELO' in super_base_bi.columns else None
-        modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist()) if col_modelo else ["TODOS"]
+        modelos_disp = ["TODOS"] + sorted([str(x) for x in super_base_bi['MODELO'].dropna().unique()]) if 'MODELO' in super_base_bi.columns else ["TODOS"]
         
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v28")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v30")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v28")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v28")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v30")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v30")
         
-        pistas_disp = sorted(super_base_bi[col_pista].dropna().unique().tolist()) if col_pista else []
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v28")
+        pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v30")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v28")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v28")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v28")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v30")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v30")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v30")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
