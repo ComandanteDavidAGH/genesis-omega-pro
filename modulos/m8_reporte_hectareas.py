@@ -363,7 +363,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     div[data-testid="stMainBlockContainer"] label p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
-        text-transform: uppercase !important;
+        /* 💥 SE RETIRÓ text-transform PARA EVITAR ALTERAR ha/hr */
     }
 
     div[data-testid="stPlotlyChart"] {
@@ -389,7 +389,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .battle-panel:hover { transform: translateY(-5px); }
     .battle-title { font-size: 18px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; text-align: center; }
     .battle-metric-container { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 10px 0; }
-    .battle-metric-label { font-size: 13px; color: #4a5568; font-weight: bold; text-transform: uppercase; }
+    .battle-metric-label { font-size: 13px; color: #4a5568; font-weight: bold; } /* 💥 SE RETIRÓ text-transform PARA EVITAR ALTERAR $/ha */
     .battle-metric-value { font-size: 18px; color: #0d1b2a; font-weight: 900; }
     
     div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
@@ -399,7 +399,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v36.0 - ESTÉTICA Y SIGLAS)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v37.0 - ESTÉTICA Y SIGLAS)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -475,9 +475,9 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
         hb1, hb2, hb3 = st.columns(3)
-        with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🗺️ {total_ha_historicas:,.1f} ha</p></div>", unsafe_allow_html=True)
-        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Tarifa Media Histórica</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
-        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
+        with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>ÁREA HISTÓRICA CUBIERTA</p><p class='hud-bi-value'>🗺️ {total_ha_historicas:,.1f} ha</p></div>", unsafe_allow_html=True)
+        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>TARIFA MEDIA HISTÓRICA</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
+        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>ÓRDENES DE SERVICIO AUDITADAS</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
         fincas_disp = ["TODAS"] + sorted([str(x) for x in super_base_bi['FINCA_MAESTRA'].dropna().unique()])
         años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
@@ -486,19 +486,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v36")
+        vista_seleccionada = c1.radio("👁️ VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v37")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v36")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v36")
+        fecha_sel_ini = c2.date_input("📅 F. INICIAL:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v37")
+        fecha_sel_fin = c3.date_input("📅 F. FINAL:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v37")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v36")
+        pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v37")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v36")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (ha/hr)", value=True, key="m8_r_v36")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v36")
+            mostrar_horas = cc1.checkbox("⏱️ MOSTRAR HORAS", value=True, key="m8_h_v37")
+            calcular_rend_prom = cc2.checkbox("🚀 MOSTRAR REND. (ha/hr)", value=True, key="m8_r_v37")
+            agrupar_avion = cc3.toggle("✈️ DESGLOSAR POR FLOTA", value=False, key="m8_f_v37")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
@@ -552,19 +552,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 <div class='battle-panel' style='border-top-color: #2F75B5;'>
                     <div class='battle-title' style='color: #2F75B5;'>✈️ Flota de Aviones</div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Total Facturado ($)</span>
+                        <span class='battle-metric-label'>TOTAL FACTURADO ($)</span>
                         <span class='battle-metric-value' style='color: #28a745;'>{fmt_dinero(costo_tot_aviones)}</span>
                     </div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Tarifa Promedio ($/ha)</span>
+                        <span class='battle-metric-label'>TARIFA PROMEDIO ($/ha)</span>
                         <span class='battle-metric-value'>{fmt_dinero(prom_costo_av)}</span>
                     </div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Hectáreas Aplicadas</span>
+                        <span class='battle-metric-label'>HECTÁREAS APLICADAS</span>
                         <span class='battle-metric-value'>{fmt_latino(ha_aviones, 1)} ha</span>
                     </div>
                     <div class='battle-metric-container' style='border-bottom: none;'>
-                        <span class='battle-metric-label'>Misiones Completadas</span>
+                        <span class='battle-metric-label'>MISIONES COMPLETADAS</span>
                         <span class='battle-metric-value'>{vuelos_aviones}</span>
                     </div>
                 </div>
@@ -575,19 +575,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 <div class='battle-panel' style='border-top-color: #27AE60;'>
                     <div class='battle-title' style='color: #27AE60;'>🛸 Flota de Drones</div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Total Facturado ($)</span>
+                        <span class='battle-metric-label'>TOTAL FACTURADO ($)</span>
                         <span class='battle-metric-value' style='color: #28a745;'>{fmt_dinero(costo_tot_drones)}</span>
                     </div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Tarifa Promedio ($/ha)</span>
+                        <span class='battle-metric-label'>TARIFA PROMEDIO ($/ha)</span>
                         <span class='battle-metric-value'>{fmt_dinero(prom_costo_dr)}</span>
                     </div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Hectáreas Aplicadas</span>
+                        <span class='battle-metric-label'>HECTÁREAS APLICADAS</span>
                         <span class='battle-metric-value'>{fmt_latino(ha_drones, 1)} ha</span>
                     </div>
                     <div class='battle-metric-container' style='border-bottom: none;'>
-                        <span class='battle-metric-label'>Misiones Completadas</span>
+                        <span class='battle-metric-label'>MISIONES COMPLETADAS</span>
                         <span class='battle-metric-value'>{vuelos_drones}</span>
                     </div>
                 </div>
@@ -764,8 +764,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
+            # 💥 CIRUGÍA: DIVISIÓN DE TABLAS (OPERATIVO vs FINANCIERO)
             df_visual = pd.DataFrame(tabla_final)
             
+            # Listas de columnas a separar
             cols_base = ['NIVEL']
             if agrupar_avion: cols_base.append('AVIÓN (HK)')
             cols_base.append('MES')
@@ -795,10 +797,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 return [''] * len(row)
 
             # 💥 CREACIÓN DE LAS DOS PESTAÑAS (TABS)
-            tab_op, tab_fin = st.tabs(["⚙️ CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
+            tab_op, tab_fin = st.tabs(["🛩️ CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
             
             with tab_op:
-                st.markdown("##### ⚙️ Desglose Operativo Puro")
+                st.markdown("##### 🛩️ Desglose Operativo Puro")
                 st.caption("Perfecto para compartir: Muestra rendimiento físico de las aeronaves ocultando las tarifas monetarias.")
                 st.dataframe(df_operativo.style.apply(aplicar_estilos_originales, axis=1).format(fmt_op), use_container_width=True, hide_index=True)
                 
