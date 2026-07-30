@@ -7,7 +7,11 @@ import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
-# --- 🔌 CONEXIÓN ---
+# --- 🔌 CONEXIÓN Y TIEMPO ---
+def obtener_hora_colombia():
+    """Fuerza el reloj del servidor a la zona horaria estricta de Colombia (UTC-5)"""
+    return datetime.utcnow() + timedelta(hours=-5)
+
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     try:
@@ -35,7 +39,7 @@ def extraer_catalogo_precios_reciente():
     try:
         sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
         productos_recientes = set()
-        anio_actual = datetime.now().year
+        anio_actual = obtener_hora_colombia().year
         
         for ws in sh_precios.worksheets():
             datos = ws.get_all_values()
@@ -102,6 +106,8 @@ DICT_BASE_PRODUCTOS = {
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
+    hoy_colombia = obtener_hora_colombia().date()
+    
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
     st.markdown("""
@@ -117,86 +123,23 @@ def ejecutar():
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
 
     /* 💥 ESTÉTICA VIP: EXPANSORES ESTILO MÓDULO 4 */
-    div[data-testid="stExpander"] {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important;
-        background-color: #ffffff !important;
-        margin-bottom: 20px !important;
-    }
-    div[data-testid="stExpander"] summary {
-        background-color: #0d1b2a !important;
-        border-radius: 6px 6px 0px 0px !important;
-        padding: 10px 15px !important;
-    }
-    div[data-testid="stExpander"] summary p {
-        color: #d4af37 !important;
-        font-family: 'Arial Black', sans-serif !important;
-        font-size: 15px !important;
-        text-transform: uppercase !important;
-        margin: 0 !important;
-    }
-    div[data-testid="stExpander"] summary svg {
-        fill: #d4af37 !important;
-    }
+    div[data-testid="stExpander"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; margin-bottom: 20px !important; }
+    div[data-testid="stExpander"] summary { background-color: #0d1b2a !important; border-radius: 6px 6px 0px 0px !important; padding: 10px 15px !important; }
+    div[data-testid="stExpander"] summary p { color: #d4af37 !important; font-family: 'Arial Black', sans-serif !important; font-size: 15px !important; text-transform: uppercase !important; margin: 0 !important; }
+    div[data-testid="stExpander"] summary svg { fill: #d4af37 !important; }
     
     /* 💥 ETIQUETAS E INPUTS */
-    div[data-testid="stMainBlockContainer"] label p { 
-        color: #0d1b2a !important; 
-        font-weight: 900 !important; 
-        text-transform: uppercase !important; 
-        font-size: 13px !important; 
-    }
-    
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input, 
-    div[data-testid="stDateInput"] input {
-        border: 2px solid #0d1b2a !important; 
-        border-radius: 6px !important; 
-        color: #000000 !important; 
-        font-weight: 900 !important; 
-        background-color: #ffffff !important;
-    }
-    
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-        border: 2px solid #0d1b2a !important; 
-        border-radius: 6px !important; 
-        background-color: #ffffff !important;
-    }
-    
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] * { 
-        color: #000000 !important; 
-        font-weight: 900 !important; 
-    }
+    div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
+    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; color: #000000 !important; font-weight: 900 !important; background-color: #ffffff !important; }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] * { color: #000000 !important; font-weight: 900 !important; }
     
     /* 💥 MATRIZ DE AUDITORÍA BLINDADA */
-    div[data-testid="stDataEditor"] {
-        border: 3px solid #0d1b2a !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important;
-        background-color: #ffffff !important;
-    }
+    div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
     
     /* 💥 BOTONES DE ASCENSOR TÁCTICO */
-    .btn-ascensor {
-        display: block; 
-        width: 100%; 
-        text-align: center; 
-        background-color: #15283c; 
-        color: #d4af37 !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        text-decoration: none !important; 
-        font-weight: 900; 
-        border: 2px solid #d4af37; 
-        margin-bottom: 20px; 
-        box-shadow: 0px 4px 6px rgba(0,0,0,0.2);
-        transition: all 0.3s ease;
-    }
-    .btn-ascensor:hover {
-        background-color: #0d1b2a;
-        box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8);
-    }
+    .btn-ascensor { display: block; width: 100%; text-align: center; background-color: #15283c; color: #d4af37 !important; padding: 12px; border-radius: 8px; text-decoration: none !important; font-weight: 900; border: 2px solid #d4af37; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); transition: all 0.3s ease; }
+    .btn-ascensor:hover { background-color: #0d1b2a; box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -289,8 +232,8 @@ def ejecutar():
     # --- 📊 1. PANEL DE RADARES (KPIs) ---
     st.markdown("### 📡 Radares de Vencimiento")
     
-    hoy = datetime.now()
-    limite_90_dias = hoy + timedelta(days=90)
+    limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
+    hoy_ts = pd.to_datetime(hoy_colombia)
     
     col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
     
@@ -299,9 +242,9 @@ def ejecutar():
     
     if col_fv:
         df['FECHA_VENC_DT'] = df[col_fv].apply(procesar_fecha_estricta)
-        df_activos = df[~df[COL_ESTADO].str.contains("ANULADO", na=False, case=False)]
-        lotes_vencidos = df_activos[df_activos['FECHA_VENC_DT'] < hoy].shape[0]
-        lotes_riesgo = df_activos[(df_activos['FECHA_VENC_DT'] >= hoy) & (df_activos['FECHA_VENC_DT'] <= limite_90_dias)].shape[0]
+        df_activos = df[~df[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
+        lotes_vencidos = df_activos[df_activos['FECHA_VENC_DT'] < hoy_ts].shape[0]
+        lotes_riesgo = df_activos[(df_activos['FECHA_VENC_DT'] >= hoy_ts) & (df_activos['FECHA_VENC_DT'] <= limite_90_dias)].shape[0]
 
     k1, k2, k3 = st.columns(3)
     k1.markdown(f"""
@@ -364,7 +307,7 @@ def ejecutar():
     with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
         f1, f2, f3 = st.columns(3)
         
-        n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP")
+        n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
         semana_calculada = n_fecha_ing.isocalendar()[1]
         n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
         
@@ -373,10 +316,10 @@ def ejecutar():
         f4, f5, f6 = st.columns(3)
         n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0)
         n_lote = f5.text_input("📦 Lote")
-        n_ff = f6.date_input("⚙️ F. Fabricación (F/F)")
+        n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
         
         f7, f8, f9, f10 = st.columns(4)
-        n_fv = f7.date_input("⏳ F. Vencimiento (F/V)")
+        n_fv = f7.date_input("⏳ F. Vencimiento (F/V)", value=hoy_colombia)
         n_factura = f8.text_input("🧾 Factura")
         n_pedido = f9.text_input("🛒 Pedido")
         n_consecutivo = f10.text_input("🔢 Consecutivo SAP")
@@ -466,10 +409,10 @@ def ejecutar():
     # --- 📧 GENERADOR DE REPORTE PARA CORREO ---
     st.markdown("---")
     st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
-    st.info("💡 Selecciona la fecha de los ingresos. Sombrea la tabla resultante, cópiala y pégala directo en tu correo. El formato se conservará impecable.")
+    st.info("💡 Selecciona la fecha de los ingresos. El registro más nuevo siempre saldrá de primero. Sombrea la tabla, cópiala y pégala directo en tu correo.")
     
     col_fecha_rep, col_vacia = st.columns([1, 3])
-    fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=datetime.now())
+    fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
     
     col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
     
@@ -483,6 +426,8 @@ def ejecutar():
         df_correo = df[mask].copy()
         
         if not df_correo.empty:
+            df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
+            
             cols_deseadas = [c for c in df.columns if c in ["SEMANA", "PROVEEDOR", "FECHA DE INGRESO", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]]
             df_correo = df_correo[cols_deseadas]
             
@@ -517,14 +462,12 @@ def ejecutar():
             fecha_str_pantalla = fecha_reporte.strftime("%d/%m/%Y")
             st.warning(f"No se encontraron ingresos registrados en la bóveda con la fecha {fecha_str_pantalla}.")
 
-    # --- 🔍 FILTROS TÁCTICOS ---
+    # --- 🔍 FILTROS TÁCTICOS Y MATRIZ DE AUDITORÍA ---
     st.markdown("---")
     
     st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
-    
     st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
     
-    # 💥 LÓGICA DEL FILTRO DE FRANCOTIRADOR + RANGO DE FECHAS
     f_col1, f_col2 = st.columns([1.5, 1])
     
     filtro_seleccionado = f_col1.radio("Estado Operativo:", 
@@ -538,50 +481,54 @@ def ejecutar():
         
     producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
 
-    # 💥 RASTREADOR TEMPORAL DE INGRESOS (POR DEFECTO MUESTRA ÚLTIMOS 30 DÍAS)
     st.markdown("<br>", unsafe_allow_html=True)
     f_col3, f_col4, _ = st.columns([1, 1, 1.5])
-    fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=datetime.now() - timedelta(days=30))
-    fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=datetime.now())
+    fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=hoy_colombia - timedelta(days=30))
+    fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=hoy_colombia)
     
     df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
 
     df_filtrado = df.copy()
     
-    # 0. Aplicar Filtro de Fechas de Ingreso
     if col_fecha_ingreso:
         fechas_dt = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
         mask_fechas = fechas_dt.apply(lambda x: x.date() if pd.notna(x) else None)
         df_filtrado = df_filtrado[(mask_fechas >= fecha_ini_filtro) & (mask_fechas <= fecha_fin_filtro)]
 
-    # 1. Aplicar filtro de Producto
     if producto_filtro != "TODOS" and col_producto:
         df_filtrado = df_filtrado[df_filtrado[col_producto].str.upper() == producto_filtro]
 
-    # 2. Aplicar filtro de Estado
     if filtro_seleccionado == "✅ Solo Vigentes":
         df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("VIGENTE", case=False, na=False)]
     elif filtro_seleccionado == "🚨 Solo Vencidos" and col_fv:
-        df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO", na=False)) & (df_filtrado['FECHA_VENC_DT'] < hoy)]
+        df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] < hoy_ts)]
     elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv:
-        df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
+        df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
 
-    # --- 🛠️ TABLA DE ANULACIONES ---
+    # 💥 INVERSIÓN GRAVITACIONAL: MÁS NUEVO ARRIBA
+    if col_fecha_ingreso:
+        df_filtrado['FECHA_SORT'] = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
+        df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
+    else:
+        df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
+
     st.markdown("### 🛠️ Matriz de Anulaciones (Solo Lectura y Edición de Estado)")
-    st.caption("🔒 Las cantidades y fechas están bloqueadas por seguridad. Solo puedes hacer doble clic en ESTADO/OBSERVACIÓN para anular.")
+    st.caption("🔒 Haz doble clic en ESTADO/OBSERVACIÓN para anular o ELIMINAR el registro físicamente de la base de datos.")
     
-    cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP']]
+    cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
     
+    # 💥 COMANDO LETAL INYECTADO: BORRADO FÍSICO
     opciones_estado = [
         "✅ VIGENTE",
         "❌ ANULADO: ERROR EN PRECIOS",
         "❌ ANULADO: ERROR DE CANTIDAD",
         "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR",
         "❌ ANULADO: ERROR EN LOTE/FECHAS",
-        "❌ ANULADO: OTRO MOTIVO"
+        "❌ ANULADO: OTRO MOTIVO",
+        "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"
     ]
 
-    columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP']]
+    columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
     df_vista = df_filtrado[columnas_vista].copy()
 
     col_config = {}
@@ -617,30 +564,52 @@ def ejecutar():
         key="editor_ingresos"
     )
 
-    # --- 💾 3. MOTOR DE SINCRONIZACIÓN ---
+    # --- 💾 3. MOTOR DE SINCRONIZACIÓN Y DESTRUCCIÓN FÍSICA ---
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 SINCRONIZAR ANULACIONES EN DRIVE", type="primary"):
-        cambios_detectados = False
-        
+    if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
+        cambios = []
         for i in range(len(df_filtrado)):
             estado_original = str(df_filtrado.iloc[i][COL_ESTADO]).strip()
             estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
             
             if estado_original != estado_nuevo:
-                fila_excel = df_filtrado.iloc[i]['FILA_EXCEL']
-                with st.spinner(f"Inyectando Anulación en Fila {fila_excel}..."):
-                    try:
-                        ws_ingresos.update_cell(fila_excel, idx_col_estado, estado_nuevo)
-                        cambios_detectados = True
-                    except Exception as e:
-                        st.error(f"Error al actualizar fila {fila_excel}. Detalle: {e}")
+                cambios.append({
+                    'fila': int(df_filtrado.iloc[i]['FILA_EXCEL']),
+                    'nuevo': estado_nuevo
+                })
         
-        if cambios_detectados:
-            st.success("✅ ¡Misión Cumplida! Bóveda de Drive actualizada exitosamente con las anulaciones.")
-            st.cache_data.clear() 
-            st.rerun()
+        if cambios:
+            eliminaciones = [c for c in cambios if "ELIMINAR REGISTRO" in c['nuevo']]
+            actualizaciones = [c for c in cambios if "ELIMINAR REGISTRO" not in c['nuevo']]
+            
+            cambios_exitosos = False
+            
+            # 1. Aplicar actualizaciones primero (no alteran la estructura de filas)
+            for act in actualizaciones:
+                with st.spinner(f"Actualizando estado en Fila {act['fila']}..."):
+                    try:
+                        ws_ingresos.update_cell(act['fila'], idx_col_estado, act['nuevo'])
+                        cambios_exitosos = True
+                    except Exception as e:
+                        st.error(f"Error al actualizar fila {act['fila']}: {e}")
+                        
+            # 2. Aplicar eliminaciones de ABAJO hacia ARRIBA (orden inverso estricto)
+            if eliminaciones:
+                eliminaciones_ordenadas = sorted(eliminaciones, key=lambda x: x['fila'], reverse=True)
+                for eli in eliminaciones_ordenadas:
+                    with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
+                        try:
+                            ws_ingresos.delete_rows(eli['fila'])
+                            cambios_exitosos = True
+                        except Exception as e:
+                            st.error(f"Error al eliminar fila {eli['fila']}: {e}")
+                            
+            if cambios_exitosos:
+                st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
+                st.cache_data.clear() 
+                st.rerun()
         else:
-            st.info("No se detectaron cambios en los estados.")
+            st.info("No se detectaron cambios ni órdenes de eliminación.")
 
     # --- 📥 DESCARGA A EXCEL ---
     st.markdown("---")
