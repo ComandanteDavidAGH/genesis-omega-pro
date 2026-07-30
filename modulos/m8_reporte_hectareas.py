@@ -309,8 +309,9 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 
 # =================================================================
 # 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
+# 💥 CIRUGÍA DE BLINDAJE: SE AÑADE **KWARGS PARA ABSORBER CUALQUIER VARIABLE DEL APP.PY
 # =================================================================
-def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, procesar_fecha_pesada_app):
+def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_app=None, procesar_fecha_pesada_app=None, **kwargs):
     st.header("", anchor="inicio_modulo")
 
     st.markdown("""
@@ -377,7 +378,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v30.0 - BLINDAJE DE TITANIO)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v31.0 - BLINDAJE NUMÉRICO)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -385,6 +386,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
             st.rerun()
 
     try:
+        # Fallback de seguridad si falta el procesador de fechas
+        if procesar_fecha_pesada_app is None:
+            procesar_fecha_pesada_app = procesar_fecha_pesada
+            
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
         if df_vivos.empty and df_historico.empty:
             st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
@@ -395,25 +400,22 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
             st.error("🚨 Columnas críticas estructurales ausentes en la Bóveda.")
             return
 
-        for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA']:
+        for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA', 'REND_HR', 'H_PROPORCIONAL', 'SEMANA']:
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0 if col_req not in ['OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA'] else ""
 
         # =================================================================
-        # 💥 1. NORMALIZACIÓN QUIRÚRGICA ESTRICTA (COERCIÓN DE TEXTO PARA EVITAR ERRORES DE SORT)
+        # 💥 1. NORMALIZACIÓN QUIRÚRGICA ESTRICTA (EVITANDO CHOQUE DE TEXTO VS NÚMERO)
         # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['OS_MAESTRA'] = super_base_bi['OS_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_MAESTRO'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO']
         
-        if 'HK' in super_base_bi.columns:
-            super_base_bi['HK'] = super_base_bi['HK'].astype(str).str.strip().str.upper()
-        if 'MODELO' in super_base_bi.columns:
-            super_base_bi['MODELO'] = super_base_bi['MODELO'].astype(str).str.strip().str.upper()
+        if 'HK' in super_base_bi.columns: super_base_bi['HK'] = super_base_bi['HK'].astype(str).str.strip().str.upper()
+        if 'MODELO' in super_base_bi.columns: super_base_bi['MODELO'] = super_base_bi['MODELO'].astype(str).str.strip().str.upper()
 
         col_pista = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
-        if col_pista:
-            super_base_bi[col_pista] = super_base_bi[col_pista].astype(str).str.strip().str.upper()
+        if col_pista: super_base_bi[col_pista] = super_base_bi[col_pista].astype(str).str.strip().str.upper()
 
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada_app)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
@@ -422,7 +424,12 @@ def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, proce
         super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
         super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
         super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
+        
+        # 💥 BLINDAJE DE NÚMEROS: Obligamos a que las horas y áreas sean floats matemáticos
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
+        if 'REND_HR' in super_base_bi.columns: super_base_bi['REND_HR'] = super_base_bi['REND_HR'].apply(limpiar_area)
+        if 'H_PROPORCIONAL' in super_base_bi.columns: super_base_bi['H_PROPORCIONAL'] = super_base_bi['H_PROPORCIONAL'].apply(limpiar_area)
+        if 'SEMANA' in super_base_bi.columns: super_base_bi['SEMANA'] = pd.to_numeric(super_base_bi['SEMANA'], errors='coerce').fillna(0).astype(int)
 
         # =================================================================
         # 1.5 AUTO-COMPLETADO DE PISTAS FANTASMAS
