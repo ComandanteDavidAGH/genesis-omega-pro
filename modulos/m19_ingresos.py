@@ -22,7 +22,7 @@ def procesar_fecha_estricta(val):
     s = str(val).strip()
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y'):
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%y', '%m/%d/%y'):
         try: return pd.to_datetime(s, format=fmt)
         except: pass
     return pd.NaT
@@ -205,7 +205,6 @@ def ejecutar():
             ws_ingresos = sh_local.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
-            # --- FUSIÓN TÁCTICA ---
             dict_operativo = {k.upper(): v.upper() for k, v in DICT_BASE_PRODUCTOS.items()}
             
             try:
@@ -419,18 +418,23 @@ def ejecutar():
     
     col_fecha_rep, col_vacia = st.columns([1, 3])
     fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=datetime.now())
-    fecha_reporte_str = fecha_reporte.strftime("%d/%m/%Y")
     
     col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
     
     if col_fecha_ingreso:
-        df_correo = df[df[col_fecha_ingreso] == fecha_reporte_str].copy()
+        # 💥 MAGIA TÁCTICA: PARSEO DE FECHAS ESTRICTO PARA CUALQUIER FORMATO DE EXCEL
+        df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
+        
+        def obtener_fecha_limpia(x):
+            return x.date() if pd.notna(x) else None
+            
+        mask = df['FECHA_ING_TEMP'].apply(obtener_fecha_limpia) == fecha_reporte
+        df_correo = df[mask].copy()
         
         if not df_correo.empty:
             cols_deseadas = [c for c in df.columns if c in ["SEMANA", "PROVEEDOR", "FECHA DE INGRESO", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]]
             df_correo = df_correo[cols_deseadas]
             
-            # 💥 CIRUGÍA MAYOR: CONSTRUCCIÓN MANUAL HTML
             html_manual = """
             <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 13px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
                 <thead>
@@ -459,7 +463,8 @@ def ejecutar():
             st.markdown(html_manual, unsafe_allow_html=True)
             
         else:
-            st.warning(f"No se encontraron ingresos registrados en la bóveda con la fecha {fecha_reporte_str}.")
+            fecha_str_pantalla = fecha_reporte.strftime("%d/%m/%Y")
+            st.warning(f"No se encontraron ingresos registrados en la bóveda con la fecha {fecha_str_pantalla}.")
 
     # --- 🔍 FILTROS TÁCTICOS ---
     st.markdown("---")
@@ -482,7 +487,7 @@ def ejecutar():
     st.markdown("### 🛠️ Matriz de Anulaciones (Solo Lectura y Edición de Estado)")
     st.caption("🔒 Las cantidades y fechas están bloqueadas por seguridad. Solo puedes hacer doble clic en ESTADO/OBSERVACIÓN para anular.")
     
-    cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT']]
+    cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP']]
     
     opciones_estado = [
         "✅ VIGENTE",
@@ -493,7 +498,7 @@ def ejecutar():
         "❌ ANULADO: OTRO MOTIVO"
     ]
 
-    columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT']]
+    columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP']]
     df_vista = df_filtrado[columnas_vista].copy()
 
     df_editado = st.data_editor(
