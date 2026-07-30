@@ -6,6 +6,7 @@ import re
 import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 # --- 🔌 CONEXIÓN Y TIEMPO ---
 def obtener_hora_colombia():
@@ -114,7 +115,6 @@ def ejecutar():
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
     
-    /* 💥 KPIs PERSONALIZADOS Y BLINDADOS */
     .kpi-card { background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; }
     .kpi-rojo { border-left-color: #dc3545; }
     .kpi-amarillo { border-left-color: #ffc107; }
@@ -122,22 +122,18 @@ def ejecutar():
     .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
 
-    /* 💥 ESTÉTICA VIP: EXPANSORES ESTILO MÓDULO 4 */
     div[data-testid="stExpander"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; margin-bottom: 20px !important; }
     div[data-testid="stExpander"] summary { background-color: #0d1b2a !important; border-radius: 6px 6px 0px 0px !important; padding: 10px 15px !important; }
     div[data-testid="stExpander"] summary p { color: #d4af37 !important; font-family: 'Arial Black', sans-serif !important; font-size: 15px !important; text-transform: uppercase !important; margin: 0 !important; }
     div[data-testid="stExpander"] summary svg { fill: #d4af37 !important; }
     
-    /* 💥 ETIQUETAS E INPUTS */
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
     div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; color: #000000 !important; font-weight: 900 !important; background-color: #ffffff !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * { color: #000000 !important; font-weight: 900 !important; }
     
-    /* 💥 MATRIZ DE AUDITORÍA BLINDADA */
     div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
     
-    /* 💥 BOTONES DE ASCENSOR TÁCTICO */
     .btn-ascensor { display: block; width: 100%; text-align: center; background-color: #15283c; color: #d4af37 !important; padding: 12px; border-radius: 8px; text-decoration: none !important; font-weight: 900; border: 2px solid #d4af37; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); transition: all 0.3s ease; }
     .btn-ascensor:hover { background-color: #0d1b2a; box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8); }
     </style>
@@ -166,6 +162,8 @@ def ejecutar():
                 except Exception:
                     st.info("No había basura. La lista ya estaba limpia.")
 
+    # 💥 BOTÓN LÁSER A GOOGLE SHEETS
+    st.markdown(f"<a href='{URL_SHEET_LOCAL}' target='_blank' class='btn-ascensor' style='background-color:#1e4620; border-color:#2e7d32; color:#ffffff !important;'>👁️ VER BASE DE DATOS EN GOOGLE SHEETS (DRIVE EN VIVO)</a>", unsafe_allow_html=True)
     st.write("Panel táctico de auditoría. Ingresa lotes cruzando información oficial con la Base de Precios SAP.")
 
     gc = inicializar_cliente_gspread()
@@ -216,13 +214,12 @@ def ejecutar():
     encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
     df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
     
-    # 💥 CIRUGÍA MAYOR: ASIGNACIÓN DE COORDENADAS EXACTAS ANTES DE FILTRAR
-    # Esto garantiza que la fila 1500 siga siendo la 1500 aunque haya 10 filas vacías arriba.
+    # Coordenadas maestras puras
     df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
     
     col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
     if col_producto:
-        # Ahora sí, limpiamos los espacios en blanco visuales sin dañar la coordenada original
+        # Filtramos blancos
         df = df[df[col_producto].str.strip() != ""]
 
     COL_ESTADO = "ESTADO / OBSERVACIÓN"
@@ -272,10 +269,7 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("---")
-    
-    # 💥 BOTÓN DE SALTO RÁPIDO HACIA ABAJO
     st.markdown("""<a href="#seccion-auditoria" class="btn-ascensor">👇 SALTAR DIRECTO A LA MATRIZ DE AUDITORÍA 👇</a>""", unsafe_allow_html=True)
-    
     st.markdown("### ➕ Inyector de Nuevos Ingresos")
 
     # --- ➕ BLOQUE 1: IDENTIFICACIÓN DEL QUÍMICO ---
@@ -380,7 +374,7 @@ def ejecutar():
                         else:
                             ws_dicc.append_row([prod_limpio, prov_limpio])
                     except Exception as e:
-                        st.warning(f"Se guardó el ingreso, pero falló la escritura en el Diccionario: {e}")
+                        st.warning(f"Se guardó el diccionario: {e}")
 
                 nueva_fila_drive = []
                 for header in encabezados:
@@ -401,9 +395,14 @@ def ejecutar():
                     else: nueva_fila_drive.append("") 
                 
                 try:
-                    with st.spinner("Enviando datos al satélite..."):
-                        ws_ingresos.append_row(nueva_fila_drive)
-                    st.success(f"✅ ¡Lote de {prod_limpio} inyectado exitosamente en SAP-Nube!")
+                    with st.spinner("Enviando datos con láser matemático..."):
+                        # 💥 CIRUGÍA: INYECCIÓN MATEMÁTICA EXACTA PARA EVITAR ABISMOS DE FORMATO
+                        fila_destino = idx_header + len(df) + 2
+                        letra_col = get_column_letter(len(encabezados))
+                        rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
+                        ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
+                        
+                    st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
@@ -412,7 +411,6 @@ def ejecutar():
     # --- 📧 GENERADOR DE REPORTE PARA CORREO ---
     st.markdown("---")
     st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
-    st.info("💡 Selecciona la fecha de los ingresos. El registro más nuevo siempre saldrá de primero. Sombrea la tabla, cópiala y pégala directo en tu correo.")
     
     col_fecha_rep, col_vacia = st.columns([1, 3])
     fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
@@ -458,7 +456,6 @@ def ejecutar():
                 </tbody>
             </table>
             """
-            
             st.markdown(html_manual, unsafe_allow_html=True)
             
         else:
@@ -467,12 +464,10 @@ def ejecutar():
 
     # --- 🔍 FILTROS TÁCTICOS Y MATRIZ DE AUDITORÍA ---
     st.markdown("---")
-    
     st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
     st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
     
     f_col1, f_col2 = st.columns([1.5, 1])
-    
     filtro_seleccionado = f_col1.radio("Estado Operativo:", 
                                  ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], 
                                  horizontal=True)
@@ -508,7 +503,6 @@ def ejecutar():
     elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv:
         df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
 
-    # 💥 INVERSIÓN GRAVITACIONAL: MÁS NUEVO ARRIBA EN LA AUDITORÍA
     if col_fecha_ingreso:
         df_filtrado['FECHA_SORT'] = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
         df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
@@ -520,7 +514,7 @@ def ejecutar():
     
     cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
     
-    # 💥 COMANDO LETAL INYECTADO: BORRADO FÍSICO
+    # 💥 COMANDO LETAL INYECTADO
     opciones_estado = [
         "✅ VIGENTE",
         "❌ ANULADO: ERROR EN PRECIOS",
@@ -587,7 +581,6 @@ def ejecutar():
             
             cambios_exitosos = False
             
-            # 1. Aplicar actualizaciones primero (no alteran la estructura de filas)
             for act in actualizaciones:
                 with st.spinner(f"Actualizando estado en Fila {act['fila']}..."):
                     try:
@@ -596,20 +589,22 @@ def ejecutar():
                     except Exception as e:
                         st.error(f"Error al actualizar fila {act['fila']}: {e}")
                         
-            # 2. Aplicar eliminaciones de ABAJO hacia ARRIBA (orden inverso estricto)
             if eliminaciones:
+                # 💥 SEGUNDA CIRUGÍA: BORRADO REDUNDANTE
                 eliminaciones_ordenadas = sorted(eliminaciones, key=lambda x: x['fila'], reverse=True)
                 for eli in eliminaciones_ordenadas:
                     with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
                         try:
-                            # 💥 DOBLE MOTOR DE BORRADO PARA ASEGURAR EJECUCIÓN API
+                            ws_ingresos.delete_row(eli['fila'])
+                            cambios_exitosos = True
+                        except AttributeError:
                             try:
                                 ws_ingresos.delete_rows(eli['fila'])
-                            except AttributeError:
-                                ws_ingresos.delete_row(eli['fila'])
-                            cambios_exitosos = True
+                                cambios_exitosos = True
+                            except Exception as e:
+                                st.error(f"Error fatal API Google. Fila {eli['fila']}. {e}")
                         except Exception as e:
-                            st.error(f"Error al eliminar fila {eli['fila']}. Asegúrate de tener los permisos correctos en Drive. Detalle: {e}")
+                            st.error(f"Error al eliminar fila {eli['fila']}. {e}")
                             
             if cambios_exitosos:
                 st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
@@ -618,20 +613,17 @@ def ejecutar():
         else:
             st.info("No se detectaron cambios ni órdenes de eliminación.")
 
-    # --- 📥 DESCARGA A EXCEL ---
     st.markdown("---")
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
         ws_excel = writer.sheets['Auditoria_Ingresos']
-        
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         for cell in ws_excel[1]:
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center', vertical='center')
-        
         for col in ws_excel.columns:
             max_length = 0
             column = col[0].column_letter 
@@ -639,18 +631,9 @@ def ejecutar():
                 try:
                     if len(str(cell.value)) > max_length: max_length = len(cell.value)
                 except: pass
-            adjusted_width = (max_length + 2)
-            ws_excel.column_dimensions[column].width = adjusted_width
+            ws_excel.column_dimensions[column].width = (max_length + 2)
 
-    st.download_button(
-        label="💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)",
-        data=buffer.getvalue(),
-        file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
-    
-    # 💥 BOTÓN DE SALTO RÁPIDO HACIA ARRIBA
+    st.download_button("💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)", data=buffer.getvalue(), file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
