@@ -346,6 +346,24 @@ def ejecutar():
         n_pedido = f9.text_input("🛒 Pedido")
         n_consecutivo = f10.text_input("🔢 Consecutivo SAP")
         
+        # 💥 PANEL DE COPIADO RÁPIDO PARA SAP (ESPEJO INTELIGENTE)
+        st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
+        
+        cp1, cp2, cp3, cp4 = st.columns(4)
+        with cp1:
+            st.caption("⚖️ CANTIDAD")
+            st.code(str(n_cant), language="text")
+        with cp2:
+            st.caption("📦 LOTE")
+            st.code(n_lote if n_lote else "...", language="text")
+        with cp3:
+            st.caption("🧾 FACTURA")
+            st.code(n_factura if n_factura else "...", language="text")
+        with cp4:
+            st.caption("🛒 PEDIDO")
+            st.code(n_pedido if n_pedido else "...", language="text")
+
         st.markdown("<br>", unsafe_allow_html=True)
         btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
         
@@ -422,7 +440,6 @@ def ejecutar():
     col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
     
     if col_fecha_ingreso:
-        # 💥 MAGIA TÁCTICA: PARSEO DE FECHAS ESTRICTO PARA CUALQUIER FORMATO DE EXCEL
         df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
         
         def obtener_fecha_limpia(x):
