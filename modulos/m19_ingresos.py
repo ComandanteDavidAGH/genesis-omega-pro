@@ -216,11 +216,14 @@ def ejecutar():
     encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
     df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
     
+    # 💥 CIRUGÍA MAYOR: ASIGNACIÓN DE COORDENADAS EXACTAS ANTES DE FILTRAR
+    # Esto garantiza que la fila 1500 siga siendo la 1500 aunque haya 10 filas vacías arriba.
+    df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
+    
     col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
     if col_producto:
+        # Ahora sí, limpiamos los espacios en blanco visuales sin dañar la coordenada original
         df = df[df[col_producto].str.strip() != ""]
-
-    df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
 
     COL_ESTADO = "ESTADO / OBSERVACIÓN"
     if COL_ESTADO not in df.columns:
@@ -505,7 +508,7 @@ def ejecutar():
     elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv:
         df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
 
-    # 💥 INVERSIÓN GRAVITACIONAL: MÁS NUEVO ARRIBA
+    # 💥 INVERSIÓN GRAVITACIONAL: MÁS NUEVO ARRIBA EN LA AUDITORÍA
     if col_fecha_ingreso:
         df_filtrado['FECHA_SORT'] = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
         df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
@@ -599,10 +602,14 @@ def ejecutar():
                 for eli in eliminaciones_ordenadas:
                     with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
                         try:
-                            ws_ingresos.delete_rows(eli['fila'])
+                            # 💥 DOBLE MOTOR DE BORRADO PARA ASEGURAR EJECUCIÓN API
+                            try:
+                                ws_ingresos.delete_rows(eli['fila'])
+                            except AttributeError:
+                                ws_ingresos.delete_row(eli['fila'])
                             cambios_exitosos = True
                         except Exception as e:
-                            st.error(f"Error al eliminar fila {eli['fila']}: {e}")
+                            st.error(f"Error al eliminar fila {eli['fila']}. Asegúrate de tener los permisos correctos en Drive. Detalle: {e}")
                             
             if cambios_exitosos:
                 st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
