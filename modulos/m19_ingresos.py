@@ -6,7 +6,6 @@ import re
 import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
 
 # --- 🔌 CONEXIÓN Y TIEMPO ---
 def obtener_hora_colombia():
@@ -115,6 +114,7 @@ def ejecutar():
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
     
+    /* 💥 KPIs PERSONALIZADOS Y BLINDADOS */
     .kpi-card { background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; }
     .kpi-rojo { border-left-color: #dc3545; }
     .kpi-amarillo { border-left-color: #ffc107; }
@@ -122,18 +122,22 @@ def ejecutar():
     .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
 
+    /* 💥 ESTÉTICA VIP: EXPANSORES ESTILO MÓDULO 4 */
     div[data-testid="stExpander"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; margin-bottom: 20px !important; }
     div[data-testid="stExpander"] summary { background-color: #0d1b2a !important; border-radius: 6px 6px 0px 0px !important; padding: 10px 15px !important; }
     div[data-testid="stExpander"] summary p { color: #d4af37 !important; font-family: 'Arial Black', sans-serif !important; font-size: 15px !important; text-transform: uppercase !important; margin: 0 !important; }
     div[data-testid="stExpander"] summary svg { fill: #d4af37 !important; }
     
+    /* 💥 ETIQUETAS E INPUTS */
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
     div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; color: #000000 !important; font-weight: 900 !important; background-color: #ffffff !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * { color: #000000 !important; font-weight: 900 !important; }
     
+    /* 💥 MATRIZ DE AUDITORÍA BLINDADA */
     div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
     
+    /* 💥 BOTONES DE ASCENSOR TÁCTICO */
     .btn-ascensor { display: block; width: 100%; text-align: center; background-color: #15283c; color: #d4af37 !important; padding: 12px; border-radius: 8px; text-decoration: none !important; font-weight: 900; border: 2px solid #d4af37; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); transition: all 0.3s ease; }
     .btn-ascensor:hover { background-color: #0d1b2a; box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8); }
     </style>
@@ -162,8 +166,6 @@ def ejecutar():
                 except Exception:
                     st.info("No había basura. La lista ya estaba limpia.")
 
-    # 💥 BOTÓN LÁSER A GOOGLE SHEETS
-    st.markdown(f"<a href='{URL_SHEET_LOCAL}' target='_blank' class='btn-ascensor' style='background-color:#1e4620; border-color:#2e7d32; color:#ffffff !important;'>👁️ VER BASE DE DATOS EN GOOGLE SHEETS (DRIVE EN VIVO)</a>", unsafe_allow_html=True)
     st.write("Panel táctico de auditoría. Ingresa lotes cruzando información oficial con la Base de Precios SAP.")
 
     gc = inicializar_cliente_gspread()
@@ -219,7 +221,6 @@ def ejecutar():
     
     col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
     if col_producto:
-        # Filtramos blancos
         df = df[df[col_producto].str.strip() != ""]
 
     COL_ESTADO = "ESTADO / OBSERVACIÓN"
@@ -374,35 +375,31 @@ def ejecutar():
                         else:
                             ws_dicc.append_row([prod_limpio, prov_limpio])
                     except Exception as e:
-                        st.warning(f"Se guardó el diccionario: {e}")
+                        st.warning(f"Se guardó el ingreso, pero falló la escritura en el Diccionario: {e}")
 
                 nueva_fila_drive = []
                 for header in encabezados:
                     h = header.upper()
                     if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
-                    elif "PROVEEDOR" in h: nueva_fila_drive.append(prov_limpio)
-                    elif "FECHA DE INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
-                    elif "PRODUCTO" in h: nueva_fila_drive.append(prod_limpio)
+                    elif "PROV" in h: nueva_fila_drive.append(prov_limpio)
+                    elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
+                    elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
                     elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
-                    elif "CANTIDAD" in h: nueva_fila_drive.append(str(n_cant))
+                    elif "CANT" in h: nueva_fila_drive.append(str(n_cant))
                     elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
                     elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
                     elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
-                    elif "FACTURA" in h: nueva_fila_drive.append(str(n_factura))
+                    elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
                     elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
-                    elif "CONSECUTIVO" in h: nueva_fila_drive.append(str(n_consecutivo))
+                    # 💥 EXTRACCIÓN ROBUSTA DE CONSECUTIVO Y CANTIDAD EN LA INYECCIÓN
+                    elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
                     elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
                     else: nueva_fila_drive.append("") 
                 
                 try:
-                    with st.spinner("Enviando datos con láser matemático..."):
-                        # 💥 CIRUGÍA: INYECCIÓN MATEMÁTICA EXACTA PARA EVITAR ABISMOS DE FORMATO
-                        fila_destino = idx_header + len(df) + 2
-                        letra_col = get_column_letter(len(encabezados))
-                        rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
-                        ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
-                        
-                    st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
+                    with st.spinner("Enviando datos al satélite..."):
+                        ws_ingresos.append_row(nueva_fila_drive)
+                    st.success(f"✅ ¡Lote de {prod_limpio} inyectado exitosamente en SAP-Nube!")
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
@@ -411,6 +408,7 @@ def ejecutar():
     # --- 📧 GENERADOR DE REPORTE PARA CORREO ---
     st.markdown("---")
     st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
+    st.info("💡 Selecciona la fecha de los ingresos. El registro más nuevo siempre saldrá de primero. Sombrea la tabla, cópiala y pégala directo en tu correo.")
     
     col_fecha_rep, col_vacia = st.columns([1, 3])
     fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
@@ -429,15 +427,38 @@ def ejecutar():
         if not df_correo.empty:
             df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
             
-            cols_deseadas = [c for c in df.columns if c in ["SEMANA", "PROVEEDOR", "FECHA DE INGRESO", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]]
-            df_correo = df_correo[cols_deseadas]
+            # 💥 CIRUGÍA MAYOR: MAPEADO Y EXTRACCIÓN DE COLUMNAS A PRUEBA DE BALAS
+            mapa_columnas = {}
+            for col_excel in df.columns:
+                c_up = str(col_excel).upper()
+                if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
+                elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
+                elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
+                elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
+                elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
+                elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
+                elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
+                elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
+                elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
+                elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
+                elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
+                elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
+                
+            # Filtramos el DataFrame solo con las columnas detectadas y las renombramos limpiamente
+            df_correo_limpio = df_correo[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
+            
+            # Orden deseado visual para el correo
+            orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
+            columnas_finales = [col for col in orden_ideal if col in df_correo_limpio.columns]
+            
+            df_correo_limpio = df_correo_limpio[columnas_finales]
             
             html_manual = """
             <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 13px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
                 <thead>
                     <tr>
             """
-            for col_name in df_correo.columns:
+            for col_name in df_correo_limpio.columns:
                 html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 12px 10px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase;'>{col_name}</th>"
             
             html_manual += """
@@ -445,9 +466,9 @@ def ejecutar():
                 </thead>
                 <tbody>
             """
-            for _, row in df_correo.iterrows():
+            for _, row in df_correo_limpio.iterrows():
                 html_manual += "<tr>"
-                for col_name in df_correo.columns:
+                for col_name in df_correo_limpio.columns:
                     val = str(row[col_name]) if pd.notna(row[col_name]) else ""
                     html_manual += f"<td style='padding: 10px; border: 2px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold;'>{val}</td>"
                 html_manual += "</tr>"
@@ -456,6 +477,7 @@ def ejecutar():
                 </tbody>
             </table>
             """
+            
             st.markdown(html_manual, unsafe_allow_html=True)
             
         else:
@@ -514,7 +536,6 @@ def ejecutar():
     
     cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
     
-    # 💥 COMANDO LETAL INYECTADO
     opciones_estado = [
         "✅ VIGENTE",
         "❌ ANULADO: ERROR EN PRECIOS",
@@ -542,7 +563,7 @@ def ejecutar():
         elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn("⏳ F/V", width="small")
         elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA", width="medium")
         elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO", width="medium")
-        elif "CONSEC" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+        elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
         
     col_config[COL_ESTADO] = st.column_config.SelectboxColumn(
         "🛡️ ESTADO / OBSERVACIÓN",
@@ -590,7 +611,6 @@ def ejecutar():
                         st.error(f"Error al actualizar fila {act['fila']}: {e}")
                         
             if eliminaciones:
-                # 💥 SEGUNDA CIRUGÍA: BORRADO REDUNDANTE
                 eliminaciones_ordenadas = sorted(eliminaciones, key=lambda x: x['fila'], reverse=True)
                 for eli in eliminaciones_ordenadas:
                     with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
