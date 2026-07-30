@@ -102,6 +102,8 @@ DICT_BASE_PRODUCTOS = {
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
+    st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
+    
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
@@ -165,6 +167,27 @@ def ejecutar():
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * { 
         color: #000000 !important; 
         font-weight: 900 !important; 
+    }
+    
+    /* 💥 BOTONES DE ASCENSOR TÁCTICO */
+    .btn-ascensor {
+        display: block; 
+        width: 100%; 
+        text-align: center; 
+        background-color: #15283c; 
+        color: #d4af37 !important; 
+        padding: 12px; 
+        border-radius: 8px; 
+        text-decoration: none !important; 
+        font-weight: 900; 
+        border: 2px solid #d4af37; 
+        margin-bottom: 20px; 
+        box-shadow: 0px 4px 6px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
+    }
+    .btn-ascensor:hover {
+        background-color: #0d1b2a;
+        box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -295,6 +318,10 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("---")
+    
+    # 💥 BOTÓN DE SALTO RÁPIDO HACIA ABAJO
+    st.markdown("""<a href="#seccion-auditoria" class="btn-ascensor">👇 SALTAR DIRECTO A LA MATRIZ DE AUDITORÍA 👇</a>""", unsafe_allow_html=True)
+    
     st.markdown("### ➕ Inyector de Nuevos Ingresos")
 
     # --- ➕ BLOQUE 1: IDENTIFICACIÓN DEL QUÍMICO ---
@@ -346,7 +373,6 @@ def ejecutar():
         n_pedido = f9.text_input("🛒 Pedido")
         n_consecutivo = f10.text_input("🔢 Consecutivo SAP")
         
-        # 💥 PANEL DE COPIADO RÁPIDO PARA SAP (ESPEJO INTELIGENTE)
         st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
         st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
         
@@ -485,6 +511,10 @@ def ejecutar():
 
     # --- 🔍 FILTROS TÁCTICOS ---
     st.markdown("---")
+    
+    # 💥 ANCLA PARA EL ASCENSOR HACIA ABAJO
+    st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
+    
     st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
     filtro_seleccionado = st.radio("Mostrar ingresos:", 
                                  ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], 
@@ -591,6 +621,9 @@ def ejecutar():
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
+    
+    # 💥 BOTÓN DE SALTO RÁPIDO HACIA ARRIBA
+    st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     ejecutar()
