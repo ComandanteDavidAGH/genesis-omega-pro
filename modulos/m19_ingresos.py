@@ -123,7 +123,6 @@ DICT_BASE_PRODUCTOS = {
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
     
-    # 💥 INICIALIZACIÓN DE LA MEMORIA PARA AUTO-LIMPIEZA
     if 'in_cant' not in st.session_state: st.session_state['in_cant'] = 0.0
     if 'in_lote' not in st.session_state: st.session_state['in_lote'] = ""
     if 'in_factura' not in st.session_state: st.session_state['in_factura'] = ""
@@ -204,7 +203,7 @@ def ejecutar():
             ws_ingresos = sh_local.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
-            dict_operativo = {k.upper(): v.upper() for k, v in DICT_BASE_PRODUCTOS.items()}
+            dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
             
             try:
                 ws_dicc = sh_local.worksheet("DICCIONARIO")
@@ -220,8 +219,9 @@ def ejecutar():
             
             productos_precio_sap = extraer_catalogo_precios_reciente()
             for prod_sap in productos_precio_sap:
-                if prod_sap not in dict_operativo:
-                    dict_operativo[prod_sap] = "" 
+                prod_sap_limpio = prod_sap.strip()
+                if prod_sap_limpio not in dict_operativo:
+                    dict_operativo[prod_sap_limpio] = "" 
 
         except Exception as e:
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
@@ -310,7 +310,10 @@ def ejecutar():
             n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
         else:
             modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
-            lista_prods_ordenada = sorted([p for p in dict_operativo.keys() if len(p) > 3])
+            
+            # 💥 CIRUGÍA ANTIDUPLICADOS: SET PURO PARA EL INYECTOR
+            lista_prods_limpia = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
+            lista_prods_ordenada = sorted(list(lista_prods_limpia))
             
             n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", lista_prods_ordenada)
             proveedor_asignado = dict_operativo.get(n_prod, "")
@@ -327,7 +330,6 @@ def ejecutar():
 
     # --- ➕ BLOQUE 2: DATOS OPERATIVOS ---
     with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
-        # 💥 BOTÓN TÁCTICO DE LIMPIEZA
         col_espacio, col_limpiar = st.columns([3, 1])
         col_limpiar.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_operativos, use_container_width=True)
         
@@ -335,10 +337,10 @@ def ejecutar():
         n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
         semana_calculada = n_fecha_ing.isocalendar()[1]
         n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
+        
         n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
         
         f4, f5, f6 = st.columns(3)
-        # 💥 ENLACE CON SESSION_STATE PARA BORRADO
         n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key="in_cant")
         n_lote = f5.text_input("📦 Lote", key="in_lote")
         n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
@@ -430,10 +432,7 @@ def ejecutar():
                         ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
                         
                     st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
-                    
-                    # 💥 AUTO-LIMPIEZA TRAS INYECCIÓN EXITOSA
                     limpiar_campos_operativos()
-                    
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
@@ -504,9 +503,7 @@ def ejecutar():
                         val_str = ""
                     else:
                         val_str = str(val).strip()
-                        
-                        if col_name == "CANTIDAD":
-                            val_str = formatear_numero_sap(val_str)
+                        if col_name == "CANTIDAD": val_str = formatear_numero_sap(val_str)
                                 
                     html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
                 html_manual += "</tr>"
@@ -533,7 +530,9 @@ def ejecutar():
                                  horizontal=True)
     
     if col_producto:
-        lista_productos_tabla = ["TODOS"] + sorted([str(x).upper() for x in df[col_producto].dropna().unique() if str(x).strip() != ""])
+        # 💥 CIRUGÍA ANTIDUPLICADOS: SET PURO PARA EL FILTRO DE AUDITORÍA
+        productos_puros_auditoria = set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""])
+        lista_productos_tabla = ["TODOS"] + sorted(list(productos_puros_auditoria))
     else:
         lista_productos_tabla = ["TODOS"]
         
