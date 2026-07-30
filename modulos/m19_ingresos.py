@@ -105,9 +105,44 @@ def ejecutar():
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
-    div[data-testid="metric-container"] { background-color: #0d1b2a; border: 2px solid #d4af37; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-    div[data-testid="metric-container"] label { color: #a0aec0 !important; font-weight: bold !important; font-size: 14px !important; text-transform: uppercase; }
-    div[data-testid="metric-container"] div[data-testid="stMetricValue"] { color: #ffffff !important; font-weight: 900 !important; font-size: 32px !important; }
+    
+    /* 💥 KPIs PERSONALIZADOS Y BLINDADOS */
+    .kpi-card { background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; }
+    .kpi-rojo { border-left-color: #dc3545; }
+    .kpi-amarillo { border-left-color: #ffc107; }
+    .kpi-verde { border-left-color: #28a745; }
+    .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
+    .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
+
+    /* 💥 FORZAR ETIQUETAS E INPUTS (ADIÓS PALIDEZ) */
+    div[data-testid="stMainBlockContainer"] label p { 
+        color: #0d1b2a !important; 
+        font-weight: 900 !important; 
+        text-transform: uppercase !important; 
+        font-size: 13px !important; 
+    }
+    
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input, 
+    div[data-testid="stDateInput"] input {
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 6px !important; 
+        color: #000000 !important; 
+        font-weight: 900 !important; 
+        background-color: #ffffff !important;
+    }
+    
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 6px !important; 
+        background-color: #ffffff !important;
+    }
+    
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] * { 
+        color: #000000 !important; 
+        font-weight: 900 !important; 
+    }
+    
     .st-expander { border: 2px solid #0d1b2a !important; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
@@ -121,7 +156,6 @@ def ejecutar():
         st.cache_data.clear()
         st.rerun()
 
-    # 💥 EL BOTÓN NUCLEAR PARA ELIMINAR EL DICCIONARIO FANTASMA
     if c_btn2.button("🧹 PURGAR DICCIONARIO", type="secondary", use_container_width=True):
         with st.spinner("Aniquilando diccionario oculto..."):
             gc = inicializar_cliente_gspread()
@@ -218,9 +252,26 @@ def ejecutar():
         lotes_riesgo = df_activos[(df_activos['FECHA_VENC_DT'] >= hoy) & (df_activos['FECHA_VENC_DT'] <= limite_90_dias)].shape[0]
 
     k1, k2, k3 = st.columns(3)
-    k1.metric("📦 Ingresos Registrados", len(df))
-    k2.metric("🚨 Lotes Vencidos", lotes_vencidos)
-    k3.metric("⚠️ Por Vencer (90 Días)", lotes_riesgo)
+    k1.markdown(f"""
+    <div class='kpi-card kpi-verde'>
+        <div class='kpi-titulo'>📦 Ingresos Registrados</div>
+        <p class='kpi-valor'>{len(df)}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    k2.markdown(f"""
+    <div class='kpi-card kpi-rojo'>
+        <div class='kpi-titulo'>🚨 Lotes Vencidos</div>
+        <p class='kpi-valor'>{lotes_vencidos}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    k3.markdown(f"""
+    <div class='kpi-card kpi-amarillo'>
+        <div class='kpi-titulo'>⚠️ Por Vencer (90 Días)</div>
+        <p class='kpi-valor'>{lotes_riesgo}</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -228,7 +279,7 @@ def ejecutar():
     st.markdown("### ➕ Inyector de Nuevos Ingresos")
     
     with st.container(border=True):
-        st.markdown("<p style='color: #0d1b2a; font-weight: bold;'>1. Identificación del Químico Oficial</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #0d1b2a; font-size: 16px; font-weight: 900;'>1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL</p>", unsafe_allow_html=True)
         
         c_tog1, c_tog2 = st.columns(2)
         es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
@@ -256,7 +307,7 @@ def ejecutar():
                 placeholder="Digite el proveedor para guardarlo en el Diccionario"
             )
             
-        st.markdown("<p style='color: #0d1b2a; font-weight: bold; margin-top: 15px;'>2. Datos Operativos</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #0d1b2a; font-size: 16px; font-weight: 900; margin-top: 15px;'>2. DATOS OPERATIVOS</p>", unsafe_allow_html=True)
         f1, f2, f3 = st.columns(3)
         
         n_fecha_ing = f2.date_input("Fecha de Ingreso a SAP")
