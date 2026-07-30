@@ -27,7 +27,43 @@ def procesar_fecha_estricta(val):
         except: pass
     return pd.NaT
 
-# --- DICCIONARIO BASE (Basado EXACTAMENTE en tu imagen oficial) ---
+# --- 🧠 MOTOR DE EXTRACCIÓN DE PRECIOS DEL ÚLTIMO AÑO ---
+@st.cache_data(show_spinner=False, ttl=3600)
+def extraer_catalogo_precios_reciente():
+    gc = inicializar_cliente_gspread()
+    if not gc: return []
+    try:
+        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
+        productos_recientes = set()
+        anio_actual = datetime.now().year
+        
+        for ws in sh_precios.worksheets():
+            datos = ws.get_all_values()
+            if not datos: continue
+            
+            idx_anio, idx_prod = -1, -1
+            for i in range(min(10, len(datos))):
+                fila_up = [str(x).upper().strip() for x in datos[i]]
+                if 'AÑO' in fila_up and 'PRODUCTO' in fila_up:
+                    idx_anio = fila_up.index('AÑO')
+                    idx_prod = fila_up.index('PRODUCTO')
+                    break
+            
+            if idx_anio != -1 and idx_prod != -1:
+                for row in datos[idx_anio+1:]:
+                    if len(row) > max(idx_anio, idx_prod):
+                        anio_str = str(row[idx_anio]).strip()
+                        # Extraemos productos del año actual y el anterior por seguridad
+                        if anio_str in [str(anio_actual), str(anio_actual - 1)]:
+                            p_nombre = str(row[idx_prod]).strip().upper()
+                            # Filtro de pureza: ignoramos dosis, siglas y textos muy cortos
+                            if p_nombre and "DOSIS" not in p_nombre and "SIGLAS" not in p_nombre and len(p_nombre) > 3:
+                                productos_recientes.add(p_nombre)
+        return list(productos_recientes)
+    except Exception:
+        return []
+
+# --- DICCIONARIO BASE ---
 DICT_BASE_PRODUCTOS = {
     "ACEITE DICAM": "ROYAL BIOCHEM",
     "ACONDICIONADOR SV": "SYS TECNOLOGIES",
@@ -74,6 +110,7 @@ def ejecutar():
     div[data-testid="metric-container"] { background-color: #0d1b2a; border: 2px solid #d4af37; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     div[data-testid="metric-container"] label { color: #a0aec0 !important; font-weight: bold !important; font-size: 14px !important; text-transform: uppercase; }
     div[data-testid="metric-container"] div[data-testid="stMetricValue"] { color: #ffffff !important; font-weight: 900 !important; font-size: 32px !important; }
+    .st-expander { border: 2px solid #0d1b2a !important; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -84,7 +121,7 @@ def ejecutar():
         st.cache_data.clear()
         st.rerun()
 
-    st.write("Panel táctico de auditoría. Ingresa lotes de manera asistida usando nomenclatura oficial.")
+    st.write("Panel táctico de auditoría. Ingresa lotes cruzando información oficial con la Base de Precios SAP.")
 
     gc = inicializar_cliente_gspread()
     if not gc:
@@ -93,14 +130,16 @@ def ejecutar():
 
     URL_SHEET_LOCAL = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
 
-    with st.spinner("📡 Sincronizando Bóveda y Diccionario en Drive..."):
+    with st.spinner("📡 Sincronizando Bóveda de Ingresos y Catálogo de Precios Históricos..."):
         try:
             sh_local = gc.open_by_url(URL_SHEET_LOCAL)
             ws_ingresos = sh_local.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
-            # --- CARGAR DICCIONARIO DINÁMICO (Prioridad Drive sobre Hardcode) ---
+            # --- FUSIÓN TÁCTICA: DICCIONARIO LOCAL + BASE DE PRECIOS SAP ---
             dict_operativo = {k.upper(): v.upper() for k, v in DICT_BASE_PRODUCTOS.items()}
+            
+            # Extraer los del diccionario guardado en Drive
             try:
                 ws_dicc = sh_local.worksheet("DICCIONARIO")
                 datos_dicc = ws_dicc.get_all_values()
@@ -108,9 +147,16 @@ def ejecutar():
                     if len(row) >= 2 and str(row[0]).strip():
                         producto_nube = str(row[0]).strip().upper()
                         proveedor_nube = str(row[1]).strip().upper()
-                        dict_operativo[producto_nube] = proveedor_nube
+                        if len(producto_nube) > 3: # Evitamos basura
+                            dict_operativo[producto_nube] = proveedor_nube
             except Exception:
                 pass 
+            
+            # Traer los del último año de la base de precios
+            productos_precio_sap = extraer_catalogo_precios_reciente()
+            for prod_sap in productos_precio_sap:
+                if prod_sap not in dict_operativo:
+                    dict_operativo[prod_sap] = "" # Agregamos el producto sin proveedor por defecto
 
         except Exception as e:
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
@@ -187,12 +233,22 @@ def ejecutar():
         else:
             modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
             
-            lista_prods_ordenada = sorted(list(dict_operativo.keys()))
-            n_prod = c_prod.selectbox("Seleccione el Producto", lista_prods_ordenada)
+            # Filtro adicional de limpieza visual para la lista desplegable
+            lista_prods_ordenada = sorted([p for p in dict_operativo.keys() if len(p) > 3])
+            
+            n_prod = c_prod.selectbox("Seleccione el Producto (Integrado con Precios SAP)", lista_prods_ordenada)
             proveedor_asignado = dict_operativo.get(n_prod, "")
             
-            # Bloquea o desbloquea según el interruptor
-            n_prov = c_prov.text_input("Proveedor", value=proveedor_asignado, disabled=not modificar_prov)
+            # Si no hay proveedor asignado, se desbloquea automáticamente para escribir
+            es_vacio = not bool(proveedor_asignado.strip())
+            debe_desbloquear = modificar_prov or es_vacio
+            
+            n_prov = c_prov.text_input(
+                "Proveedor", 
+                value=proveedor_asignado, 
+                disabled=not debe_desbloquear, 
+                placeholder="Digite el proveedor para guardarlo en el Diccionario"
+            )
             
         st.markdown("<p style='color: #0d1b2a; font-weight: bold; margin-top: 15px;'>2. Datos Operativos</p>", unsafe_allow_html=True)
         f1, f2, f3 = st.columns(3)
@@ -227,7 +283,7 @@ def ejecutar():
                 actualizar_dicc = False
                 if es_nuevo_producto:
                     actualizar_dicc = True
-                elif modificar_prov and prov_limpio != proveedor_asignado.upper():
+                elif (modificar_prov or es_vacio) and prov_limpio and prov_limpio != proveedor_asignado.upper():
                     actualizar_dicc = True
                 
                 if actualizar_dicc:
@@ -238,7 +294,6 @@ def ejecutar():
                         ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
                     
                     try:
-                        # Buscamos si existe para actualizar, sino añadimos
                         datos_d = ws_dicc.get_all_values()
                         fila_a_actualizar = -1
                         for idx_d, row_d in enumerate(datos_d):
