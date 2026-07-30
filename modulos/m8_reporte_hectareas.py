@@ -10,12 +10,12 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V23 (CONEXIÓN DIRECTA A EXCEL/SHEETS)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V24 (MULTIFILTRO Y EXCEL GERENCIAL)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
     # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL CON SELLO DE VERIFICACIÓN
-    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento <span style='font-size: 16px; color: #d4af37;'>[V23]</span></h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento <span style='font-size: 16px; color: #d4af37;'>[V24]</span></h1>", unsafe_allow_html=True)
     
     # 🚀 REFORZAMIENTO ESTÉTICO VIP Y EFECTO LUPA GLOBAL (SC)
     st.markdown("""
@@ -26,6 +26,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
     div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stMainBlockContainer"] div[data-testid="stMultiSelect"] [data-baseweb="select"],
     div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
         border: 2px solid #0d1b2a !important;
         border-radius: 6px !important;
@@ -210,25 +211,32 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         # --- 🎛️ PANEL DE CONTROL ---
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
-        c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.2])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v10")
+        c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v24")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v6")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v6")
-        pista_sel = c4.selectbox("📍 Base (Pista)", ["TODAS"] + pistas_disp, key="m8_pista_v6")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v24")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v24")
+        
+        # 💥 REEMPLAZO TÁCTICO: MULTISELECTOR DE PISTAS
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v24")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v6")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v6")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v6")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v24")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v24")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v24")
 
+        # 💥 NUEVA LÓGICA DE FILTRADO MULTIPLE
         df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
-        if pista_sel != "TODAS":
-            df_filt = df_filt[df_filt['PISTA'] == pista_sel]
         
+        if pistas_sel:
+            df_filt = df_filt[df_filt['PISTA'].isin(pistas_sel)]
+        else:
+            st.warning("⚠️ Selecciona al menos una Base Operativa para generar el radar.")
+            return
+            
         if df_filt.empty:
-            st.warning(f"⚠️ No hay registros de vuelo para {pista_sel} en el rango seleccionado.")
+            st.warning(f"⚠️ No hay registros de vuelo para las pistas seleccionadas en este rango de fechas.")
             return
             
         meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
@@ -289,14 +297,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
-            # Gráfico Dona (Crecerá con el hover CSS general)
+            # Gráfico Dona
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
             fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
-            # Gráfico Barras (Crecerá con el hover CSS general)
+            # Gráfico Barras
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
                              title="<b>Volumen de Hectáreas por Pista</b>",
@@ -458,7 +466,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
         # =================================================================
-        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP CON ETIQUETAS
+        # 🎯 EXPORTACIÓN EXCEL GERENCIAL VIP CON ETIQUETAS Y FORMATO PERFECTO
         # =================================================================
         st.markdown("---")
         buffer_rep = io.BytesIO()
@@ -563,8 +571,95 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             wb.save(buffer_rep)
 
         else:
-            df_export = df_visual if vista_seleccionada == "📊 Resumen Gerencial" else matriz
-            df_export.to_excel(buffer_rep, sheet_name='Reporte', index=False if vista_seleccionada != "📅 Mapa Semanal" else True)
+            # 💥 AQUÍ APLICAMOS LA CIRUGÍA ESTÉTICA PARA EL "RESUMEN GERENCIAL" Y "MAPA SEMANAL"
+            with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
+                if vista_seleccionada == "📊 Resumen Gerencial":
+                    df_visual.to_excel(writer, sheet_name='Resumen_Gerencial', index=False, startrow=3)
+                    ws = writer.sheets['Resumen_Gerencial']
+                    
+                    # Título Corporativo
+                    ws['A1'] = "REPORTE GERENCIAL DE HECTÁREAS Y RENDIMIENTO"
+                    ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
+                    ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+                    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_visual.columns))
+                    
+                    ws['A3'] = f"Período Analizado: {rango_txt}"
+                    ws['A3'].font = Font(italic=True, color="333333", bold=True)
+                    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_visual.columns))
+
+                    # Encabezados
+                    header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                    header_font = Font(bold=True, color="000000")
+                    for col_num in range(1, len(df_visual.columns) + 1):
+                        cell = ws.cell(row=4, column=col_num)
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                        ws.column_dimensions[get_column_letter(col_num)].width = 22
+                    
+                    # Estilos dinámicos y formatos de números
+                    for r_idx in range(5, len(df_visual) + 5):
+                        nivel_val = str(ws.cell(row=r_idx, column=1).value)
+                        
+                        bg_color = None
+                        is_bold = False
+                        
+                        if "BASE:" in nivel_val:
+                            bg_color = "D1ECF1"
+                            is_bold = True
+                        elif "TOTAL GENERAL" in nivel_val:
+                            bg_color = "C3E6CB"
+                            is_bold = True
+                            
+                        for c_idx in range(1, len(df_visual.columns) + 1):
+                            cell = ws.cell(row=r_idx, column=c_idx)
+                            
+                            if bg_color:
+                                cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+                            if is_bold:
+                                cell.font = Font(bold=True)
+                                
+                            # Formato numérico estricto
+                            col_name = df_visual.columns[c_idx - 1]
+                            if col_name in ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']:
+                                try:
+                                    if cell.value != "" and cell.value is not None:
+                                        cell.value = float(cell.value)
+                                        cell.number_format = '#,##0.00'
+                                        cell.alignment = Alignment(horizontal='center')
+                                except: pass
+                                
+                elif vista_seleccionada == "📅 Mapa Semanal":
+                    matriz.to_excel(writer, sheet_name='Mapa_Semanal', startrow=3)
+                    ws = writer.sheets['Mapa_Semanal']
+                    
+                    ws['A1'] = "MAPA SEMANAL DE HECTÁREAS"
+                    ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
+                    ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+                    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(matriz.columns)+1)
+                    
+                    ws['A3'] = f"Período Analizado: {rango_txt}"
+                    ws['A3'].font = Font(italic=True, color="333333", bold=True)
+                    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(matriz.columns)+1)
+                    
+                    header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                    for col_num in range(1, len(matriz.columns) + 2):
+                        cell = ws.cell(row=4, column=col_num)
+                        cell.fill = header_fill
+                        cell.font = Font(bold=True)
+                        ws.column_dimensions[get_column_letter(col_num)].width = 15
+                        
+                    for row in ws.iter_rows(min_row=5):
+                        for cell in row:
+                            if cell.column > 1:
+                                try:
+                                    if cell.value != "" and cell.value is not None:
+                                        cell.value = float(cell.value)
+                                        cell.number_format = '#,##0.00'
+                                        cell.alignment = Alignment(horizontal='center')
+                                except: pass
             
         st.download_button(
             label="💾 DESCARGAR REPORTE EJECUTIVO EN EXCEL",
