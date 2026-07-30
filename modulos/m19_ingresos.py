@@ -123,6 +123,20 @@ DICT_BASE_PRODUCTOS = {
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
     
+    # 💥 INICIALIZACIÓN DE LA MEMORIA PARA AUTO-LIMPIEZA
+    if 'in_cant' not in st.session_state: st.session_state['in_cant'] = 0.0
+    if 'in_lote' not in st.session_state: st.session_state['in_lote'] = ""
+    if 'in_factura' not in st.session_state: st.session_state['in_factura'] = ""
+    if 'in_pedido' not in st.session_state: st.session_state['in_pedido'] = ""
+    if 'in_consecutivo' not in st.session_state: st.session_state['in_consecutivo'] = ""
+
+    def limpiar_campos_operativos():
+        st.session_state['in_cant'] = 0.0
+        st.session_state['in_lote'] = ""
+        st.session_state['in_factura'] = ""
+        st.session_state['in_pedido'] = ""
+        st.session_state['in_consecutivo'] = ""
+
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
     st.markdown("""
@@ -313,24 +327,27 @@ def ejecutar():
 
     # --- ➕ BLOQUE 2: DATOS OPERATIVOS ---
     with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
-        f1, f2, f3 = st.columns(3)
+        # 💥 BOTÓN TÁCTICO DE LIMPIEZA
+        col_espacio, col_limpiar = st.columns([3, 1])
+        col_limpiar.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_operativos, use_container_width=True)
         
+        f1, f2, f3 = st.columns(3)
         n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
         semana_calculada = n_fecha_ing.isocalendar()[1]
         n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
-        
         n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
         
         f4, f5, f6 = st.columns(3)
-        n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0)
-        n_lote = f5.text_input("📦 Lote")
+        # 💥 ENLACE CON SESSION_STATE PARA BORRADO
+        n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key="in_cant")
+        n_lote = f5.text_input("📦 Lote", key="in_lote")
         n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
         
         f7, f8, f9, f10 = st.columns(4)
         n_fv = f7.date_input("⏳ F. Vencimiento (F/V)", value=hoy_colombia)
-        n_factura = f8.text_input("🧾 Factura")
-        n_pedido = f9.text_input("🛒 Pedido")
-        n_consecutivo = f10.text_input("🔢 Consecutivo SAP")
+        n_factura = f8.text_input("🧾 Factura", key="in_factura")
+        n_pedido = f9.text_input("🛒 Pedido", key="in_pedido")
+        n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key="in_consecutivo")
         
         st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
         st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -338,7 +355,6 @@ def ejecutar():
         cp1, cp2, cp3, cp4 = st.columns(4)
         with cp1:
             st.caption("⚖️ CANTIDAD")
-            # 💥 TRADUCTOR SAP APLICADO AL COPIADO RÁPIDO
             st.code(formatear_numero_sap(n_cant), language="text")
         with cp2:
             st.caption("📦 LOTE")
@@ -414,6 +430,10 @@ def ejecutar():
                         ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
                         
                     st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
+                    
+                    # 💥 AUTO-LIMPIEZA TRAS INYECCIÓN EXITOSA
+                    limpiar_campos_operativos()
+                    
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
