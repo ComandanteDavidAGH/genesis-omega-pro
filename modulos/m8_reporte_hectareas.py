@@ -399,7 +399,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v35.0 - SEPARACIÓN VIP)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v36.0 - ESTÉTICA Y SIGLAS)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -475,7 +475,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
         hb1, hb2, hb3 = st.columns(3)
-        with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
+        with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🗺️ {total_ha_historicas:,.1f} ha</p></div>", unsafe_allow_html=True)
         with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Tarifa Media Histórica</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
         with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
 
@@ -486,19 +486,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v35")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v36")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v35")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v35")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v36")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v36")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v35")
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v36")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v35")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v35")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v35")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v36")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (ha/hr)", value=True, key="m8_r_v36")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v36")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
@@ -556,12 +556,12 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         <span class='battle-metric-value' style='color: #28a745;'>{fmt_dinero(costo_tot_aviones)}</span>
                     </div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Tarifa Promedio ($/Ha)</span>
+                        <span class='battle-metric-label'>Tarifa Promedio ($/ha)</span>
                         <span class='battle-metric-value'>{fmt_dinero(prom_costo_av)}</span>
                     </div>
                     <div class='battle-metric-container'>
                         <span class='battle-metric-label'>Hectáreas Aplicadas</span>
-                        <span class='battle-metric-value'>{fmt_latino(ha_aviones, 1)} Ha</span>
+                        <span class='battle-metric-value'>{fmt_latino(ha_aviones, 1)} ha</span>
                     </div>
                     <div class='battle-metric-container' style='border-bottom: none;'>
                         <span class='battle-metric-label'>Misiones Completadas</span>
@@ -579,12 +579,12 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         <span class='battle-metric-value' style='color: #28a745;'>{fmt_dinero(costo_tot_drones)}</span>
                     </div>
                     <div class='battle-metric-container'>
-                        <span class='battle-metric-label'>Tarifa Promedio ($/Ha)</span>
+                        <span class='battle-metric-label'>Tarifa Promedio ($/ha)</span>
                         <span class='battle-metric-value'>{fmt_dinero(prom_costo_dr)}</span>
                     </div>
                     <div class='battle-metric-container'>
                         <span class='battle-metric-label'>Hectáreas Aplicadas</span>
-                        <span class='battle-metric-value'>{fmt_latino(ha_drones, 1)} Ha</span>
+                        <span class='battle-metric-value'>{fmt_latino(ha_drones, 1)} ha</span>
                     </div>
                     <div class='battle-metric-container' style='border-bottom: none;'>
                         <span class='battle-metric-label'>Misiones Completadas</span>
@@ -630,7 +630,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 COSTO_TOTAL=('COSTO_NUM', 'sum')
             ).reset_index()
             
-            df_hk['TARIFA_PROM ($/Ha)'] = df_hk['COSTO_TOTAL'] / df_hk['HECTAREAS']
+            df_hk['TARIFA_PROM ($/ha)'] = df_hk['COSTO_TOTAL'] / df_hk['HECTAREAS']
             df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False)
             
             st.dataframe(
@@ -638,7 +638,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     'MISIONES': lambda x: f"{x:,.0f}".replace(",", "."),
                     'HECTAREAS': fmt_latino,
                     'COSTO_TOTAL': fmt_dinero,
-                    'TARIFA_PROM ($/Ha)': fmt_dinero
+                    'TARIFA_PROM ($/ha)': fmt_dinero
                 }).bar(subset=['COSTO_TOTAL'], color='#28a745', vmin=0)
                   .bar(subset=['HECTAREAS'], color='#5c88b0', vmin=0),
                 use_container_width=True, hide_index=True
@@ -671,10 +671,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': '', 'MES': 'TOTAL BASE'}
                     if mostrar_horas or calcular_rend_prom: fila_pista['REND (hr)'] = sum_hr_pista
                     fila_pista['ÁREA FUMIG (ha)'] = sum_ha_pista
-                    if calcular_rend_prom: fila_pista['PROMEDIO (Ha/Hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
+                    if calcular_rend_prom: fila_pista['PROMEDIO (ha/hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
                     
                     fila_pista['COSTO TOTAL ($)'] = sum_costo_pista
-                    fila_pista['TARIFA PROM ($/Ha)'] = sum_costo_pista / sum_ha_pista if sum_ha_pista > 0 else 0.0
+                    fila_pista['TARIFA PROM ($/ha)'] = sum_costo_pista / sum_ha_pista if sum_ha_pista > 0 else 0.0
                     tabla_final.append(fila_pista)
                     
                     for hk in sorted(df_pista['HK'].unique()):
@@ -690,20 +690,20 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
-                        if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
+                        if calcular_rend_prom: fila_hk['PROMEDIO (ha/hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
                         
                         fila_hk['COSTO TOTAL ($)'] = sum_costo_hk
-                        fila_hk['TARIFA PROM ($/Ha)'] = sum_costo_hk / sum_ha_hk if sum_ha_hk > 0 else 0.0
+                        fila_hk['TARIFA PROM ($/ha)'] = sum_costo_hk / sum_ha_hk if sum_ha_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
                         for _, row in datos_hk.iterrows():
                             fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'MES': f"  ↳ {row['MES']}"}
                             if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                             fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
-                            if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                            if calcular_rend_prom: fila_mes['PROMEDIO (ha/hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
                             
                             fila_mes['COSTO TOTAL ($)'] = row['COSTO_TOT']
-                            fila_mes['TARIFA PROM ($/Ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
+                            fila_mes['TARIFA PROM ($/ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
                             tabla_final.append(fila_mes)
                             
                     total_hr_gral += sum_hr_pista
@@ -713,10 +713,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                 fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
-                if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
+                if calcular_rend_prom: fila_tot['PROMEDIO (ha/hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 
                 fila_tot['COSTO TOTAL ($)'] = total_costo_gral
-                fila_tot['TARIFA PROM ($/Ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
+                fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
                 
             else:
@@ -735,20 +735,20 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     fila_sub = {'NIVEL': f"📍 BASE: {pista}", 'MES': 'TOTAL BASE'}
                     if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
                     fila_sub['ÁREA FUMIG (ha)'] = sum_ha
-                    if calcular_rend_prom: fila_sub['PROMEDIO (Ha/Hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
+                    if calcular_rend_prom: fila_sub['PROMEDIO (ha/hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
                     
                     fila_sub['COSTO TOTAL ($)'] = sum_costo
-                    fila_sub['TARIFA PROM ($/Ha)'] = sum_costo / sum_ha if sum_ha > 0 else 0.0
+                    fila_sub['TARIFA PROM ($/ha)'] = sum_costo / sum_ha if sum_ha > 0 else 0.0
                     tabla_final.append(fila_sub)
                     
                     for _, row in datos_pista.iterrows():
                         fila_mes = {'NIVEL': '', 'MES': f"  ↳ {row['MES']}"}
                         if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                         fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
-                        if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                        if calcular_rend_prom: fila_mes['PROMEDIO (ha/hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
                         
                         fila_mes['COSTO TOTAL ($)'] = row['COSTO_TOT']
-                        fila_mes['TARIFA PROM ($/Ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
+                        fila_mes['TARIFA PROM ($/ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
                         tabla_final.append(fila_mes)
                         
                     total_hr_gral += sum_hr
@@ -758,16 +758,14 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                 fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
-                if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
+                if calcular_rend_prom: fila_tot['PROMEDIO (ha/hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 
                 fila_tot['COSTO TOTAL ($)'] = total_costo_gral
-                fila_tot['TARIFA PROM ($/Ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
+                fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # 💥 CIRUGÍA: DIVISIÓN DE TABLAS (OPERATIVO vs FINANCIERO)
             df_visual = pd.DataFrame(tabla_final)
             
-            # Listas de columnas a separar
             cols_base = ['NIVEL']
             if agrupar_avion: cols_base.append('AVIÓN (HK)')
             cols_base.append('MES')
@@ -775,20 +773,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             cols_op = cols_base.copy()
             if mostrar_horas or calcular_rend_prom: cols_op.append('REND (hr)')
             cols_op.append('ÁREA FUMIG (ha)')
-            if calcular_rend_prom: cols_op.append('PROMEDIO (Ha/Hr)')
+            if calcular_rend_prom: cols_op.append('PROMEDIO (ha/hr)')
             
             cols_fin = cols_base.copy()
-            cols_fin.extend(['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)'])
+            cols_fin.extend(['COSTO TOTAL ($)', 'TARIFA PROM ($/ha)'])
             
             df_operativo = df_visual[cols_op].copy()
             df_financiero = df_visual[cols_fin].copy()
             
-            # Diccionarios de formato
             fmt_op = {'ÁREA FUMIG (ha)': fmt_latino}
             if mostrar_horas or calcular_rend_prom: fmt_op['REND (hr)'] = fmt_latino
-            if calcular_rend_prom: fmt_op['PROMEDIO (Ha/Hr)'] = fmt_latino
+            if calcular_rend_prom: fmt_op['PROMEDIO (ha/hr)'] = fmt_latino
             
-            fmt_fin = {'COSTO TOTAL ($)': fmt_dinero, 'TARIFA PROM ($/Ha)': fmt_dinero}
+            fmt_fin = {'COSTO TOTAL ($)': fmt_dinero, 'TARIFA PROM ($/ha)': fmt_dinero}
 
             def aplicar_estilos_originales(row):
                 if "BASE:" in str(row['NIVEL']): return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
@@ -798,10 +795,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 return [''] * len(row)
 
             # 💥 CREACIÓN DE LAS DOS PESTAÑAS (TABS)
-            tab_op, tab_fin = st.tabs(["🚜 CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
+            tab_op, tab_fin = st.tabs(["⚙️ CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
             
             with tab_op:
-                st.markdown("##### 🚜 Desglose Operativo Puro")
+                st.markdown("##### ⚙️ Desglose Operativo Puro")
                 st.caption("Perfecto para compartir: Muestra rendimiento físico de las aeronaves ocultando las tarifas monetarias.")
                 st.dataframe(df_operativo.style.apply(aplicar_estilos_originales, axis=1).format(fmt_op), use_container_width=True, hide_index=True)
                 
@@ -852,7 +849,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             total_ha_exp = df_export['HECTAREAS'].sum()
             total_costo_exp = df_export['COSTO_TOTAL'].sum()
             
-            headers = ['BASE OPERATIVA', 'TOTAL MISIONES', 'HECTÁREAS NETAS', 'COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)']
+            headers = ['BASE OPERATIVA', 'TOTAL MISIONES', 'HECTÁREAS NETAS', 'COSTO TOTAL ($)', 'TARIFA PROM ($/ha)']
             start_row = 6
             for col_idx, header in enumerate(headers, start=2):
                 cell = ws.cell(row=start_row, column=col_idx, value=header)
@@ -935,8 +932,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 if vista_seleccionada == "📊 Resumen Gerencial":
                     # 💥 EXPORTACIÓN DOBLE (OPERATIVA Y FINANCIERA)
                     sheets_data = [
-                        ('Resumen_Operativo', df_operativo, ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']),
-                        ('Resumen_Financiero', df_financiero, ['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)'])
+                        ('Resumen_Operativo', df_operativo, ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (ha/hr)']),
+                        ('Resumen_Financiero', df_financiero, ['COSTO TOTAL ($)', 'TARIFA PROM ($/ha)'])
                     ]
                     
                     for s_name, df_sheet, num_cols in sheets_data:
@@ -984,14 +981,14 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                                     cell.font = Font(bold=True)
                                     
                                 col_name = df_sheet.columns[c_idx - 1]
-                                if col_name in ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']:
+                                if col_name in ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (ha/hr)']:
                                     try:
                                         if cell.value != "" and cell.value is not None:
                                             cell.value = float(cell.value)
                                             cell.number_format = '#,##0.00'
                                             cell.alignment = Alignment(horizontal='center')
                                     except: pass
-                                elif col_name in ['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)']:
+                                elif col_name in ['COSTO TOTAL ($)', 'TARIFA PROM ($/ha)']:
                                     try:
                                         if cell.value != "" and cell.value is not None:
                                             cell.value = float(cell.value)
