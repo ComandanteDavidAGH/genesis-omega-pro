@@ -114,7 +114,31 @@ def ejecutar():
     .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
 
-    /* 💥 FORZAR ETIQUETAS E INPUTS */
+    /* 💥 ESTÉTICA VIP: EXPANSORES ESTILO MÓDULO 4 */
+    div[data-testid="stExpander"] {
+        border: 2px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important;
+        background-color: #ffffff !important;
+        margin-bottom: 20px !important;
+    }
+    div[data-testid="stExpander"] summary {
+        background-color: #0d1b2a !important;
+        border-radius: 6px 6px 0px 0px !important;
+        padding: 10px 15px !important;
+    }
+    div[data-testid="stExpander"] summary p {
+        color: #d4af37 !important;
+        font-family: 'Arial Black', sans-serif !important;
+        font-size: 15px !important;
+        text-transform: uppercase !important;
+        margin: 0 !important;
+    }
+    div[data-testid="stExpander"] summary svg {
+        fill: #d4af37 !important;
+    }
+    
+    /* 💥 ETIQUETAS E INPUTS */
     div[data-testid="stMainBlockContainer"] label p { 
         color: #0d1b2a !important; 
         font-weight: 900 !important; 
@@ -142,8 +166,6 @@ def ejecutar():
         color: #000000 !important; 
         font-weight: 900 !important; 
     }
-    
-    .st-expander { border: 2px solid #0d1b2a !important; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -274,13 +296,10 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("---")
-
-    # --- ➕ FORMULARIO DINÁMICO DE INYECCIÓN ---
     st.markdown("### ➕ Inyector de Nuevos Ingresos")
-    
-    with st.container(border=True):
-        st.markdown("<p style='color: #0d1b2a; font-size: 16px; font-weight: 900;'>1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL</p>", unsafe_allow_html=True)
-        
+
+    # --- ➕ BLOQUE 1: IDENTIFICACIÓN DEL QUÍMICO ---
+    with st.expander("🧪 1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL", expanded=True):
         c_tog1, c_tog2 = st.columns(2)
         es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
         modificar_prov = False
@@ -288,45 +307,47 @@ def ejecutar():
         c_prod, c_prov = st.columns(2)
         
         if es_nuevo_producto:
-            n_prod = c_prod.text_input("Nombre del Nuevo Producto")
-            n_prov = c_prov.text_input("Nombre del Proveedor")
+            n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
+            n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
         else:
             modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
             lista_prods_ordenada = sorted([p for p in dict_operativo.keys() if len(p) > 3])
             
-            n_prod = c_prod.selectbox("Seleccione el Producto (Integrado con Precios SAP)", lista_prods_ordenada)
+            n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", lista_prods_ordenada)
             proveedor_asignado = dict_operativo.get(n_prod, "")
             
             es_vacio = not bool(proveedor_asignado.strip())
             debe_desbloquear = modificar_prov or es_vacio
             
             n_prov = c_prov.text_input(
-                "Proveedor", 
+                "🏭 Proveedor", 
                 value=proveedor_asignado, 
                 disabled=not debe_desbloquear, 
                 placeholder="Digite el proveedor para guardarlo en el Diccionario"
             )
-            
-        st.markdown("<p style='color: #0d1b2a; font-size: 16px; font-weight: 900; margin-top: 15px;'>2. DATOS OPERATIVOS</p>", unsafe_allow_html=True)
+
+    # --- ➕ BLOQUE 2: DATOS OPERATIVOS ---
+    with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
         f1, f2, f3 = st.columns(3)
         
-        n_fecha_ing = f2.date_input("Fecha de Ingreso a SAP")
+        n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP")
         semana_calculada = n_fecha_ing.isocalendar()[1]
-        n_semana = f1.text_input("Semana del Año (Automática)", value=str(semana_calculada), disabled=True)
+        n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
         
-        n_pista = f3.selectbox("Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
+        n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
         
         f4, f5, f6 = st.columns(3)
-        n_cant = f4.number_input("Cantidad", min_value=0.0, step=1.0)
-        n_lote = f5.text_input("Lote")
-        n_ff = f6.date_input("Fecha de Fabricación (F/F)")
+        n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0)
+        n_lote = f5.text_input("📦 Lote")
+        n_ff = f6.date_input("⚙️ F. Fabricación (F/F)")
         
         f7, f8, f9, f10 = st.columns(4)
-        n_fv = f7.date_input("Fecha de Vencimiento (F/V)")
-        n_factura = f8.text_input("Factura")
-        n_pedido = f9.text_input("Pedido")
-        n_consecutivo = f10.text_input("Consecutivo (SAP)")
+        n_fv = f7.date_input("⏳ F. Vencimiento (F/V)")
+        n_factura = f8.text_input("🧾 Factura")
+        n_pedido = f9.text_input("🛒 Pedido")
+        n_consecutivo = f10.text_input("🔢 Consecutivo SAP")
         
+        st.markdown("<br>", unsafe_allow_html=True)
         btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
         
         if btn_guardar_nuevo:
@@ -409,13 +430,12 @@ def ejecutar():
             cols_deseadas = [c for c in df.columns if c in ["SEMANA", "PROVEEDOR", "FECHA DE INGRESO", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]]
             df_correo = df_correo[cols_deseadas]
             
-            # 💥 CIRUGÍA MAYOR: CONSTRUCCIÓN MANUAL DE CADA ETIQUETA HTML PARA BYPASS A STREAMLIT
+            # 💥 CIRUGÍA MAYOR: CONSTRUCCIÓN MANUAL HTML
             html_manual = """
             <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 13px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
                 <thead>
                     <tr>
             """
-            # Inyectar Encabezados
             for col_name in df_correo.columns:
                 html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 12px 10px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase;'>{col_name}</th>"
             
@@ -424,7 +444,6 @@ def ejecutar():
                 </thead>
                 <tbody>
             """
-            # Inyectar Celdas de Datos
             for _, row in df_correo.iterrows():
                 html_manual += "<tr>"
                 for col_name in df_correo.columns:
@@ -437,7 +456,6 @@ def ejecutar():
             </table>
             """
             
-            # Renderizar en pantalla
             st.markdown(html_manual, unsafe_allow_html=True)
             
         else:
