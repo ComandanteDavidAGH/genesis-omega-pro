@@ -128,7 +128,6 @@ def ejecutar():
         st.session_state['form_key_m19'] = 0
 
     def limpiar_campos_operativos():
-        # Al sumar 1, Streamlit destruye las casillas actuales y dibuja unas nuevas y limpias
         st.session_state['form_key_m19'] += 1
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
@@ -335,7 +334,6 @@ def ejecutar():
         n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
         
         f4, f5, f6 = st.columns(3)
-        # 💥 Las llaves de memoria están atadas a form_key_m19 para su destrucción correcta
         fk = st.session_state['form_key_m19']
         n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"in_cant_{fk}")
         n_lote = f5.text_input("📦 Lote", key=f"in_lote_{fk}")
@@ -428,18 +426,16 @@ def ejecutar():
                         ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
                         
                     st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
-                    
-                    # 💥 INCREMENTAR LLAVE PARA VACIAR EL FORMULARIO SIN CRASHEAR STREAMLIT
                     st.session_state['form_key_m19'] += 1
-                    
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al inyectar datos: {e}")
 
-    # --- 📧 GENERADOR DE REPORTE PARA CORREO ---
+    # --- 📧 GENERADOR DE REPORTE PARA CORREO (CON SELECTOR DE INFILTRADOS) ---
     st.markdown("---")
     st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
+    st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto. Puedes usar la columna **✅ INCLUIR** para desmarcar manualmente los registros que NO quieres enviar.")
     
     col_fecha_rep, col_vacia = st.columns([1, 3])
     fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
@@ -455,68 +451,97 @@ def ejecutar():
         mask = df['FECHA_ING_TEMP'].apply(obtener_fecha_limpia) == fecha_reporte
         df_correo = df[mask].copy()
         
+        # 💥 AUTO-PURGA DE ANULADOS EN EL REPORTE
+        if COL_ESTADO in df_correo.columns:
+            df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
+        
         if not df_correo.empty:
             df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
             
-            mapa_columnas = {}
-            for col_excel in df.columns:
-                c_up = str(col_excel).upper()
-                if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
-                elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
-                elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
-                elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
-                elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
-                elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
-                elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
-                elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
-                elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
-                elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
-                elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
-                elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
+            # 💥 MATRIZ INTERACTIVA PARA EL CORREO (INTERRUPTOR)
+            df_correo.insert(0, "✅ INCLUIR", True)
+            
+            # Columnas visibles para la caja de selección (excluimos metadata basura)
+            cols_ed = [c for c in df_correo.columns if c not in ["FILA_EXCEL", "FECHA_ING_TEMP", "FECHA_VENC_DT", COL_ESTADO]]
+            
+            st.markdown("👇 **Paso 1: Desmarca los registros que NO quieres enviar en el correo:**")
+            df_editado_correo = st.data_editor(
+                df_correo[cols_ed],
+                column_config={
+                    "✅ INCLUIR": st.column_config.CheckboxColumn("✅ INCLUIR", default=True)
+                },
+                disabled=[c for c in cols_ed if c != "✅ INCLUIR"],
+                hide_index=True,
+                use_container_width=True,
+                key=f"editor_correo_{fecha_reporte}"
+            )
+            
+            # Filtramos estrictamente los que el usuario dejó activos
+            df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
+            
+            if not df_correo_final.empty:
+                mapa_columnas = {}
+                for col_excel in df_correo_final.columns:
+                    c_up = str(col_excel).upper()
+                    if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
+                    elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
+                    elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
+                    elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
+                    elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
+                    elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
+                    elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
+                    elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
+                    elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
+                    elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
+                    elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
+                    elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
+                    
+                df_correo_limpio = df_correo_final[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
                 
-            df_correo_limpio = df_correo[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
-            
-            orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
-            columnas_finales = [col for col in orden_ideal if col in df_correo_limpio.columns]
-            
-            df_correo_limpio = df_correo_limpio[columnas_finales]
-            
-            html_manual = """
-            <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
-                <thead>
-                    <tr>
-            """
-            for col_name in df_correo_limpio.columns:
-                html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 8px 6px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase; white-space: nowrap;'>{col_name}</th>"
-            
-            html_manual += """
-                    </tr>
-                </thead>
-                <tbody>
-            """
-            for _, row in df_correo_limpio.iterrows():
-                html_manual += "<tr>"
+                orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
+                columnas_finales = [col for col in orden_ideal if col in df_correo_limpio.columns]
+                
+                df_correo_limpio = df_correo_limpio[columnas_finales]
+                
+                html_manual = """
+                <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
+                    <thead>
+                        <tr>
+                """
                 for col_name in df_correo_limpio.columns:
-                    val = row[col_name]
-                    if pd.isna(val) or str(val).strip() == "":
-                        val_str = ""
-                    else:
-                        val_str = str(val).strip()
-                        if col_name == "CANTIDAD": val_str = formatear_numero_sap(val_str)
-                                
-                    html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
-                html_manual += "</tr>"
+                    html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 8px 6px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase; white-space: nowrap;'>{col_name}</th>"
                 
-            html_manual += """
-                </tbody>
-            </table>
-            """
-            
-            st.markdown(html_manual, unsafe_allow_html=True)
-            
+                html_manual += """
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
+                for _, row in df_correo_limpio.iterrows():
+                    html_manual += "<tr>"
+                    for col_name in df_correo_limpio.columns:
+                        val = row[col_name]
+                        if pd.isna(val) or str(val).strip() == "":
+                            val_str = ""
+                        else:
+                            val_str = str(val).strip()
+                            if col_name == "CANTIDAD": val_str = formatear_numero_sap(val_str)
+                                    
+                        html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
+                    html_manual += "</tr>"
+                    
+                html_manual += """
+                    </tbody>
+                </table>
+                """
+                
+                st.markdown("👇 **Paso 2: Copia la tabla a continuación y pégala en tu correo:**")
+                st.markdown(html_manual, unsafe_allow_html=True)
+            else:
+                st.info("Has desmarcado todos los registros. La tabla final está vacía.")
+                
         else:
             fecha_str_pantalla = fecha_reporte.strftime("%d/%m/%Y")
-            st.warning(f"No se encontraron ingresos registrados en la bóveda con la fecha {fecha_str_pantalla}.")
+            st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_str_pantalla} (o todos están anulados).")
 
     # --- 🔍 FILTROS TÁCTICOS Y MATRIZ DE AUDITORÍA ---
     st.markdown("---")
