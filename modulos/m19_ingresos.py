@@ -520,12 +520,11 @@ def ejecutar():
     # --- 🔍 FILTROS TÁCTICOS ---
     st.markdown("---")
     
-    # 💥 ANCLA PARA EL ASCENSOR HACIA ABAJO
     st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
     
     st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
     
-    # 💥 LÓGICA DEL FILTRO DE FRANCOTIRADOR (POR PRODUCTO Y ESTADO)
+    # 💥 LÓGICA DEL FILTRO DE FRANCOTIRADOR + RANGO DE FECHAS
     f_col1, f_col2 = st.columns([1.5, 1])
     
     filtro_seleccionado = f_col1.radio("Estado Operativo:", 
@@ -538,11 +537,23 @@ def ejecutar():
         lista_productos_tabla = ["TODOS"]
         
     producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
+
+    # 💥 RASTREADOR TEMPORAL DE INGRESOS (POR DEFECTO MUESTRA ÚLTIMOS 30 DÍAS)
+    st.markdown("<br>", unsafe_allow_html=True)
+    f_col3, f_col4, _ = st.columns([1, 1, 1.5])
+    fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=datetime.now() - timedelta(days=30))
+    fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=datetime.now())
     
     df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
 
     df_filtrado = df.copy()
     
+    # 0. Aplicar Filtro de Fechas de Ingreso
+    if col_fecha_ingreso:
+        fechas_dt = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
+        mask_fechas = fechas_dt.apply(lambda x: x.date() if pd.notna(x) else None)
+        df_filtrado = df_filtrado[(mask_fechas >= fecha_ini_filtro) & (mask_fechas <= fecha_fin_filtro)]
+
     # 1. Aplicar filtro de Producto
     if producto_filtro != "TODOS" and col_producto:
         df_filtrado = df_filtrado[df_filtrado[col_producto].str.upper() == producto_filtro]
