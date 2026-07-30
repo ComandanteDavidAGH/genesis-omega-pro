@@ -398,7 +398,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v39.0 - SIMULADOR PRO)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v40.0 - VISOR DE PROYECCIÓN)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -485,19 +485,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v39")
+        vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
         
-        fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v39")
-        fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v39")
+        fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
+        fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
-        pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v39")
+        pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v40")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ MOSTRAR HORAS", value=True, key="m8_h_v39")
-            calcular_rend_prom = cc2.checkbox("🚀 MOSTRAR RENDIMIENTO (ha/hr)", value=True, key="m8_r_v39")
-            agrupar_avion = cc3.toggle("✈️ DESGLOSAR POR FLOTA", value=False, key="m8_f_v39")
+            mostrar_horas = cc1.checkbox("⏱️ MOSTRAR HORAS", value=True, key="m8_h_v40")
+            calcular_rend_prom = cc2.checkbox("🚀 MOSTRAR RENDIMIENTO (ha/hr)", value=True, key="m8_r_v40")
+            agrupar_avion = cc3.toggle("✈️ DESGLOSAR POR FLOTA", value=False, key="m8_f_v40")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
@@ -521,7 +521,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         rango_txt = f"{fecha_sel_ini.day} de {meses_nom_largo.get(fecha_sel_ini.month, '')} {fecha_sel_ini.year} ⸺ {fecha_sel_fin.day} de {meses_nom_largo.get(fecha_sel_fin.month, '')} {fecha_sel_fin.year}"
         
         # =================================================================
-        # 📈 VISTA 3: DASHBOARD EJECUTIVO (BATALLA DE ESCUADRONES + SIMULADOR)
+        # 📈 VISTA 3: DASHBOARD EJECUTIVO (BATALLA DE ESCUADRONES)
         # =================================================================
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
             st.markdown(f"#### 📈 Dashboard Ejecutivo y BI Financiero")
@@ -570,22 +570,28 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 """, unsafe_allow_html=True)
                 
             with col_dr:
-                # 💥 SIMULADOR DE DRONES INYECTADO AQUÍ
                 simular_dr = st.toggle("🔮 Activar Simulador de Proyección (Drones)", value=False)
                 if simular_dr:
                     pct_aumento = st.slider("📈 Aumento Proyectado de Hectáreas (%)", 0, 500, 50, 5)
                     ha_drones_final = ha_drones * (1 + (pct_aumento / 100.0))
                     costo_tot_drones_final = ha_drones_final * prom_costo_dr
+                    
+                    # 💥 CIRUGÍA: VISORES DE COMPARACIÓN (ANTES Y DESPUÉS)
+                    cm1, cm2 = st.columns(2)
+                    cm1.metric("📍 Ha Actuales (Real)", f"{fmt_latino(ha_drones, 1)} ha")
+                    cm2.metric(f"🚀 Ha Proyectadas (+{pct_aumento}%)", f"{fmt_latino(ha_drones_final, 1)} ha", delta=f"{fmt_latino(ha_drones_final - ha_drones, 1)} ha")
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
                     lbl_ha = f"HECTÁREAS (Proyectado +{pct_aumento}%)"
                     lbl_dinero = "FACTURACIÓN PROYECTADA ($)"
-                    color_borde = "#e67e22" # Naranja para simulación
+                    color_borde = "#e67e22" 
                     titulo_panel = "🛸 Drones (MODO SIMULACIÓN)"
                 else:
                     ha_drones_final = ha_drones
                     costo_tot_drones_final = costo_tot_drones
                     lbl_ha = "HECTÁREAS APLICADAS"
                     lbl_dinero = "TOTAL FACTURADO ($)"
-                    color_borde = "#27AE60" # Verde original
+                    color_borde = "#27AE60" 
                     titulo_panel = "🛸 Flota de Drones"
 
                 st.markdown(f"""
@@ -625,7 +631,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
-            # 💥 CIRUGÍA VISUAL: Márgenes generosos para evitar que el gráfico se corte
             fig_pie = px.pie(df_dash, values='VUELOS', names=col_pista, hole=0.5, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='<b>%{label}</b><br>%{percent}')
@@ -826,7 +831,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
                 return [''] * len(row)
 
-            # 💥 CREACIÓN DE LAS DOS PESTAÑAS (TABS)
             tab_op, tab_fin = st.tabs(["🛩️ CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
             
             with tab_op:
@@ -962,7 +966,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         else:
             with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
                 if vista_seleccionada == "📊 Resumen Gerencial":
-                    # 💥 EXPORTACIÓN DOBLE (OPERATIVA Y FINANCIERA)
                     sheets_data = [
                         ('Resumen_Operativo', df_operativo, ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (ha/hr)']),
                         ('Resumen_Financiero', df_financiero, ['COSTO TOTAL ($)', 'TARIFA PROM ($/ha)'])
