@@ -114,7 +114,7 @@ def ejecutar():
     .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
 
-    /* 💥 FORZAR ETIQUETAS E INPUTS (ADIÓS PALIDEZ) */
+    /* 💥 FORZAR ETIQUETAS E INPUTS */
     div[data-testid="stMainBlockContainer"] label p { 
         color: #0d1b2a !important; 
         font-weight: 900 !important; 
@@ -325,7 +325,7 @@ def ejecutar():
         n_fv = f7.date_input("Fecha de Vencimiento (F/V)")
         n_factura = f8.text_input("Factura")
         n_pedido = f9.text_input("Pedido")
-        n_consecutivo = f10.text_input("Consecutivo")
+        n_consecutivo = f10.text_input("Consecutivo (SAP)")
         
         btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
         
@@ -390,6 +390,37 @@ def ejecutar():
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al inyectar datos: {e}")
+
+    # --- 📧 GENERADOR DE REPORTE PARA CORREO (COPY/PASTE) ---
+    st.markdown("---")
+    st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
+    st.info("💡 Selecciona la fecha de los ingresos que acabas de realizar. Sombrea la tabla resultante, cópiala y pégala directo en tu correo.")
+    
+    col_fecha_rep, col_vacia = st.columns([1, 3])
+    fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=datetime.now())
+    fecha_reporte_str = fecha_reporte.strftime("%d/%m/%Y")
+    
+    # Buscamos la columna exacta de fecha de ingreso en el DataFrame
+    col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
+    
+    if col_fecha_ingreso:
+        df_correo = df[df[col_fecha_ingreso] == fecha_reporte_str].copy()
+        
+        if not df_correo.empty:
+            # Seleccionar las columnas clave que mostraste en tu imagen
+            cols_deseadas = [c for c in df.columns if c in ["SEMANA", "PROVEEDOR", "FECHA DE INGRESO", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]]
+            df_correo = df_correo[cols_deseadas]
+            
+            # Generar HTML con estilos en línea (Compatible con Outlook / Gmail)
+            html_table = df_correo.to_html(index=False, justify='center')
+            html_table = html_table.replace('<table border="1" class="dataframe">', '<table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12px; border: 1px solid #ddd;">')
+            html_table = html_table.replace('<th>', '<th style="background-color: #0d1b2a; color: white; padding: 8px; border: 1px solid #ddd; text-align: center;">')
+            html_table = html_table.replace('<td>', '<td style="padding: 8px; border: 1px solid #ddd; text-align: center; color: #333;">')
+            html_table = html_table.replace('<tr>', '<tr style="background-color: #f9f9f9;">') # Color de fondo alterno leve
+            
+            st.markdown(html_table, unsafe_allow_html=True)
+        else:
+            st.warning(f"No se encontraron ingresos registrados en la bóveda con la fecha {fecha_reporte_str}.")
 
     # --- 🔍 FILTROS TÁCTICOS ---
     st.markdown("---")
