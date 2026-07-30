@@ -212,7 +212,6 @@ def limpiar_area(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 CIRUGÍA EXTREMA: Traductor estricto para moneda colombiana
 def limpiar_dinero(val):
     if pd.isna(val) or val is None: return 0.0
     if isinstance(val, (int, float)): return float(val)
@@ -230,7 +229,6 @@ def limpiar_dinero(val):
             else:
                 v = v.replace(',', '.')
         elif '.' in v:
-            # Si hay múltiples puntos o exactamente 3 dígitos después del último punto, es separador de miles
             if v.count('.') > 1 or len(v.split('.')[-1]) == 3:
                 v = v.replace('.', '')
         return float(v)
@@ -393,12 +391,15 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .battle-metric-container { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 10px 0; }
     .battle-metric-label { font-size: 13px; color: #4a5568; font-weight: bold; text-transform: uppercase; }
     .battle-metric-value { font-size: 18px; color: #0d1b2a; font-weight: 900; }
+    
+    div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }
     </style>
     """, unsafe_allow_html=True)
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v34.0 - PRECISIÓN FINANCIERA)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v35.0 - SEPARACIÓN VIP)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -458,7 +459,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             keep='last'
         ).reset_index(drop=True)
 
-        # 💥 CIRUGÍA FINANCIERA: CÁLCULO ESTRICTO DE TARIFAS REALES
         def calcular_costo_real(r):
             if r.get('ORIGEN_BI') == 'ACTUAL':
                 tarifa = limpiar_dinero(r.get('AVION_MAESTRO', 0)) + limpiar_dinero(r.get('DOMINIC_MAESTRO', 0))
@@ -486,19 +486,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v34")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v35")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v34")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v34")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v35")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v35")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v34")
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v35")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v34")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v34")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v34")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v35")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v35")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v35")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
@@ -528,26 +528,22 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             st.markdown(f"#### 📈 Dashboard Ejecutivo y BI Financiero")
             st.caption(f"🗓️ *{rango_txt}*")
             
-            # 🚀 SEPARACIÓN DE DRONES Y AVIONES
             df_drones = df_filt[df_filt['MODELO'].str.contains('DRON', na=False, case=False) | df_filt['HK'].str.contains('DR', na=False, case=False)]
             df_aviones = df_filt[~df_filt.index.isin(df_drones.index)]
 
             total_ha = df_filt['AREA_NUM'].sum()
             total_vuelos = len(df_filt)
             
-            # Métricas Operativas Drones
             ha_drones = df_drones['AREA_NUM'].sum()
             vuelos_drones = len(df_drones)
             costo_tot_drones = df_drones['COSTO_NUM'].sum()
             prom_costo_dr = costo_tot_drones / ha_drones if ha_drones > 0 else 0
 
-            # Métricas Operativas Aviones
             ha_aviones = df_aviones['AREA_NUM'].sum()
             vuelos_aviones = len(df_aviones)
             costo_tot_aviones = df_aviones['COSTO_NUM'].sum()
             prom_costo_av = costo_tot_aviones / ha_aviones if ha_aviones > 0 else 0
             
-            # 💥 BATALLA DE ESCUADRONES VIP
             st.markdown("### ⚔️ Batalla de Escuadrones: ✈️ Aviones vs 🛸 Drones")
             col_av, col_dr = st.columns(2)
             
@@ -626,10 +622,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             fig_bar.update_layout(separators=",.", xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
             g2.plotly_chart(fig_bar, use_container_width=True)
 
-            # 💥 NUEVO RANKING: IMPACTO DE COSTOS POR AERONAVE
             st.markdown("---")
             st.markdown("##### 🏆 Ranking: Impacto de Costos por Aeronave (Facturación a la Empresa)")
-            st.caption("Identifica qué matrículas representan el mayor costo monetario y su tarifa promedio.")
             df_hk = df_filt.groupby(['HK']).agg(
                 MISIONES=('HK', 'count'),
                 HECTAREAS=('AREA_NUM', 'sum'),
@@ -651,10 +645,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             )
 
         # =================================================================
-        # 📊 VISTA 1 & 2: VISTAS CLÁSICAS CON BI FINANCIERO INTEGRADO
+        # 📊 VISTA 1 & 2: VISTAS CLÁSICAS (OPERATIVO vs FINANCIERO SEPARADO)
         # =================================================================
         elif vista_seleccionada == "📊 Resumen Gerencial":
-            st.markdown(f"#### 📑 Consolidado Operativo y Financiero")
+            st.markdown(f"#### 📑 Consolidado Gerencial")
             st.caption(f"🗓️ *{rango_txt}*")
             tabla_final = []
             total_hr_gral, total_ha_gral, total_costo_gral = 0, 0, 0
@@ -770,24 +764,51 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 fila_tot['TARIFA PROM ($/Ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
+            # 💥 CIRUGÍA: DIVISIÓN DE TABLAS (OPERATIVO vs FINANCIERO)
             df_visual = pd.DataFrame(tabla_final)
             
+            # Listas de columnas a separar
+            cols_base = ['NIVEL']
+            if agrupar_avion: cols_base.append('AVIÓN (HK)')
+            cols_base.append('MES')
+            
+            cols_op = cols_base.copy()
+            if mostrar_horas or calcular_rend_prom: cols_op.append('REND (hr)')
+            cols_op.append('ÁREA FUMIG (ha)')
+            if calcular_rend_prom: cols_op.append('PROMEDIO (Ha/Hr)')
+            
+            cols_fin = cols_base.copy()
+            cols_fin.extend(['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)'])
+            
+            df_operativo = df_visual[cols_op].copy()
+            df_financiero = df_visual[cols_fin].copy()
+            
+            # Diccionarios de formato
+            fmt_op = {'ÁREA FUMIG (ha)': fmt_latino}
+            if mostrar_horas or calcular_rend_prom: fmt_op['REND (hr)'] = fmt_latino
+            if calcular_rend_prom: fmt_op['PROMEDIO (Ha/Hr)'] = fmt_latino
+            
+            fmt_fin = {'COSTO TOTAL ($)': fmt_dinero, 'TARIFA PROM ($/Ha)': fmt_dinero}
+
             def aplicar_estilos_originales(row):
                 if "BASE:" in str(row['NIVEL']): return ['background-color: #d1ecf1; font-weight: bold; color: #0c5460;'] * len(row)
                 elif "TOTAL GENERAL" in str(row['NIVEL']): return ['background-color: #c3e6cb; font-weight: bold; color: #155724;'] * len(row)
                 elif 'AVIÓN (HK)' in row and ("✈️" in str(row.get('AVIÓN (HK)','')) or "🛸" in str(row.get('AVIÓN (HK)',''))):
                     return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
                 return [''] * len(row)
-                
-            fmt_cols = {
-                'ÁREA FUMIG (ha)': fmt_latino,
-                'COSTO TOTAL ($)': fmt_dinero,
-                'TARIFA PROM ($/Ha)': fmt_dinero
-            }
-            if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
-            if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
+
+            # 💥 CREACIÓN DE LAS DOS PESTAÑAS (TABS)
+            tab_op, tab_fin = st.tabs(["🚜 CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
             
-            st.dataframe(df_visual.style.apply(aplicar_estilos_originales, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
+            with tab_op:
+                st.markdown("##### 🚜 Desglose Operativo Puro")
+                st.caption("Perfecto para compartir: Muestra rendimiento físico de las aeronaves ocultando las tarifas monetarias.")
+                st.dataframe(df_operativo.style.apply(aplicar_estilos_originales, axis=1).format(fmt_op), use_container_width=True, hide_index=True)
+                
+            with tab_fin:
+                st.markdown("##### 💰 Desglose Financiero Confidencial")
+                st.caption("Uso gerencial: Muestra el impacto en pesos facturados por cada base y matrícula.")
+                st.dataframe(df_financiero.style.apply(aplicar_estilos_originales, axis=1).format(fmt_fin), use_container_width=True, hide_index=True)
 
         else:
             matriz = pd.pivot_table(df_filt, values='AREA_NUM', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
@@ -912,64 +933,71 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         else:
             with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
                 if vista_seleccionada == "📊 Resumen Gerencial":
-                    df_visual.to_excel(writer, sheet_name='Resumen_Gerencial', index=False, startrow=3)
-                    ws = writer.sheets['Resumen_Gerencial']
+                    # 💥 EXPORTACIÓN DOBLE (OPERATIVA Y FINANCIERA)
+                    sheets_data = [
+                        ('Resumen_Operativo', df_operativo, ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']),
+                        ('Resumen_Financiero', df_financiero, ['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)'])
+                    ]
                     
-                    ws['A1'] = "REPORTE GERENCIAL DE HECTÁREAS, RENDIMIENTO Y COSTOS"
-                    ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
-                    ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-                    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_visual.columns))
-                    
-                    ws['A3'] = f"Período Analizado: {rango_txt}"
-                    ws['A3'].font = Font(italic=True, color="333333", bold=True)
-                    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_visual.columns))
+                    for s_name, df_sheet, num_cols in sheets_data:
+                        df_sheet.to_excel(writer, sheet_name=s_name, index=False, startrow=3)
+                        ws = writer.sheets[s_name]
+                        
+                        ws['A1'] = f"REPORTE GERENCIAL - {s_name.replace('_', ' ').upper()}"
+                        ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
+                        ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+                        ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_sheet.columns))
+                        
+                        ws['A3'] = f"Período Analizado: {rango_txt}"
+                        ws['A3'].font = Font(italic=True, color="333333", bold=True)
+                        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_sheet.columns))
 
-                    header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                    header_font = Font(bold=True, color="000000")
-                    for col_num in range(1, len(df_visual.columns) + 1):
-                        cell = ws.cell(row=4, column=col_num)
-                        cell.fill = header_fill
-                        cell.font = header_font
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                        ws.column_dimensions[get_column_letter(col_num)].width = 22
-                    
-                    for r_idx in range(5, len(df_visual) + 5):
-                        nivel_val = str(ws.cell(row=r_idx, column=1).value)
+                        header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                        header_font = Font(bold=True, color="000000")
+                        for col_num in range(1, len(df_sheet.columns) + 1):
+                            cell = ws.cell(row=4, column=col_num)
+                            cell.fill = header_fill
+                            cell.font = header_font
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                            ws.column_dimensions[get_column_letter(col_num)].width = 22
                         
-                        bg_color = None
-                        is_bold = False
-                        
-                        if "BASE:" in nivel_val:
-                            bg_color = "D1ECF1"
-                            is_bold = True
-                        elif "TOTAL GENERAL" in nivel_val:
-                            bg_color = "C3E6CB"
-                            is_bold = True
+                        for r_idx in range(5, len(df_sheet) + 5):
+                            nivel_val = str(ws.cell(row=r_idx, column=1).value)
                             
-                        for c_idx in range(1, len(df_visual.columns) + 1):
-                            cell = ws.cell(row=r_idx, column=c_idx)
+                            bg_color = None
+                            is_bold = False
                             
-                            if bg_color:
-                                cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
-                            if is_bold:
-                                cell.font = Font(bold=True)
+                            if "BASE:" in nivel_val:
+                                bg_color = "D1ECF1"
+                                is_bold = True
+                            elif "TOTAL GENERAL" in nivel_val:
+                                bg_color = "C3E6CB"
+                                is_bold = True
                                 
-                            col_name = df_visual.columns[c_idx - 1]
-                            if col_name in ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']:
-                                try:
-                                    if cell.value != "" and cell.value is not None:
-                                        cell.value = float(cell.value)
-                                        cell.number_format = '#,##0.00'
-                                        cell.alignment = Alignment(horizontal='center')
-                                except: pass
-                            elif col_name in ['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)']:
-                                try:
-                                    if cell.value != "" and cell.value is not None:
-                                        cell.value = float(cell.value)
-                                        cell.number_format = '$#,##0'
-                                        cell.alignment = Alignment(horizontal='center')
-                                except: pass
+                            for c_idx in range(1, len(df_sheet.columns) + 1):
+                                cell = ws.cell(row=r_idx, column=c_idx)
+                                
+                                if bg_color:
+                                    cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+                                if is_bold:
+                                    cell.font = Font(bold=True)
+                                    
+                                col_name = df_sheet.columns[c_idx - 1]
+                                if col_name in ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']:
+                                    try:
+                                        if cell.value != "" and cell.value is not None:
+                                            cell.value = float(cell.value)
+                                            cell.number_format = '#,##0.00'
+                                            cell.alignment = Alignment(horizontal='center')
+                                    except: pass
+                                elif col_name in ['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)']:
+                                    try:
+                                        if cell.value != "" and cell.value is not None:
+                                            cell.value = float(cell.value)
+                                            cell.number_format = '$#,##0'
+                                            cell.alignment = Alignment(horizontal='center')
+                                    except: pass
                                 
                 elif vista_seleccionada == "📅 Mapa Semanal":
                     matriz.to_excel(writer, sheet_name='Mapa_Semanal', startrow=3)
