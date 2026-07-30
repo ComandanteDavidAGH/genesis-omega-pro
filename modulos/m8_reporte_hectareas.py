@@ -308,9 +308,9 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     return promedio_ciclos, promedio_intervalo
 
 # =================================================================
-# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
+# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO (CON FIRMA CORREGIDA)
 # =================================================================
-def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
+def ejecutar(supabase_client, descargar_matriz_rapida, extraer_numero_app, procesar_fecha_pesada_app):
     st.header("", anchor="inicio_modulo")
 
     st.markdown("""
@@ -377,7 +377,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v28.0 - BATALLA ESCUADRONES)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v29.0 - CONEXIÓN BLINDADA)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -403,7 +403,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
-        super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
+        # Usa el procesador de fechas que viene de app.py
+        super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada_app)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
         super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA_DT'])
