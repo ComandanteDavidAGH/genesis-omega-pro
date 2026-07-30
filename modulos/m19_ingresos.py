@@ -391,10 +391,10 @@ def ejecutar():
                 except Exception as e:
                     st.error(f"Error al inyectar datos: {e}")
 
-    # --- 📧 GENERADOR DE REPORTE PARA CORREO (COPY/PASTE BLINDADO) ---
+    # --- 📧 GENERADOR DE REPORTE PARA CORREO (CONSTRUCTOR HTML MANUAL EXTREMO) ---
     st.markdown("---")
     st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
-    st.info("💡 Selecciona la fecha de los ingresos. Sombrea la tabla resultante, cópiala y pégala directo en tu correo.")
+    st.info("💡 Selecciona la fecha de los ingresos. Sombrea la tabla resultante, cópiala y pégala directo en tu correo. El formato se conservará impecable.")
     
     col_fecha_rep, col_vacia = st.columns([1, 3])
     fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=datetime.now())
@@ -409,23 +409,37 @@ def ejecutar():
             cols_deseadas = [c for c in df.columns if c in ["SEMANA", "PROVEEDOR", "FECHA DE INGRESO", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]]
             df_correo = df_correo[cols_deseadas]
             
-            # 💥 CIRUGÍA ESTÉTICA: TABLA HTML CON ESTILOS AGRESIVOS Y BORDES FUERTES
-            html_table = df_correo.to_html(index=False, justify='center')
+            # 💥 CIRUGÍA MAYOR: CONSTRUCCIÓN MANUAL DE CADA ETIQUETA HTML PARA BYPASS A STREAMLIT
+            html_manual = """
+            <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 13px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
+                <thead>
+                    <tr>
+            """
+            # Inyectar Encabezados
+            for col_name in df_correo.columns:
+                html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 12px 10px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase;'>{col_name}</th>"
             
-            # Borde exterior de la tabla (Azul Marino Sólido)
-            html_table = html_table.replace('<table border="1" class="dataframe">', 
-                                            '<table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 13px; border: 3px solid #0d1b2a; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">')
+            html_manual += """
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            # Inyectar Celdas de Datos
+            for _, row in df_correo.iterrows():
+                html_manual += "<tr>"
+                for col_name in df_correo.columns:
+                    val = str(row[col_name]) if pd.notna(row[col_name]) else ""
+                    html_manual += f"<td style='padding: 10px; border: 2px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold;'>{val}</td>"
+                html_manual += "</tr>"
+                
+            html_manual += """
+                </tbody>
+            </table>
+            """
             
-            # Encabezados VIP (Fondo Azul, Letra Dorada, Borde Fuerte)
-            html_table = html_table.replace('<th>', 
-                                            '<th style="background-color: #0d1b2a; color: #d4af37; padding: 12px 8px; border: 2px solid #0d1b2a; text-align: center; text-transform: uppercase; font-weight: 900;">')
+            # Renderizar en pantalla
+            st.markdown(html_manual, unsafe_allow_html=True)
             
-            # Celdas Claras con Borde Sólido (Fondo Blanco, Letra Negra, Borde Azul Marino)
-            html_table = html_table.replace('<td>', 
-                                            '<td style="padding: 10px 8px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; background-color: #ffffff;">')
-            
-            # Contenedor para la tabla en Streamlit
-            st.markdown(f"<div style='border-radius: 8px; overflow: hidden; border: 2px solid #0d1b2a; margin-top: 15px;'>{html_table}</div>", unsafe_allow_html=True)
         else:
             st.warning(f"No se encontraron ingresos registrados en la bóveda con la fecha {fecha_reporte_str}.")
 
