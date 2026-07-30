@@ -169,7 +169,7 @@ def ejecutar():
         font-weight: 900 !important; 
     }
     
-    /* 💥 MATRIZ DE AUDITORÍA BLINDADA (EVITA LA PALIDEZ EXTREMA) */
+    /* 💥 MATRIZ DE AUDITORÍA BLINDADA */
     div[data-testid="stDataEditor"] {
         border: 3px solid #0d1b2a !important;
         border-radius: 8px !important;
@@ -463,7 +463,7 @@ def ejecutar():
                 except Exception as e:
                     st.error(f"Error al inyectar datos: {e}")
 
-    # --- 📧 GENERADOR DE REPORTE PARA CORREO (CONSTRUCTOR HTML MANUAL EXTREMO) ---
+    # --- 📧 GENERADOR DE REPORTE PARA CORREO ---
     st.markdown("---")
     st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
     st.info("💡 Selecciona la fecha de los ingresos. Sombrea la tabla resultante, cópiala y pégala directo en tu correo. El formato se conservará impecable.")
@@ -524,13 +524,30 @@ def ejecutar():
     st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
     
     st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
-    filtro_seleccionado = st.radio("Mostrar ingresos:", 
+    
+    # 💥 LÓGICA DEL FILTRO DE FRANCOTIRADOR (POR PRODUCTO Y ESTADO)
+    f_col1, f_col2 = st.columns([1.5, 1])
+    
+    filtro_seleccionado = f_col1.radio("Estado Operativo:", 
                                  ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], 
                                  horizontal=True)
+    
+    if col_producto:
+        lista_productos_tabla = ["TODOS"] + sorted([str(x).upper() for x in df[col_producto].dropna().unique() if str(x).strip() != ""])
+    else:
+        lista_productos_tabla = ["TODOS"]
+        
+    producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
     
     df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
 
     df_filtrado = df.copy()
+    
+    # 1. Aplicar filtro de Producto
+    if producto_filtro != "TODOS" and col_producto:
+        df_filtrado = df_filtrado[df_filtrado[col_producto].str.upper() == producto_filtro]
+
+    # 2. Aplicar filtro de Estado
     if filtro_seleccionado == "✅ Solo Vigentes":
         df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("VIGENTE", case=False, na=False)]
     elif filtro_seleccionado == "🚨 Solo Vencidos" and col_fv:
@@ -556,7 +573,6 @@ def ejecutar():
     columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP']]
     df_vista = df_filtrado[columnas_vista].copy()
 
-    # 💥 DICCIONARIO DE CONFIGURACIÓN DE COLUMNAS (EMOJIS TÁCTICOS Y ANCHOS INTELIGENTES)
     col_config = {}
     for c in df_vista.columns:
         c_up = c.upper()
