@@ -10,19 +10,19 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V24 (MULTIFILTRO Y EXCEL GERENCIAL)
+# 🚁 RADAR DE HECTÁREAS - OMEGA V25 (BI FINANCIERO E INTELIGENCIA)
 # =================================================================
 def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
     
     # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL CON SELLO DE VERIFICACIÓN
-    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar de Hectáreas y Rendimiento <span style='font-size: 16px; color: #d4af37;'>[V24]</span></h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar Operativo y Financiero <span style='font-size: 16px; color: #d4af37;'>[V25]</span></h1>", unsafe_allow_html=True)
     
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP Y EFECTO LUPA GLOBAL (SC)
+    # 🚀 REFORZAMIENTO ESTÉTICO VIP Y EFECTO LUPA GLOBAL
     st.markdown("""
     <style>
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
-    /* 💥 CONTROLES ENDURECIDOS: Forzar visibilidad extrema en radios, selectores y calendarios */
+    /* 💥 CONTROLES ENDURECIDOS */
     div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
     div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
     div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
@@ -36,50 +36,31 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         font-size: 15px !important;
     }
     
-    /* Acentuación de contraste para las etiquetas st.radio */
     div[data-testid="stMainBlockContainer"] div[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
+        color: #0d1b2a !important; font-weight: 800 !important;
     }
 
-    /* 🔍 EFECTO LUPA (SC) PARA TARJETAS KPI */
+    /* 🔍 EFECTO LUPA PARA TARJETAS KPI */
     .kpi-card {
-        background-color: #0d1b2a; 
-        color: white; 
-        padding: 20px; 
-        border-radius: 10px; 
-        text-align: center;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border: 1px solid #1a365d;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; text-align: center;
+        transition: transform 0.3s ease, box-shadow 0.3s ease; border: 1px solid #1a365d;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 15px;
     }
-    .kpi-card:hover {
-        transform: translateY(-5px) scale(1.03);
-        box-shadow: 0 12px 20px rgba(212, 175, 55, 0.3);
-        border: 1px solid #d4af37;
-    }
-    .kpi-title {
-        margin: 0; 
-        color: #d4af37; 
-        font-size: 14px; 
-        font-weight: bold; 
-        text-transform: uppercase;
-    }
-    .kpi-value {
-        margin: 10px 0 0 0; 
-        font-size: 28px; 
-        font-weight: 900;
-    }
+    .kpi-card:hover { transform: translateY(-5px) scale(1.03); box-shadow: 0 12px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37; }
+    .kpi-title { margin: 0; color: #d4af37; font-size: 14px; font-weight: bold; text-transform: uppercase; }
+    .kpi-value { margin: 10px 0 0 0; font-size: 26px; font-weight: 900; }
     
+    /* VARIANTES DE COLOR PARA FINANZAS */
+    .kpi-finance { border-bottom: 4px solid #28a745; }
+    .kpi-finance-title { color: #28a745 !important; }
+
     /* 📈 EFECTO LUPA PARA GRÁFICOS Y TABLAS AL PASAR EL MOUSE */
     [data-testid="stPlotlyChart"], [data-testid="stDataFrame"] {
-        transition: transform 0.3s ease, box-shadow 0.3s ease !important;
-        border-radius: 8px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px;
     }
     [data-testid="stPlotlyChart"]:hover, [data-testid="stDataFrame"]:hover {
         transform: translateY(-4px) scale(1.015) !important;
-        box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important;
-        z-index: 10;
+        box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -90,8 +71,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Datos", type="primary", use_container_width=True, key="btn_sync_m8"):
         st.cache_data.clear()
-        if 'm8_datos_crudos' in st.session_state:
-            del st.session_state['m8_datos_crudos']
+        if 'm8_datos_crudos' in st.session_state: del st.session_state['m8_datos_crudos']
         st.toast("✅ Memoria vieja destruida. Descargando datos frescos...", icon="🔄")
         st.rerun()
     st.markdown("---")
@@ -120,6 +100,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         """FUERZA EL FORMATO COLOMBIANO: Puntos en miles, comas en decimales"""
         try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
         except: return str(val) if val is not None else ""
+
+    def fmt_dinero(val):
+        """FORMATO FINANCIERO: Con símbolo $ y sin decimales"""
+        try: return f"${float(val):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except: return f"${val}"
 
     if descargar_matriz_rapida is None:
         st.error("🚨 Error técnico: No se detecta el motor de lectura de Google Sheets.")
@@ -175,9 +160,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             llave_hr = next((k for k in r_norm.keys() if "RENDIMIENTO" in k or "HORAS" in k or "HOROMETRO" in k), None)
             llave_sem = next((k for k in r_norm.keys() if k in ["SEM", "SEMANA"]), None)
             
+            # 💥 CIRUGÍA FINANCIERA: RASTREADOR DE COLUMNA DE COSTOS ($/Ha)
+            llave_costo_ha = next((k for k in r_norm.keys() if "COSTO" in k and "HA" in k), None)
+            
             f_dt = procesar_fecha_pesada(r_norm.get("FECHA", r_norm.get("FECHA_OPERACION", "")))
-            if f_dt is None:
-                continue
+            if f_dt is None: continue
+
+            ha_netas = extraer_numero(r_norm.get(llave_ha, "0") if llave_ha else "0")
+            costo_ha = extraer_numero(r_norm.get(llave_costo_ha, "0") if llave_costo_ha else "0")
 
             datos_limpios.append({
                 "PISTA": r_norm.get("PISTA", "").strip().upper(),
@@ -185,8 +175,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 "MODELO": r_norm.get("MODELO", "").strip().upper(),
                 "FECHA_REAL": f_dt,
                 "SEMANA": r_norm.get(llave_sem, "") if llave_sem else "",
-                "HA_NETAS": extraer_numero(r_norm.get(llave_ha, "0") if llave_ha else "0"),
-                "H_PROPORCIONAL": extraer_numero(r_norm.get(llave_hr, "0") if llave_hr else "0")
+                "HA_NETAS": ha_netas,
+                "H_PROPORCIONAL": extraer_numero(r_norm.get(llave_hr, "0") if llave_hr else "0"),
+                "COSTO_HA": costo_ha,
+                "COSTO_TOTAL": ha_netas * costo_ha # 💥 Cálculo automático del total en pesos
             })
 
         df_rep = pd.DataFrame(datos_limpios)
@@ -203,7 +195,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             mapa_modelo = df_rep[mask_hk].groupby('HK')['MODELO'].first().to_dict()
         
         df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
-        
         if df_rep.empty: return
 
         pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
@@ -212,21 +203,18 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v24")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v25")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v24")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v24")
-        
-        # 💥 REEMPLAZO TÁCTICO: MULTISELECTOR DE PISTAS
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v24")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v25")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v25")
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v25")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v24")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v24")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v24")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v25")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v25")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v25")
 
-        # 💥 NUEVA LÓGICA DE FILTRADO MULTIPLE
         df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
         
         if pistas_sel:
@@ -246,14 +234,13 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         df_filt['MES'] = df_filt['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
         
         st.markdown("---")
-        # 🗓️ FORMATO EJECUTIVO DE FECHAS
         rango_txt = f"{fecha_sel_ini.day} de {meses_nom_largo.get(fecha_sel_ini.month, '')} {fecha_sel_ini.year} ⸺ {fecha_sel_fin.day} de {meses_nom_largo.get(fecha_sel_fin.month, '')} {fecha_sel_fin.year}"
         
         # =================================================================
-        # 📈 VISTA 3: DASHBOARD EJECUTIVO (KPIs SEPARADOS Y EFECTO LUPA)
+        # 📈 VISTA 3: DASHBOARD EJECUTIVO (BI FINANCIERO)
         # =================================================================
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
-            st.markdown(f"#### 📈 Dashboard Ejecutivo y Participación Global")
+            st.markdown(f"#### 📈 Dashboard Ejecutivo y BI Financiero")
             st.caption(f"🗓️ *{rango_txt}*")
             
             # 🚀 SEPARACIÓN DE DRONES Y AVIONES
@@ -263,6 +250,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             total_ha = df_filt['HA_NETAS'].sum()
             total_vuelos = len(df_filt)
             
+            # Métricas Operativas
             ha_drones = df_drones['HA_NETAS'].sum()
             vuelos_drones = len(df_drones)
             prom_drones = ha_drones / vuelos_drones if vuelos_drones > 0 else 0
@@ -271,117 +259,117 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             vuelos_aviones = len(df_aviones)
             prom_aviones = ha_aviones / vuelos_aviones if vuelos_aviones > 0 else 0
             
+            # 💥 MÉTRICAS FINANCIERAS (Costo)
+            costo_tot_drones = df_drones['COSTO_TOTAL'].sum()
+            costo_tot_aviones = df_aviones['COSTO_TOTAL'].sum()
+            prom_costo_dr = costo_tot_drones / ha_drones if ha_drones > 0 else 0
+            prom_costo_av = costo_tot_aviones / ha_aviones if ha_aviones > 0 else 0
+
             df_dash = df_filt.groupby('PISTA').agg(
                 VUELOS=('PISTA', 'count'),
-                HECTAREAS=('HA_NETAS', 'sum')
+                HECTAREAS=('HA_NETAS', 'sum'),
+                COSTO_TOTAL=('COSTO_TOTAL', 'sum')
             ).reset_index()
             
             df_dash['% VUELOS'] = (df_dash['VUELOS'] / total_vuelos) * 100
             df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
             df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
             
-            # FORMATO COLOMBIANO ESTRICTO EN KPIs
-            ha_str = fmt_latino(total_ha, 2)
-            vuelos_str = fmt_latino(total_vuelos, 0)
-            prom_av_str = fmt_latino(prom_aviones, 2)
-            prom_dr_str = fmt_latino(prom_drones, 2)
-            
-            # 🌟 4 TARJETAS PARA DESGLOSAR AVIONES VS DRONES
+            # 🌟 4 TARJETAS OPERATIVAS
             k1, k2, k3, k4 = st.columns(4)
-            k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{ha_str}</p></div>", unsafe_allow_html=True)
-            k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Misiones (Total)</p><p class='kpi-value'>{vuelos_str}</p></div>", unsafe_allow_html=True)
-            k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Prom. Ha/Misión ✈️</p><p class='kpi-value'>{prom_av_str}</p></div>", unsafe_allow_html=True)
-            k4.markdown(f"<div class='kpi-card'><p class='kpi-title'>Prom. Ha/Misión 🛸</p><p class='kpi-value'>{prom_dr_str}</p></div>", unsafe_allow_html=True)
+            k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{fmt_latino(total_ha, 2)}</p></div>", unsafe_allow_html=True)
+            k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Misiones (Total)</p><p class='kpi-value'>{fmt_latino(total_vuelos, 0)}</p></div>", unsafe_allow_html=True)
+            k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Prom. Ha/Misión ✈️</p><p class='kpi-value'>{fmt_latino(prom_aviones, 2)}</p></div>", unsafe_allow_html=True)
+            k4.markdown(f"<div class='kpi-card'><p class='kpi-title'>Prom. Ha/Misión 🛸</p><p class='kpi-value'>{fmt_latino(prom_drones, 2)}</p></div>", unsafe_allow_html=True)
+            
+            # 🌟 4 TARJETAS FINANCIERAS (NUEVAS)
+            kf1, kf2, kf3, kf4 = st.columns(4)
+            kf1.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Costo Total ✈️</p><p class='kpi-value' style='color:#28a745;'>{fmt_dinero(costo_tot_aviones)}</p></div>", unsafe_allow_html=True)
+            kf2.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Tarifa Prom ✈️</p><p class='kpi-value'>{fmt_dinero(prom_costo_av)}<span style='font-size:12px; font-weight:normal;'>/Ha</span></p></div>", unsafe_allow_html=True)
+            kf3.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Costo Total 🛸</p><p class='kpi-value' style='color:#28a745;'>{fmt_dinero(costo_tot_drones)}</p></div>", unsafe_allow_html=True)
+            kf4.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Tarifa Prom 🛸</p><p class='kpi-value'>{fmt_dinero(prom_costo_dr)}<span style='font-size:12px; font-weight:normal;'>/Ha</span></p></div>", unsafe_allow_html=True)
+            
             st.write("")
 
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
-            # Gráfico Dona
+            # Gráfico Dona (Vuelos)
             fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
             fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
-            # Gráfico Barras
+            # Gráfico Barras (Hectáreas)
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
                              x='HECTAREAS', y='PISTA', orientation='h',
-                             title="<b>Volumen de Hectáreas por Pista</b>",
+                             title="<b>Volumen de Hectáreas por Base</b>",
                              text='TXT_PCT',
                              color='HECTAREAS', color_continuous_scale='Blues')
             fig_bar.update_layout(separators=",.", xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
             g2.plotly_chart(fig_bar, use_container_width=True)
 
-            st.markdown("##### 📋 Desglose de Participación Total")
+            # 💥 NUEVO RANKING: IMPACTO DE COSTOS POR AERONAVE
+            st.markdown("---")
+            st.markdown("##### 🏆 Ranking: Impacto de Costos por Aeronave (Facturación)")
+            df_hk = df_filt.groupby(['HK']).agg(
+                MISIONES=('HK', 'count'),
+                HECTAREAS=('HA_NETAS', 'sum'),
+                COSTO_TOTAL=('COSTO_TOTAL', 'sum')
+            ).reset_index()
             
-            df_tabla_dash = df_dash[['PISTA', 'VUELOS', 'HECTAREAS', '% VUELOS', '% HECTAREAS']].copy()
-            fila_total = pd.DataFrame([{
-                'PISTA': '👑 TOTAL GENERAL', 
-                'VUELOS': df_tabla_dash['VUELOS'].sum(), 
-                'HECTAREAS': df_tabla_dash['HECTAREAS'].sum(), 
-                '% VUELOS': 100.0, 
-                '% HECTAREAS': 100.0
-            }])
-            df_tabla_dash = pd.concat([df_tabla_dash, fila_total], ignore_index=True)
-            
-            fmt_dash = {
-                "VUELOS": lambda x: f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                "HECTAREAS": lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                "% VUELOS": lambda x: f"{x:.2f}%".replace(".", ","),
-                "% HECTAREAS": lambda x: f"{x:.2f}%".replace(".", ",")
-            }
+            df_hk['TARIFA_PROM'] = df_hk['COSTO_TOTAL'] / df_hk['HECTAREAS']
+            df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False)
             
             st.dataframe(
-                df_tabla_dash.style.format(fmt_dash)
-                  .bar(subset=["% HECTAREAS"], color='#d4af37', vmin=0, vmax=100)
-                  .bar(subset=["% VUELOS"], color='#5c88b0', vmin=0, vmax=100),
+                df_hk.style.format({
+                    'MISIONES': lambda x: f"{x:,.0f}".replace(",", "."),
+                    'HECTAREAS': fmt_latino,
+                    'COSTO_TOTAL': fmt_dinero,
+                    'TARIFA_PROM': fmt_dinero
+                }).bar(subset=['COSTO_TOTAL'], color='#28a745', vmin=0)
+                  .bar(subset=['HECTAREAS'], color='#5c88b0', vmin=0),
                 use_container_width=True, hide_index=True
             )
 
-            st.markdown("---")
-            st.markdown("##### 🗓️ Matriz de Participación Mensual (%)")
-            
-            matriz_ha = pd.pivot_table(df_filt, values='HA_NETAS', index='PISTA', columns='MES', aggfunc='sum', fill_value=0)
-            cols_ordenadas = sorted(matriz_ha.columns, key=lambda x: int(str(x).split("-")[0]) if "-" in str(x) else 999)
-            matriz_ha = matriz_ha[cols_ordenadas]
-            
-            matriz_pct = matriz_ha.div(matriz_ha.sum(axis=0), axis=1) * 100
-            totales_mes = [100.0 if matriz_ha[col].sum() > 0 else 0.0 for col in matriz_pct.columns]
-            matriz_pct.loc['TOTAL MES'] = totales_mes
-            
-            st.dataframe(
-                matriz_pct.style.format(lambda x: f"{x:.1f}%".replace(".", ","))
-                .background_gradient(cmap="Blues", axis=None, subset=(matriz_pct.index[:-1], matriz_pct.columns)), 
-                use_container_width=True
-            )
-
         # =================================================================
-        # 📊 VISTA 1 & 2: VISTAS CLÁSICAS
+        # 📊 VISTA 1 & 2: VISTAS CLÁSICAS CON BI FINANCIERO INTEGRADO
         # =================================================================
         elif vista_seleccionada == "📊 Resumen Gerencial":
-            st.markdown(f"#### 📑 Consolidado Operativo")
+            st.markdown(f"#### 📑 Consolidado Operativo y Financiero")
             st.caption(f"🗓️ *{rango_txt}*")
             tabla_final = []
-            total_hr_gral, total_ha_gral = 0, 0
+            total_hr_gral, total_ha_gral, total_costo_gral = 0, 0, 0
 
             if agrupar_avion:
-                df_gerencia = df_filt.groupby(['PISTA', 'HK', 'MES']).agg(REND_HR=('H_PROPORCIONAL', 'sum'), AREA_FUMIG=('HA_NETAS', 'sum')).reset_index()
+                df_gerencia = df_filt.groupby(['PISTA', 'HK', 'MES']).agg(
+                    REND_HR=('H_PROPORCIONAL', 'sum'), 
+                    AREA_FUMIG=('HA_NETAS', 'sum'),
+                    COSTO_TOT=('COSTO_TOTAL', 'sum')
+                ).reset_index()
+                
                 for pista in sorted(df_gerencia['PISTA'].unique()):
                     df_pista = df_gerencia[df_gerencia['PISTA'] == pista]
                     sum_hr_pista = df_pista['REND_HR'].sum()
                     sum_ha_pista = df_pista['AREA_FUMIG'].sum()
+                    sum_costo_pista = df_pista['COSTO_TOT'].sum()
                     
                     fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': '', 'MES': 'TOTAL BASE'}
                     if mostrar_horas or calcular_rend_prom: fila_pista['REND (hr)'] = sum_hr_pista
                     fila_pista['ÁREA FUMIG (ha)'] = sum_ha_pista
                     if calcular_rend_prom: fila_pista['PROMEDIO (Ha/Hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
+                    
+                    # 💥 Inyección Financiera
+                    fila_pista['COSTO TOTAL ($)'] = sum_costo_pista
+                    fila_pista['TARIFA PROM ($/Ha)'] = sum_costo_pista / sum_ha_pista if sum_ha_pista > 0 else 0.0
                     tabla_final.append(fila_pista)
                     
                     for hk in sorted(df_pista['HK'].unique()):
                         datos_hk = df_pista[df_pista['HK'] == hk].sort_values(by='MES')
                         sum_hr_hk = datos_hk['REND_HR'].sum()
                         sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
+                        sum_costo_hk = datos_hk['COSTO_TOT'].sum()
                         
                         modelo = str(mapa_modelo.get(hk, "")).upper()
                         es_dron = "DRON" in modelo or "DR" in hk
@@ -391,6 +379,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
                         if calcular_rend_prom: fila_hk['PROMEDIO (Ha/Hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
+                        
+                        fila_hk['COSTO TOTAL ($)'] = sum_costo_hk
+                        fila_hk['TARIFA PROM ($/Ha)'] = sum_costo_hk / sum_ha_hk if sum_ha_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
                         for _, row in datos_hk.iterrows():
@@ -398,28 +389,44 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                             if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                             fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
                             if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                            
+                            fila_mes['COSTO TOTAL ($)'] = row['COSTO_TOT']
+                            fila_mes['TARIFA PROM ($/Ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
                             tabla_final.append(fila_mes)
                             
                     total_hr_gral += sum_hr_pista
                     total_ha_gral += sum_ha_pista
+                    total_costo_gral += sum_costo_pista
                     
                 fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                 fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
+                
+                fila_tot['COSTO TOTAL ($)'] = total_costo_gral
+                fila_tot['TARIFA PROM ($/Ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
                 
             else:
-                df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(REND_HR=('H_PROPORCIONAL', 'sum'), AREA_FUMIG=('HA_NETAS', 'sum')).reset_index()
+                df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
+                    REND_HR=('H_PROPORCIONAL', 'sum'), 
+                    AREA_FUMIG=('HA_NETAS', 'sum'),
+                    COSTO_TOT=('COSTO_TOTAL', 'sum')
+                ).reset_index()
+                
                 for pista in sorted(df_gerencia['PISTA'].unique()):
                     datos_pista = df_gerencia[df_gerencia['PISTA'] == pista].sort_values(by='MES')
                     sum_hr = datos_pista['REND_HR'].sum()
                     sum_ha = datos_pista['AREA_FUMIG'].sum()
+                    sum_costo = datos_pista['COSTO_TOT'].sum()
                     
                     fila_sub = {'NIVEL': f"📍 BASE: {pista}", 'MES': 'TOTAL BASE'}
                     if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
                     fila_sub['ÁREA FUMIG (ha)'] = sum_ha
                     if calcular_rend_prom: fila_sub['PROMEDIO (Ha/Hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
+                    
+                    fila_sub['COSTO TOTAL ($)'] = sum_costo
+                    fila_sub['TARIFA PROM ($/Ha)'] = sum_costo / sum_ha if sum_ha > 0 else 0.0
                     tabla_final.append(fila_sub)
                     
                     for _, row in datos_pista.iterrows():
@@ -427,15 +434,22 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                         fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
                         if calcular_rend_prom: fila_mes['PROMEDIO (Ha/Hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
+                        
+                        fila_mes['COSTO TOTAL ($)'] = row['COSTO_TOT']
+                        fila_mes['TARIFA PROM ($/Ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
                         tabla_final.append(fila_mes)
                         
                     total_hr_gral += sum_hr
                     total_ha_gral += sum_ha
+                    total_costo_gral += sum_costo
                     
                 fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                 fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
                 if calcular_rend_prom: fila_tot['PROMEDIO (Ha/Hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
+                
+                fila_tot['COSTO TOTAL ($)'] = total_costo_gral
+                fila_tot['TARIFA PROM ($/Ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
             df_visual = pd.DataFrame(tabla_final)
@@ -447,7 +461,11 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                     return ['background-color: #f8f9fa; font-weight: bold; color: #212529;'] * len(row)
                 return [''] * len(row)
                 
-            fmt_cols = {'ÁREA FUMIG (ha)': fmt_latino}
+            fmt_cols = {
+                'ÁREA FUMIG (ha)': fmt_latino,
+                'COSTO TOTAL ($)': fmt_dinero,
+                'TARIFA PROM ($/Ha)': fmt_dinero
+            }
             if mostrar_horas or calcular_rend_prom: fmt_cols['REND (hr)'] = fmt_latino
             if calcular_rend_prom: fmt_cols['PROMEDIO (Ha/Hr)'] = fmt_latino
             
@@ -485,7 +503,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                            top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
             align_center = Alignment(horizontal='center', vertical='center')
             
-            ws['B2'] = "REPORTE GERENCIAL: RADAR DE HECTÁREAS Y MISIONES"
+            ws['B2'] = "REPORTE GERENCIAL: RADAR DE HECTÁREAS, MISIONES Y COSTOS"
             ws['B2'].font = Font(size=14, bold=True, color="0D1B2A")
             ws['B3'] = f"Período Analizado: {rango_txt}"
             ws['B3'].font = Font(italic=True, color="555555")
@@ -493,8 +511,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             df_export = df_dash.copy()
             total_vuelos_exp = df_export['VUELOS'].sum()
             total_ha_exp = df_export['HECTAREAS'].sum()
+            total_costo_exp = df_export['COSTO_TOTAL'].sum()
             
-            headers = ['BASE OPERATIVA', 'TOTAL MISIONES', 'HECTÁREAS NETAS', '% MISIONES', '% HECTÁREAS']
+            headers = ['BASE OPERATIVA', 'TOTAL MISIONES', 'HECTÁREAS NETAS', 'COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)']
             start_row = 6
             for col_idx, header in enumerate(headers, start=2):
                 cell = ws.cell(row=start_row, column=col_idx, value=header)
@@ -510,9 +529,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 ws.cell(row=curr_row, column=3).border = borde
                 ws.cell(row=curr_row, column=4, value=row['HECTAREAS']).number_format = '#,##0.00'
                 ws.cell(row=curr_row, column=4).border = borde
-                ws.cell(row=curr_row, column=5, value=(row['VUELOS']/total_vuelos_exp)).number_format = '0.00%'
+                ws.cell(row=curr_row, column=5, value=row['COSTO_TOTAL']).number_format = '$#,##0'
                 ws.cell(row=curr_row, column=5).border = borde
-                ws.cell(row=curr_row, column=6, value=(row['HECTAREAS']/total_ha_exp)).number_format = '0.00%'
+                tarifa_base = row['COSTO_TOTAL'] / row['HECTAREAS'] if row['HECTAREAS'] > 0 else 0
+                ws.cell(row=curr_row, column=6, value=tarifa_base).number_format = '$#,##0'
                 ws.cell(row=curr_row, column=6).border = borde
                 curr_row += 1
                 
@@ -527,20 +547,21 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             ws.cell(row=curr_row, column=4).font = font_tot
             ws.cell(row=curr_row, column=4).border = borde
             ws.cell(row=curr_row, column=4).number_format = '#,##0.00'
-            ws.cell(row=curr_row, column=5, value=1.0).fill = fill_tot
+            ws.cell(row=curr_row, column=5, value=total_costo_exp).fill = fill_tot
             ws.cell(row=curr_row, column=5).font = font_tot
             ws.cell(row=curr_row, column=5).border = borde
-            ws.cell(row=curr_row, column=5).number_format = '0.00%'
-            ws.cell(row=curr_row, column=6, value=1.0).fill = fill_tot
+            ws.cell(row=curr_row, column=5).number_format = '$#,##0'
+            tarifa_total = total_costo_exp / total_ha_exp if total_ha_exp > 0 else 0
+            ws.cell(row=curr_row, column=6, value=tarifa_total).fill = fill_tot
             ws.cell(row=curr_row, column=6).font = font_tot
             ws.cell(row=curr_row, column=6).border = borde
-            ws.cell(row=curr_row, column=6).number_format = '0.00%'
+            ws.cell(row=curr_row, column=6).number_format = '$#,##0'
             
             ws.column_dimensions['B'].width = 18
             ws.column_dimensions['C'].width = 18
             ws.column_dimensions['D'].width = 20
-            ws.column_dimensions['E'].width = 15
-            ws.column_dimensions['F'].width = 15
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 20
             
             data_len = len(df_export)
             cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
@@ -548,9 +569,9 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             bar_chart = BarChart()
             bar_chart.type = "bar"
             bar_chart.style = 11
-            bar_chart.title = "Volumen de Hectáreas por Base"
-            data_ha = Reference(ws, min_col=4, min_row=start_row, max_row=start_row+data_len)
-            bar_chart.add_data(data_ha, titles_from_data=True)
+            bar_chart.title = "Costo Total por Base Operativa ($)"
+            data_costo = Reference(ws, min_col=5, min_row=start_row, max_row=start_row+data_len)
+            bar_chart.add_data(data_costo, titles_from_data=True)
             bar_chart.set_categories(cats)
             bar_chart.legend = None
             bar_chart.dataLabels = DataLabelList()
@@ -558,10 +579,10 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             ws.add_chart(bar_chart, "H5")
             
             pie_chart = DoughnutChart()
-            pie_chart.title = "Distribución de Misiones (Vuelos)"
+            pie_chart.title = "Distribución de Hectáreas"
             pie_chart.style = 2
-            data_vue = Reference(ws, min_col=3, min_row=start_row, max_row=start_row+data_len)
-            pie_chart.add_data(data_vue, titles_from_data=True)
+            data_ha = Reference(ws, min_col=4, min_row=start_row, max_row=start_row+data_len)
+            pie_chart.add_data(data_ha, titles_from_data=True)
             pie_chart.set_categories(cats)
             pie_chart.dataLabels = DataLabelList()
             pie_chart.dataLabels.showPercent = True 
@@ -571,14 +592,12 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             wb.save(buffer_rep)
 
         else:
-            # 💥 AQUÍ APLICAMOS LA CIRUGÍA ESTÉTICA PARA EL "RESUMEN GERENCIAL" Y "MAPA SEMANAL"
             with pd.ExcelWriter(buffer_rep, engine='openpyxl') as writer:
                 if vista_seleccionada == "📊 Resumen Gerencial":
                     df_visual.to_excel(writer, sheet_name='Resumen_Gerencial', index=False, startrow=3)
                     ws = writer.sheets['Resumen_Gerencial']
                     
-                    # Título Corporativo
-                    ws['A1'] = "REPORTE GERENCIAL DE HECTÁREAS Y RENDIMIENTO"
+                    ws['A1'] = "REPORTE GERENCIAL DE HECTÁREAS, RENDIMIENTO Y COSTOS"
                     ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
                     ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
@@ -588,7 +607,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                     ws['A3'].font = Font(italic=True, color="333333", bold=True)
                     ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_visual.columns))
 
-                    # Encabezados
                     header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
                     header_font = Font(bold=True, color="000000")
                     for col_num in range(1, len(df_visual.columns) + 1):
@@ -598,7 +616,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         cell.alignment = Alignment(horizontal='center', vertical='center')
                         ws.column_dimensions[get_column_letter(col_num)].width = 22
                     
-                    # Estilos dinámicos y formatos de números
                     for r_idx in range(5, len(df_visual) + 5):
                         nivel_val = str(ws.cell(row=r_idx, column=1).value)
                         
@@ -620,13 +637,19 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                             if is_bold:
                                 cell.font = Font(bold=True)
                                 
-                            # Formato numérico estricto
                             col_name = df_visual.columns[c_idx - 1]
                             if col_name in ['REND (hr)', 'ÁREA FUMIG (ha)', 'PROMEDIO (Ha/Hr)']:
                                 try:
                                     if cell.value != "" and cell.value is not None:
                                         cell.value = float(cell.value)
                                         cell.number_format = '#,##0.00'
+                                        cell.alignment = Alignment(horizontal='center')
+                                except: pass
+                            elif col_name in ['COSTO TOTAL ($)', 'TARIFA PROM ($/Ha)']:
+                                try:
+                                    if cell.value != "" and cell.value is not None:
+                                        cell.value = float(cell.value)
+                                        cell.number_format = '$#,##0'
                                         cell.alignment = Alignment(horizontal='center')
                                 except: pass
                                 
@@ -664,7 +687,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         st.download_button(
             label="💾 DESCARGAR REPORTE EJECUTIVO EN EXCEL",
             data=buffer_rep.getvalue(),
-            file_name=f"Reporte_Ejecutivo_{rango_label}.xlsx",
+            file_name=f"Reporte_Ejecutivo_BI_{rango_label}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )                        
