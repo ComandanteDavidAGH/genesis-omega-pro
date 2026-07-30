@@ -339,7 +339,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     .hud-bi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }
-    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; margin:0; letter-spacing: 1px; } /* 💥 SIN TEXT-TRANSFORM PARA MANTENER ha/hr INTACTOS */
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
     div[data-testid="stSelectbox"] > div,
@@ -363,7 +363,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     div[data-testid="stMainBlockContainer"] label p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
-        /* 💥 SE RETIRÓ text-transform PARA EVITAR ALTERAR ha/hr */
     }
 
     div[data-testid="stPlotlyChart"] {
@@ -374,7 +373,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         border: 1px solid #e2e8f0 !important;
     }
     div[data-testid="stPlotlyChart"]:hover {
-        transform: scale(1.05) !important;
+        transform: scale(1.03) !important;
         z-index: 9999 !important;
         position: relative !important;
         box-shadow: 0px 16px 32px rgba(0, 0, 0, 0.2) !important;
@@ -389,17 +388,17 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .battle-panel:hover { transform: translateY(-5px); }
     .battle-title { font-size: 18px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; text-align: center; }
     .battle-metric-container { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 10px 0; }
-    .battle-metric-label { font-size: 13px; color: #4a5568; font-weight: bold; } /* 💥 SE RETIRÓ text-transform PARA EVITAR ALTERAR $/ha */
+    .battle-metric-label { font-size: 13px; color: #4a5568; font-weight: bold; } 
     .battle-metric-value { font-size: 18px; color: #0d1b2a; font-weight: 900; }
     
-    div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
+    div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }
     </style>
     """, unsafe_allow_html=True)
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v37.0 - ESTÉTICA Y SIGLAS)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v38.0 - AJUSTES DE PRECISIÓN VISUAL)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -474,6 +473,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         costo_medio_historico = (super_base_bi['COSTO_NUM'].sum() / total_ha_historicas) if total_ha_historicas > 0 else 0
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
+        # 💥 PURGA DEL TRACTOR. Reemplazado por mapa geográfico.
         hb1, hb2, hb3 = st.columns(3)
         with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>ÁREA HISTÓRICA CUBIERTA</p><p class='hud-bi-value'>🗺️ {total_ha_historicas:,.1f} ha</p></div>", unsafe_allow_html=True)
         with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>TARIFA MEDIA HISTÓRICA</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
@@ -486,19 +486,20 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v37")
+        vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v38")
         
-        fecha_sel_ini = c2.date_input("📅 F. INICIAL:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v37")
-        fecha_sel_fin = c3.date_input("📅 F. FINAL:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v37")
+        fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v38")
+        fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v38")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
-        pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v37")
+        pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v38")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ MOSTRAR HORAS", value=True, key="m8_h_v37")
-            calcular_rend_prom = cc2.checkbox("🚀 MOSTRAR REND. (ha/hr)", value=True, key="m8_r_v37")
-            agrupar_avion = cc3.toggle("✈️ DESGLOSAR POR FLOTA", value=False, key="m8_f_v37")
+            # 💥 AJUSTE DE SIGLAS TÉCNICAS A MINÚSCULAS
+            mostrar_horas = cc1.checkbox("⏱️ MOSTRAR HORAS", value=True, key="m8_h_v38")
+            calcular_rend_prom = cc2.checkbox("🚀 MOSTRAR RENDIMIENTO (ha/hr)", value=True, key="m8_r_v38")
+            agrupar_avion = cc3.toggle("✈️ DESGLOSAR POR FLOTA", value=False, key="m8_f_v38")
 
         df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
@@ -608,10 +609,11 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
+            # 💥 CIRUGÍA GRÁFICA: Ajuste de márgenes y tamaño para evitar bordes cortados
             fig_pie = px.pie(df_dash, values='VUELOS', names=col_pista, hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
-            fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
+            fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=50, b=30, l=30, r=30), height=420)
             g1.plotly_chart(fig_pie, use_container_width=True)
 
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
@@ -619,7 +621,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                              title="<b>Volumen de Hectáreas por Base</b>",
                              text='TXT_PCT',
                              color='HECTAREAS', color_continuous_scale='Blues')
-            fig_bar.update_layout(separators=",.", xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=40, b=0, l=0, r=0))
+            fig_bar.update_layout(separators=",.", xaxis_title="Hectáreas Netas", yaxis_title="", coloraxis_showscale=False, margin=dict(t=50, b=30, l=30, r=30), height=420)
             g2.plotly_chart(fig_bar, use_container_width=True)
 
             st.markdown("---")
@@ -764,10 +766,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
-            # 💥 CIRUGÍA: DIVISIÓN DE TABLAS (OPERATIVO vs FINANCIERO)
             df_visual = pd.DataFrame(tabla_final)
             
-            # Listas de columnas a separar
             cols_base = ['NIVEL']
             if agrupar_avion: cols_base.append('AVIÓN (HK)')
             cols_base.append('MES')
@@ -797,6 +797,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 return [''] * len(row)
 
             # 💥 CREACIÓN DE LAS DOS PESTAÑAS (TABS)
+            # Reemplazado el tractor por el avión
             tab_op, tab_fin = st.tabs(["🛩️ CONSOLIDADO OPERATIVO", "💰 CONSOLIDADO FINANCIERO"])
             
             with tab_op:
