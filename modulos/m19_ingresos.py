@@ -32,6 +32,20 @@ def procesar_fecha_estricta(val):
         except: pass
     return pd.NaT
 
+def formatear_numero_sap(val):
+    """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
+    try:
+        f_val = float(str(val).replace(",", ""))
+        if f_val.is_integer():
+            return f"{int(f_val):,}".replace(",", ".")
+        else:
+            val_str = f"{f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            if val_str.endswith(",00"): 
+                val_str = val_str[:-3]
+            return val_str
+    except:
+        return str(val)
+
 # --- 🧠 MOTOR DE EXTRACCIÓN DE PRECIOS DEL ÚLTIMO AÑO ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def extraer_catalogo_precios_reciente():
@@ -324,7 +338,8 @@ def ejecutar():
         cp1, cp2, cp3, cp4 = st.columns(4)
         with cp1:
             st.caption("⚖️ CANTIDAD")
-            st.code(str(n_cant), language="text")
+            # 💥 TRADUCTOR SAP APLICADO AL COPIADO RÁPIDO
+            st.code(formatear_numero_sap(n_cant), language="text")
         with cp2:
             st.caption("📦 LOTE")
             st.code(n_lote if n_lote else "...", language="text")
@@ -448,7 +463,6 @@ def ejecutar():
             
             df_correo_limpio = df_correo_limpio[columnas_finales]
             
-            # 💥 CIRUGÍA ESTÉTICA: FUENTE 11px Y "NOWRAP" PARA EVITAR EL QUIEBRE DEL LOTE
             html_manual = """
             <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
                 <thead>
@@ -471,19 +485,8 @@ def ejecutar():
                     else:
                         val_str = str(val).strip()
                         
-                        # 💥 TRADUCTOR DE FORMATO SAP (Elimina el .0 inútil y pone puntos de miles)
                         if col_name == "CANTIDAD":
-                            try:
-                                f_val = float(val_str.replace(",", "")) # Por si viene con comas sucias
-                                if f_val.is_integer():
-                                    val_str = f"{int(f_val):,}".replace(",", ".")
-                                else:
-                                    # Formato estricto latino/SAP: 30.280,50
-                                    val_str = f"{f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                                    if val_str.endswith(",00"): 
-                                        val_str = val_str[:-3]
-                            except:
-                                pass # Si es texto raro, lo deja como está
+                            val_str = formatear_numero_sap(val_str)
                                 
                     html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
                 html_manual += "</tr>"
