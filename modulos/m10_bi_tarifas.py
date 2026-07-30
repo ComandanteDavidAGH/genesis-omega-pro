@@ -403,10 +403,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
         # =================================================================
-        # 2. CANDADO ANTI-DUPLICIDAD
+        # 2. CANDADO ANTI-DUPLICIDAD (AHORA BLINDADO CON LA OS PARA NO BORRAR VUELOS)
         # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
-            subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
+            subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
             keep='last'
         ).reset_index(drop=True)
 
@@ -959,7 +959,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
-        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias (Columnas T y U).")
+        st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias. Operaciones con Tarifa $0 (Aún no facturadas) **AHORA SON VISIBLES** para su auditoría.")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         pistas_sim_disp = ["TODAS"] + sorted(super_base_bi[col_pista_sim].dropna().astype(str).str.upper().unique().tolist()) if col_pista_sim else ["TODAS"]
@@ -993,13 +993,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     for _, row in df_sim_unicos.iterrows():
                         os_val = str(row['OS_MAESTRA']).strip()
                         if os_val in ["", "nan"]: continue
+                        
                         tar_avion_raw = limpiar_dinero(row['AVION_MAESTRO'])
                         tar_dom_raw = limpiar_dinero(row['DOMINIC_MAESTRO'])
                         tarita_unitaria_actual = tar_avion_raw + tar_dom_raw
 
-                        if tarita_unitaria_actual > 0 and row['AREA_NUM'] > 0:
+                        # 💥 CIRUGÍA TÁCTICA: Eliminada la restricción de tarifas > 0.
+                        if row['AREA_NUM'] > 0:
                             t_act_red = red_excel(tarita_unitaria_actual)
-                            t_nue_red = red_excel((tarita_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
+                            # Prevenir división por cero matemáticamente si la tarifa es $0
+                            if tarita_unitaria_actual > 0:
+                                t_nue_red = red_excel((tarita_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
+                            else:
+                                t_nue_red = 0
+                                
                             matriz_simulacion.append({
                                 "Nº OS": os_val, "FECHA": row['FECHA_DT'].strftime('%d/%m/%Y'), "SEMANA": int((row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]),
                                 "FINCA": str(row['FINCA_MAESTRA']).upper().strip(), "PISTA": str(row[col_pista_sim]).upper().strip() if col_pista_sim else "N/A", "HECTÁREAS": row['AREA_NUM'],
