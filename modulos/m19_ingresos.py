@@ -123,18 +123,13 @@ DICT_BASE_PRODUCTOS = {
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
     
-    if 'in_cant' not in st.session_state: st.session_state['in_cant'] = 0.0
-    if 'in_lote' not in st.session_state: st.session_state['in_lote'] = ""
-    if 'in_factura' not in st.session_state: st.session_state['in_factura'] = ""
-    if 'in_pedido' not in st.session_state: st.session_state['in_pedido'] = ""
-    if 'in_consecutivo' not in st.session_state: st.session_state['in_consecutivo'] = ""
+    # 💥 CIRUGÍA ANTICOLISIÓN: Multiplexión de llaves para vaciado seguro
+    if 'form_key_m19' not in st.session_state: 
+        st.session_state['form_key_m19'] = 0
 
     def limpiar_campos_operativos():
-        st.session_state['in_cant'] = 0.0
-        st.session_state['in_lote'] = ""
-        st.session_state['in_factura'] = ""
-        st.session_state['in_pedido'] = ""
-        st.session_state['in_consecutivo'] = ""
+        # Al sumar 1, Streamlit destruye las casillas actuales y dibuja unas nuevas y limpias
+        st.session_state['form_key_m19'] += 1
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
@@ -311,7 +306,6 @@ def ejecutar():
         else:
             modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
             
-            # 💥 CIRUGÍA ANTIDUPLICADOS: SET PURO PARA EL INYECTOR
             lista_prods_limpia = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
             lista_prods_ordenada = sorted(list(lista_prods_limpia))
             
@@ -341,15 +335,17 @@ def ejecutar():
         n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
         
         f4, f5, f6 = st.columns(3)
-        n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key="in_cant")
-        n_lote = f5.text_input("📦 Lote", key="in_lote")
+        # 💥 Las llaves de memoria están atadas a form_key_m19 para su destrucción correcta
+        fk = st.session_state['form_key_m19']
+        n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"in_cant_{fk}")
+        n_lote = f5.text_input("📦 Lote", key=f"in_lote_{fk}")
         n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
         
         f7, f8, f9, f10 = st.columns(4)
         n_fv = f7.date_input("⏳ F. Vencimiento (F/V)", value=hoy_colombia)
-        n_factura = f8.text_input("🧾 Factura", key="in_factura")
-        n_pedido = f9.text_input("🛒 Pedido", key="in_pedido")
-        n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key="in_consecutivo")
+        n_factura = f8.text_input("🧾 Factura", key=f"in_factura_{fk}")
+        n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
+        n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
         
         st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
         st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -432,7 +428,10 @@ def ejecutar():
                         ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
                         
                     st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
-                    limpiar_campos_operativos()
+                    
+                    # 💥 INCREMENTAR LLAVE PARA VACIAR EL FORMULARIO SIN CRASHEAR STREAMLIT
+                    st.session_state['form_key_m19'] += 1
+                    
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
@@ -530,7 +529,6 @@ def ejecutar():
                                  horizontal=True)
     
     if col_producto:
-        # 💥 CIRUGÍA ANTIDUPLICADOS: SET PURO PARA EL FILTRO DE AUDITORÍA
         productos_puros_auditoria = set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""])
         lista_productos_tabla = ["TODOS"] + sorted(list(productos_puros_auditoria))
     else:
