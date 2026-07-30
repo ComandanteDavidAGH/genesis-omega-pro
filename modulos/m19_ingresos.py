@@ -169,6 +169,14 @@ def ejecutar():
         font-weight: 900 !important; 
     }
     
+    /* 💥 MATRIZ DE AUDITORÍA BLINDADA (EVITA LA PALIDEZ EXTREMA) */
+    div[data-testid="stDataEditor"] {
+        border: 3px solid #0d1b2a !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important;
+        background-color: #ffffff !important;
+    }
+    
     /* 💥 BOTONES DE ASCENSOR TÁCTICO */
     .btn-ascensor {
         display: block; 
@@ -548,17 +556,34 @@ def ejecutar():
     columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP']]
     df_vista = df_filtrado[columnas_vista].copy()
 
+    # 💥 DICCIONARIO DE CONFIGURACIÓN DE COLUMNAS (EMOJIS TÁCTICOS Y ANCHOS INTELIGENTES)
+    col_config = {}
+    for c in df_vista.columns:
+        c_up = c.upper()
+        if "SEMANA" in c_up: col_config[c] = st.column_config.TextColumn("📅 SEMANA", width="small")
+        elif "PROV" in c_up: col_config[c] = st.column_config.TextColumn("🏭 PROVEEDOR", width="medium")
+        elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn("🗓️ INGRESO SAP", width="medium")
+        elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
+        elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 BASE", width="small")
+        elif "CANT" in c_up: col_config[c] = st.column_config.NumberColumn("⚖️ CANTIDAD", format="%.2f")
+        elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
+        elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn("⚙️ F/F", width="small")
+        elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn("⏳ F/V", width="small")
+        elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA", width="medium")
+        elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO", width="medium")
+        elif "CONSEC" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+        
+    col_config[COL_ESTADO] = st.column_config.SelectboxColumn(
+        "🛡️ ESTADO / OBSERVACIÓN",
+        help="Doble clic para anular o cambiar estado.",
+        width="large",
+        options=opciones_estado,
+        required=True
+    )
+
     df_editado = st.data_editor(
         df_vista,
-        column_config={
-            COL_ESTADO: st.column_config.SelectboxColumn(
-                "ESTADO / OBSERVACIÓN",
-                help="Doble clic para anular o cambiar estado.",
-                width="large",
-                options=opciones_estado,
-                required=True
-            )
-        },
+        column_config=col_config,
         disabled=cols_disabled,
         hide_index=True,
         use_container_width=True,
