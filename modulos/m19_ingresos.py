@@ -53,10 +53,8 @@ def extraer_catalogo_precios_reciente():
                 for row in datos[idx_anio+1:]:
                     if len(row) > max(idx_anio, idx_prod):
                         anio_str = str(row[idx_anio]).strip()
-                        # Extraemos productos del año actual y el anterior por seguridad
                         if anio_str in [str(anio_actual), str(anio_actual - 1)]:
                             p_nombre = str(row[idx_prod]).strip().upper()
-                            # Filtro de pureza: ignoramos dosis, siglas y textos muy cortos
                             if p_nombre and "DOSIS" not in p_nombre and "SIGLAS" not in p_nombre and len(p_nombre) > 3:
                                 productos_recientes.add(p_nombre)
         return list(productos_recientes)
@@ -114,12 +112,29 @@ def ejecutar():
     </style>
     """, unsafe_allow_html=True)
 
-    c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-mod'>📦 19. Control y Auditoría de Ingresos</h1>", unsafe_allow_html=True)
+    URL_SHEET_LOCAL = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
+
+    c_tit, c_btn1, c_btn2 = st.columns([2, 1, 1])
+    c_tit.markdown("<h1 class='titulo-mod'>📦 19. Control y Auditoría</h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🔄 REFRESCAR RADARES", type="primary", use_container_width=True):
+    if c_btn1.button("🔄 REFRESCAR RADARES", type="primary", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+
+    # 💥 EL BOTÓN NUCLEAR PARA ELIMINAR EL DICCIONARIO FANTASMA
+    if c_btn2.button("🧹 PURGAR DICCIONARIO", type="secondary", use_container_width=True):
+        with st.spinner("Aniquilando diccionario oculto..."):
+            gc = inicializar_cliente_gspread()
+            if gc:
+                try:
+                    sh_local = gc.open_by_url(URL_SHEET_LOCAL)
+                    ws_dicc = sh_local.worksheet("DICCIONARIO")
+                    sh_local.del_worksheet(ws_dicc)
+                    st.cache_data.clear()
+                    st.success("✅ ¡Fantasma destruido! La lista ha sido purgada.")
+                    st.rerun()
+                except Exception:
+                    st.info("No había basura. La lista ya estaba limpia.")
 
     st.write("Panel táctico de auditoría. Ingresa lotes cruzando información oficial con la Base de Precios SAP.")
 
@@ -128,18 +143,15 @@ def ejecutar():
         st.error("🚨 Servidor desconectado. Revisa tus credenciales de Google Cloud.")
         return
 
-    URL_SHEET_LOCAL = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
-
     with st.spinner("📡 Sincronizando Bóveda de Ingresos y Catálogo de Precios Históricos..."):
         try:
             sh_local = gc.open_by_url(URL_SHEET_LOCAL)
             ws_ingresos = sh_local.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
-            # --- FUSIÓN TÁCTICA: DICCIONARIO LOCAL + BASE DE PRECIOS SAP ---
+            # --- FUSIÓN TÁCTICA ---
             dict_operativo = {k.upper(): v.upper() for k, v in DICT_BASE_PRODUCTOS.items()}
             
-            # Extraer los del diccionario guardado en Drive
             try:
                 ws_dicc = sh_local.worksheet("DICCIONARIO")
                 datos_dicc = ws_dicc.get_all_values()
@@ -147,16 +159,15 @@ def ejecutar():
                     if len(row) >= 2 and str(row[0]).strip():
                         producto_nube = str(row[0]).strip().upper()
                         proveedor_nube = str(row[1]).strip().upper()
-                        if len(producto_nube) > 3: # Evitamos basura
+                        if len(producto_nube) > 3: 
                             dict_operativo[producto_nube] = proveedor_nube
             except Exception:
                 pass 
             
-            # Traer los del último año de la base de precios
             productos_precio_sap = extraer_catalogo_precios_reciente()
             for prod_sap in productos_precio_sap:
                 if prod_sap not in dict_operativo:
-                    dict_operativo[prod_sap] = "" # Agregamos el producto sin proveedor por defecto
+                    dict_operativo[prod_sap] = "" 
 
         except Exception as e:
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
@@ -166,7 +177,6 @@ def ejecutar():
         st.warning("La base de datos parece estar vacía.")
         return
 
-    # 💥 ESCÁNER DINÁMICO DE ENCABEZADOS
     idx_header = 0
     for i, row in enumerate(datos_crudos[:5]):
         fila_upper = [str(x).upper().strip() for x in row]
@@ -226,20 +236,16 @@ def ejecutar():
         
         c_prod, c_prov = st.columns(2)
         
-        # --- LÓGICA PURA Y EXACTA ---
         if es_nuevo_producto:
             n_prod = c_prod.text_input("Nombre del Nuevo Producto")
             n_prov = c_prov.text_input("Nombre del Proveedor")
         else:
             modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
-            
-            # Filtro adicional de limpieza visual para la lista desplegable
             lista_prods_ordenada = sorted([p for p in dict_operativo.keys() if len(p) > 3])
             
             n_prod = c_prod.selectbox("Seleccione el Producto (Integrado con Precios SAP)", lista_prods_ordenada)
             proveedor_asignado = dict_operativo.get(n_prod, "")
             
-            # Si no hay proveedor asignado, se desbloquea automáticamente para escribir
             es_vacio = not bool(proveedor_asignado.strip())
             debe_desbloquear = modificar_prov or es_vacio
             
@@ -279,7 +285,6 @@ def ejecutar():
                 prod_limpio = str(n_prod).strip().upper()
                 prov_limpio = str(n_prov).strip().upper()
 
-                # --- LÓGICA PARA ACTUALIZAR EL DICCIONARIO ---
                 actualizar_dicc = False
                 if es_nuevo_producto:
                     actualizar_dicc = True
@@ -308,7 +313,6 @@ def ejecutar():
                     except Exception as e:
                         st.warning(f"Se guardó el ingreso, pero falló la escritura en el Diccionario: {e}")
 
-                # --- LÓGICA PARA INYECTAR A LA TABLA MAESTRA ---
                 nueva_fila_drive = []
                 for header in encabezados:
                     h = header.upper()
