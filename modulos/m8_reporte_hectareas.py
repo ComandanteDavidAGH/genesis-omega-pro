@@ -1,224 +1,481 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, date
+import gspread
+import re
+import math
 import io
-from openpyxl import Workbook
-from openpyxl.chart import BarChart, DoughnutChart, Reference
-from openpyxl.chart.label import DataLabelList
+import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🚁 RADAR DE HECTÁREAS - OMEGA V25 (BI FINANCIERO E INTELIGENCIA)
+# ⚡ MOTORES DE CONEXIÓN Y FORMATO (Blindados contra NameErrors)
 # =================================================================
-def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=None, procesar_fecha_pesada_ext=None, HAS_MATPLOTLIB=True):
-    
-    # 🌟 RESTAURACIÓN DEL TÍTULO PRINCIPAL CON SELLO DE VERIFICACIÓN
-    st.markdown("<h1 style='color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: \"Arial Black\", sans-serif; text-transform: uppercase;'>Radar Operativo y Financiero <span style='font-size: 16px; color: #d4af37;'>[V25]</span></h1>", unsafe_allow_html=True)
-    
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP Y EFECTO LUPA GLOBAL
-    st.markdown("""
-    <style>
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    
-    /* 💥 CONTROLES ENDURECIDOS */
-    div[data-testid="stMainBlockContainer"] div[data-testid="stTextInput"] input, 
-    div[data-testid="stMainBlockContainer"] div[data-testid="stNumberInput"] input,
-    div[data-testid="stMainBlockContainer"] div[data-testid="stSelectbox"] [data-baseweb="select"],
-    div[data-testid="stMainBlockContainer"] div[data-testid="stMultiSelect"] [data-baseweb="select"],
-    div[data-testid="stMainBlockContainer"] div[data-testid="stDateInput"] input {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 6px !important;
-        background-color: #ffffff !important;
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        font-size: 15px !important;
-    }
-    
-    div[data-testid="stMainBlockContainer"] div[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
-        color: #0d1b2a !important; font-weight: 800 !important;
-    }
 
-    /* 🔍 EFECTO LUPA PARA TARJETAS KPI */
-    .kpi-card {
-        background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; text-align: center;
-        transition: transform 0.3s ease, box-shadow 0.3s ease; border: 1px solid #1a365d;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 15px;
-    }
-    .kpi-card:hover { transform: translateY(-5px) scale(1.03); box-shadow: 0 12px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37; }
-    .kpi-title { margin: 0; color: #d4af37; font-size: 14px; font-weight: bold; text-transform: uppercase; }
-    .kpi-value { margin: 10px 0 0 0; font-size: 26px; font-weight: 900; }
-    
-    /* VARIANTES DE COLOR PARA FINANZAS */
-    .kpi-finance { border-bottom: 4px solid #28a745; }
-    .kpi-finance-title { color: #28a745 !important; }
+def formato_latino(numero, decimales=0):
+    if pd.isna(numero) or numero is None: return "0"
+    try:
+        num = float(numero)
+        if num == 0: return "0"
+        if decimales == 0: texto_us = f"{num:,.0f}"
+        else: texto_us = f"{num:,.{decimales}f}"
+        return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0"
 
-    /* 📈 EFECTO LUPA PARA GRÁFICOS Y TABLAS AL PASAR EL MOUSE */
-    [data-testid="stPlotlyChart"], [data-testid="stDataFrame"] {
-        transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px;
-    }
-    [data-testid="stPlotlyChart"]:hover, [data-testid="stDataFrame"]:hover {
-        transform: translateY(-4px) scale(1.015) !important;
-        box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # ====================================================================
-    # 💥 DESTRUCTOR DE MEMORIA ABSOLUTO
-    # ====================================================================
-    col_vacia, col_sync = st.columns([3, 1])
-    if col_sync.button("🔄 Sincronizar Datos", type="primary", use_container_width=True, key="btn_sync_m8"):
-        st.cache_data.clear()
-        if 'm8_datos_crudos' in st.session_state: del st.session_state['m8_datos_crudos']
-        st.toast("✅ Memoria vieja destruida. Descargando datos frescos...", icon="🔄")
-        st.rerun()
-    st.markdown("---")
+def formato_gerencial_latino(numero):
+    if pd.isna(numero) or numero == 0: return "$ 0"
+    if numero >= 1_000_000: return f"$ {numero / 1_000_000:,.1f} M".replace(".", "X").replace(",", ".").replace("X", ",")
+    elif numero >= 1_000: return f"$ {numero / 1_000:,.0f} K".replace(",", ".")
+    else: return f"$ {formato_latino(numero, 0)}"
 
-    def extraer_numero(val):
-        if pd.isna(val) or val is None or str(val).strip() == "": return 0.0
-        try:
-            texto = str(val).upper().replace("$", "").replace("COP", "").strip()
-            if "," in texto and "." in texto: texto = texto.replace(".", "").replace(",", ".")
-            elif "," in texto: texto = texto.replace(",", ".")
-            return float(texto.replace(" ", ""))
-        except: return 0.0
-
-    def procesar_fecha_pesada(val):
-        if pd.isna(val) or val is None or str(val).strip() == "": return None
-        texto = str(val).strip().split(" ")[0]
-        if texto.isdigit():
-            try: return (pd.to_datetime('1899-12-30') + pd.to_timedelta(int(texto), unit='D')).date()
-            except: pass
-        for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y'):
-            try: return datetime.strptime(texto, fmt).date()
-            except: pass
+def obtener_cliente_gspread_unificado():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
         return None
 
-    def fmt_latino(val, decimales=2):
-        """FUERZA EL FORMATO COLOMBIANO: Puntos en miles, comas en decimales"""
-        try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except: return str(val) if val is not None else ""
+def obtener_cliente_gspread_viejo():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        if "gcp_credentials" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_credentials"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return gspread.service_account(filename='credenciales.json')
+    except:
+        return None
 
-    def fmt_dinero(val):
-        """FORMATO FINANCIERO: Con símbolo $ y sin decimales"""
-        try: return f"${float(val):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except: return f"${val}"
+def parsear_precio_colombia(val):
+    v = str(val).strip()
+    if not v or v == '-': return None
+    v = re.sub(r'[^\d\.,\-]', '', v)
+    if not v: return None
+    try:
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): 
+                v = v.replace('.', '').replace(',', '.')
+            else:
+                v = v.replace(',', '')
+        elif ',' in v: 
+            v = v.replace(',', '.')
+        return float(v)
+    except:
+        return None
 
-    if descargar_matriz_rapida is None:
-        st.error("🚨 Error técnico: No se detecta el motor de lectura de Google Sheets.")
-        return
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
+    gc_nuevo = obtener_cliente_gspread_unificado()
+    
+    try:
+        boveda_act = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
+    except:
+        datos_brutos_act = []
+    
+    if len(datos_brutos_act) > 5:
+        columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+        filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
+        df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+        df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
+        df_vivos['ORIGEN_BI'] = 'ACTUAL'
+    else:
+        df_vivos = pd.DataFrame()
 
-    if 'm8_datos_crudos' not in st.session_state:
-        datos_dict = []
-        with st.spinner("🛰️ Conectando al satélite de Google Sheets..."):
-            try:
-                url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-                filas_gspread = descargar_matriz_rapida(url_maestra, "TABLA 1")
-                
-                if filas_gspread:
-                    idx_header = 4
-                    for i in range(min(12, len(filas_gspread))):
-                        if "FINCA" in [str(x).upper().strip() for x in filas_gspread[i]]:
-                            idx_header = i
-                            break
-                    
-                    if len(filas_gspread) > idx_header:
-                        columnas = [str(c).strip().upper() for c in filas_gspread[idx_header]]
-                        for fila in filas_gspread[idx_header+1:]:
-                            if len(fila) < len(columnas):
-                                fila = fila + [""] * (len(columnas) - len(fila))
-                            elif len(fila) > len(columnas):
-                                fila = fila[:len(columnas)]
-                            datos_dict.append(dict(zip(columnas, fila)))
-            except Exception:
-                datos_dict = []
+    datos_brutos_hist = []
+    try:
+        boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+    except:
+        try:
+            gc_viejo = obtener_cliente_gspread_viejo()
+            boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+            datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        except: pass
+    
+    if len(datos_brutos_hist) > 0:
+        df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
+        df_historico = estandarizar_base(limpiar_encabezados(df_historico))
+        df_historico['ORIGEN_BI'] = 'HISTORICO'
+    else:
+        df_historico = pd.DataFrame()
 
-        if not datos_dict and supabase_client is not None:
-            try:
-                respuesta_cloud = supabase_client.table("sap_tabla_1_maestro").select("*").execute()
-                if respuesta_cloud.data:
-                    datos_dict = [{str(k).upper().strip(): v for k, v in row.items()} for row in respuesta_cloud.data]
-            except Exception:
-                pass
+    return df_vivos, df_historico
 
-        st.session_state['m8_datos_crudos'] = datos_dict
-
-    raw_data = st.session_state['m8_datos_crudos']
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_boveda_recetas_y_precios():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     try:
-        if not raw_data:
-            st.warning("⚠️ **Alerta de Radar:** No se pudieron procesar los registros de Google Sheets.")
+        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        try:
+            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+            if data_mez:
+                df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+        except Exception as e: st.error(f"🚨 Falla en DD_Mesclas: {e}")
+
+        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        except: pass
+        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        except: pass
+        try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
+        except: pass
+    except Exception as e:
+        st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
+
+    try:
+        url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+        sh_precios = gc.open_by_url(url_precios)
+        precios_consolidados = []
+        for ws in sh_precios.worksheets():
+            datos_hoja = ws.get_all_values()
+            if not datos_hoja: continue
+            idx_header, col_anio, col_prod = -1, -1, -1
+            for i in range(min(10, len(datos_hoja))):
+                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
+            if idx_header != -1:
+                for row in datos_hoja[idx_header+1:]:
+                    if len(row) > max(col_anio, col_prod):
+                        anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
+                        if anio_str and str_prod:
+                            col_inicio = max(col_anio, col_prod) + 1
+                            vals = []
+                            for v in row[col_inicio:]:
+                                val_num = parsear_precio_colombia(v)
+                                if val_num is not None and val_num > 0:
+                                    vals.append(val_num)
+                            
+                            prom = sum(vals)/len(vals) if vals else 0.0
+                            prod_limpio = re.sub(r'\s+', ' ', str_prod).strip()
+                            precios_consolidados.append({
+                                'AÑO': anio_str, 
+                                'PRODUCTO': prod_limpio, 
+                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""),
+                                'PRECIO_PROM': prom
+                            })
+        df_precios = pd.DataFrame(precios_consolidados)
+    except Exception as e: pass
+
+    return df_mezclas, df_conf, df_dicc, df_precios, df_t2
+
+def limpiar_encabezados(df):
+    df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
+    df = df.loc[:, ~df.columns.duplicated(keep='first')]
+    if "" in df.columns: df = df.drop(columns=[""])
+    return df
+    
+def estandarizar_base(df):
+    renombres = {}
+    for col in df.columns:
+        col_u = str(col).upper().replace('\n', ' ').strip()
+        if 'FINCA' in col_u and 'COSTO' in col_u: continue
+        if 'FACTURAR' in col_u and 'PRODUCTOR' in col_u: renombres[col] = 'COSTO_MAESTRO'
+        elif 'FUMIG' in col_u and 'AREA' in col_u: renombres[col] = 'AREA_MAESTRA'
+        elif 'AVION' in col_u and '/HA' in col_u: renombres[col] = 'AVION_MAESTRO'
+        elif 'DOMINIC' in col_u and '/HA' in col_u: renombres[col] = 'DOMINIC_MAESTRO'
+        elif not ('FINCA_MAESTRA' in renombres.values()) and (col_u == 'FINCA' or col_u == 'PROPIEDAD'): renombres[col] = 'FINCA_MAESTRA'
+        elif not ('FECHA_MAESTRA' in renombres.values()) and col_u == 'FECHA': renombres[col] = 'FECHA_MAESTRA'
+        elif not ('OS_MAESTRA' in renombres.values()) and ("Nº ORDEN" in col_u or "ORDEN DE" in col_u or "OS" == col_u): renombres[col] = 'OS_MAESTRA'
+        elif not ('COCTEL_MAESTRO' in renombres.values()) and col_u in ['COCTEL', 'CÓCTEL']: renombres[col] = 'COCTEL_MAESTRO'
+    df.rename(columns=renombres, inplace=True)
+    return df
+
+def limpiar_area(val):
+    try:
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v: return 0.0
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.\-]', '', v)
+        if v.count('.') > 1:
+            partes = v.rsplit('.', 1)
+            v = partes[0].replace('.', '') + '.' + partes[1]
+        return float(v) if v else 0.0
+    except: return 0.0
+
+def limpiar_dinero(val):
+    try:
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v: return 0.0
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.\-]', '', v)
+        if v.count('.') > 1:
+            partes = v.rsplit('.', 1)
+            v = partes[0].replace('.', '') + '.' + partes[1]
+        num = float(v) if v else 0.0
+        if 5 < num < 2000: num = num * 1000
+        return num
+    except: return 0.0
+
+def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
+    coctel_u = str(coctel_sel).upper().strip()
+    coctel_norm = coctel_u.replace("+", " ").replace("-", " ")
+    partes_coctel = coctel_norm.split()
+    
+    base_coctel = partes_coctel[0] if len(partes_coctel) > 0 else ""
+    aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
+    
+    dict_prods = {}
+    es_organico = False
+    
+    try:
+        if not df_t2.empty:
+            match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
+            if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
+    except: pass
+
+    base_buscar = f"{base_coctel}O" if es_organico and not base_coctel.endswith('O') else base_coctel
+
+    if not df_mezclas.empty:
+        col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
+        rb = df_mezclas[col_0_limpia == base_buscar]
+        if rb.empty and es_organico: 
+            rb = df_mezclas[col_0_limpia == base_coctel]
+            
+        for _, r in rb.iterrows():
+            p = str(r.iloc[1]).strip().upper()
+            d = limpiar_area(r.iloc[2])
+            if d > 0 and p not in ['NAN', 'NONE', '']: dict_prods[p] = d
+
+    if not df_dicc.empty and aditivos:
+        for ad in aditivos:
+            m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == ad]
+            if not m_s.empty:
+                p_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper()
+                d_ad = limpiar_area(m_s.iloc[0]['DOSIS'])
+                if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']:
+                    dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
+
+    for p in list(dict_prods.keys()):
+        if "ACONDICIONADOR" in p:
+            if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]): dict_prods[p] = 0.06
+        elif "IMBIOSIL" in p.replace(" ", ""):
+            if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: dict_prods[p] = 1.5
+        if es_organico and "ADHERENTE" in p: del dict_prods[p]
+
+    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = 0.2
+    return dict_prods
+
+def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
+    if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
+    if finca_seleccionada != "TODAS":
+        fechas = sorted(df_area['FECHA_DT'].dt.date.unique())
+        if not fechas: return 0, 0.0
+        ciclos = 1
+        inicios_ciclo = [fechas[0]]
+        for i in range(1, len(fechas)):
+            if (fechas[i] - fechas[i-1]).days > 5:
+                ciclos += 1
+                inicios_ciclo.append(fechas[i])
+        avg_int = sum([(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]) / (ciclos - 1) if ciclos > 1 else 0.0
+        return ciclos, avg_int
+
+    fincas_presentes = df_area['FINCA_MAESTRA'].unique()
+    total_ciclos_todas, total_suma_dias, total_intervalos_contados, fincas_validas = 0, 0, 0, 0
+    for f in fincas_presentes:
+        df_sub = df_area[df_area['FINCA_MAESTRA'] == f]
+        fechas_f = sorted(df_sub['FECHA_DT'].dt.date.unique())
+        if not fechas_f: continue
+        c_f = 1
+        inicios_c_f = [fechas_f[0]]
+        for i in range(1, len(fechas_f)):
+            if (fechas_f[i] - fechas_f[i-1]).days > 5:
+                c_f += 1
+                inicios_c_f.append(fechas_f[i])
+        total_ciclos_todas += c_f
+        fincas_validas += 1
+        if c_f > 1:
+            total_suma_dias += sum([(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)])
+            total_intervalos_contados += (c_f - 1)
+    promedio_ciclos = int(round(total_ciclos_todas / fincas_validas)) if fincas_validas > 0 else 0
+    promedio_intervalo = total_suma_dias / total_intervalos_contados if total_intervalos_contados > 0 else 0.0
+    return promedio_ciclos, promedio_intervalo
+
+# =================================================================
+# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
+# =================================================================
+def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
+    st.header("", anchor="inicio_modulo")
+
+    st.markdown("""
+    <style>
+    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    .hud-bi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }
+    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
+    
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stDateInput"] input {
+        border: 3px solid #143521 !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border: none !important;
+    }
+    div[data-testid="stSelectbox"] div,
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stSelectbox"] span {
+        color: #000000 !important;
+        font-weight: 900 !important;
+    }
+    div[data-testid="stMainBlockContainer"] label p {
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+    }
+
+    /* 🔍 EFECTO LUPA MAGNIFICADOR */
+    div[data-testid="stPlotlyChart"] {
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
+        border-radius: 12px !important;
+        background-color: #ffffff !important;
+        padding: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    div[data-testid="stPlotlyChart"]:hover {
+        transform: scale(1.05) !important;
+        z-index: 9999 !important;
+        position: relative !important;
+        box-shadow: 0px 16px 32px rgba(0, 0, 0, 0.2) !important;
+        border: 2px solid #d4af37 !important;
+    }
+
+    /* 💥 PANELES DE BATALLA DE ESCUADRONES */
+    .battle-panel {
+        background-color: #ffffff; border-radius: 12px; padding: 20px;
+        box-shadow: 0 8px 15px rgba(0,0,0,0.1); border-top: 6px solid;
+        margin-bottom: 20px; transition: transform 0.3s ease;
+    }
+    .battle-panel:hover { transform: translateY(-5px); }
+    .battle-title { font-size: 18px; font-weight: 900; text-transform: uppercase; margin-bottom: 15px; text-align: center; }
+    .battle-metric-container { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 10px 0; }
+    .battle-metric-label { font-size: 13px; color: #4a5568; font-weight: bold; text-transform: uppercase; }
+    .battle-metric-value { font-size: 18px; color: #0d1b2a; font-weight: 900; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    c_tit, c_sync = st.columns([3.5, 1.5])
+    with c_tit:
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v28.0 - BATALLA ESCUADRONES)</span></h1>", unsafe_allow_html=True)
+    with c_sync:
+        st.write("")
+        if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    try:
+        df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
+        if df_vivos.empty and df_historico.empty:
+            st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
             return
 
-        datos_limpios = []
-        for row in raw_data:
-            r_norm = {str(k).replace("\n", " ").strip().upper(): (str(v).strip() if v is not None else "") for k, v in row.items()}
-            
-            llave_ha = next((k for k in r_norm.keys() if "FUMIG" in k or "HA_NETAS" in k or "HECTAREAS" in k), None)
-            llave_hr = next((k for k in r_norm.keys() if "RENDIMIENTO" in k or "HORAS" in k or "HOROMETRO" in k), None)
-            llave_sem = next((k for k in r_norm.keys() if k in ["SEM", "SEMANA"]), None)
-            
-            # 💥 CIRUGÍA FINANCIERA: RASTREADOR DE COLUMNA DE COSTOS ($/Ha)
-            llave_costo_ha = next((k for k in r_norm.keys() if "COSTO" in k and "HA" in k), None)
-            
-            f_dt = procesar_fecha_pesada(r_norm.get("FECHA", r_norm.get("FECHA_OPERACION", "")))
-            if f_dt is None: continue
-
-            ha_netas = extraer_numero(r_norm.get(llave_ha, "0") if llave_ha else "0")
-            costo_ha = extraer_numero(r_norm.get(llave_costo_ha, "0") if llave_costo_ha else "0")
-
-            datos_limpios.append({
-                "PISTA": r_norm.get("PISTA", "").strip().upper(),
-                "HK": r_norm.get("HK", r_norm.get("MATRICULA", "")).strip().upper(),
-                "MODELO": r_norm.get("MODELO", "").strip().upper(),
-                "FECHA_REAL": f_dt,
-                "SEMANA": r_norm.get(llave_sem, "") if llave_sem else "",
-                "HA_NETAS": ha_netas,
-                "H_PROPORCIONAL": extraer_numero(r_norm.get(llave_hr, "0") if llave_hr else "0"),
-                "COSTO_HA": costo_ha,
-                "COSTO_TOTAL": ha_netas * costo_ha # 💥 Cálculo automático del total en pesos
-            })
-
-        df_rep = pd.DataFrame(datos_limpios)
-        
-        if df_rep.empty:
-            st.warning("⚠️ No se encontraron registros con fechas procesables.")
+        super_base_bi = pd.concat([df_historico, df_vivos], ignore_index=True)
+        if 'FINCA_MAESTRA' not in super_base_bi.columns or 'FECHA_MAESTRA' not in super_base_bi.columns:
+            st.error("🚨 Columnas críticas estructurales ausentes en la Bóveda.")
             return
 
-        mask_hk = df_rep['HK'] != ""
-        mapa_modelo = {}
-        if not df_rep[mask_hk].empty:
-            mapa_flota = df_rep[mask_hk].groupby('HK')['PISTA'].agg(lambda x: x.value_counts().index[0] if not x.empty else "").to_dict()
-            df_rep.loc[mask_hk, 'PISTA'] = df_rep.loc[mask_hk, 'HK'].map(mapa_flota).fillna(df_rep.loc[mask_hk, 'PISTA'])
-            mapa_modelo = df_rep[mask_hk].groupby('HK')['MODELO'].first().to_dict()
-        
-        df_rep = df_rep[(df_rep['PISTA'] != "") & (df_rep['HA_NETAS'] > 0)]
-        if df_rep.empty: return
+        for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA']:
+            if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0 if col_req not in ['OS_MAESTRA', 'COCTEL_MAESTRO', 'HK', 'MODELO', 'PISTA'] else ""
 
-        pistas_disp = sorted(df_rep['PISTA'].unique().tolist())
+        # =================================================================
+        # 1. NORMALIZACIÓN QUIRÚRGICA SIN BUGS
+        # =================================================================
+        super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
+        super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
+        super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
+        super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
-        # --- 🎛️ PANEL DE CONTROL ---
+        super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA_DT'])
+        super_base_bi['AÑO'] = super_base_bi['FECHA_DT'].dt.year.astype(int)
+        super_base_bi['MES'] = super_base_bi['FECHA_DT'].dt.month.astype(int)
+        super_base_bi['TRIMESTRE'] = super_base_bi['FECHA_DT'].dt.quarter.astype(int)
+        super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
+
+        # =================================================================
+        # 1.5 AUTO-COMPLETADO DE PISTAS FANTASMAS (Evita que desaparezcan vuelos en el filtro)
+        # =================================================================
+        col_pista = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
+        if col_pista and 'HK' in super_base_bi.columns:
+            mask_hk = (super_base_bi['HK'].astype(str).str.strip() != "") & (super_base_bi['HK'].notna())
+            if not super_base_bi[mask_hk].empty:
+                mask_pista_llena = mask_hk & (super_base_bi[col_pista].astype(str).str.strip() != "")
+                mapa_flota = super_base_bi[mask_pista_llena].groupby('HK')[col_pista].agg(lambda x: x.mode()[0] if not x.mode().empty else "").to_dict()
+                mask_pista_vacia = mask_hk & (super_base_bi[col_pista].astype(str).str.strip() == "")
+                super_base_bi.loc[mask_pista_vacia, col_pista] = super_base_bi.loc[mask_pista_vacia, 'HK'].map(mapa_flota).fillna("")
+
+        # =================================================================
+        # 2. CANDADO ANTI-DUPLICIDAD BLINDADO CON HK
+        # =================================================================
+        super_base_bi = super_base_bi.drop_duplicates(
+            subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN', 'HK'],
+            keep='last'
+        ).reset_index(drop=True)
+
+        def sanear_valores_sap(val):
+            v = limpiar_dinero(val)
+            if 0 < v < 2500: return v * 1000
+            return v
+            
+        super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
+        
+        super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
+
+        total_ha_historicas = super_base_bi['AREA_NUM'].sum()
+        costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
+        total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
+
+        hb1, hb2, hb3 = st.columns(3)
+        with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Área Histórica Cubierta</p><p class='hud-bi-value'>🚜 {total_ha_historicas:,.1f} Ha</p></div>", unsafe_allow_html=True)
+        with hb2: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Costo Medio Consolidado</p><p class='hud-bi-value'>💰 $ {formato_latino(costo_medio_historico, 0)}</p></div>", unsafe_allow_html=True)
+        with hb3: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>Órdenes de Servicio Auditadas</p><p class='hud-bi-value'>🛰️ {total_ordenes_auditadas:,} OS</p></div>", unsafe_allow_html=True)
+
+        fincas_disp = ["TODAS"] + sorted(super_base_bi['FINCA_MAESTRA'].dropna().unique().tolist())
+        años_disp = sorted(super_base_bi['AÑO'].unique().tolist(), reverse=True)
+        col_modelo = 'MODELO' if 'MODELO' in super_base_bi.columns else None
+        modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist()) if col_modelo else ["TODOS"]
+        
         st.markdown("### 🎛️ Centro de Comando y Filtros")
         
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v25")
+        vista_seleccionada = c1.radio("👁️ Vista Operativa:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v28")
         
-        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v25")
-        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v25")
-        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v25")
+        fecha_sel_ini = c2.date_input("📅 F. Inicial:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v28")
+        fecha_sel_fin = c3.date_input("📅 F. Final:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v28")
+        
+        pistas_disp = sorted(super_base_bi[col_pista].dropna().unique().tolist()) if col_pista else []
+        pistas_sel = c4.multiselect("📍 Bases (Pistas Múltiples)", pistas_disp, default=pistas_disp, key="m8_pista_v28")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
             cc1, cc2, cc3 = st.columns(3)
-            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v25")
-            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v25")
-            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v25")
+            mostrar_horas = cc1.checkbox("⏱️ Mostrar Horas", value=True, key="m8_h_v28")
+            calcular_rend_prom = cc2.checkbox("🚀 Mostrar Rend. (Ha/Hr)", value=True, key="m8_r_v28")
+            agrupar_avion = cc3.toggle("✈️ Desglosar por Flota", value=False, key="m8_f_v28")
 
-        df_filt = df_rep[(df_rep['FECHA_REAL'] >= fecha_sel_ini) & (df_rep['FECHA_REAL'] <= fecha_sel_fin)].copy()
+        df_filt = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= fecha_sel_ini) & (super_base_bi['FECHA_DT'].dt.date <= fecha_sel_fin)].copy()
         
-        if pistas_sel:
-            df_filt = df_filt[df_filt['PISTA'].isin(pistas_sel)]
+        if pistas_sel and col_pista:
+            df_filt = df_filt[df_filt[col_pista].isin(pistas_sel)]
         else:
             st.warning("⚠️ Selecciona al menos una Base Operativa para generar el radar.")
             return
@@ -230,80 +487,111 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
         meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
         meses_nom_largo = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
         
-        df_filt['MES_NUM'] = df_filt['FECHA_REAL'].apply(lambda x: x.month)
+        df_filt['MES_NUM'] = df_filt['FECHA_DT'].apply(lambda x: x.month)
         df_filt['MES'] = df_filt['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
         
         st.markdown("---")
         rango_txt = f"{fecha_sel_ini.day} de {meses_nom_largo.get(fecha_sel_ini.month, '')} {fecha_sel_ini.year} ⸺ {fecha_sel_fin.day} de {meses_nom_largo.get(fecha_sel_fin.month, '')} {fecha_sel_fin.year}"
         
         # =================================================================
-        # 📈 VISTA 3: DASHBOARD EJECUTIVO (BI FINANCIERO)
+        # 📈 VISTA 3: DASHBOARD EJECUTIVO (BATALLA DE ESCUADRONES)
         # =================================================================
         if vista_seleccionada == "📈 Dashboard Ejecutivo":
             st.markdown(f"#### 📈 Dashboard Ejecutivo y BI Financiero")
             st.caption(f"🗓️ *{rango_txt}*")
             
             # 🚀 SEPARACIÓN DE DRONES Y AVIONES
-            df_drones = df_filt[df_filt['MODELO'].str.contains('DRON', na=False) | df_filt['HK'].str.contains('DR', na=False)]
+            df_drones = df_filt[df_filt['MODELO'].str.contains('DRON', na=False, case=False) | df_filt['HK'].str.contains('DR', na=False, case=False)]
             df_aviones = df_filt[~df_filt.index.isin(df_drones.index)]
 
-            total_ha = df_filt['HA_NETAS'].sum()
+            total_ha = df_filt['AREA_NUM'].sum()
             total_vuelos = len(df_filt)
             
-            # Métricas Operativas
-            ha_drones = df_drones['HA_NETAS'].sum()
+            # Métricas Operativas Drones
+            ha_drones = df_drones['AREA_NUM'].sum()
             vuelos_drones = len(df_drones)
-            prom_drones = ha_drones / vuelos_drones if vuelos_drones > 0 else 0
-
-            ha_aviones = df_aviones['HA_NETAS'].sum()
-            vuelos_aviones = len(df_aviones)
-            prom_aviones = ha_aviones / vuelos_aviones if vuelos_aviones > 0 else 0
-            
-            # 💥 MÉTRICAS FINANCIERAS (Costo)
-            costo_tot_drones = df_drones['COSTO_TOTAL'].sum()
-            costo_tot_aviones = df_aviones['COSTO_TOTAL'].sum()
+            costo_tot_drones = df_drones['COSTO_NUM'].sum()
             prom_costo_dr = costo_tot_drones / ha_drones if ha_drones > 0 else 0
-            prom_costo_av = costo_tot_aviones / ha_aviones if ha_aviones > 0 else 0
 
-            df_dash = df_filt.groupby('PISTA').agg(
-                VUELOS=('PISTA', 'count'),
-                HECTAREAS=('HA_NETAS', 'sum'),
-                COSTO_TOTAL=('COSTO_TOTAL', 'sum')
+            # Métricas Operativas Aviones
+            ha_aviones = df_aviones['AREA_NUM'].sum()
+            vuelos_aviones = len(df_aviones)
+            costo_tot_aviones = df_aviones['COSTO_NUM'].sum()
+            prom_costo_av = costo_tot_aviones / ha_aviones if ha_aviones > 0 else 0
+            
+            # 💥 BATALLA DE ESCUADRONES VIP
+            st.markdown("### ⚔️ Batalla de Escuadrones: ✈️ Aviones vs 🛸 Drones")
+            col_av, col_dr = st.columns(2)
+            
+            with col_av:
+                st.markdown(f"""
+                <div class='battle-panel' style='border-top-color: #2F75B5;'>
+                    <div class='battle-title' style='color: #2F75B5;'>✈️ Flota de Aviones</div>
+                    <div class='battle-metric-container'>
+                        <span class='battle-metric-label'>Total Facturado ($)</span>
+                        <span class='battle-metric-value' style='color: #28a745;'>{fmt_dinero(costo_tot_aviones)}</span>
+                    </div>
+                    <div class='battle-metric-container'>
+                        <span class='battle-metric-label'>Tarifa Promedio ($/Ha)</span>
+                        <span class='battle-metric-value'>{fmt_dinero(prom_costo_av)}</span>
+                    </div>
+                    <div class='battle-metric-container'>
+                        <span class='battle-metric-label'>Hectáreas Aplicadas</span>
+                        <span class='battle-metric-value'>{fmt_latino(ha_aviones, 1)} Ha</span>
+                    </div>
+                    <div class='battle-metric-container' style='border-bottom: none;'>
+                        <span class='battle-metric-label'>Misiones Completadas</span>
+                        <span class='battle-metric-value'>{vuelos_aviones}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with col_dr:
+                st.markdown(f"""
+                <div class='battle-panel' style='border-top-color: #27AE60;'>
+                    <div class='battle-title' style='color: #27AE60;'>🛸 Flota de Drones</div>
+                    <div class='battle-metric-container'>
+                        <span class='battle-metric-label'>Total Facturado ($)</span>
+                        <span class='battle-metric-value' style='color: #28a745;'>{fmt_dinero(costo_tot_drones)}</span>
+                    </div>
+                    <div class='battle-metric-container'>
+                        <span class='battle-metric-label'>Tarifa Promedio ($/Ha)</span>
+                        <span class='battle-metric-value'>{fmt_dinero(prom_costo_dr)}</span>
+                    </div>
+                    <div class='battle-metric-container'>
+                        <span class='battle-metric-label'>Hectáreas Aplicadas</span>
+                        <span class='battle-metric-value'>{fmt_latino(ha_drones, 1)} Ha</span>
+                    </div>
+                    <div class='battle-metric-container' style='border-bottom: none;'>
+                        <span class='battle-metric-label'>Misiones Completadas</span>
+                        <span class='battle-metric-value'>{vuelos_drones}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.write("")
+            
+            df_dash = df_filt.groupby(col_pista).agg(
+                VUELOS=(col_pista, 'count'),
+                HECTAREAS=('AREA_NUM', 'sum'),
+                COSTO_TOTAL=('COSTO_NUM', 'sum')
             ).reset_index()
             
             df_dash['% VUELOS'] = (df_dash['VUELOS'] / total_vuelos) * 100
             df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
             df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
-            
-            # 🌟 4 TARJETAS OPERATIVAS
-            k1, k2, k3, k4 = st.columns(4)
-            k1.markdown(f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{fmt_latino(total_ha, 2)}</p></div>", unsafe_allow_html=True)
-            k2.markdown(f"<div class='kpi-card'><p class='kpi-title'>Misiones (Total)</p><p class='kpi-value'>{fmt_latino(total_vuelos, 0)}</p></div>", unsafe_allow_html=True)
-            k3.markdown(f"<div class='kpi-card'><p class='kpi-title'>Prom. Ha/Misión ✈️</p><p class='kpi-value'>{fmt_latino(prom_aviones, 2)}</p></div>", unsafe_allow_html=True)
-            k4.markdown(f"<div class='kpi-card'><p class='kpi-title'>Prom. Ha/Misión 🛸</p><p class='kpi-value'>{fmt_latino(prom_drones, 2)}</p></div>", unsafe_allow_html=True)
-            
-            # 🌟 4 TARJETAS FINANCIERAS (NUEVAS)
-            kf1, kf2, kf3, kf4 = st.columns(4)
-            kf1.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Costo Total ✈️</p><p class='kpi-value' style='color:#28a745;'>{fmt_dinero(costo_tot_aviones)}</p></div>", unsafe_allow_html=True)
-            kf2.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Tarifa Prom ✈️</p><p class='kpi-value'>{fmt_dinero(prom_costo_av)}<span style='font-size:12px; font-weight:normal;'>/Ha</span></p></div>", unsafe_allow_html=True)
-            kf3.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Costo Total 🛸</p><p class='kpi-value' style='color:#28a745;'>{fmt_dinero(costo_tot_drones)}</p></div>", unsafe_allow_html=True)
-            kf4.markdown(f"<div class='kpi-card kpi-finance'><p class='kpi-title kpi-finance-title'>Tarifa Prom 🛸</p><p class='kpi-value'>{fmt_dinero(prom_costo_dr)}<span style='font-size:12px; font-weight:normal;'>/Ha</span></p></div>", unsafe_allow_html=True)
-            
-            st.write("")
 
             g1, g2 = st.columns(2)
             df_dash['TXT_PCT'] = df_dash['% HECTAREAS'].apply(lambda x: f"{x:.1f}%".replace(".", ","))
             
-            # Gráfico Dona (Vuelos)
-            fig_pie = px.pie(df_dash, values='VUELOS', names='PISTA', hole=0.45, 
+            fig_pie = px.pie(df_dash, values='VUELOS', names=col_pista, hole=0.45, 
                              title="<b>Distribución de Vuelos por Pista</b>", color_discrete_sequence=px.colors.qualitative.Prism)
             fig_pie.update_traces(textposition='inside', textinfo='percent+label', texttemplate='%{label}<br>%{percent}')
             fig_pie.update_layout(separators=",.", showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
             g1.plotly_chart(fig_pie, use_container_width=True)
 
-            # Gráfico Barras (Hectáreas)
             fig_bar = px.bar(df_dash.sort_values('HECTAREAS', ascending=True), 
-                             x='HECTAREAS', y='PISTA', orientation='h',
+                             x='HECTAREAS', y=col_pista, orientation='h',
                              title="<b>Volumen de Hectáreas por Base</b>",
                              text='TXT_PCT',
                              color='HECTAREAS', color_continuous_scale='Blues')
@@ -312,14 +600,15 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
 
             # 💥 NUEVO RANKING: IMPACTO DE COSTOS POR AERONAVE
             st.markdown("---")
-            st.markdown("##### 🏆 Ranking: Impacto de Costos por Aeronave (Facturación)")
+            st.markdown("##### 🏆 Ranking: Impacto de Costos por Aeronave (Facturación a la Empresa)")
+            st.caption("Identifica qué matrículas representan el mayor costo monetario y su tarifa promedio.")
             df_hk = df_filt.groupby(['HK']).agg(
                 MISIONES=('HK', 'count'),
-                HECTAREAS=('HA_NETAS', 'sum'),
-                COSTO_TOTAL=('COSTO_TOTAL', 'sum')
+                HECTAREAS=('AREA_NUM', 'sum'),
+                COSTO_TOTAL=('COSTO_NUM', 'sum')
             ).reset_index()
             
-            df_hk['TARIFA_PROM'] = df_hk['COSTO_TOTAL'] / df_hk['HECTAREAS']
+            df_hk['TARIFA_PROM ($/Ha)'] = df_hk['COSTO_TOTAL'] / df_hk['HECTAREAS']
             df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False)
             
             st.dataframe(
@@ -327,7 +616,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                     'MISIONES': lambda x: f"{x:,.0f}".replace(",", "."),
                     'HECTAREAS': fmt_latino,
                     'COSTO_TOTAL': fmt_dinero,
-                    'TARIFA_PROM': fmt_dinero
+                    'TARIFA_PROM ($/Ha)': fmt_dinero
                 }).bar(subset=['COSTO_TOTAL'], color='#28a745', vmin=0)
                   .bar(subset=['HECTAREAS'], color='#5c88b0', vmin=0),
                 use_container_width=True, hide_index=True
@@ -341,16 +630,18 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.caption(f"🗓️ *{rango_txt}*")
             tabla_final = []
             total_hr_gral, total_ha_gral, total_costo_gral = 0, 0, 0
+            
+            col_rend = 'REND_HR' if 'REND_HR' in df_filt.columns else ('H_PROPORCIONAL' if 'H_PROPORCIONAL' in df_filt.columns else 'AREA_NUM')
 
             if agrupar_avion:
-                df_gerencia = df_filt.groupby(['PISTA', 'HK', 'MES']).agg(
-                    REND_HR=('H_PROPORCIONAL', 'sum'), 
-                    AREA_FUMIG=('HA_NETAS', 'sum'),
-                    COSTO_TOT=('COSTO_TOTAL', 'sum')
+                df_gerencia = df_filt.groupby([col_pista, 'HK', 'MES']).agg(
+                    REND_HR=(col_rend, 'sum'), 
+                    AREA_FUMIG=('AREA_NUM', 'sum'),
+                    COSTO_TOT=('COSTO_NUM', 'sum')
                 ).reset_index()
                 
-                for pista in sorted(df_gerencia['PISTA'].unique()):
-                    df_pista = df_gerencia[df_gerencia['PISTA'] == pista]
+                for pista in sorted(df_gerencia[col_pista].unique()):
+                    df_pista = df_gerencia[df_gerencia[col_pista] == pista]
                     sum_hr_pista = df_pista['REND_HR'].sum()
                     sum_ha_pista = df_pista['AREA_FUMIG'].sum()
                     sum_costo_pista = df_pista['COSTO_TOT'].sum()
@@ -360,7 +651,6 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                     fila_pista['ÁREA FUMIG (ha)'] = sum_ha_pista
                     if calcular_rend_prom: fila_pista['PROMEDIO (Ha/Hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
                     
-                    # 💥 Inyección Financiera
                     fila_pista['COSTO TOTAL ($)'] = sum_costo_pista
                     fila_pista['TARIFA PROM ($/Ha)'] = sum_costo_pista / sum_ha_pista if sum_ha_pista > 0 else 0.0
                     tabla_final.append(fila_pista)
@@ -371,7 +661,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                         sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
                         sum_costo_hk = datos_hk['COSTO_TOT'].sum()
                         
-                        modelo = str(mapa_modelo.get(hk, "")).upper()
+                        modelo = str(df_filt[df_filt['HK'] == hk]['MODELO'].iloc[0]).upper() if not df_filt[df_filt['HK'] == hk].empty else ""
                         es_dron = "DRON" in modelo or "DR" in hk
                         emoji = "🛸 DRON:" if es_dron else "✈️ AVION:"
                         
@@ -408,14 +698,14 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 tabla_final.append(fila_tot)
                 
             else:
-                df_gerencia = df_filt.groupby(['PISTA', 'MES']).agg(
-                    REND_HR=('H_PROPORCIONAL', 'sum'), 
-                    AREA_FUMIG=('HA_NETAS', 'sum'),
-                    COSTO_TOT=('COSTO_TOTAL', 'sum')
+                df_gerencia = df_filt.groupby([col_pista, 'MES']).agg(
+                    REND_HR=(col_rend, 'sum'), 
+                    AREA_FUMIG=('AREA_NUM', 'sum'),
+                    COSTO_TOT=('COSTO_NUM', 'sum')
                 ).reset_index()
                 
-                for pista in sorted(df_gerencia['PISTA'].unique()):
-                    datos_pista = df_gerencia[df_gerencia['PISTA'] == pista].sort_values(by='MES')
+                for pista in sorted(df_gerencia[col_pista].unique()):
+                    datos_pista = df_gerencia[df_gerencia[col_pista] == pista].sort_values(by='MES')
                     sum_hr = datos_pista['REND_HR'].sum()
                     sum_ha = datos_pista['AREA_FUMIG'].sum()
                     sum_costo = datos_pista['COSTO_TOT'].sum()
@@ -472,7 +762,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
             st.dataframe(df_visual.style.apply(aplicar_estilos_originales, axis=1).format(fmt_cols), use_container_width=True, hide_index=True)
 
         else:
-            matriz = pd.pivot_table(df_filt, values='HA_NETAS', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
+            matriz = pd.pivot_table(df_filt, values='AREA_NUM', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
             matriz = matriz.sort_index()
             cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
             matriz = matriz[cols_ordenadas]
@@ -524,7 +814,7 @@ def ejecutar(supabase_client, descargar_matriz_rapida=None, extraer_numero_ext=N
                 
             curr_row = start_row + 1
             for _, row in df_export.iterrows():
-                ws.cell(row=curr_row, column=2, value=row['PISTA']).border = borde
+                ws.cell(row=curr_row, column=2, value=row[col_pista]).border = borde
                 ws.cell(row=curr_row, column=3, value=row['VUELOS']).number_format = '#,##0'
                 ws.cell(row=curr_row, column=3).border = borde
                 ws.cell(row=curr_row, column=4, value=row['HECTAREAS']).number_format = '#,##0.00'
