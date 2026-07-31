@@ -27,6 +27,7 @@ def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
     
+    # 1. Si es un número serial de Excel (ej: 44258)
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
         
@@ -36,6 +37,7 @@ def procesar_fecha_estricta(val):
         'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
     }
     
+    # 2. Buscar mes en español y armar la fecha
     mes_encontrado = None
     for mes in meses_es:
         if mes in s:
@@ -58,6 +60,7 @@ def procesar_fecha_estricta(val):
             except:
                 pass
 
+    # 3. Limpieza para formatos numéricos tradicionales
     for dia_sem in ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo']:
         s = s.replace(dia_sem, '')
     s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
@@ -71,9 +74,10 @@ def procesar_fecha_estricta(val):
         if pd.isna(res): return pd.NaT
         return res
     except: 
-        return pd.NaT 
+        return pd.NaT # Si es basura escrita a mano, devuelve vacío para purgarlo
 
 def formatear_numero_sap(val):
+    """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer():
@@ -86,41 +90,42 @@ def formatear_numero_sap(val):
     except:
         return str(val)
 
-# --- 🧠 MOTOR DE EXTRACCIÓN DE PRECIOS DEL ÚLTIMO AÑO ---
+# --- 🧠 MOTOR EXCLUSIVO: LECTURA DESDE GÉNESIS OMEGA V2 ESTABLE ---
 @st.cache_data(show_spinner=False, ttl=3600)
-def extraer_catalogo_precios_reciente():
+def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
-        productos_recientes = set()
-        anio_actual = obtener_hora_colombia().year
+        # Apuntando al núcleo: GÉNESIS_OMEGA_V2_ESTABLE
+        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        try:
+            ws = sh_config.worksheet("Configuración")
+        except:
+            ws = sh_config.worksheet("DD_Mesclas")
+            
+        datos = ws.get_all_values()
+        if not datos: return []
         
-        for ws in sh_precios.worksheets():
-            datos = ws.get_all_values()
-            if not datos: continue
-            
-            idx_anio, idx_prod = -1, -1
-            for i in range(min(10, len(datos))):
-                fila_up = [str(x).upper().strip() for x in datos[i]]
-                if 'AÑO' in fila_up and 'PRODUCTO' in fila_up:
-                    idx_anio = fila_up.index('AÑO')
-                    idx_prod = fila_up.index('PRODUCTO')
-                    break
-            
-            if idx_anio != -1 and idx_prod != -1:
-                for row in datos[idx_anio+1:]:
-                    if len(row) > max(idx_anio, idx_prod):
-                        anio_str = str(row[idx_anio]).strip()
-                        if anio_str in [str(anio_actual), str(anio_actual - 1)]:
-                            p_nombre = str(row[idx_prod]).strip().upper()
-                            if p_nombre and "DOSIS" not in p_nombre and "SIGLAS" not in p_nombre and len(p_nombre) > 3:
-                                productos_recientes.add(p_nombre)
-        return list(productos_recientes)
-    except Exception:
+        productos_oficiales = set()
+        idx_prod = -1
+        
+        for i in range(min(10, len(datos))):
+            fila_up = [str(x).upper().strip() for x in datos[i]]
+            if 'PRODUCTO' in fila_up:
+                idx_prod = fila_up.index('PRODUCTO')
+                break
+                
+        if idx_prod != -1:
+            for row in datos[i+1:]:
+                if len(row) > idx_prod:
+                    p_nombre = str(row[idx_prod]).strip().upper()
+                    if p_nombre and len(p_nombre) > 3 and p_nombre != "0":
+                        productos_oficiales.add(p_nombre)
+        return list(productos_oficiales)
+    except Exception as e:
         return []
 
-# --- DICCIONARIOS DE HOMOLOGACIÓN ---
+# --- DICCIONARIO BASE DE HOMOLOGACIONES MÁS AGRESIVO ---
 DICT_BASE_PRODUCTOS = {
     "ACEITE DICAM": "ROYAL BIOCHEM",
     "ACONDICIONADOR SV": "SYS TECNOLOGIES",
@@ -159,11 +164,12 @@ DICT_BASE_PRODUCTOS = {
     "ZINTRAC x LITRO SV": "YARA S.A.S."
 }
 
-# 💥 Traductor Automático a Nombres SAP Oficiales
+# 💥 Traductor Automático de Nombres Históricos al Estándar Actual
 DICT_HOMOLOGACION_SAP = {
     "ACONDICIONADOR": "ACONDICIONADOR SV",
     "ADHERENTE": "ADHERENTE SV",
     "DITHANE60 OF": "DITHANE 60 OF",
+    "DITHANE FMB": "DITHANE FMB",
     "SPRAY FIX": "SPRAYFIX",
     "INBIOSIL O": "IMBIOSIL O",
     "BANANO-PLATANO": "BANANO Y PLATANO * LT",
@@ -176,6 +182,18 @@ DICT_HOMOLOGACION_SAP = {
     "CEROSTRESS": "CEROSTRESS SV * LT",
     "COMPER": "COMPER SV",
     "POWMYL": "POWMYL SV",
+    "LONSELOR": "LONSELOR 30 SC",
+    "BANATREL": "BANATREL SC",
+    "MANCOL": "MANCOL 430 SC",
+    "POLYTHION": "POLYTHION SC",
+    "ROUTINE": "ROUTINE SC",
+    "SIGANEX": "SIGANEX 60 SC",
+    "THIOPRON": "THIOPRON 825 SC",
+    "OPUS": "OPUS 12 EC",
+    "KURDO": "KURDO 250 EC",
+    "COLISION": "COLISION 250 SC",
+    "CUMORA": "CUMORA SC",
+    "CERAQUINT": "CERAQUINT SP"
 }
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
@@ -275,13 +293,13 @@ def ejecutar():
             except Exception:
                 pass 
             
-            productos_precio_sap = extraer_catalogo_precios_reciente()
+            productos_precio_sap = extraer_catalogo_oficial_sap()
             for prod_sap in productos_precio_sap:
                 prod_sap_limpio = prod_sap.strip()
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 💥 CIRUGÍA: CREACIÓN DE LA LISTA DE AUTORIZADOS SAP
+            # 💥 CIRUGÍA: CREACIÓN DE LA LISTA DE AUTORIZADOS SAP DESDE EL NÚCLEO
             lista_autorizada = set([str(k).strip().upper() for k in dict_operativo.keys()])
             for p in productos_precio_sap:
                 lista_autorizada.add(str(p).strip().upper())
@@ -289,9 +307,9 @@ def ejecutar():
             def estandarizar_y_marcar_producto(prod):
                 if pd.isna(prod) or str(prod).strip() == "": return ""
                 p_up = str(prod).strip().upper()
-                p_up = DICT_HOMOLOGACION_SAP.get(p_up, p_up) # Corrige automáticamente
+                p_up = DICT_HOMOLOGACION_SAP.get(p_up, p_up) # Corrige automáticamente LONSELOR -> LONSELOR 30 SC, etc.
                 if p_up not in lista_autorizada:
-                    return f"{p_up} 🛑 [OBSOLETO]" # Marca lo que no cruza con SAP
+                    return f"{p_up} 🛑 [OBSOLETO]" # Solo marca lo que realmente no exista en Configuración
                 return p_up
 
             # Bóveda Traslados
@@ -410,7 +428,7 @@ def ejecutar():
                     else:
                         modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
                         
-                        # 💥 El Desplegable SOLO muestra productos 100% legales de SAP
+                        # 💥 El Desplegable SOLO muestra productos 100% legales extraídos de "Configuración"
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         lista_prods_ordenada = sorted(list(lista_prods_limpia))
                         
@@ -768,6 +786,7 @@ def ejecutar():
         st.markdown(f"<a href='{URL_SHEET_TRASLADOS}' target='_blank' class='btn-ascensor' style='background-color:#2F75B5; border-color:#1d4e7a; color:#ffffff !important;'>👁️ VER BASE DE TRASLADOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
+        # --- EXTRACCIÓN DE DATOS HISTÓRICOS DE TRASLADOS ---
         if not df_traslados.empty:
             total_movimientos = len(df_traslados)
             st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
@@ -797,7 +816,7 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
-            # 💥 El Desplegable SOLO muestra productos 100% legales de SAP
+            # 💥 El Desplegable SOLO muestra productos 100% legales extraídos de "Configuración"
             lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
