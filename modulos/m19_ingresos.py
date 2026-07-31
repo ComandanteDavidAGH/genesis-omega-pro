@@ -670,10 +670,19 @@ def ejecutar():
         # --- EXTRACCIÓN DE DATOS HISTÓRICOS DE TRASLADOS ---
         df_traslados = pd.DataFrame()
         if datos_traslados and len(datos_traslados) > 1:
-            encabezados_traslados = [str(x).strip().upper() for x in datos_traslados[0]]
-            df_traslados = pd.DataFrame(datos_traslados[1:], columns=encabezados_traslados)
             
-            # 💥 CIRUGÍA: DESTRUIR COLUMNAS FANTASMAS EN TRASLADOS
+            # 💥 CIRUGÍA TÁCTICA: RADAR INTELIGENTE DE ENCABEZADOS
+            idx_head_t = 0
+            for i, row in enumerate(datos_traslados[:5]):
+                fila_up = [str(x).upper().strip() for x in row]
+                if "CONSECUTIVO" in fila_up or "PRODUCTO" in fila_up:
+                    idx_head_t = i
+                    break
+                    
+            encabezados_traslados = [str(x).strip().upper() for x in datos_traslados[idx_head_t]]
+            df_traslados = pd.DataFrame(datos_traslados[idx_head_t+1:], columns=encabezados_traslados)
+            
+            # 💥 DESTRUCCIÓN DE COLUMNAS FANTASMAS EN TRASLADOS
             df_traslados = df_traslados.loc[:, df_traslados.columns != '']
             df_traslados = df_traslados.loc[:, ~df_traslados.columns.duplicated()]
             
