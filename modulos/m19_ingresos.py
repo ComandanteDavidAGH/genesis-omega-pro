@@ -353,7 +353,7 @@ def ejecutar():
                     n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
                     semana_calculada = n_fecha_ing.isocalendar()[1]
                     n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
-                    n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO", "AEROPENORT", "ASA", "AVIL", "DATATROT", "FUMIGARAY", "GENESYS"])
+                    n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
                     
                     f4, f5, f6 = st.columns(3)
                     fk = st.session_state['form_key_m19']
@@ -693,10 +693,11 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
             
-            pistas_disponibles = ["LUCHA", "DIVAS", "ORIHUECA", "AEROPENORT", "ASA", "AVIL", "DATATROT", "FUMIGARAY", "GENESYS", "LUCI", "PLUC", "PDIV", "PORI", "TEHO"]
+            # 💥 CIRUGÍA TÁCTICA: Solo acrónimos SAP
+            pistas_disponibles = ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"]
             p1, p2 = st.columns(2)
             t_origen = p1.selectbox("🛫 Pista Origen", pistas_disponibles, index=0, key=f"t_origen_{fk_t}")
-            t_destino = p2.selectbox("🛬 Pista Destino", pistas_disponibles, index=1, key=f"t_destino_{fk_t}")
+            t_destino = p2.selectbox("🛬 Pista Destino", pistas_disponibles, index=1 if len(pistas_disponibles) > 1 else 0, key=f"t_destino_{fk_t}")
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
@@ -739,7 +740,6 @@ def ejecutar():
                                 str(t_observacion).strip()
                             ]
 
-                            # Verificar si la hoja estaba vacía y necesita encabezados
                             if not datos_traslados:
                                 ws_traslados.append_row(["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION"])
 
