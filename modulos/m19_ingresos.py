@@ -320,6 +320,45 @@ def ejecutar():
                 disabled=not debe_desbloquear, 
                 placeholder="Digite el proveedor para guardarlo en el Diccionario"
             )
+            
+            # 💥 CIRUGÍA: BOTÓN DE GUARDADO PERMANENTE DEL DICCIONARIO
+            if debe_desbloquear:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 GUARDAR PROVEEDOR PERMANENTEMENTE", type="secondary", use_container_width=True):
+                    prod_limpio = str(n_prod).strip().upper()
+                    prov_limpio = str(n_prov).strip().upper()
+                    
+                    if not prov_limpio:
+                        st.warning("⚠️ Debes escribir un nombre de proveedor para guardarlo.")
+                    elif prov_limpio == proveedor_asignado.upper():
+                        st.info("ℹ️ El proveedor es el mismo, no hay cambios que guardar.")
+                    else:
+                        with st.spinner("Actualizando Diccionario Maestro en la Nube..."):
+                            try:
+                                sh_local = gc.open_by_url(URL_SHEET_LOCAL)
+                                try:
+                                    ws_dicc = sh_local.worksheet("DICCIONARIO")
+                                except:
+                                    ws_dicc = sh_local.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
+                                    ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                                
+                                datos_d = ws_dicc.get_all_values()
+                                fila_a_actualizar = -1
+                                for idx_d, row_d in enumerate(datos_d):
+                                    if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
+                                        fila_a_actualizar = idx_d + 1
+                                        break
+                                
+                                if fila_a_actualizar != -1:
+                                    ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                                else:
+                                    ws_dicc.append_row([prod_limpio, prov_limpio])
+                                
+                                st.success(f"✅ ¡Diccionario Actualizado! El producto {prod_limpio} ahora pertenece a {prov_limpio}.")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"🚨 Fallo al guardar en diccionario: {e}")
 
     # --- ➕ BLOQUE 2: DATOS OPERATIVOS ---
     with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
@@ -451,17 +490,14 @@ def ejecutar():
         mask = df['FECHA_ING_TEMP'].apply(obtener_fecha_limpia) == fecha_reporte
         df_correo = df[mask].copy()
         
-        # 💥 AUTO-PURGA DE ANULADOS EN EL REPORTE
         if COL_ESTADO in df_correo.columns:
             df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
         
         if not df_correo.empty:
             df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
             
-            # 💥 MATRIZ INTERACTIVA PARA EL CORREO (INTERRUPTOR)
             df_correo.insert(0, "✅ INCLUIR", True)
             
-            # Columnas visibles para la caja de selección (excluimos metadata basura)
             cols_ed = [c for c in df_correo.columns if c not in ["FILA_EXCEL", "FECHA_ING_TEMP", "FECHA_VENC_DT", COL_ESTADO]]
             
             st.markdown("👇 **Paso 1: Desmarca los registros que NO quieres enviar en el correo:**")
@@ -476,7 +512,6 @@ def ejecutar():
                 key=f"editor_correo_{fecha_reporte}"
             )
             
-            # Filtramos estrictamente los que el usuario dejó activos
             df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
             
             if not df_correo_final.empty:
