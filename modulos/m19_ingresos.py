@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import re
 import io
 from openpyxl import Workbook
@@ -147,6 +147,7 @@ DICT_BASE_PRODUCTOS = {
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
     
+    # 💥 CIRUGÍA ANTICOLISIÓN: Multiplexión de llaves para vaciado seguro
     if 'form_key_m19' not in st.session_state: 
         st.session_state['form_key_m19'] = 0
     if 'form_key_m19_traslados' not in st.session_state:
@@ -221,12 +222,15 @@ def ejecutar():
         st.error("🚨 Servidor desconectado. Revisa tus credenciales de Google Cloud.")
         return
 
+    # --- DESCARGA DE AMBAS BÓVEDAS ---
     with st.spinner("📡 Sincronizando Bóvedas de Ingresos y Traslados..."):
         try:
+            # 1. Bóveda Ingresos
             sh_ingresos = gc.open_by_url(URL_SHEET_INGRESOS)
             ws_ingresos = sh_ingresos.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
+            # Construcción Diccionario
             dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
             try:
                 ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
@@ -246,6 +250,7 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
+            # 2. Bóveda Traslados
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             try:
                 ws_traslados = sh_traslados.worksheet("TRASLADOS")
@@ -257,10 +262,11 @@ def ejecutar():
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
             return
 
+    # 💥 CREACIÓN DE LAS PESTAÑAS LOGÍSTICAS
     tab_ingresos, tab_traslados = st.tabs(["📥 1. INGRESOS (COMPRAS/PROVEEDOR)", "🚚 2. MOVIMIENTOS INTERNOS (TRASLADOS)"])
 
     # ========================================================================
-    # 📥 PESTAÑA 1: INGRESOS 
+    # 📥 PESTAÑA 1: INGRESOS (EL CÓDIGO ORIGINAL BLINDADO)
     # ========================================================================
     with tab_ingresos:
         st.markdown(f"<a href='{URL_SHEET_INGRESOS}' target='_blank' class='btn-ascensor' style='background-color:#1e4620; border-color:#2e7d32; color:#ffffff !important;'>👁️ VER BASE DE INGRESOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
@@ -279,6 +285,7 @@ def ejecutar():
             encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
             df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
             
+            # 💥 CIRUGÍA: DESTRUCTOR DE COLUMNAS FANTASMA EN INGRESOS
             df = df.loc[:, df.columns != '']
             df = df.loc[:, ~df.columns.duplicated()]
             
@@ -293,6 +300,7 @@ def ejecutar():
             else:
                 idx_col_estado = encabezados.index(COL_ESTADO) + 1 
 
+                # --- RADARES DE VENCIMIENTO ---
                 st.markdown("### 📡 Radares de Vencimiento")
                 limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
                 hoy_ts = pd.to_datetime(hoy_colombia)
@@ -560,7 +568,6 @@ def ejecutar():
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 f_col3, f_col4, _ = st.columns([1, 1, 1.5])
-                # 💥 AMPLITUD DE RADAR: Ahora arranca desde el 2021 por defecto para no ocultar nada.
                 fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=date(2021, 1, 1))
                 fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=hoy_colombia)
                 
