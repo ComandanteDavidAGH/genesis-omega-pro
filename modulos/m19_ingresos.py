@@ -22,7 +22,7 @@ def inicializar_cliente_gspread():
     except Exception as e:
         return None
 
-# 💥 CIRUGÍA EXTREMA: RADAR CRONOLÓGICO Y ANTI-FALLOS
+# 💥 CIRUGÍA: RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
@@ -71,11 +71,10 @@ def procesar_fecha_estricta(val):
         
     try: 
         res = pd.to_datetime(s, dayfirst=True)
-        if pd.isna(res): return pd.Timestamp('2099-12-31')
+        if pd.isna(res): return pd.NaT
         return res
     except: 
-        # Si la fecha es incomprensible, se envía al 2099 para que quede arriba y sea visible
-        return pd.Timestamp('2099-12-31') 
+        return pd.NaT # Si es basura escrita a mano, devuelve vacío para purgarlo
 
 def formatear_numero_sap(val):
     """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
@@ -267,9 +266,12 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 💥 CIRUGÍA: BARREDOR MULTIDIMENSIONAL DE PESTAÑAS PARA TRASLADOS
+            # 💥 CIRUGÍA EXTREMA: BARREDOR MULTIDIMENSIONAL DE TRASLADOS CON ESCUDO ANTI-BASURA
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             df_traslados_list = []
+            
+            # Las únicas columnas que le permitiremos al sistema absorber
+            columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION"]
             
             for ws in sh_traslados.worksheets():
                 hoja_datos = ws.get_all_values()
@@ -284,16 +286,28 @@ def ejecutar():
                         
                 if idx_head_t != -1:
                     encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
+                    
+                    # Truco de magia: Si Excel nombró "COLUMNA1" a las observaciones, lo corregimos a la fuerza
+                    for j in range(len(encabezados_temp)):
+                        if "COLUMNA1" in encabezados_temp[j] and "OBSERVACION" not in encabezados_temp:
+                            encabezados_temp[j] = "OBSERVACION"
+                    
                     df_t = pd.DataFrame(hoja_datos[idx_head_t+1:], columns=encabezados_temp)
-                    df_t = df_t.loc[:, df_t.columns != '']
-                    df_t = df_t.loc[:, ~df_t.columns.duplicated()]
+                    
+                    # DESTRUCTOR DE COLUMNAS EXTRAÑAS (Filtro restrictivo)
+                    cols_presentes = [c for c in columnas_oficiales if c in df_t.columns]
+                    df_t = df_t[cols_presentes]
+                    
+                    # DESTRUCTOR DE FILAS BASURA O MUTANTES
+                    if "PRODUCTO" in df_t.columns:
+                        # Elimina las filas donde PRODUCTO diga "None" o esté vacío
+                        df_t = df_t[df_t["PRODUCTO"].astype(str).str.upper().str.strip() != "NONE"]
+                        df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
+                        
                     df_traslados_list.append(df_t)
 
             if df_traslados_list:
                 df_traslados = pd.concat(df_traslados_list, ignore_index=True)
-                col_fecha_tras = next((c for c in df_traslados.columns if "FECHA" in c), None)
-                if col_fecha_tras:
-                    df_traslados = df_traslados[df_traslados[col_fecha_tras].astype(str).str.strip() != ""]
             else:
                 df_traslados = pd.DataFrame()
 
@@ -727,7 +741,6 @@ def ejecutar():
         st.markdown(f"<a href='{URL_SHEET_TRASLADOS}' target='_blank' class='btn-ascensor' style='background-color:#2F75B5; border-color:#1d4e7a; color:#ffffff !important;'>👁️ VER BASE DE TRASLADOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
-        # --- EXTRACCIÓN DE DATOS HISTÓRICOS DE TRASLADOS ---
         if not df_traslados.empty:
             total_movimientos = len(df_traslados)
             st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
@@ -815,8 +828,11 @@ def ejecutar():
         
         if not df_traslados.empty:
             df_traslados_vista = df_traslados.copy()
+            
             if "FECHA" in df_traslados_vista.columns:
                 df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
+                # Purga final para ocultar cualquier basura manual que devolvió NaT
+                df_traslados_vista = df_traslados_vista.dropna(subset=['FECHA_SORT'])
                 df_traslados_vista = df_traslados_vista.sort_values(by='FECHA_SORT', ascending=False).drop(columns=['FECHA_SORT'])
 
             st.dataframe(df_traslados_vista, use_container_width=True, hide_index=True)
