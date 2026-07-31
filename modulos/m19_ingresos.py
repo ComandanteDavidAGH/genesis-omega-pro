@@ -22,7 +22,7 @@ def inicializar_cliente_gspread():
     except Exception as e:
         return None
 
-# 💥 CIRUGÍA EXTREMA: RADAR CRONOLÓGICO UNIVERSAL (Atrapa cualquier formato en español)
+# 💥 CIRUGÍA EXTREMA: RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
@@ -37,7 +37,7 @@ def procesar_fecha_estricta(val):
         'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
     }
     
-    # 2. Buscar si existe un nombre de mes literalmente en el texto
+    # 2. Buscar mes en español y armar la fecha
     mes_encontrado = None
     for mes in meses_es:
         if mes in s:
@@ -45,39 +45,35 @@ def procesar_fecha_estricta(val):
             break
             
     if mes_encontrado:
-        # Extraer todos los números del string
         numeros = re.findall(r'\d+', s)
         if len(numeros) >= 2:
-            num1 = int(numeros[0])
-            num2 = int(numeros[1])
-            if num1 > 1000:
-                anio = num1
-                dia = num2
-            elif num2 > 1000:
-                anio = num2
-                dia = num1
+            n1 = int(numeros[0])
+            n2 = int(numeros[1])
+            if n1 > 1000:
+                anio = n1; dia = n2
+            elif n2 > 1000:
+                anio = n2; dia = n1
             else:
-                dia = num1
-                anio = 2000 + num2 if num2 < 100 else num2
-            try:
-                return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
-            except:
-                pass
-        elif len(numeros) == 1:
-            dia = int(numeros[0])
-            anio = obtener_hora_colombia().year
+                dia = n1; anio = 2000 + n2 if n2 < 100 else n2
             try:
                 return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
             except:
                 pass
 
-    # 3. Si no tiene nombre de mes, intentamos formatos estándar
-    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d'):
+    # 3. Limpieza para formatos numéricos tradicionales
+    for dia_sem in ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo']:
+        s = s.replace(dia_sem, '')
+    s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
+
+    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
         try: return pd.to_datetime(s, format=fmt)
         except: pass
         
-    try: return pd.to_datetime(s, dayfirst=True)
-    except: return pd.NaT
+    try: 
+        return pd.to_datetime(s, dayfirst=True)
+    except: 
+        # Si la fecha es incomprensible, se envía al 2099 para que quede arriba y sea visible
+        return pd.Timestamp('2099-12-31') 
 
 def formatear_numero_sap(val):
     """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
@@ -723,7 +719,8 @@ def ejecutar():
             df_traslados = df_traslados.loc[:, df_traslados.columns != '']
             df_traslados = df_traslados.loc[:, ~df_traslados.columns.duplicated()]
             
-            # 💥 CIRUGÍA TÁCTICA: IGNORAR FILAS VACÍAS BASADO EN FECHA, NO EN CONSECUTIVO
+            # 💥 CIRUGÍA TÁCTICA: DESTRUIR SÍNDROME DE CASILLA VACÍA
+            # Ahora NO elimina la fila si falta el consecutivo, solo la ignora si la columna FECHA está en blanco
             col_fecha_tras = next((c for c in df_traslados.columns if "FECHA" in c), None)
             if col_fecha_tras:
                 df_traslados = df_traslados[df_traslados[col_fecha_tras].astype(str).str.strip() != ""]
