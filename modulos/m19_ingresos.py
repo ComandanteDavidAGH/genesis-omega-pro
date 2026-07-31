@@ -22,15 +22,39 @@ def inicializar_cliente_gspread():
     except Exception as e:
         return None
 
+# 💥 CIRUGÍA EXTREMA: TRADUCTOR DE FECHAS EN ESPAÑOL
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
-    s = str(val).strip()
+    s = str(val).strip().lower()
+    
+    # 1. Si es un número serial de Excel (ej: 44258)
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%y', '%m/%d/%y'):
+    
+    # 2. Traductor agresivo de español (ej: "miércoles, 6 de octubre de 2021" -> "6/10/2021")
+    s = re.sub(r'^(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\s*,\s*', '', s)
+    s = s.replace(' de ', '/').replace('-', '/')
+    
+    meses_es = {
+        'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+        'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+        'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+    }
+    
+    for mes_nombre, mes_num in meses_es.items():
+        if mes_nombre in s:
+            s = s.replace(mes_nombre, mes_num)
+            break
+            
+    s = s.strip()
+    
+    # 3. Intentar parsear el formato estándar
+    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%y', '%Y-%m-%d'):
         try: return pd.to_datetime(s, format=fmt)
         except: pass
-    return pd.NaT
+        
+    try: return pd.to_datetime(s, dayfirst=True)
+    except: return pd.NaT
 
 def formatear_numero_sap(val):
     """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
@@ -123,7 +147,6 @@ DICT_BASE_PRODUCTOS = {
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
     
-    # 💥 CIRUGÍA ANTICOLISIÓN: Multiplexión de llaves para vaciado seguro
     if 'form_key_m19' not in st.session_state: 
         st.session_state['form_key_m19'] = 0
     if 'form_key_m19_traslados' not in st.session_state:
@@ -198,15 +221,12 @@ def ejecutar():
         st.error("🚨 Servidor desconectado. Revisa tus credenciales de Google Cloud.")
         return
 
-    # --- DESCARGA DE AMBAS BÓVEDAS ---
     with st.spinner("📡 Sincronizando Bóvedas de Ingresos y Traslados..."):
         try:
-            # 1. Bóveda Ingresos
             sh_ingresos = gc.open_by_url(URL_SHEET_INGRESOS)
             ws_ingresos = sh_ingresos.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
-            # Construcción Diccionario
             dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
             try:
                 ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
@@ -226,7 +246,6 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 2. Bóveda Traslados
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             try:
                 ws_traslados = sh_traslados.worksheet("TRASLADOS")
@@ -238,11 +257,10 @@ def ejecutar():
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
             return
 
-    # 💥 CREACIÓN DE LAS PESTAÑAS LOGÍSTICAS
     tab_ingresos, tab_traslados = st.tabs(["📥 1. INGRESOS (COMPRAS/PROVEEDOR)", "🚚 2. MOVIMIENTOS INTERNOS (TRASLADOS)"])
 
     # ========================================================================
-    # 📥 PESTAÑA 1: INGRESOS (EL CÓDIGO ORIGINAL BLINDADO)
+    # 📥 PESTAÑA 1: INGRESOS 
     # ========================================================================
     with tab_ingresos:
         st.markdown(f"<a href='{URL_SHEET_INGRESOS}' target='_blank' class='btn-ascensor' style='background-color:#1e4620; border-color:#2e7d32; color:#ffffff !important;'>👁️ VER BASE DE INGRESOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
@@ -261,7 +279,6 @@ def ejecutar():
             encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
             df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
             
-            # 💥 CIRUGÍA: DESTRUCTOR DE COLUMNAS FANTASMA EN INGRESOS
             df = df.loc[:, df.columns != '']
             df = df.loc[:, ~df.columns.duplicated()]
             
@@ -276,7 +293,6 @@ def ejecutar():
             else:
                 idx_col_estado = encabezados.index(COL_ESTADO) + 1 
 
-                # --- RADARES DE VENCIMIENTO ---
                 st.markdown("### 📡 Radares de Vencimiento")
                 limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
                 hoy_ts = pd.to_datetime(hoy_colombia)
@@ -544,7 +560,8 @@ def ejecutar():
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 f_col3, f_col4, _ = st.columns([1, 1, 1.5])
-                fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=hoy_colombia - timedelta(days=30))
+                # 💥 AMPLITUD DE RADAR: Ahora arranca desde el 2021 por defecto para no ocultar nada.
+                fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=date(2021, 1, 1))
                 fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=hoy_colombia)
                 
                 df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
@@ -671,7 +688,6 @@ def ejecutar():
         df_traslados = pd.DataFrame()
         if datos_traslados and len(datos_traslados) > 1:
             
-            # 💥 CIRUGÍA TÁCTICA: RADAR INTELIGENTE DE ENCABEZADOS
             idx_head_t = 0
             for i, row in enumerate(datos_traslados[:5]):
                 fila_up = [str(x).upper().strip() for x in row]
@@ -682,16 +698,13 @@ def ejecutar():
             encabezados_traslados = [str(x).strip().upper() for x in datos_traslados[idx_head_t]]
             df_traslados = pd.DataFrame(datos_traslados[idx_head_t+1:], columns=encabezados_traslados)
             
-            # 💥 DESTRUCCIÓN DE COLUMNAS FANTASMAS EN TRASLADOS
             df_traslados = df_traslados.loc[:, df_traslados.columns != '']
             df_traslados = df_traslados.loc[:, ~df_traslados.columns.duplicated()]
             
-            # Limpiar filas vacías si las hay
             col_consec_tras = next((c for c in df_traslados.columns if "CONSECUTIVO" in c), None)
             if col_consec_tras:
                 df_traslados = df_traslados[df_traslados[col_consec_tras].str.strip() != ""]
 
-        # KPI Rápido de Traslados
         total_movimientos = len(df_traslados)
         st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
         
