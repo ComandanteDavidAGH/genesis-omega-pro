@@ -126,9 +126,14 @@ def ejecutar():
     # 💥 CIRUGÍA ANTICOLISIÓN: Multiplexión de llaves para vaciado seguro
     if 'form_key_m19' not in st.session_state: 
         st.session_state['form_key_m19'] = 0
+    if 'form_key_m19_traslados' not in st.session_state:
+        st.session_state['form_key_m19_traslados'] = 0
 
     def limpiar_campos_operativos():
         st.session_state['form_key_m19'] += 1
+
+    def limpiar_campos_traslados():
+        st.session_state['form_key_m19_traslados'] += 1
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
@@ -140,6 +145,7 @@ def ejecutar():
     .kpi-rojo { border-left-color: #dc3545; }
     .kpi-amarillo { border-left-color: #ffc107; }
     .kpi-verde { border-left-color: #28a745; }
+    .kpi-azul { border-left-color: #2F75B5; }
     .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
 
@@ -153,17 +159,21 @@ def ejecutar():
     div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * { color: #000000 !important; font-weight: 900 !important; }
     
-    div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
+    
+    div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }
     
     .btn-ascensor { display: block; width: 100%; text-align: center; background-color: #15283c; color: #d4af37 !important; padding: 12px; border-radius: 8px; text-decoration: none !important; font-weight: 900; border: 2px solid #d4af37; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); transition: all 0.3s ease; }
     .btn-ascensor:hover { background-color: #0d1b2a; box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8); }
     </style>
     """, unsafe_allow_html=True)
 
-    URL_SHEET_LOCAL = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
+    URL_SHEET_INGRESOS = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
+    URL_SHEET_TRASLADOS = "https://docs.google.com/spreadsheets/d/1JV-f8zzGuhGNlqvrSjeKYN4eBdshAN5EOkfDHMi1WIs/edit"
 
     c_tit, c_btn1, c_btn2 = st.columns([2, 1, 1])
-    c_tit.markdown("<h1 class='titulo-mod'>📦 19. Control y Auditoría</h1>", unsafe_allow_html=True)
+    c_tit.markdown("<h1 class='titulo-mod'>📦 19. Centro Logístico Unificado</h1>", unsafe_allow_html=True)
     
     if c_btn1.button("🔄 REFRESCAR RADARES", type="primary", use_container_width=True):
         st.cache_data.clear()
@@ -174,7 +184,7 @@ def ejecutar():
             gc = inicializar_cliente_gspread()
             if gc:
                 try:
-                    sh_local = gc.open_by_url(URL_SHEET_LOCAL)
+                    sh_local = gc.open_by_url(URL_SHEET_INGRESOS)
                     ws_dicc = sh_local.worksheet("DICCIONARIO")
                     sh_local.del_worksheet(ws_dicc)
                     st.cache_data.clear()
@@ -183,24 +193,23 @@ def ejecutar():
                 except Exception:
                     st.info("No había basura. La lista ya estaba limpia.")
 
-    st.markdown(f"<a href='{URL_SHEET_LOCAL}' target='_blank' class='btn-ascensor' style='background-color:#1e4620; border-color:#2e7d32; color:#ffffff !important;'>👁️ VER BASE DE DATOS EN GOOGLE SHEETS (DRIVE EN VIVO)</a>", unsafe_allow_html=True)
-    st.write("Panel táctico de auditoría. Ingresa lotes cruzando información oficial con la Base de Precios SAP.")
-
     gc = inicializar_cliente_gspread()
     if not gc:
         st.error("🚨 Servidor desconectado. Revisa tus credenciales de Google Cloud.")
         return
 
-    with st.spinner("📡 Sincronizando Bóveda de Ingresos y Catálogo de Precios Históricos..."):
+    # --- DESCARGA DE AMBAS BÓVEDAS ---
+    with st.spinner("📡 Sincronizando Bóvedas de Ingresos y Traslados..."):
         try:
-            sh_local = gc.open_by_url(URL_SHEET_LOCAL)
-            ws_ingresos = sh_local.get_worksheet(0) 
+            # 1. Bóveda Ingresos
+            sh_ingresos = gc.open_by_url(URL_SHEET_INGRESOS)
+            ws_ingresos = sh_ingresos.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
             
+            # Construcción Diccionario
             dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
-            
             try:
-                ws_dicc = sh_local.worksheet("DICCIONARIO")
+                ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
                 datos_dicc = ws_dicc.get_all_values()
                 for row in datos_dicc[1:]: 
                     if len(row) >= 2 and str(row[0]).strip():
@@ -217,538 +226,568 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
+            # 2. Bóveda Traslados
+            sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
+            try:
+                ws_traslados = sh_traslados.worksheet("TRASLADOS")
+            except:
+                ws_traslados = sh_traslados.get_worksheet(0)
+            datos_traslados = ws_traslados.get_all_values()
+
         except Exception as e:
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
             return
 
-    if not datos_crudos or len(datos_crudos) < 2:
-        st.warning("La base de datos parece estar vacía.")
-        return
+    # 💥 CREACIÓN DE LAS PESTAÑAS LOGÍSTICAS
+    tab_ingresos, tab_traslados = st.tabs(["📥 1. INGRESOS (COMPRAS/PROVEEDOR)", "🚚 2. MOVIMIENTOS INTERNOS (TRASLADOS)"])
 
-    idx_header = 0
-    for i, row in enumerate(datos_crudos[:5]):
-        fila_upper = [str(x).upper().strip() for x in row]
-        if "ESTADO / OBSERVACIÓN" in fila_upper or "PRODUCTO" in fila_upper:
-            idx_header = i
-            break
+    # ========================================================================
+    # 📥 PESTAÑA 1: INGRESOS (EL CÓDIGO ORIGINAL BLINDADO)
+    # ========================================================================
+    with tab_ingresos:
+        st.markdown(f"<a href='{URL_SHEET_INGRESOS}' target='_blank' class='btn-ascensor' style='background-color:#1e4620; border-color:#2e7d32; color:#ffffff !important;'>👁️ VER BASE DE INGRESOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
+        st.write("Panel táctico de ingresos. Registra lotes de proveedores externos cruzando información oficial con la Base de Precios SAP.")
 
-    encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
-    df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
-    
-    df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
-    
-    col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
-    if col_producto:
-        df = df[df[col_producto].str.strip() != ""]
-
-    COL_ESTADO = "ESTADO / OBSERVACIÓN"
-    if COL_ESTADO not in df.columns:
-        st.error(f"🚨 FALTA COLUMNA TÁCTICA: No se encontró la columna **{COL_ESTADO}**.")
-        return
-
-    idx_col_estado = encabezados.index(COL_ESTADO) + 1 
-
-    # --- 📊 1. PANEL DE RADARES (KPIs) ---
-    st.markdown("### 📡 Radares de Vencimiento")
-    
-    limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
-    hoy_ts = pd.to_datetime(hoy_colombia)
-    
-    col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
-    
-    lotes_vencidos = 0
-    lotes_riesgo = 0
-    
-    if col_fv:
-        df['FECHA_VENC_DT'] = df[col_fv].apply(procesar_fecha_estricta)
-        df_activos = df[~df[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
-        lotes_vencidos = df_activos[df_activos['FECHA_VENC_DT'] < hoy_ts].shape[0]
-        lotes_riesgo = df_activos[(df_activos['FECHA_VENC_DT'] >= hoy_ts) & (df_activos['FECHA_VENC_DT'] <= limite_90_dias)].shape[0]
-
-    k1, k2, k3 = st.columns(3)
-    k1.markdown(f"""
-    <div class='kpi-card kpi-verde'>
-        <div class='kpi-titulo'>📦 Ingresos Registrados</div>
-        <p class='kpi-valor'>{len(df)}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    k2.markdown(f"""
-    <div class='kpi-card kpi-rojo'>
-        <div class='kpi-titulo'>🚨 Lotes Vencidos</div>
-        <p class='kpi-valor'>{lotes_vencidos}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    k3.markdown(f"""
-    <div class='kpi-card kpi-amarillo'>
-        <div class='kpi-titulo'>⚠️ Por Vencer (90 Días)</div>
-        <p class='kpi-valor'>{lotes_riesgo}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("""<a href="#seccion-auditoria" class="btn-ascensor">👇 SALTAR DIRECTO A LA MATRIZ DE AUDITORÍA 👇</a>""", unsafe_allow_html=True)
-    st.markdown("### ➕ Inyector de Nuevos Ingresos")
-
-    # --- ➕ BLOQUE 1: IDENTIFICACIÓN DEL QUÍMICO ---
-    with st.expander("🧪 1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL", expanded=True):
-        c_tog1, c_tog2 = st.columns(2)
-        es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
-        modificar_prov = False
-        
-        c_prod, c_prov = st.columns(2)
-        
-        if es_nuevo_producto:
-            n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-            n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
+        if not datos_crudos or len(datos_crudos) < 2:
+            st.warning("La base de datos de ingresos parece estar vacía.")
         else:
-            modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
+            idx_header = 0
+            for i, row in enumerate(datos_crudos[:5]):
+                fila_upper = [str(x).upper().strip() for x in row]
+                if "ESTADO / OBSERVACIÓN" in fila_upper or "PRODUCTO" in fila_upper:
+                    idx_header = i
+                    break
+
+            encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
+            df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
+            df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
             
-            lista_prods_limpia = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
-            lista_prods_ordenada = sorted(list(lista_prods_limpia))
-            
-            n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", lista_prods_ordenada)
-            proveedor_asignado = dict_operativo.get(n_prod, "")
-            
-            es_vacio = not bool(proveedor_asignado.strip())
-            debe_desbloquear = modificar_prov or es_vacio
-            
-            n_prov = c_prov.text_input(
-                "🏭 Proveedor", 
-                value=proveedor_asignado, 
-                disabled=not debe_desbloquear, 
-                placeholder="Digite el proveedor para guardarlo en el Diccionario"
-            )
-            
-            # 💥 CIRUGÍA: BOTÓN DE GUARDADO PERMANENTE DEL DICCIONARIO
-            if debe_desbloquear:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 GUARDAR PROVEEDOR PERMANENTEMENTE", type="secondary", use_container_width=True):
-                    prod_limpio = str(n_prod).strip().upper()
-                    prov_limpio = str(n_prov).strip().upper()
+            col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
+            if col_producto: df = df[df[col_producto].str.strip() != ""]
+
+            COL_ESTADO = "ESTADO / OBSERVACIÓN"
+            if COL_ESTADO not in df.columns:
+                st.error(f"🚨 FALTA COLUMNA TÁCTICA: No se encontró la columna **{COL_ESTADO}**.")
+            else:
+                idx_col_estado = encabezados.index(COL_ESTADO) + 1 
+
+                # --- RADARES DE VENCIMIENTO ---
+                st.markdown("### 📡 Radares de Vencimiento")
+                limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
+                hoy_ts = pd.to_datetime(hoy_colombia)
+                col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
+                
+                lotes_vencidos, lotes_riesgo = 0, 0
+                if col_fv:
+                    df['FECHA_VENC_DT'] = df[col_fv].apply(procesar_fecha_estricta)
+                    df_activos = df[~df[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
+                    lotes_vencidos = df_activos[df_activos['FECHA_VENC_DT'] < hoy_ts].shape[0]
+                    lotes_riesgo = df_activos[(df_activos['FECHA_VENC_DT'] >= hoy_ts) & (df_activos['FECHA_VENC_DT'] <= limite_90_dias)].shape[0]
+
+                k1, k2, k3 = st.columns(3)
+                k1.markdown(f"<div class='kpi-card kpi-verde'><div class='kpi-titulo'>📦 Ingresos Registrados</div><p class='kpi-valor'>{len(df)}</p></div>", unsafe_allow_html=True)
+                k2.markdown(f"<div class='kpi-card kpi-rojo'><div class='kpi-titulo'>🚨 Lotes Vencidos</div><p class='kpi-valor'>{lotes_vencidos}</p></div>", unsafe_allow_html=True)
+                k3.markdown(f"<div class='kpi-card kpi-amarillo'><div class='kpi-titulo'>⚠️ Por Vencer (90 Días)</div><p class='kpi-valor'>{lotes_riesgo}</p></div>", unsafe_allow_html=True)
+
+                st.markdown("---")
+                st.markdown("""<a href="#seccion-auditoria" class="btn-ascensor">👇 SALTAR DIRECTO A LA MATRIZ DE AUDITORÍA 👇</a>""", unsafe_allow_html=True)
+                st.markdown("### ➕ Inyector de Nuevos Ingresos")
+
+                with st.expander("🧪 1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL", expanded=True):
+                    c_tog1, c_tog2 = st.columns(2)
+                    es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
+                    modificar_prov = False
                     
-                    if not prov_limpio:
-                        st.warning("⚠️ Debes escribir un nombre de proveedor para guardarlo.")
-                    elif prov_limpio == proveedor_asignado.upper():
-                        st.info("ℹ️ El proveedor es el mismo, no hay cambios que guardar.")
+                    c_prod, c_prov = st.columns(2)
+                    
+                    if es_nuevo_producto:
+                        n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
+                        n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                     else:
-                        with st.spinner("Actualizando Diccionario Maestro en la Nube..."):
-                            try:
-                                sh_local = gc.open_by_url(URL_SHEET_LOCAL)
-                                try:
-                                    ws_dicc = sh_local.worksheet("DICCIONARIO")
-                                except:
-                                    ws_dicc = sh_local.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
-                                    ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
-                                
-                                datos_d = ws_dicc.get_all_values()
-                                fila_a_actualizar = -1
-                                for idx_d, row_d in enumerate(datos_d):
-                                    if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
-                                        fila_a_actualizar = idx_d + 1
-                                        break
-                                
-                                if fila_a_actualizar != -1:
-                                    ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                        modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
+                        lista_prods_limpia = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
+                        lista_prods_ordenada = sorted(list(lista_prods_limpia))
+                        
+                        n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", lista_prods_ordenada)
+                        proveedor_asignado = dict_operativo.get(n_prod, "")
+                        es_vacio = not bool(proveedor_asignado.strip())
+                        debe_desbloquear = modificar_prov or es_vacio
+                        
+                        n_prov = c_prov.text_input("🏭 Proveedor", value=proveedor_asignado, disabled=not debe_desbloquear, placeholder="Digite el proveedor para guardarlo")
+                        
+                        if debe_desbloquear:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button("💾 GUARDAR PROVEEDOR PERMANENTEMENTE", type="secondary", use_container_width=True):
+                                prod_limpio = str(n_prod).strip().upper()
+                                prov_limpio = str(n_prov).strip().upper()
+                                if not prov_limpio: st.warning("⚠️ Debes escribir un nombre de proveedor para guardarlo.")
+                                elif prov_limpio == proveedor_asignado.upper(): st.info("ℹ️ El proveedor es el mismo, no hay cambios que guardar.")
                                 else:
-                                    ws_dicc.append_row([prod_limpio, prov_limpio])
-                                
-                                st.success(f"✅ ¡Diccionario Actualizado! El producto {prod_limpio} ahora pertenece a {prov_limpio}.")
+                                    with st.spinner("Actualizando Diccionario Maestro en la Nube..."):
+                                        try:
+                                            try: ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
+                                            except:
+                                                ws_dicc = sh_ingresos.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
+                                                ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                                            
+                                            datos_d = ws_dicc.get_all_values()
+                                            fila_a_actualizar = -1
+                                            for idx_d, row_d in enumerate(datos_d):
+                                                if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
+                                                    fila_a_actualizar = idx_d + 1
+                                                    break
+                                            
+                                            if fila_a_actualizar != -1: ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                                            else: ws_dicc.append_row([prod_limpio, prov_limpio])
+                                            
+                                            st.success(f"✅ ¡Diccionario Actualizado! El producto {prod_limpio} ahora pertenece a {prov_limpio}.")
+                                            st.cache_data.clear()
+                                            st.rerun()
+                                        except Exception as e: st.error(f"🚨 Fallo al guardar en diccionario: {e}")
+
+                with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
+                    col_espacio, col_limpiar = st.columns([3, 1])
+                    col_limpiar.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_operativos, use_container_width=True)
+                    
+                    f1, f2, f3 = st.columns(3)
+                    n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
+                    semana_calculada = n_fecha_ing.isocalendar()[1]
+                    n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
+                    n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO", "AEROPENORT", "ASA", "AVIL", "DATATROT", "FUMIGARAY", "GENESYS"])
+                    
+                    f4, f5, f6 = st.columns(3)
+                    fk = st.session_state['form_key_m19']
+                    n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"in_cant_{fk}")
+                    n_lote = f5.text_input("📦 Lote", key=f"in_lote_{fk}")
+                    n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
+                    
+                    f7, f8, f9, f10 = st.columns(4)
+                    n_fv = f7.date_input("⏳ F. Vencimiento (F/V)", value=hoy_colombia)
+                    n_factura = f8.text_input("🧾 Factura", key=f"in_factura_{fk}")
+                    n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
+                    n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
+                    
+                    st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
+                    st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
+                    
+                    cp1, cp2, cp3, cp4 = st.columns(4)
+                    with cp1:
+                        st.caption("⚖️ CANTIDAD")
+                        st.code(formatear_numero_sap(n_cant), language="text")
+                    with cp2:
+                        st.caption("📦 LOTE")
+                        st.code(n_lote if n_lote else "...", language="text")
+                    with cp3:
+                        st.caption("🧾 FACTURA")
+                        st.code(n_factura if n_factura else "...", language="text")
+                    with cp4:
+                        st.caption("🛒 PEDIDO")
+                        st.code(n_pedido if n_pedido else "...", language="text")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
+                    
+                    if btn_guardar_nuevo:
+                        if not n_prod or str(n_prod).strip() == "":
+                            st.error("🚨 El nombre del producto no puede estar vacío.")
+                        else:
+                            prod_limpio = str(n_prod).strip().upper()
+                            prov_limpio = str(n_prov).strip().upper()
+
+                            actualizar_dicc = False
+                            if es_nuevo_producto: actualizar_dicc = True
+                            elif (modificar_prov or es_vacio) and prov_limpio and prov_limpio != proveedor_asignado.upper(): actualizar_dicc = True
+                            
+                            if actualizar_dicc:
+                                try:
+                                    try: ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
+                                    except:
+                                        ws_dicc = sh_ingresos.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
+                                        ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                                    
+                                    datos_d = ws_dicc.get_all_values()
+                                    fila_a_actualizar = -1
+                                    for idx_d, row_d in enumerate(datos_d):
+                                        if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
+                                            fila_a_actualizar = idx_d + 1
+                                            break
+                                    if fila_a_actualizar != -1: ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                                    else: ws_dicc.append_row([prod_limpio, prov_limpio])
+                                except Exception as e: st.warning(f"Se guardó el diccionario: {e}")
+
+                            nueva_fila_drive = []
+                            for header in encabezados:
+                                h = header.upper()
+                                if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
+                                elif "PROV" in h: nueva_fila_drive.append(prov_limpio)
+                                elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
+                                elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
+                                elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
+                                elif "CANT" in h: nueva_fila_drive.append(str(n_cant))
+                                elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
+                                elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
+                                elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
+                                elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
+                                elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
+                                elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
+                                elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
+                                else: nueva_fila_drive.append("") 
+                            
+                            try:
+                                with st.spinner("Enviando datos con láser matemático..."):
+                                    fila_destino = idx_header + len(df) + 2
+                                    letra_col = get_column_letter(len(encabezados))
+                                    rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
+                                    ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
+                                st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
+                                st.session_state['form_key_m19'] += 1
                                 st.cache_data.clear()
                                 st.rerun()
-                            except Exception as e:
-                                st.error(f"🚨 Fallo al guardar en diccionario: {e}")
+                            except Exception as e: st.error(f"Error al inyectar datos: {e}")
 
-    # --- ➕ BLOQUE 2: DATOS OPERATIVOS ---
-    with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
-        col_espacio, col_limpiar = st.columns([3, 1])
-        col_limpiar.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_operativos, use_container_width=True)
-        
-        f1, f2, f3 = st.columns(3)
-        n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
-        semana_calculada = n_fecha_ing.isocalendar()[1]
-        n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
-        
-        n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
-        
-        f4, f5, f6 = st.columns(3)
-        fk = st.session_state['form_key_m19']
-        n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"in_cant_{fk}")
-        n_lote = f5.text_input("📦 Lote", key=f"in_lote_{fk}")
-        n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
-        
-        f7, f8, f9, f10 = st.columns(4)
-        n_fv = f7.date_input("⏳ F. Vencimiento (F/V)", value=hoy_colombia)
-        n_factura = f8.text_input("🧾 Factura", key=f"in_factura_{fk}")
-        n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
-        n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
-        
-        st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
-        
-        cp1, cp2, cp3, cp4 = st.columns(4)
-        with cp1:
-            st.caption("⚖️ CANTIDAD")
-            st.code(formatear_numero_sap(n_cant), language="text")
-        with cp2:
-            st.caption("📦 LOTE")
-            st.code(n_lote if n_lote else "...", language="text")
-        with cp3:
-            st.caption("🧾 FACTURA")
-            st.code(n_factura if n_factura else "...", language="text")
-        with cp4:
-            st.caption("🛒 PEDIDO")
-            st.code(n_pedido if n_pedido else "...", language="text")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
-        
-        if btn_guardar_nuevo:
-            if not n_prod or str(n_prod).strip() == "":
-                st.error("🚨 El nombre del producto no puede estar vacío.")
-            else:
-                prod_limpio = str(n_prod).strip().upper()
-                prov_limpio = str(n_prov).strip().upper()
-
-                actualizar_dicc = False
-                if es_nuevo_producto:
-                    actualizar_dicc = True
-                elif (modificar_prov or es_vacio) and prov_limpio and prov_limpio != proveedor_asignado.upper():
-                    actualizar_dicc = True
+                # --- GENERADOR DE REPORTE CORREO ---
+                st.markdown("---")
+                st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
+                st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto. Puedes usar la columna **✅ INCLUIR** para desmarcar manualmente los registros que NO quieres enviar.")
                 
-                if actualizar_dicc:
-                    try:
-                        ws_dicc = sh_local.worksheet("DICCIONARIO")
-                    except Exception:
-                        ws_dicc = sh_local.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
-                        ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                col_fecha_rep, col_vacia = st.columns([1, 3])
+                fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
+                
+                col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
+                
+                if col_fecha_ingreso:
+                    df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
+                    def obtener_fecha_limpia(x): return x.date() if pd.notna(x) else None
+                    mask = df['FECHA_ING_TEMP'].apply(obtener_fecha_limpia) == fecha_reporte
+                    df_correo = df[mask].copy()
                     
-                    try:
-                        datos_d = ws_dicc.get_all_values()
-                        fila_a_actualizar = -1
-                        for idx_d, row_d in enumerate(datos_d):
-                            if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
-                                fila_a_actualizar = idx_d + 1
-                                break
-                        
-                        if fila_a_actualizar != -1:
-                            ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
-                        else:
-                            ws_dicc.append_row([prod_limpio, prov_limpio])
-                    except Exception as e:
-                        st.warning(f"Se guardó el diccionario: {e}")
-
-                nueva_fila_drive = []
-                for header in encabezados:
-                    h = header.upper()
-                    if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
-                    elif "PROV" in h: nueva_fila_drive.append(prov_limpio)
-                    elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
-                    elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
-                    elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
-                    elif "CANT" in h: nueva_fila_drive.append(str(n_cant))
-                    elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
-                    elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
-                    elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
-                    elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
-                    elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
-                    elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
-                    elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
-                    else: nueva_fila_drive.append("") 
-                
-                try:
-                    with st.spinner("Enviando datos con láser matemático..."):
-                        fila_destino = idx_header + len(df) + 2
-                        letra_col = get_column_letter(len(encabezados))
-                        rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
-                        ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
-                        
-                    st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
-                    st.session_state['form_key_m19'] += 1
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al inyectar datos: {e}")
-
-    # --- 📧 GENERADOR DE REPORTE PARA CORREO (CON SELECTOR DE INFILTRADOS) ---
-    st.markdown("---")
-    st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
-    st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto. Puedes usar la columna **✅ INCLUIR** para desmarcar manualmente los registros que NO quieres enviar.")
-    
-    col_fecha_rep, col_vacia = st.columns([1, 3])
-    fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
-    
-    col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
-    
-    if col_fecha_ingreso:
-        df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
-        
-        def obtener_fecha_limpia(x):
-            return x.date() if pd.notna(x) else None
-            
-        mask = df['FECHA_ING_TEMP'].apply(obtener_fecha_limpia) == fecha_reporte
-        df_correo = df[mask].copy()
-        
-        if COL_ESTADO in df_correo.columns:
-            df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
-        
-        if not df_correo.empty:
-            df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
-            
-            df_correo.insert(0, "✅ INCLUIR", True)
-            
-            cols_ed = [c for c in df_correo.columns if c not in ["FILA_EXCEL", "FECHA_ING_TEMP", "FECHA_VENC_DT", COL_ESTADO]]
-            
-            st.markdown("👇 **Paso 1: Desmarca los registros que NO quieres enviar en el correo:**")
-            df_editado_correo = st.data_editor(
-                df_correo[cols_ed],
-                column_config={
-                    "✅ INCLUIR": st.column_config.CheckboxColumn("✅ INCLUIR", default=True)
-                },
-                disabled=[c for c in cols_ed if c != "✅ INCLUIR"],
-                hide_index=True,
-                use_container_width=True,
-                key=f"editor_correo_{fecha_reporte}"
-            )
-            
-            df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
-            
-            if not df_correo_final.empty:
-                mapa_columnas = {}
-                for col_excel in df_correo_final.columns:
-                    c_up = str(col_excel).upper()
-                    if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
-                    elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
-                    elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
-                    elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
-                    elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
-                    elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
-                    elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
-                    elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
-                    elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
-                    elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
-                    elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
-                    elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
+                    if COL_ESTADO in df_correo.columns:
+                        df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
                     
-                df_correo_limpio = df_correo_final[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
-                
-                orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
-                columnas_finales = [col for col in orden_ideal if col in df_correo_limpio.columns]
-                
-                df_correo_limpio = df_correo_limpio[columnas_finales]
-                
-                html_manual = """
-                <table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'>
-                    <thead>
-                        <tr>
-                """
-                for col_name in df_correo_limpio.columns:
-                    html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 8px 6px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase; white-space: nowrap;'>{col_name}</th>"
-                
-                html_manual += """
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
-                for _, row in df_correo_limpio.iterrows():
-                    html_manual += "<tr>"
-                    for col_name in df_correo_limpio.columns:
-                        val = row[col_name]
-                        if pd.isna(val) or str(val).strip() == "":
-                            val_str = ""
-                        else:
-                            val_str = str(val).strip()
-                            if col_name == "CANTIDAD": val_str = formatear_numero_sap(val_str)
-                                    
-                        html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
-                    html_manual += "</tr>"
-                    
-                html_manual += """
-                    </tbody>
-                </table>
-                """
-                
-                st.markdown("👇 **Paso 2: Copia la tabla a continuación y pégala en tu correo:**")
-                st.markdown(html_manual, unsafe_allow_html=True)
-            else:
-                st.info("Has desmarcado todos los registros. La tabla final está vacía.")
-                
-        else:
-            fecha_str_pantalla = fecha_reporte.strftime("%d/%m/%Y")
-            st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_str_pantalla} (o todos están anulados).")
-
-    # --- 🔍 FILTROS TÁCTICOS Y MATRIZ DE AUDITORÍA ---
-    st.markdown("---")
-    st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
-    st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
-    
-    f_col1, f_col2 = st.columns([1.5, 1])
-    filtro_seleccionado = f_col1.radio("Estado Operativo:", 
-                                 ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], 
-                                 horizontal=True)
-    
-    if col_producto:
-        productos_puros_auditoria = set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""])
-        lista_productos_tabla = ["TODOS"] + sorted(list(productos_puros_auditoria))
-    else:
-        lista_productos_tabla = ["TODOS"]
-        
-    producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    f_col3, f_col4, _ = st.columns([1, 1, 1.5])
-    fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=hoy_colombia - timedelta(days=30))
-    fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=hoy_colombia)
-    
-    df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
-
-    df_filtrado = df.copy()
-    
-    if col_fecha_ingreso:
-        fechas_dt = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
-        mask_fechas = fechas_dt.apply(lambda x: x.date() if pd.notna(x) else None)
-        df_filtrado = df_filtrado[(mask_fechas >= fecha_ini_filtro) & (mask_fechas <= fecha_fin_filtro)]
-
-    if producto_filtro != "TODOS" and col_producto:
-        df_filtrado = df_filtrado[df_filtrado[col_producto].str.upper() == producto_filtro]
-
-    if filtro_seleccionado == "✅ Solo Vigentes":
-        df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("VIGENTE", case=False, na=False)]
-    elif filtro_seleccionado == "🚨 Solo Vencidos" and col_fv:
-        df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] < hoy_ts)]
-    elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv:
-        df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
-
-    if col_fecha_ingreso:
-        df_filtrado['FECHA_SORT'] = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
-        df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
-    else:
-        df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
-
-    st.markdown("### 🛠️ Matriz de Anulaciones (Solo Lectura y Edición de Estado)")
-    st.caption("🔒 Haz doble clic en ESTADO/OBSERVACIÓN para anular o ELIMINAR el registro físicamente de la base de datos.")
-    
-    cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
-    
-    opciones_estado = [
-        "✅ VIGENTE",
-        "❌ ANULADO: ERROR EN PRECIOS",
-        "❌ ANULADO: ERROR DE CANTIDAD",
-        "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR",
-        "❌ ANULADO: ERROR EN LOTE/FECHAS",
-        "❌ ANULADO: OTRO MOTIVO",
-        "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"
-    ]
-
-    columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
-    df_vista = df_filtrado[columnas_vista].copy()
-
-    col_config = {}
-    for c in df_vista.columns:
-        c_up = c.upper()
-        if "SEMANA" in c_up: col_config[c] = st.column_config.TextColumn("📅 SEMANA", width="small")
-        elif "PROV" in c_up: col_config[c] = st.column_config.TextColumn("🏭 PROVEEDOR", width="medium")
-        elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn("🗓️ INGRESO SAP", width="medium")
-        elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-        elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 BASE", width="small")
-        elif "CANT" in c_up: col_config[c] = st.column_config.NumberColumn("⚖️ CANTIDAD", format="%.2f")
-        elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
-        elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn("⚙️ F/F", width="small")
-        elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn("⏳ F/V", width="small")
-        elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA", width="medium")
-        elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO", width="medium")
-        elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
-        
-    col_config[COL_ESTADO] = st.column_config.SelectboxColumn(
-        "🛡️ ESTADO / OBSERVACIÓN",
-        help="Doble clic para anular o cambiar estado.",
-        width="large",
-        options=opciones_estado,
-        required=True
-    )
-
-    df_editado = st.data_editor(
-        df_vista,
-        column_config=col_config,
-        disabled=cols_disabled,
-        hide_index=True,
-        use_container_width=True,
-        key="editor_ingresos"
-    )
-
-    # --- 💾 3. MOTOR DE SINCRONIZACIÓN Y DESTRUCCIÓN FÍSICA ---
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
-        cambios = []
-        for i in range(len(df_filtrado)):
-            estado_original = str(df_filtrado.iloc[i][COL_ESTADO]).strip()
-            estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
-            
-            if estado_original != estado_nuevo:
-                cambios.append({
-                    'fila': int(df_filtrado.iloc[i]['FILA_EXCEL']),
-                    'nuevo': estado_nuevo
-                })
-        
-        if cambios:
-            eliminaciones = [c for c in cambios if "ELIMINAR REGISTRO" in c['nuevo']]
-            actualizaciones = [c for c in cambios if "ELIMINAR REGISTRO" not in c['nuevo']]
-            
-            cambios_exitosos = False
-            
-            for act in actualizaciones:
-                with st.spinner(f"Actualizando estado en Fila {act['fila']}..."):
-                    try:
-                        ws_ingresos.update_cell(act['fila'], idx_col_estado, act['nuevo'])
-                        cambios_exitosos = True
-                    except Exception as e:
-                        st.error(f"Error al actualizar fila {act['fila']}: {e}")
+                    if not df_correo.empty:
+                        df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
+                        df_correo.insert(0, "✅ INCLUIR", True)
+                        cols_ed = [c for c in df_correo.columns if c not in ["FILA_EXCEL", "FECHA_ING_TEMP", "FECHA_VENC_DT", COL_ESTADO]]
                         
-            if eliminaciones:
-                eliminaciones_ordenadas = sorted(eliminaciones, key=lambda x: x['fila'], reverse=True)
-                for eli in eliminaciones_ordenadas:
-                    with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
-                        try:
-                            ws_ingresos.delete_row(eli['fila'])
-                            cambios_exitosos = True
-                        except AttributeError:
-                            try:
-                                ws_ingresos.delete_rows(eli['fila'])
-                                cambios_exitosos = True
-                            except Exception as e:
-                                st.error(f"Error fatal API Google. Fila {eli['fila']}. {e}")
-                        except Exception as e:
-                            st.error(f"Error al eliminar fila {eli['fila']}. {e}")
+                        st.markdown("👇 **Paso 1: Desmarca los registros que NO quieres enviar en el correo:**")
+                        df_editado_correo = st.data_editor(
+                            df_correo[cols_ed],
+                            column_config={"✅ INCLUIR": st.column_config.CheckboxColumn("✅ INCLUIR", default=True)},
+                            disabled=[c for c in cols_ed if c != "✅ INCLUIR"],
+                            hide_index=True, use_container_width=True, key=f"editor_correo_{fecha_reporte}"
+                        )
+                        
+                        df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
+                        
+                        if not df_correo_final.empty:
+                            mapa_columnas = {}
+                            for col_excel in df_correo_final.columns:
+                                c_up = str(col_excel).upper()
+                                if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
+                                elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
+                                elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
+                                elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
+                                elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
+                                elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
+                                elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
+                                elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
+                                elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
+                                elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
+                                elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
+                                elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
+                                
+                            df_correo_limpio = df_correo_final[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
+                            orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
+                            columnas_finales = [col for col in orden_ideal if col in df_correo_limpio.columns]
+                            df_correo_limpio = df_correo_limpio[columnas_finales]
                             
-            if cambios_exitosos:
-                st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
-                st.cache_data.clear() 
-                st.rerun()
+                            html_manual = "<table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'><thead><tr>"
+                            for col_name in df_correo_limpio.columns:
+                                html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 8px 6px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase; white-space: nowrap;'>{col_name}</th>"
+                            html_manual += "</tr></thead><tbody>"
+                            for _, row in df_correo_limpio.iterrows():
+                                html_manual += "<tr>"
+                                for col_name in df_correo_limpio.columns:
+                                    val = row[col_name]
+                                    if pd.isna(val) or str(val).strip() == "": val_str = ""
+                                    else:
+                                        val_str = str(val).strip()
+                                        if col_name == "CANTIDAD": val_str = formatear_numero_sap(val_str)
+                                    html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
+                                html_manual += "</tr>"
+                            html_manual += "</tbody></table>"
+                            
+                            st.markdown("👇 **Paso 2: Copia la tabla a continuación y pégala en tu correo:**")
+                            st.markdown(html_manual, unsafe_allow_html=True)
+                        else: st.info("Has desmarcado todos los registros. La tabla final está vacía.")
+                    else: st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_reporte.strftime('%d/%m/%Y')}.")
+
+                # --- ESCÁNER DE AUDITORÍA ---
+                st.markdown("---")
+                st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
+                st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
+                
+                f_col1, f_col2 = st.columns([1.5, 1])
+                filtro_seleccionado = f_col1.radio("Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], horizontal=True)
+                
+                if col_producto:
+                    productos_puros_auditoria = set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""])
+                    lista_productos_tabla = ["TODOS"] + sorted(list(productos_puros_auditoria))
+                else: lista_productos_tabla = ["TODOS"]
+                    
+                producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                f_col3, f_col4, _ = st.columns([1, 1, 1.5])
+                fecha_ini_filtro = f_col3.date_input("📅 Ingreso Desde:", value=hoy_colombia - timedelta(days=30))
+                fecha_fin_filtro = f_col4.date_input("📅 Ingreso Hasta:", value=hoy_colombia)
+                
+                df[COL_ESTADO] = df[COL_ESTADO].replace(r'^\s*$', '✅ VIGENTE', regex=True).fillna('✅ VIGENTE')
+                df_filtrado = df.copy()
+                
+                if col_fecha_ingreso:
+                    fechas_dt = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
+                    mask_fechas = fechas_dt.apply(lambda x: x.date() if pd.notna(x) else None)
+                    df_filtrado = df_filtrado[(mask_fechas >= fecha_ini_filtro) & (mask_fechas <= fecha_fin_filtro)]
+
+                if producto_filtro != "TODOS" and col_producto:
+                    df_filtrado = df_filtrado[df_filtrado[col_producto].str.upper() == producto_filtro]
+
+                if filtro_seleccionado == "✅ Solo Vigentes": df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("VIGENTE", case=False, na=False)]
+                elif filtro_seleccionado == "🚨 Solo Vencidos" and col_fv: df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] < hoy_ts)]
+                elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv: df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
+
+                if col_fecha_ingreso:
+                    df_filtrado['FECHA_SORT'] = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
+                    df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
+                else: df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
+
+                st.markdown("### 🛠️ Matriz de Anulaciones (Solo Lectura y Edición de Estado)")
+                st.caption("🔒 Haz doble clic en ESTADO/OBSERVACIÓN para anular o ELIMINAR el registro físicamente de la base de datos.")
+                
+                cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
+                
+                opciones_estado = ["✅ VIGENTE", "❌ ANULADO: ERROR EN PRECIOS", "❌ ANULADO: ERROR DE CANTIDAD", "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR", "❌ ANULADO: ERROR EN LOTE/FECHAS", "❌ ANULADO: OTRO MOTIVO", "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"]
+
+                columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
+                df_vista = df_filtrado[columnas_vista].copy()
+
+                col_config = {}
+                for c in df_vista.columns:
+                    c_up = c.upper()
+                    if "SEMANA" in c_up: col_config[c] = st.column_config.TextColumn("📅 SEMANA", width="small")
+                    elif "PROV" in c_up: col_config[c] = st.column_config.TextColumn("🏭 PROVEEDOR", width="medium")
+                    elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn("🗓️ INGRESO SAP", width="medium")
+                    elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
+                    elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 BASE", width="small")
+                    elif "CANT" in c_up: col_config[c] = st.column_config.NumberColumn("⚖️ CANTIDAD", format="%.2f")
+                    elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
+                    elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn("⚙️ F/F", width="small")
+                    elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn("⏳ F/V", width="small")
+                    elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA", width="medium")
+                    elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO", width="medium")
+                    elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+                    
+                col_config[COL_ESTADO] = st.column_config.SelectboxColumn("🛡️ ESTADO / OBSERVACIÓN", help="Doble clic para anular o cambiar estado.", width="large", options=opciones_estado, required=True)
+
+                df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
+                    cambios = []
+                    for i in range(len(df_filtrado)):
+                        estado_original = str(df_filtrado.iloc[i][COL_ESTADO]).strip()
+                        estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
+                        if estado_original != estado_nuevo:
+                            cambios.append({'fila': int(df_filtrado.iloc[i]['FILA_EXCEL']), 'nuevo': estado_nuevo})
+                    
+                    if cambios:
+                        eliminaciones = [c for c in cambios if "ELIMINAR REGISTRO" in c['nuevo']]
+                        actualizaciones = [c for c in cambios if "ELIMINAR REGISTRO" not in c['nuevo']]
+                        cambios_exitosos = False
+                        
+                        for act in actualizaciones:
+                            with st.spinner(f"Actualizando estado en Fila {act['fila']}..."):
+                                try:
+                                    ws_ingresos.update_cell(act['fila'], idx_col_estado, act['nuevo'])
+                                    cambios_exitosos = True
+                                except Exception as e: st.error(f"Error al actualizar fila {act['fila']}: {e}")
+                                    
+                        if eliminaciones:
+                            eliminaciones_ordenadas = sorted(eliminaciones, key=lambda x: x['fila'], reverse=True)
+                            for eli in eliminaciones_ordenadas:
+                                with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
+                                    try:
+                                        ws_ingresos.delete_row(eli['fila'])
+                                        cambios_exitosos = True
+                                    except AttributeError:
+                                        try:
+                                            ws_ingresos.delete_rows(eli['fila'])
+                                            cambios_exitosos = True
+                                        except Exception as e: st.error(f"Error fatal API Google. Fila {eli['fila']}. {e}")
+                                    except Exception as e: st.error(f"Error al eliminar fila {eli['fila']}. {e}")
+                                        
+                        if cambios_exitosos:
+                            st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
+                            st.cache_data.clear() 
+                            st.rerun()
+                    else: st.info("No se detectaron cambios ni órdenes de eliminación.")
+
+                st.markdown("---")
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
+                    ws_excel = writer.sheets['Auditoria_Ingresos']
+                    header_font = Font(bold=True, color="FFFFFF")
+                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    for cell in ws_excel[1]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    for col in ws_excel.columns:
+                        max_length = 0
+                        column = col[0].column_letter 
+                        for cell in col:
+                            try:
+                                if len(str(cell.value)) > max_length: max_length = len(cell.value)
+                            except: pass
+                        ws_excel.column_dimensions[column].width = (max_length + 2)
+
+                st.download_button("💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)", data=buffer.getvalue(), file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+    # ========================================================================
+    # 🚚 PESTAÑA 2: MOVIMIENTOS INTERNOS (TRASLADOS)
+    # ========================================================================
+    with tab_traslados:
+        st.markdown(f"<a href='{URL_SHEET_TRASLADOS}' target='_blank' class='btn-ascensor' style='background-color:#2F75B5; border-color:#1d4e7a; color:#ffffff !important;'>👁️ VER BASE DE TRASLADOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
+        st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
+
+        # --- EXTRACCIÓN DE DATOS HISTÓRICOS DE TRASLADOS ---
+        df_traslados = pd.DataFrame()
+        if datos_traslados and len(datos_traslados) > 1:
+            encabezados_traslados = [str(x).strip().upper() for x in datos_traslados[0]]
+            df_traslados = pd.DataFrame(datos_traslados[1:], columns=encabezados_traslados)
+            
+            # Limpiar filas vacías si las hay
+            col_consec_tras = next((c for c in df_traslados.columns if "CONSECUTIVO" in c), None)
+            if col_consec_tras:
+                df_traslados = df_traslados[df_traslados[col_consec_tras].str.strip() != ""]
+
+        # KPI Rápido de Traslados
+        total_movimientos = len(df_traslados)
+        st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.markdown("### ➕ Inyector de Movimiento Interno")
+
+        with st.expander("📍 1. DATOS DEL TRASLADO", expanded=True):
+            col_espacio_t, col_limpiar_t = st.columns([3, 1])
+            col_limpiar_t.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_traslados, key="btn_limpiar_traslados", use_container_width=True)
+
+            t1, t2, t3 = st.columns(3)
+            fk_t = st.session_state['form_key_m19_traslados']
+            t_fecha = t2.date_input("🗓️ Fecha de Traslado", value=hoy_colombia, key=f"t_fecha_{fk_t}")
+            semana_traslado = t_fecha.isocalendar()[1]
+            t_semana = t1.text_input("📅 Semana del Año", value=str(semana_traslado), disabled=True, key=f"t_semana_{fk_t}")
+            t_consecutivo = t3.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
+
+            st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
+            
+            pistas_disponibles = ["LUCHA", "DIVAS", "ORIHUECA", "AEROPENORT", "ASA", "AVIL", "DATATROT", "FUMIGARAY", "GENESYS", "LUCI", "PLUC", "PDIV", "PORI", "TEHO"]
+            p1, p2 = st.columns(2)
+            t_origen = p1.selectbox("🛫 Pista Origen", pistas_disponibles, index=0, key=f"t_origen_{fk_t}")
+            t_destino = p2.selectbox("🛬 Pista Destino", pistas_disponibles, index=1, key=f"t_destino_{fk_t}")
+
+            st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
+
+            lista_prods_limpia_t = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
+            lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
+
+            tr1, tr2, tr3 = st.columns([2, 1, 1])
+            t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
+            t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
+            t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
+
+            t_observacion = st.text_input("📝 Observación (Opcional)", key=f"t_observacion_{fk_t}")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            btn_guardar_traslado = st.button("🚀 REGISTRAR TRASLADO EN LA BÓVEDA", type="primary", use_container_width=True)
+
+            if btn_guardar_traslado:
+                if not t_consecutivo.strip():
+                    st.error("🚨 Debes ingresar un número de Consecutivo.")
+                elif t_cantidad <= 0:
+                    st.error("🚨 La cantidad debe ser mayor a cero.")
+                elif t_origen == t_destino:
+                    st.error("🚨 La pista de origen y destino no pueden ser la misma.")
+                else:
+                    try:
+                        with st.spinner("Enviando traslado a la nube..."):
+                            pista_combinada = f"{t_origen}-{t_destino}"
+                            fecha_str = t_fecha.strftime("%d/%m/%Y")
+                            cantidad_formateada = formatear_numero_sap(t_cantidad)
+
+                            # Definir el orden estricto basado en la imagen: CONSECUTIVO, FECHA, PRODUCTO, CANTIDAD, UNIDAD, PISTA, SEMANA, OBSERVACION
+                            nueva_fila_traslado = [
+                                str(t_consecutivo).strip(),
+                                fecha_str,
+                                str(t_producto).upper().strip(),
+                                cantidad_formateada,
+                                str(t_unidad).upper(),
+                                pista_combinada,
+                                str(semana_traslado),
+                                str(t_observacion).strip()
+                            ]
+
+                            # Verificar si la hoja estaba vacía y necesita encabezados
+                            if not datos_traslados:
+                                ws_traslados.append_row(["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION"])
+
+                            ws_traslados.append_row(nueva_fila_traslado)
+                            
+                        st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito!")
+                        st.session_state['form_key_m19_traslados'] += 1
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al registrar traslado: {e}")
+
+        # --- VISOR HISTÓRICO DE TRASLADOS ---
+        st.markdown("---")
+        st.markdown("### 📋 Visor Histórico de Movimientos")
+        
+        if not df_traslados.empty:
+            df_traslados_vista = df_traslados.copy()
+            # Intentar ordenar por fecha de forma descendente si existe la columna FECHA
+            if "FECHA" in df_traslados_vista.columns:
+                df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
+                df_traslados_vista = df_traslados_vista.sort_values(by='FECHA_SORT', ascending=False).drop(columns=['FECHA_SORT'])
+
+            st.dataframe(df_traslados_vista, use_container_width=True, hide_index=True)
+            
+            buffer_t = io.BytesIO()
+            with pd.ExcelWriter(buffer_t, engine='openpyxl') as writer:
+                df_traslados_vista.to_excel(writer, sheet_name='Historial_Traslados', index=False)
+                ws_excel_t = writer.sheets['Historial_Traslados']
+                header_font_t = Font(bold=True, color="FFFFFF")
+                header_fill_t = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
+                for cell in ws_excel_t[1]:
+                    cell.font = header_font_t
+                    cell.fill = header_fill_t
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                for col in ws_excel_t.columns:
+                    max_length = 0
+                    column = col[0].column_letter 
+                    for cell in col:
+                        try:
+                            if len(str(cell.value)) > max_length: max_length = len(cell.value)
+                        except: pass
+                    ws_excel_t.column_dimensions[column].width = (max_length + 2)
+
+            st.download_button("💾 DESCARGAR HISTÓRICO DE TRASLADOS (EXCEL)", data=buffer_t.getvalue(), file_name=f"Reporte_Traslados_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         else:
-            st.info("No se detectaron cambios ni órdenes de eliminación.")
+            st.info("No se encontraron registros en el archivo histórico de traslados.")
 
-    st.markdown("---")
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
-        ws_excel = writer.sheets['Auditoria_Ingresos']
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        for cell in ws_excel[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-        for col in ws_excel.columns:
-            max_length = 0
-            column = col[0].column_letter 
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length: max_length = len(cell.value)
-                except: pass
-            ws_excel.column_dimensions[column].width = (max_length + 2)
-
-    st.download_button("💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)", data=buffer.getvalue(), file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
