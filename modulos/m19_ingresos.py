@@ -27,7 +27,6 @@ def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
     
-    # 1. Si es un número serial de Excel (ej: 44258)
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
         
@@ -37,7 +36,6 @@ def procesar_fecha_estricta(val):
         'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
     }
     
-    # 2. Buscar mes en español y armar la fecha
     mes_encontrado = None
     for mes in meses_es:
         if mes in s:
@@ -60,7 +58,6 @@ def procesar_fecha_estricta(val):
             except:
                 pass
 
-    # 3. Limpieza para formatos numéricos tradicionales
     for dia_sem in ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo']:
         s = s.replace(dia_sem, '')
     s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
@@ -74,10 +71,9 @@ def procesar_fecha_estricta(val):
         if pd.isna(res): return pd.NaT
         return res
     except: 
-        return pd.NaT # Si es basura escrita a mano, devuelve vacío para purgarlo
+        return pd.NaT 
 
 def formatear_numero_sap(val):
-    """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer():
@@ -124,7 +120,7 @@ def extraer_catalogo_precios_reciente():
     except Exception:
         return []
 
-# --- DICCIONARIO BASE ---
+# --- DICCIONARIOS DE HOMOLOGACIÓN ---
 DICT_BASE_PRODUCTOS = {
     "ACEITE DICAM": "ROYAL BIOCHEM",
     "ACONDICIONADOR SV": "SYS TECNOLOGIES",
@@ -161,6 +157,25 @@ DICT_BASE_PRODUCTOS = {
     "TIMOREX PRO": "ADAMA",
     "XILOTROM": "AGRIFOL",
     "ZINTRAC x LITRO SV": "YARA S.A.S."
+}
+
+# 💥 Traductor Automático a Nombres SAP Oficiales
+DICT_HOMOLOGACION_SAP = {
+    "ACONDICIONADOR": "ACONDICIONADOR SV",
+    "ADHERENTE": "ADHERENTE SV",
+    "DITHANE60 OF": "DITHANE 60 OF",
+    "SPRAY FIX": "SPRAYFIX",
+    "INBIOSIL O": "IMBIOSIL O",
+    "BANANO-PLATANO": "BANANO Y PLATANO * LT",
+    "BANANO PLATANO": "BANANO Y PLATANO * LT",
+    "GLOBAFOL NF": "GLOBAFOL nf",
+    "GLOBAFOL": "GLOBAFOL nf",
+    "DICAM": "ACEITE DICAM",
+    "TIMOREX": "TIMOREX PRO",
+    "ZINTRAC": "ZINTRAC x LITRO SV",
+    "CEROSTRESS": "CEROSTRESS SV * LT",
+    "COMPER": "COMPER SV",
+    "POWMYL": "POWMYL SV",
 }
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
@@ -266,11 +281,22 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 💥 CIRUGÍA EXTREMA: BARREDOR MULTIDIMENSIONAL DE TRASLADOS CON ESCUDO ANTI-BASURA
+            # 💥 CIRUGÍA: CREACIÓN DE LA LISTA DE AUTORIZADOS SAP
+            lista_autorizada = set([str(k).strip().upper() for k in dict_operativo.keys()])
+            for p in productos_precio_sap:
+                lista_autorizada.add(str(p).strip().upper())
+                
+            def estandarizar_y_marcar_producto(prod):
+                if pd.isna(prod) or str(prod).strip() == "": return ""
+                p_up = str(prod).strip().upper()
+                p_up = DICT_HOMOLOGACION_SAP.get(p_up, p_up) # Corrige automáticamente
+                if p_up not in lista_autorizada:
+                    return f"{p_up} 🛑 [OBSOLETO]" # Marca lo que no cruza con SAP
+                return p_up
+
+            # Bóveda Traslados
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             df_traslados_list = []
-            
-            # Las únicas columnas que le permitiremos al sistema absorber
             columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION"]
             
             for ws in sh_traslados.worksheets():
@@ -287,22 +313,19 @@ def ejecutar():
                 if idx_head_t != -1:
                     encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
                     
-                    # Truco de magia: Si Excel nombró "COLUMNA1" a las observaciones, lo corregimos a la fuerza
                     for j in range(len(encabezados_temp)):
                         if "COLUMNA1" in encabezados_temp[j] and "OBSERVACION" not in encabezados_temp:
                             encabezados_temp[j] = "OBSERVACION"
                     
                     df_t = pd.DataFrame(hoja_datos[idx_head_t+1:], columns=encabezados_temp)
-                    
-                    # DESTRUCTOR DE COLUMNAS EXTRAÑAS (Filtro restrictivo)
                     cols_presentes = [c for c in columnas_oficiales if c in df_t.columns]
                     df_t = df_t[cols_presentes]
                     
-                    # DESTRUCTOR DE FILAS BASURA O MUTANTES
                     if "PRODUCTO" in df_t.columns:
-                        # Elimina las filas donde PRODUCTO diga "None" o esté vacío
-                        df_t = df_t[df_t["PRODUCTO"].astype(str).str.upper().str.strip() != "NONE"]
+                        # Aplica el traductor a toda la columna de productos del histórico
+                        df_t["PRODUCTO"] = df_t["PRODUCTO"].apply(estandarizar_y_marcar_producto)
                         df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
+                        df_t = df_t[~df_t["PRODUCTO"].str.contains("NONE", case=False)]
                         
                     df_traslados_list.append(df_t)
 
@@ -339,11 +362,13 @@ def ejecutar():
             
             df = df.loc[:, df.columns != '']
             df = df.loc[:, ~df.columns.duplicated()]
-            
             df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
-            if col_producto: df = df[df[col_producto].str.strip() != ""]
+            if col_producto: 
+                # Aplica el traductor a los ingresos
+                df[col_producto] = df[col_producto].apply(estandarizar_y_marcar_producto)
+                df = df[df[col_producto].str.strip() != ""]
 
             COL_ESTADO = "ESTADO / OBSERVACIÓN"
             if COL_ESTADO not in df.columns:
@@ -384,7 +409,9 @@ def ejecutar():
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                     else:
                         modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
-                        lista_prods_limpia = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
+                        
+                        # 💥 El Desplegable SOLO muestra productos 100% legales de SAP
+                        lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         lista_prods_ordenada = sorted(list(lista_prods_limpia))
                         
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", lista_prods_ordenada)
@@ -770,7 +797,8 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
-            lista_prods_limpia_t = set([str(p).strip().upper() for p in dict_operativo.keys() if len(str(p).strip()) > 3])
+            # 💥 El Desplegable SOLO muestra productos 100% legales de SAP
+            lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
             tr1, tr2, tr3 = st.columns([2, 1, 1])
@@ -831,7 +859,6 @@ def ejecutar():
             
             if "FECHA" in df_traslados_vista.columns:
                 df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
-                # Purga final para ocultar cualquier basura manual que devolvió NaT
                 df_traslados_vista = df_traslados_vista.dropna(subset=['FECHA_SORT'])
                 df_traslados_vista = df_traslados_vista.sort_values(by='FECHA_SORT', ascending=False).drop(columns=['FECHA_SORT'])
 
