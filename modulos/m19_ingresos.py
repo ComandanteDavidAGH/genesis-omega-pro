@@ -70,7 +70,9 @@ def procesar_fecha_estricta(val):
         except: pass
         
     try: 
-        return pd.to_datetime(s, dayfirst=True)
+        res = pd.to_datetime(s, dayfirst=True)
+        if pd.isna(res): return pd.Timestamp('2099-12-31')
+        return res
     except: 
         # Si la fecha es incomprensible, se envía al 2099 para que quede arriba y sea visible
         return pd.Timestamp('2099-12-31') 
@@ -265,12 +267,35 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
+            # 💥 CIRUGÍA: BARREDOR MULTIDIMENSIONAL DE PESTAÑAS PARA TRASLADOS
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
-            try:
-                ws_traslados = sh_traslados.worksheet("TRASLADOS")
-            except:
-                ws_traslados = sh_traslados.get_worksheet(0)
-            datos_traslados = ws_traslados.get_all_values()
+            df_traslados_list = []
+            
+            for ws in sh_traslados.worksheets():
+                hoja_datos = ws.get_all_values()
+                if not hoja_datos: continue
+                
+                idx_head_t = -1
+                for i, row in enumerate(hoja_datos[:15]):
+                    fila_up = [str(x).upper().strip() for x in row]
+                    if "CONSECUTIVO" in fila_up or "PRODUCTO" in fila_up or "PISTA" in fila_up:
+                        idx_head_t = i
+                        break
+                        
+                if idx_head_t != -1:
+                    encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
+                    df_t = pd.DataFrame(hoja_datos[idx_head_t+1:], columns=encabezados_temp)
+                    df_t = df_t.loc[:, df_t.columns != '']
+                    df_t = df_t.loc[:, ~df_t.columns.duplicated()]
+                    df_traslados_list.append(df_t)
+
+            if df_traslados_list:
+                df_traslados = pd.concat(df_traslados_list, ignore_index=True)
+                col_fecha_tras = next((c for c in df_traslados.columns if "FECHA" in c), None)
+                if col_fecha_tras:
+                    df_traslados = df_traslados[df_traslados[col_fecha_tras].astype(str).str.strip() != ""]
+            else:
+                df_traslados = pd.DataFrame()
 
         except Exception as e:
             st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {e}")
@@ -703,30 +728,11 @@ def ejecutar():
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
         # --- EXTRACCIÓN DE DATOS HISTÓRICOS DE TRASLADOS ---
-        df_traslados = pd.DataFrame()
-        if datos_traslados and len(datos_traslados) > 1:
-            
-            idx_head_t = 0
-            for i, row in enumerate(datos_traslados[:5]):
-                fila_up = [str(x).upper().strip() for x in row]
-                if "CONSECUTIVO" in fila_up or "PRODUCTO" in fila_up:
-                    idx_head_t = i
-                    break
-                    
-            encabezados_traslados = [str(x).strip().upper() for x in datos_traslados[idx_head_t]]
-            df_traslados = pd.DataFrame(datos_traslados[idx_head_t+1:], columns=encabezados_traslados)
-            
-            df_traslados = df_traslados.loc[:, df_traslados.columns != '']
-            df_traslados = df_traslados.loc[:, ~df_traslados.columns.duplicated()]
-            
-            # 💥 CIRUGÍA TÁCTICA: DESTRUIR SÍNDROME DE CASILLA VACÍA
-            # Ahora NO elimina la fila si falta el consecutivo, solo la ignora si la columna FECHA está en blanco
-            col_fecha_tras = next((c for c in df_traslados.columns if "FECHA" in c), None)
-            if col_fecha_tras:
-                df_traslados = df_traslados[df_traslados[col_fecha_tras].astype(str).str.strip() != ""]
-
-        total_movimientos = len(df_traslados)
-        st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
+        if not df_traslados.empty:
+            total_movimientos = len(df_traslados)
+            st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>0</p></div>", unsafe_allow_html=True)
         
         st.markdown("---")
         st.markdown("### ➕ Inyector de Movimiento Interno")
@@ -788,11 +794,13 @@ def ejecutar():
                                 str(semana_traslado),
                                 str(t_observacion).strip()
                             ]
+                            
+                            try:
+                                ws_write = sh_traslados.worksheet("TRASLADOS")
+                            except:
+                                ws_write = sh_traslados.get_worksheet(0)
 
-                            if not datos_traslados:
-                                ws_traslados.append_row(["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION"])
-
-                            ws_traslados.append_row(nueva_fila_traslado)
+                            ws_write.append_row(nueva_fila_traslado)
                             
                         st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito!")
                         st.session_state['form_key_m19_traslados'] += 1
