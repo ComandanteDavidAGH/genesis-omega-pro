@@ -260,6 +260,11 @@ def ejecutar():
 
             encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
             df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
+            
+            # 💥 CIRUGÍA: DESTRUCTOR DE COLUMNAS FANTASMA EN INGRESOS
+            df = df.loc[:, df.columns != '']
+            df = df.loc[:, ~df.columns.duplicated()]
+            
             df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
@@ -668,6 +673,10 @@ def ejecutar():
             encabezados_traslados = [str(x).strip().upper() for x in datos_traslados[0]]
             df_traslados = pd.DataFrame(datos_traslados[1:], columns=encabezados_traslados)
             
+            # 💥 CIRUGÍA: DESTRUIR COLUMNAS FANTASMAS EN TRASLADOS
+            df_traslados = df_traslados.loc[:, df_traslados.columns != '']
+            df_traslados = df_traslados.loc[:, ~df_traslados.columns.duplicated()]
+            
             # Limpiar filas vacías si las hay
             col_consec_tras = next((c for c in df_traslados.columns if "CONSECUTIVO" in c), None)
             if col_consec_tras:
@@ -693,7 +702,6 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
             
-            # 💥 CIRUGÍA TÁCTICA: Solo acrónimos SAP
             pistas_disponibles = ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"]
             p1, p2 = st.columns(2)
             t_origen = p1.selectbox("🛫 Pista Origen", pistas_disponibles, index=0, key=f"t_origen_{fk_t}")
@@ -728,7 +736,6 @@ def ejecutar():
                             fecha_str = t_fecha.strftime("%d/%m/%Y")
                             cantidad_formateada = formatear_numero_sap(t_cantidad)
 
-                            # Definir el orden estricto basado en la imagen: CONSECUTIVO, FECHA, PRODUCTO, CANTIDAD, UNIDAD, PISTA, SEMANA, OBSERVACION
                             nueva_fila_traslado = [
                                 str(t_consecutivo).strip(),
                                 fecha_str,
@@ -758,7 +765,6 @@ def ejecutar():
         
         if not df_traslados.empty:
             df_traslados_vista = df_traslados.copy()
-            # Intentar ordenar por fecha de forma descendente si existe la columna FECHA
             if "FECHA" in df_traslados_vista.columns:
                 df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
                 df_traslados_vista = df_traslados_vista.sort_values(by='FECHA_SORT', ascending=False).drop(columns=['FECHA_SORT'])
