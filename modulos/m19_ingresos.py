@@ -30,36 +30,49 @@ def procesar_fecha_estricta(val):
     # 1. Si es un número serial de Excel (ej: 44258)
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-    
-    # 2. Purgar el día de la semana inicial (Ej: "viernes, ")
-    s = re.sub(r'^(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\s*,\s*', '', s)
-    
+        
     meses_es = {
-        'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
-        'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
-        'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
+        'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
+        'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
     }
     
-    # 3. Escáner de Patrón A: "enero 10, 2025" (Mes, Día, Año)
-    match_mdy = re.search(r'([a-z]+)\s+(\d{1,2})\s*[,|-]?\s*(\d{4})', s)
-    if match_mdy and match_mdy.group(1) in meses_es:
-        mes, dia, anio = match_mdy.groups()
-        s = f"{dia}/{meses_es[mes]}/{anio}"
-    else:
-        # 4. Escáner de Patrón B: "10 de octubre de 2021" (Día, Mes, Año)
-        match_dmy = re.search(r'(\d{1,2})\s*(?:de|-)?\s*([a-z]+)\s*(?:de|-)?\s*(\d{4})', s)
-        if match_dmy and match_dmy.group(2) in meses_es:
-            dia, mes, anio = match_dmy.groups()
-            s = f"{dia}/{meses_es[mes]}/{anio}"
-        else:
-            # 5. Fallback: Reemplazo crudo
-            for mes_nombre, mes_num in meses_es.items():
-                s = s.replace(mes_nombre, mes_num)
-            s = s.replace(' de ', '/').replace('-', '/').replace(',', '').replace(' ', '/')
-            s = re.sub(r'/+', '/', s)
+    # 2. Buscar si existe un nombre de mes literalmente en el texto
+    mes_encontrado = None
+    for mes in meses_es:
+        if mes in s:
+            mes_encontrado = meses_es[mes]
+            break
+            
+    if mes_encontrado:
+        # Extraer todos los números del string
+        numeros = re.findall(r'\d+', s)
+        if len(numeros) >= 2:
+            num1 = int(numeros[0])
+            num2 = int(numeros[1])
+            if num1 > 1000:
+                anio = num1
+                dia = num2
+            elif num2 > 1000:
+                anio = num2
+                dia = num1
+            else:
+                dia = num1
+                anio = 2000 + num2 if num2 < 100 else num2
+            try:
+                return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
+            except:
+                pass
+        elif len(numeros) == 1:
+            dia = int(numeros[0])
+            anio = obtener_hora_colombia().year
+            try:
+                return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
+            except:
+                pass
 
-    # 6. Intentar parsear el formato resultante (Que ya debe ser DD/MM/YYYY)
-    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%y', '%Y-%m-%d'):
+    # 3. Si no tiene nombre de mes, intentamos formatos estándar
+    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d'):
         try: return pd.to_datetime(s, format=fmt)
         except: pass
         
@@ -710,9 +723,10 @@ def ejecutar():
             df_traslados = df_traslados.loc[:, df_traslados.columns != '']
             df_traslados = df_traslados.loc[:, ~df_traslados.columns.duplicated()]
             
-            col_consec_tras = next((c for c in df_traslados.columns if "CONSECUTIVO" in c), None)
-            if col_consec_tras:
-                df_traslados = df_traslados[df_traslados[col_consec_tras].str.strip() != ""]
+            # 💥 CIRUGÍA TÁCTICA: IGNORAR FILAS VACÍAS BASADO EN FECHA, NO EN CONSECUTIVO
+            col_fecha_tras = next((c for c in df_traslados.columns if "FECHA" in c), None)
+            if col_fecha_tras:
+                df_traslados = df_traslados[df_traslados[col_fecha_tras].astype(str).str.strip() != ""]
 
         total_movimientos = len(df_traslados)
         st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
