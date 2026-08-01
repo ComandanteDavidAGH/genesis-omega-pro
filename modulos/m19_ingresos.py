@@ -337,7 +337,6 @@ def ejecutar():
                         df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
                         df_t = df_t[~df_t["PRODUCTO"].str.contains("NONE", case=False)]
                         
-                    # Aplicar estandarización de PISTAS
                     if "PISTA" in df_t.columns:
                         df_t["PISTA"] = df_t["PISTA"].apply(estandarizar_pista)
                         
@@ -383,7 +382,6 @@ def ejecutar():
                 df[col_producto] = df[col_producto].apply(estandarizar_y_marcar_inteligente)
                 df = df[df[col_producto].str.strip() != ""]
 
-            # Aplicar estandarización de PISTAS en Ingresos
             col_pista = next((c for c in df.columns if "PISTA" in c), None)
             if col_pista:
                 df[col_pista] = df[col_pista].apply(estandarizar_pista)
@@ -703,7 +701,6 @@ def ejecutar():
                     elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn("🗓️ INGRESO SAP", width="medium")
                     elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
                     elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 BASE", width="small")
-                    # 💥 AQUÍ DESACTIVAMOS LA "CALCULADORA GRINGA" -> Ahora es TextColumn para ser un Espejo Perfecto
                     elif "CANT" in c_up: col_config[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
                     elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
                     elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn("⚙️ F/F", width="small")
@@ -815,7 +812,6 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
-            # 💥 El Desplegable SOLO muestra productos 100% legales extraídos de "Configuración"
             lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
@@ -875,8 +871,9 @@ def ejecutar():
         if not df_traslados.empty:
             df_traslados_vista = df_traslados.copy()
             
-            # 💥 NUEVO RADAR DE FILTRADO PARA TRASLADOS
+            # 💥 NUEVO RADAR DE FILTRADO PARA TRASLADOS (MÁS COMPACTO)
             st.markdown("#### 🔍 Escáner de Filtrado")
+            
             col_prod_t = next((c for c in df_traslados_vista.columns if "PRODUCTO" in c), None)
             
             if col_prod_t:
@@ -884,19 +881,21 @@ def ejecutar():
                 lista_productos_tabla_t = ["TODOS"] + sorted(list(productos_puros_t))
             else: 
                 lista_productos_tabla_t = ["TODOS"]
-                
-            producto_filtro_t = st.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla_t, key="filtro_t_prod")
+            
+            # Usar columnas para encoger el selectbox (1 parte para el filtro, 2 partes vacías)
+            f_col_t1, f_col_t2, f_col_t3 = st.columns([1.5, 2, 1])
+            producto_filtro_t = f_col_t1.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla_t, key="filtro_t_prod")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
             
             if producto_filtro_t != "TODOS" and col_prod_t:
                 df_traslados_vista = df_traslados_vista[df_traslados_vista[col_prod_t].str.upper() == producto_filtro_t]
 
-            # ORDENAMIENTO CRONOLÓGICO
             if "FECHA" in df_traslados_vista.columns:
                 df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
                 df_traslados_vista = df_traslados_vista.dropna(subset=['FECHA_SORT'])
                 df_traslados_vista = df_traslados_vista.sort_values(by='FECHA_SORT', ascending=False).drop(columns=['FECHA_SORT'])
 
-            # Renderizamos la tabla pura sin redondear ni modificar nada matemáticamente
             st.dataframe(df_traslados_vista, use_container_width=True, hide_index=True)
             
             buffer_t = io.BytesIO()
