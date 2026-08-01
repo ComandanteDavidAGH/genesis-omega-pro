@@ -206,7 +206,15 @@ def ejecutar():
     
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
     div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; color: #000000 !important; font-weight: 900 !important; background-color: #ffffff !important; }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
+    
+    /* 🔥 EL CEBO TÁCTICO PARA LOS SELECTORES 🔥 */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stSelectbox"] div[role="combobox"],
+    div[data-testid="stSelectbox"] > div > div > div { 
+        border: 4px solid #FF0000 !important; /* Borde rojo fuerte para cazarlo */
+        border-radius: 6px !important; 
+        background-color: #FFFFE0 !important; /* Fondo amarillo claro */
+    }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * { color: #000000 !important; font-weight: 900 !important; }
     
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
@@ -871,7 +879,6 @@ def ejecutar():
         if not df_traslados.empty:
             df_traslados_vista = df_traslados.copy()
             
-            # 💥 NUEVO RADAR DE FILTRADO PARA TRASLADOS (MÁS COMPACTO)
             st.markdown("#### 🔍 Escáner de Filtrado")
             
             col_prod_t = next((c for c in df_traslados_vista.columns if "PRODUCTO" in c), None)
@@ -882,7 +889,6 @@ def ejecutar():
             else: 
                 lista_productos_tabla_t = ["TODOS"]
             
-            # Usar columnas para encoger el selectbox (1 parte para el filtro, 2 partes vacías)
             f_col_t1, f_col_t2, f_col_t3 = st.columns([1.5, 2, 1])
             producto_filtro_t = f_col_t1.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla_t, key="filtro_t_prod")
             
