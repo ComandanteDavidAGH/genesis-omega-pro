@@ -87,6 +87,17 @@ def formatear_numero_sap(val):
     except:
         return str(val)
 
+# 💥 TRADUCTOR GEOGRÁFICO DE PISTAS (FINCAS)
+def estandarizar_pista(val):
+    if pd.isna(val) or str(val).strip() == "": return ""
+    p = str(val).strip().upper()
+    p = p.replace("ORIHUECA", "PORI")
+    p = p.replace("DIVAS", "PDIV")
+    p = p.replace("TEHOBROMINA", "TEHO")
+    p = p.replace("LUCHA", "PLUC")
+    # LUCI ya es LUCI en SAP
+    return p
+
 # --- 🧠 MOTOR EXCLUSIVO: LECTURA DESDE GÉNESIS OMEGA V2 ESTABLE ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def extraer_catalogo_oficial_sap():
@@ -274,28 +285,22 @@ def ejecutar():
                 if pd.isna(prod) or str(prod).strip() == "": return ""
                 p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
                 
-                # Usa memoria caché para ir más rápido
                 if p_clean in cache_mapeo:
                     return cache_mapeo[p_clean]
                     
                 resultado = ""
-                # Nivel 1: Coincidencia Exacta (Eliminando problemas de mayúsculas/espacios)
                 if p_clean in lista_autorizada:
                     resultado = p_clean
                 else:
-                    # Nivel 2: Inclusión (Ej. "NATURAMIN" está dentro de "NATURAMIN WSP")
                     posibles = [oficial for oficial in lista_autorizada if (p_clean in oficial) or (oficial in p_clean)]
                     if posibles:
-                        # Si encuentra varios, se queda con el más parecido en longitud
                         posibles.sort(key=lambda x: abs(len(x) - len(p_clean)))
                         resultado = posibles[0]
                     else:
-                        # Nivel 3: Algoritmo de Similitud % (Errores de tipeo)
                         matches = get_close_matches(p_clean, list(lista_autorizada), n=1, cutoff=0.65)
                         if matches:
                             resultado = matches[0]
                         else:
-                            # Nivel 4: Derrota (El producto definitivamente es un fantasma o no existe)
                             resultado = f"{p_clean} 🛑 [OBSOLETO]"
                 
                 cache_mapeo[p_clean] = resultado
@@ -329,10 +334,13 @@ def ejecutar():
                     df_t = df_t[cols_presentes]
                     
                     if "PRODUCTO" in df_t.columns:
-                        # Aplica el motor inteligente a toda la columna
                         df_t["PRODUCTO"] = df_t["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
                         df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
                         df_t = df_t[~df_t["PRODUCTO"].str.contains("NONE", case=False)]
+                        
+                    # Aplicar estandarización de PISTAS
+                    if "PISTA" in df_t.columns:
+                        df_t["PISTA"] = df_t["PISTA"].apply(estandarizar_pista)
                         
                     df_traslados_list.append(df_t)
 
@@ -373,9 +381,13 @@ def ejecutar():
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
             if col_producto: 
-                # Aplica el motor inteligente a los ingresos
                 df[col_producto] = df[col_producto].apply(estandarizar_y_marcar_inteligente)
                 df = df[df[col_producto].str.strip() != ""]
+
+            # Aplicar estandarización de PISTAS en Ingresos
+            col_pista = next((c for c in df.columns if "PISTA" in c), None)
+            if col_pista:
+                df[col_pista] = df[col_pista].apply(estandarizar_pista)
 
             COL_ESTADO = "ESTADO / OBSERVACIÓN"
             if COL_ESTADO not in df.columns:
@@ -417,7 +429,6 @@ def ejecutar():
                     else:
                         modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
                         
-                        # 💥 El Desplegable SOLO muestra productos 100% legales extraídos de "Configuración"
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         lista_prods_ordenada = sorted(list(lista_prods_limpia))
                         
@@ -804,7 +815,6 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
-            # 💥 El Desplegable SOLO muestra productos 100% legales extraídos de "Configuración"
             lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
