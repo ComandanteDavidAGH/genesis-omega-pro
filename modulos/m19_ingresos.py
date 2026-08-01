@@ -432,6 +432,37 @@ def ejecutar():
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
+                        
+                        # 💥 NUEVO BOTÓN DE GUARDADO DEDICADO EN LA COLUMNA DERECHA
+                        with c_tog2:
+                            st.markdown("<div style='margin-top: -5px;'></div>", unsafe_allow_html=True)
+                            if st.button("💾 GUARDAR EN DICCIONARIO", type="secondary", use_container_width=True):
+                                prod_limpio = str(n_prod).strip().upper()
+                                prov_limpio = str(n_prov).strip().upper()
+                                if not prod_limpio or not prov_limpio:
+                                    st.warning("⚠️ Debes escribir el nombre del producto y el proveedor para guardarlo.")
+                                else:
+                                    with st.spinner("Registrando nuevo químico en la Nube..."):
+                                        try:
+                                            try: ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
+                                            except:
+                                                ws_dicc = sh_ingresos.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
+                                                ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                                            
+                                            datos_d = ws_dicc.get_all_values()
+                                            fila_a_actualizar = -1
+                                            for idx_d, row_d in enumerate(datos_d):
+                                                if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
+                                                    fila_a_actualizar = idx_d + 1
+                                                    break
+                                            
+                                            if fila_a_actualizar != -1: ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                                            else: ws_dicc.append_row([prod_limpio, prov_limpio])
+                                            
+                                            st.success(f"✅ ¡Producto {prod_limpio} ({prov_limpio}) registrado exitosamente!")
+                                            st.cache_data.clear()
+                                            st.rerun()
+                                        except Exception as e: st.error(f"🚨 Fallo al guardar en diccionario: {e}")
                     else:
                         modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
                         
