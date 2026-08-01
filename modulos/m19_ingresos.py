@@ -4,6 +4,7 @@ import gspread
 from datetime import datetime, timedelta, date
 import re
 import io
+from difflib import get_close_matches
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -27,7 +28,6 @@ def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "": return pd.NaT
     s = str(val).strip().lower()
     
-    # 1. Si es un número serial de Excel (ej: 44258)
     if s.replace('.', '', 1).isdigit(): 
         return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
         
@@ -37,7 +37,6 @@ def procesar_fecha_estricta(val):
         'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
     }
     
-    # 2. Buscar mes en español y armar la fecha
     mes_encontrado = None
     for mes in meses_es:
         if mes in s:
@@ -60,7 +59,6 @@ def procesar_fecha_estricta(val):
             except:
                 pass
 
-    # 3. Limpieza para formatos numéricos tradicionales
     for dia_sem in ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo']:
         s = s.replace(dia_sem, '')
     s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
@@ -74,10 +72,9 @@ def procesar_fecha_estricta(val):
         if pd.isna(res): return pd.NaT
         return res
     except: 
-        return pd.NaT # Si es basura escrita a mano, devuelve vacío para purgarlo
+        return pd.NaT 
 
 def formatear_numero_sap(val):
-    """Convierte números crudos a formato SAP estricto (Ej: 30.280 o 30.280,50)"""
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer():
@@ -96,7 +93,6 @@ def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        # Apuntando al núcleo: GÉNESIS_OMEGA_V2_ESTABLE
         sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
         try:
             ws = sh_config.worksheet("Configuración")
@@ -118,14 +114,14 @@ def extraer_catalogo_oficial_sap():
         if idx_prod != -1:
             for row in datos[i+1:]:
                 if len(row) > idx_prod:
-                    p_nombre = str(row[idx_prod]).strip().upper()
-                    if p_nombre and len(p_nombre) > 3 and p_nombre != "0":
+                    p_nombre = re.sub(r'\s+', ' ', str(row[idx_prod]).strip().upper())
+                    if p_nombre and len(p_nombre) > 2 and p_nombre != "0":
                         productos_oficiales.add(p_nombre)
         return list(productos_oficiales)
     except Exception as e:
         return []
 
-# --- DICCIONARIO BASE DE HOMOLOGACIONES MÁS AGRESIVO ---
+# --- DICCIONARIO BASE DE EMERGENCIA ---
 DICT_BASE_PRODUCTOS = {
     "ACEITE DICAM": "ROYAL BIOCHEM",
     "ACONDICIONADOR SV": "SYS TECNOLOGIES",
@@ -162,38 +158,6 @@ DICT_BASE_PRODUCTOS = {
     "TIMOREX PRO": "ADAMA",
     "XILOTROM": "AGRIFOL",
     "ZINTRAC x LITRO SV": "YARA S.A.S."
-}
-
-# 💥 Traductor Automático de Nombres Históricos al Estándar Actual
-DICT_HOMOLOGACION_SAP = {
-    "ACONDICIONADOR": "ACONDICIONADOR SV",
-    "ADHERENTE": "ADHERENTE SV",
-    "DITHANE60 OF": "DITHANE 60 OF",
-    "DITHANE FMB": "DITHANE FMB",
-    "SPRAY FIX": "SPRAYFIX",
-    "INBIOSIL O": "IMBIOSIL O",
-    "BANANO-PLATANO": "BANANO Y PLATANO * LT",
-    "BANANO PLATANO": "BANANO Y PLATANO * LT",
-    "GLOBAFOL NF": "GLOBAFOL nf",
-    "GLOBAFOL": "GLOBAFOL nf",
-    "DICAM": "ACEITE DICAM",
-    "TIMOREX": "TIMOREX PRO",
-    "ZINTRAC": "ZINTRAC x LITRO SV",
-    "CEROSTRESS": "CEROSTRESS SV * LT",
-    "COMPER": "COMPER SV",
-    "POWMYL": "POWMYL SV",
-    "LONSELOR": "LONSELOR 30 SC",
-    "BANATREL": "BANATREL SC",
-    "MANCOL": "MANCOL 430 SC",
-    "POLYTHION": "POLYTHION SC",
-    "ROUTINE": "ROUTINE SC",
-    "SIGANEX": "SIGANEX 60 SC",
-    "THIOPRON": "THIOPRON 825 SC",
-    "OPUS": "OPUS 12 EC",
-    "KURDO": "KURDO 250 EC",
-    "COLISION": "COLISION 250 SC",
-    "CUMORA": "CUMORA SC",
-    "CERAQUINT": "CERAQUINT SP"
 }
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
@@ -286,7 +250,7 @@ def ejecutar():
                 datos_dicc = ws_dicc.get_all_values()
                 for row in datos_dicc[1:]: 
                     if len(row) >= 2 and str(row[0]).strip():
-                        producto_nube = str(row[0]).strip().upper()
+                        producto_nube = re.sub(r'\s+', ' ', str(row[0]).strip().upper())
                         proveedor_nube = str(row[1]).strip().upper()
                         if len(producto_nube) > 3: 
                             dict_operativo[producto_nube] = proveedor_nube
@@ -299,18 +263,43 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 💥 CIRUGÍA: CREACIÓN DE LA LISTA DE AUTORIZADOS SAP DESDE EL NÚCLEO
-            lista_autorizada = set([str(k).strip().upper() for k in dict_operativo.keys()])
+            # 💥 CREACIÓN DE LA LISTA DE AUTORIZADOS SAP 
+            lista_autorizada = set([re.sub(r'\s+', ' ', str(k).strip().upper()) for k in dict_operativo.keys()])
             for p in productos_precio_sap:
-                lista_autorizada.add(str(p).strip().upper())
+                lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
                 
-            def estandarizar_y_marcar_producto(prod):
+            # 💥 MOTOR DE HOMOLOGACIÓN INTELIGENTE (FUZZY MATCHING)
+            cache_mapeo = {}
+            def estandarizar_y_marcar_inteligente(prod):
                 if pd.isna(prod) or str(prod).strip() == "": return ""
-                p_up = str(prod).strip().upper()
-                p_up = DICT_HOMOLOGACION_SAP.get(p_up, p_up) # Corrige automáticamente LONSELOR -> LONSELOR 30 SC, etc.
-                if p_up not in lista_autorizada:
-                    return f"{p_up} 🛑 [OBSOLETO]" # Solo marca lo que realmente no exista en Configuración
-                return p_up
+                p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
+                
+                # Usa memoria caché para ir más rápido
+                if p_clean in cache_mapeo:
+                    return cache_mapeo[p_clean]
+                    
+                resultado = ""
+                # Nivel 1: Coincidencia Exacta (Eliminando problemas de mayúsculas/espacios)
+                if p_clean in lista_autorizada:
+                    resultado = p_clean
+                else:
+                    # Nivel 2: Inclusión (Ej. "NATURAMIN" está dentro de "NATURAMIN WSP")
+                    posibles = [oficial for oficial in lista_autorizada if (p_clean in oficial) or (oficial in p_clean)]
+                    if posibles:
+                        # Si encuentra varios, se queda con el más parecido en longitud
+                        posibles.sort(key=lambda x: abs(len(x) - len(p_clean)))
+                        resultado = posibles[0]
+                    else:
+                        # Nivel 3: Algoritmo de Similitud % (Errores de tipeo)
+                        matches = get_close_matches(p_clean, list(lista_autorizada), n=1, cutoff=0.65)
+                        if matches:
+                            resultado = matches[0]
+                        else:
+                            # Nivel 4: Derrota (El producto definitivamente es un fantasma o no existe)
+                            resultado = f"{p_clean} 🛑 [OBSOLETO]"
+                
+                cache_mapeo[p_clean] = resultado
+                return resultado
 
             # Bóveda Traslados
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
@@ -340,8 +329,8 @@ def ejecutar():
                     df_t = df_t[cols_presentes]
                     
                     if "PRODUCTO" in df_t.columns:
-                        # Aplica el traductor a toda la columna de productos del histórico
-                        df_t["PRODUCTO"] = df_t["PRODUCTO"].apply(estandarizar_y_marcar_producto)
+                        # Aplica el motor inteligente a toda la columna
+                        df_t["PRODUCTO"] = df_t["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
                         df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
                         df_t = df_t[~df_t["PRODUCTO"].str.contains("NONE", case=False)]
                         
@@ -384,8 +373,8 @@ def ejecutar():
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
             if col_producto: 
-                # Aplica el traductor a los ingresos
-                df[col_producto] = df[col_producto].apply(estandarizar_y_marcar_producto)
+                # Aplica el motor inteligente a los ingresos
+                df[col_producto] = df[col_producto].apply(estandarizar_y_marcar_inteligente)
                 df = df[df[col_producto].str.strip() != ""]
 
             COL_ESTADO = "ESTADO / OBSERVACIÓN"
@@ -786,7 +775,6 @@ def ejecutar():
         st.markdown(f"<a href='{URL_SHEET_TRASLADOS}' target='_blank' class='btn-ascensor' style='background-color:#2F75B5; border-color:#1d4e7a; color:#ffffff !important;'>👁️ VER BASE DE TRASLADOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
-        # --- EXTRACCIÓN DE DATOS HISTÓRICOS DE TRASLADOS ---
         if not df_traslados.empty:
             total_movimientos = len(df_traslados)
             st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{total_movimientos}</p></div>", unsafe_allow_html=True)
