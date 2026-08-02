@@ -25,7 +25,7 @@ def inicializar_cliente_gspread():
 
 # 💥 CIRUGÍA: RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
-    if pd.isna(val) or str(val).strip() == "": return pd.NaT
+    if pd.isna(val) or str(val).strip() == "" or str(val).strip() == "None": return pd.NaT
     s = str(val).strip().lower()
     
     if s.replace('.', '', 1).isdigit(): 
@@ -89,7 +89,7 @@ def formatear_numero_sap(val):
 
 # 💥 TRADUCTOR GEOGRÁFICO DE PISTAS (FINCAS)
 def estandarizar_pista(val):
-    if pd.isna(val) or str(val).strip() == "": return ""
+    if pd.isna(val) or str(val).strip() == "" or str(val).strip() == "None": return ""
     p = str(val).strip().upper()
     p = p.replace("ORIHUECA", "PORI")
     p = p.replace("DIVAS", "PDIV")
@@ -207,16 +207,8 @@ def ejecutar():
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
     div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; color: #000000 !important; font-weight: 900 !important; background-color: #ffffff !important; }
     
-    /* 🔥 FUERZA BRUTA ESTRUCTURAL PARA BORDES DE SELECTORES 🔥 */
-    div[data-testid="stSelectbox"] > div:last-child { 
-        border: 2px solid #0d1b2a !important; 
-        border-radius: 6px !important; 
-        background-color: #ffffff !important; 
-    }
-    div[data-testid="stSelectbox"] > div:last-child * { 
-        color: #000000 !important; 
-        font-weight: 900 !important; 
-    }
+    div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
+    div[data-testid="stSelectbox"] > div:last-child * { color: #000000 !important; font-weight: 900 !important; }
     
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
     
@@ -290,7 +282,7 @@ def ejecutar():
             # 💥 MOTOR DE HOMOLOGACIÓN INTELIGENTE (FUZZY MATCHING)
             cache_mapeo = {}
             def estandarizar_y_marcar_inteligente(prod):
-                if pd.isna(prod) or str(prod).strip() == "": return ""
+                if pd.isna(prod) or str(prod).strip() == "" or str(prod).strip() == "None": return ""
                 p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
                 
                 if p_clean in cache_mapeo:
@@ -335,11 +327,19 @@ def ejecutar():
                 if idx_head_t != -1:
                     encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
                     
+                    # 💥 ESCUDO ANTI-TILDES: Fusiona OBSERVACIÓN y OBSERVACION
                     for j in range(len(encabezados_temp)):
-                        if "COLUMNA1" in encabezados_temp[j] and "OBSERVACION" not in encabezados_temp:
+                        if encabezados_temp[j] == "OBSERVACIÓN":
+                            encabezados_temp[j] = "OBSERVACION"
+                        elif "COLUMNA1" in encabezados_temp[j] and "OBSERVACION" not in encabezados_temp:
                             encabezados_temp[j] = "OBSERVACION"
                     
                     df_t = pd.DataFrame(hoja_datos[idx_head_t+1:], columns=encabezados_temp)
+                    
+                    # DESTRUCTOR DE "NONE": Purifica celdas vacías
+                    df_t = df_t.fillna("")
+                    df_t = df_t.replace({None: "", "None": "", "nan": "", "NaN": ""})
+
                     cols_presentes = [c for c in columnas_oficiales if c in df_t.columns]
                     df_t = df_t[cols_presentes]
                     
@@ -861,12 +861,10 @@ def ejecutar():
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
-            # 💥 INYECCIÓN DE CASILLA DE LOTE EN TRASLADOS
             tr4, tr5 = st.columns(2)
             t_observacion = tr4.text_input("📝 Observación (Opcional)", key=f"t_observacion_{fk_t}")
             t_lote = tr5.text_input("📦 Lote", key=f"t_lote_{fk_t}")
 
-            # 💥 PANEL DE COPIADO RÁPIDO DUAL PARA TRASLADOS
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
 
@@ -910,7 +908,7 @@ def ejecutar():
                                 pista_combinada,
                                 str(semana_traslado),
                                 str(t_observacion).strip(),
-                                str(t_lote).strip() # 💥 SE ENVÍA EL LOTE AL FINAL DE LA FILA
+                                str(t_lote).strip()
                             ]
                             
                             try:
@@ -918,9 +916,13 @@ def ejecutar():
                             except:
                                 ws_write = sh_traslados.get_worksheet(0)
 
-                            ws_write.append_row(nueva_fila_traslado)
+                            # 💥 TÁCTICA FRANCOTIRADOR: Buscar última fila usando columna A
+                            col_consecutivos = ws_write.col_values(1)
+                            fila_destino = len(col_consecutivos) + 1
+                            rango_inyeccion = f"A{fila_destino}:I{fila_destino}"
+                            ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
-                        st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito!")
+                        st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito en la fila {fila_destino}!")
                         st.session_state['form_key_m19_traslados'] += 1
                         st.cache_data.clear()
                         st.rerun()
