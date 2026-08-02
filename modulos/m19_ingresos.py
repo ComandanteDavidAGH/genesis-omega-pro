@@ -40,57 +40,51 @@ def obtener_datos_bovedas():
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
     except Exception as e: return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (PLANTILLA) ---
-@st.cache_data(show_spinner=False, ttl=3600)
+# --- 🔍 RASTREADOR DE MATERIALES (💥 FUERZA BRUTA - CERO CACHÉ) ---
+# Al quitar el decorador cache_data, obligamos al sistema a leer el Drive sí o sí.
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
-    if not gc: return {}
+    if not gc: return {"ERROR": "Sin conexión a los servidores de Google."}
     try:
-        # 💥 COORDENADAS EXACTAS CON "HaI" Y "gq" PARA EVITAR EL 404
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
-        if datos and len(datos) > 0:
-            idx_head = -1
-            for i in range(min(15, len(datos))):
-                fila_up = [str(x).strip().upper() for x in datos[i]]
-                if "MATERIAL" in fila_up:
-                    idx_head = i
-                    break
-                    
-            if idx_head != -1:
-                encabezados = [str(x).strip().upper() for x in datos[idx_head]]
-                idx_mat = encabezados.index("MATERIAL")
+        
+        # Lectura por Fuerza Bruta: Ignoramos los títulos. Empezamos a leer desde la fila 3 (índice 2)
+        for row in datos[2:]:
+            # Nos aseguramos de que la fila tenga al menos 11 columnas (hasta la K)
+            if len(row) >= 11:
+                mat = str(row[0]).strip() # Columna A
+                desc_j = str(row[9]).strip().upper() # Columna J
+                desc_k = str(row[10]).strip().upper() # Columna K
                 
-                idx_desc_j = encabezados.index("DESCRIPCIÓN DEL MATERIAL") if "DESCRIPCIÓN DEL MATERIAL" in encabezados else -1
-                idx_desc_k = encabezados.index("DESCRIPCIÓN ÚNICA") if "DESCRIPCIÓN ÚNICA" in encabezados else -1
-
-                for row in datos[idx_head+1:]:
-                    mat = str(row[idx_mat]).strip() if len(row) > idx_mat else ""
-                    desc = ""
-                    
-                    if idx_desc_k != -1 and len(row) > idx_desc_k and str(row[idx_desc_k]).strip():
-                        desc = str(row[idx_desc_k]).strip().upper()
-                    elif idx_desc_j != -1 and len(row) > idx_desc_j and str(row[idx_desc_j]).strip():
-                        desc = str(row[idx_desc_j]).strip().upper()
+                if mat and mat != "MATERIAL":
+                    if desc_k:
+                        mapeo[re.sub(r'\s+', ' ', desc_k)] = mat
+                    if desc_j:
+                        mapeo[re.sub(r'\s+', ' ', desc_j)] = mat
                         
-                    if desc and mat:
-                        desc_clean = re.sub(r'\s+', ' ', desc).strip()
-                        mapeo[desc_clean] = mat
         return mapeo
     except Exception as e: 
-        return {"ERROR_TECNICO": str(e)}
+        return {"ERROR": str(e)}
 
 def buscar_codigo_material(producto_nombre, mapeo):
-    if "ERROR_TECNICO" in mapeo: return "S/N"
+    if "ERROR" in mapeo: return "S/N"
     prod_clean = re.sub(r'\s+', ' ', str(producto_nombre).strip().upper())
     if not prod_clean or not mapeo: return "S/N"
+    
+    # 1. Match Exacto
     if prod_clean in mapeo: return mapeo[prod_clean]
+    
+    # 2. Match Contenido Parcial
     for desc, cod in mapeo.items():
         if prod_clean in desc or desc in prod_clean: return cod
+        
+    # 3. Match Aproximado (Fuzzy)
     matches = get_close_matches(prod_clean, list(mapeo.keys()), n=1, cutoff=0.6)
     if matches: return mapeo[matches[0]]
+    
     return "S/N"
 
 # 💥 RADAR CRONOLÓGICO Y ANTI-FALLOS
@@ -135,7 +129,6 @@ def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        # 💥 COORDENADAS EXACTAS CON "HaI" Y "gq" PARA EVITAR EL 404
         sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh_config.worksheet("Configuración") if "Configuración" in [w.title for w in sh_config.worksheets()] else sh_config.worksheet("DD_Mesclas")
         datos = ws.get_all_values()
@@ -212,9 +205,12 @@ def ejecutar():
             st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: Espera de 1 a 2 minutos y presiona 'Refrescar Radares'." if "429" in error_api else f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
 
+        # 💥 EJECUCIÓN DEL RASTREADOR DE FUERZA BRUTA
         mapeo_materiales = extraer_mapeo_materiales()
-        if "ERROR_TECNICO" in mapeo_materiales:
-            st.warning(f"⚠️ Alerta menor: No se pudo conectar a la pestaña Plantilla ({mapeo_materiales['ERROR_TECNICO']})")
+        if "ERROR" in mapeo_materiales:
+            st.error(f"🚨 FALLA DE CONEXIÓN CON PLANTILLA: {mapeo_materiales['ERROR']}")
+        else:
+            st.success(f"✅ Bóveda Plantilla leída con éxito. ({len(mapeo_materiales)} productos memorizados)")
 
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
@@ -384,6 +380,7 @@ def ejecutar():
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
+                        # 💥 BÚSQUEDA DE MATERIAL
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
                         c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
 
@@ -711,7 +708,7 @@ def ejecutar():
             tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
-            # 💥 RASTREO DINÁMICO DE MATERIAL
+            # 💥 BÚSQUEDA DE MATERIAL
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
             tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_{fk_t}")
 
