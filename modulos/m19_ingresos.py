@@ -11,7 +11,6 @@ from openpyxl.utils import get_column_letter
 
 # --- 🔌 CONEXIÓN Y TIEMPO ---
 def obtener_hora_colombia():
-    """Fuerza el reloj del servidor a la zona horaria estricta de Colombia (UTC-5)"""
     return datetime.utcnow() + timedelta(hours=-5)
 
 @st.cache_resource(show_spinner=False)
@@ -20,150 +19,101 @@ def inicializar_cliente_gspread():
         if "gcp_service_account" in st.secrets:
             return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
-    except Exception as e:
-        return None
+    except Exception: return None
 
-# --- 🛡️ ESCUDO DE MEMORIA (ANTIBLOQUEO 429) ---
 @st.cache_data(show_spinner=False, ttl=300)
 def obtener_datos_bovedas():
     gc = inicializar_cliente_gspread()
     if not gc: return None, None, None, None, "No hay conexión con Google Cloud"
-    
     URL_ING = "https://docs.google.com/spreadsheets/d/1G_bt4nFudeqqTmRbK-pF52w_9-L_Jf5uNCFeQKIPuO0/edit"
     URL_TRA = "https://docs.google.com/spreadsheets/d/1JV-f8zzGuhGNlqvrSjeKYN4eBdshAN5EOkfDHMi1WIs/edit"
-    
     try:
         sh_ing = gc.open_by_url(URL_ING)
         ws_ing = sh_ing.worksheets()[0]
         datos_ing = ws_ing.get_all_values()
-        
         try: datos_dicc = sh_ing.worksheet("DICCIONARIO").get_all_values()
         except: datos_dicc = []
-        
         sh_tras = gc.open_by_url(URL_TRA)
         ws_tras = sh_tras.worksheets()[0] 
         datos_tras = ws_tras.get_all_values()
         titulo_tras = ws_tras.title 
-        
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
-    except Exception as e:
-        return None, None, None, None, str(e)
+    except Exception as e: return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (💥 CON CEBO TÁCTICO) ---
-@st.cache_data(show_spinner=False, ttl=0) # TTL 0 para forzar el cebo a correr
+# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (PLANTILLA - COL J y A) ---
+@st.cache_data(show_spinner=False, ttl=3600)
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
-    if not gc: return {}, "FALLO: No hay conexión con Google Cloud"
+    if not gc: return {}
     try:
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
-        try:
-            ws = sh.worksheet("Plantilla")
-        except Exception:
-            hojas_disp = [w.title for w in sh.worksheets()]
-            return {}, f"FALLO: No encontró la pestaña 'Plantilla'. Pestañas disponibles: {hojas_disp}"
-            
+        ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
-        cebo_info = []
-        
         if datos and len(datos) > 0:
             idx_head = 0
             for i in range(min(10, len(datos))):
-                fila_up = [str(x).strip().upper() for x in datos[i]]
-                if "MATERIAL" in fila_up:
-                    idx_head = i
-                    break
-                    
+                if "MATERIAL" in [str(x).strip().upper() for x in datos[i]]:
+                    idx_head = i; break
             encabezados = [str(x).strip().upper() for x in datos[idx_head]]
-            cebo_info.append(f"FILA ENCABEZADOS: {idx_head+1}")
-            cebo_info.append(f"ENCABEZADOS: {encabezados[:12]}")
             
+            # Asignación Táctica: Columna A (0) para Material, Columna J (9) para Descripción
             idx_mat = encabezados.index("MATERIAL") if "MATERIAL" in encabezados else 0
-            
-            idx_desc = -1
-            if "DESCRIPCIÓN ÚNICA" in encabezados:
-                idx_desc = encabezados.index("DESCRIPCIÓN ÚNICA")
-            elif "DESCRIPCIÓN DEL MATERIAL" in encabezados:
-                idx_desc = encabezados.index("DESCRIPCIÓN DEL MATERIAL")
-            else:
-                idx_desc = 12
-                
-            cebo_info.append(f"COL MATERIAL: {idx_mat} | COL DESC: {idx_desc}")
+            idx_desc = encabezados.index("DESCRIPCIÓN DEL MATERIAL") if "DESCRIPCIÓN DEL MATERIAL" in encabezados else 9
 
-            contador_muestra = 0
             for row in datos[idx_head+1:]:
                 if len(row) > max(idx_mat, idx_desc):
                     mat = str(row[idx_mat]).strip()
-                    desc = str(row[idx_desc]).strip().upper()
-                    desc_clean = re.sub(r'\s+', ' ', desc)
-                    if desc_clean and mat:
-                        mapeo[desc_clean] = mat
-                        contador_muestra += 1
-                        if contador_muestra <= 2: 
-                            cebo_info.append(f"EJEMPLO: '{desc_clean}' -> '{mat}'")
-            
-            cebo_info.append(f"TOTAL MAPEADOS: {len(mapeo)}")
-            return mapeo, " | ".join(cebo_info)
-        else:
-            return {}, "FALLO: Hoja 'Plantilla' está vacía."
-    except Exception as e:
-        return {}, f"ERROR TÉCNICO: {str(e)}"
+                    desc_j = str(row[idx_desc]).strip().upper()
+                    if desc_j and mat: mapeo[re.sub(r'\s+', ' ', desc_j)] = mat
+                    # Cobertura extra: Columna K (Descripción Única) si existe
+                    if len(row) > idx_desc + 1:
+                        desc_k = str(row[idx_desc + 1]).strip().upper()
+                        if desc_k and mat: mapeo[re.sub(r'\s+', ' ', desc_k)] = mat
+        return mapeo
+    except Exception: return {}
 
 def buscar_codigo_material(producto_nombre, mapeo):
     prod_clean = str(producto_nombre).strip().upper()
     if not prod_clean or not mapeo: return "S/N"
-    # 1. Match Exacto
     if prod_clean in mapeo: return mapeo[prod_clean]
-    # 2. Match Parcial
     for desc, cod in mapeo.items():
         if prod_clean in desc or desc in prod_clean: return cod
-    # 3. Match Aproximado
     matches = get_close_matches(prod_clean, list(mapeo.keys()), n=1, cutoff=0.6)
     if matches: return mapeo[matches[0]]
     return "S/N"
 
-# 💥 CIRUGÍA: RADAR CRONOLÓGICO Y ANTI-FALLOS
+# 💥 RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
-    
     if s.replace('.', '', 1).isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-        
-    meses_es = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
+    meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
     mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
-            
     if mes_encontrado:
         numeros = re.findall(r'\d+', s)
         if len(numeros) >= 2:
-            n1 = int(numeros[0])
-            n2 = int(numeros[1])
+            n1, n2 = int(numeros[0]), int(numeros[1])
             anio = n1 if n1 > 1000 else (n2 if n2 > 1000 else (2000 + n2 if n2 < 100 else n2))
             dia = n2 if n1 > 1000 else (n1 if n2 > 1000 else n1)
             try: return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
             except: pass
-
-    for dia_sem in ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo']:
-        s = s.replace(dia_sem, '')
+    for dia_sem in ['lunes','martes','miércoles','miercoles','jueves','viernes','sábado','sabado','domingo']: s = s.replace(dia_sem, '')
     s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
-
     for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
         try: return pd.to_datetime(s, format=fmt)
         except: pass
-        
     try: 
         res = pd.to_datetime(s, dayfirst=True)
-        if pd.isna(res): return pd.NaT
-        return res
+        return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
 def formatear_numero_sap(val):
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
-        else:
-            val_str = f"{f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            if val_str.endswith(",00"): val_str = val_str[:-3]
-            return val_str
+        val_str = f"{f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return val_str[:-3] if val_str.endswith(",00") else val_str
     except: return str(val)
 
 def estandarizar_pista(val):
@@ -179,44 +129,25 @@ def extraer_catalogo_oficial_sap():
         ws = sh_config.worksheet("Configuración") if "Configuración" in [w.title for w in sh_config.worksheets()] else sh_config.worksheet("DD_Mesclas")
         datos = ws.get_all_values()
         if not datos: return []
-        
         productos_oficiales = set()
         idx_prod = -1
         for i in range(min(10, len(datos))):
-            fila_up = [str(x).upper().strip() for x in datos[i]]
-            if 'PRODUCTO' in fila_up:
-                idx_prod = fila_up.index('PRODUCTO')
+            if 'PRODUCTO' in [str(x).upper().strip() for x in datos[i]]:
+                idx_prod = [str(x).upper().strip() for x in datos[i]].index('PRODUCTO')
                 break
-                
         if idx_prod != -1:
             for row in datos[i+1:]:
                 if len(row) > idx_prod:
                     p_nombre = re.sub(r'\s+', ' ', str(row[idx_prod]).strip().upper())
-                    if p_nombre and len(p_nombre) > 2 and p_nombre != "0":
-                        productos_oficiales.add(p_nombre)
+                    if p_nombre and len(p_nombre) > 2 and p_nombre != "0": productos_oficiales.add(p_nombre)
         return list(productos_oficiales)
     except: return []
 
-DICT_BASE_PRODUCTOS = {
-    "ACEITE DICAM": "ROYAL BIOCHEM", "ACONDICIONADOR SV": "SYS TECNOLOGIES", "ADHERENTE SV": "SYS TECNOLOGIES",
-    "BANADAK": "PLANDAK", "BANANO Y PLATANO * LT": "INVESA S.A.S.", "BANATREL SC": "YARA S.A.S.", "BOSCALID 50 WG": "DVA COLOMBIA",
-    "CERAQUINT SP": "CERADIS COLOMBIA", "CEROSTRESS SV * LT": "MICROFERTIZA", "COMPER SV": "ADAMA",
-    "EPOXICONAZOLE DEL MONTE": "DEL MONTE SAS", "FENTRIUPH AGRO 88 OL": "DEL MONTE SAS", "FOSFOSTRESS SV": "MICROFERTIZA",
-    "GLOBAFOL nf": "SYNGENTA", "IMBIOSIL O": "INBIOMA", "KURDO 250 EC": "INVESA S.A.S.", "KYVENTIQ": "CORTEVA",
-    "LONSELOR 30 SC": "BASF QUÍMICA", "MANCOL 430 SC": "CASAGRO", "NATURAMIN WSP": "AGRIANDES DAINSA", "OPORTO": "ADAMA",
-    "OPUS 12 EC": "BASF QUÍMICA", "POLYTHION SC": "UPL", "POWMYL SV": "SUMITOMO", "QUELAMIX": "INGEPLANT",
-    "REFLECT": "SYNGENTA", "ROUTINE SC": "BAYER", "SEEKER": "SYNGENTA", "SICO": "SYNGENTA", "SIGANEX 60 SC": "BAYER",
-    "SPRAYFIX": "AGRIANDES DAINSA", "THIOPRON 825 SC": "UPL", "TIMOREX PRO": "ADAMA", "XILOTROM": "AGRIFOL", "ZINTRAC x LITRO SV": "YARA S.A.S."
-}
-
-def limpiar_celda_none(val):
-    v = str(val).strip()
-    return "" if v.lower() in ["none", "nan", "nat", "<na>", "null"] else v
+DICT_BASE_PRODUCTOS = {"ACEITE DICAM": "ROYAL BIOCHEM", "ACONDICIONADOR SV": "SYS TECNOLOGIES", "ADHERENTE SV": "SYS TECNOLOGIES", "BANADAK": "PLANDAK", "BANANO Y PLATANO * LT": "INVESA S.A.S.", "BANATREL SC": "YARA S.A.S.", "BOSCALID 50 WG": "DVA COLOMBIA", "CERAQUINT SP": "CERADIS COLOMBIA", "CEROSTRESS SV * LT": "MICROFERTIZA", "COMPER SV": "ADAMA", "EPOXICONAZOLE DEL MONTE": "DEL MONTE SAS", "FENTRIUPH AGRO 88 OL": "DEL MONTE SAS", "FOSFOSTRESS SV": "MICROFERTIZA", "GLOBAFOL nf": "SYNGENTA", "IMBIOSIL O": "INBIOMA", "KURDO 250 EC": "INVESA S.A.S.", "KYVENTIQ": "CORTEVA", "LONSELOR 30 SC": "BASF QUÍMICA", "MANCOL 430 SC": "CASAGRO", "NATURAMIN WSP": "AGRIANDES DAINSA", "OPORTO": "ADAMA", "OPUS 12 EC": "BASF QUÍMICA", "POLYTHION SC": "UPL", "POWMYL SV": "SUMITOMO", "QUELAMIX": "INGEPLANT", "REFLECT": "SYNGENTA", "ROUTINE SC": "BAYER", "SEEKER": "SYNGENTA", "SICO": "SYNGENTA", "SIGANEX 60 SC": "BAYER", "SPRAYFIX": "AGRIANDES DAINSA", "THIOPRON 825 SC": "UPL", "TIMOREX PRO": "ADAMA", "XILOTROM": "AGRIFOL", "ZINTRAC x LITRO SV": "YARA S.A.S."}
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
-    
     if 'form_key_m19' not in st.session_state: st.session_state['form_key_m19'] = 0
     if 'form_key_m19_traslados' not in st.session_state: st.session_state['form_key_m19_traslados'] = 0
 
@@ -224,7 +155,6 @@ def ejecutar():
     def limpiar_campos_traslados(): st.session_state['form_key_m19_traslados'] += 1
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
-    
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
@@ -252,11 +182,8 @@ def ejecutar():
 
     c_tit, c_btn1, c_btn2 = st.columns([2, 1, 1])
     c_tit.markdown("<h1 class='titulo-mod'>📦 19. Centro Logístico Unificado</h1>", unsafe_allow_html=True)
-    
     if c_btn1.button("🔄 REFRESCAR RADARES", type="primary", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
+        st.cache_data.clear(); st.rerun()
     if c_btn2.button("🧹 PURGAR DICCIONARIO", type="secondary", use_container_width=True):
         with st.spinner("Aniquilando diccionario oculto..."):
             gc = inicializar_cliente_gspread()
@@ -265,25 +192,16 @@ def ejecutar():
                     sh_local = gc.open_by_url(URL_SHEET_INGRESOS)
                     ws_dicc = sh_local.worksheet("DICCIONARIO")
                     sh_local.del_worksheet(ws_dicc)
-                    st.cache_data.clear()
-                    st.success("✅ ¡Fantasma destruido! La lista ha sido purgada.")
-                    st.rerun()
+                    st.cache_data.clear(); st.success("✅ ¡Fantasma destruido!"); st.rerun()
                 except Exception: st.info("No había basura. La lista ya estaba limpia.")
 
     with st.spinner("📡 Sincronizando Bóvedas de Ingresos y Traslados (Caché Activo)..."):
         datos_ing_crudos, datos_dicc_crudos, datos_tras_crudos, titulo_ws_traslados, error_api = obtener_datos_bovedas()
-
         if error_api:
-            if "429" in error_api:
-                st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: Espera de 1 a 2 minutos y presiona 'Refrescar Radares'.")
-            else:
-                st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
+            st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: Espera de 1 a 2 minutos y presiona 'Refrescar Radares'." if "429" in error_api else f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
 
-        # 💥 CEBO TÁCTICO EN ACCIÓN (SOLO LECTURA, SIN DAÑAR NADA)
-        mapeo_materiales, info_cebo = extraer_mapeo_materiales()
-        st.error(f"🚨 CEBO TÁCTICO MATERIALES: {info_cebo}")
-
+        mapeo_materiales = extraer_mapeo_materiales()
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
             if len(row) >= 2 and str(row[0]).strip():
@@ -294,7 +212,6 @@ def ejecutar():
         productos_precio_sap = extraer_catalogo_oficial_sap()
         for prod_sap in productos_precio_sap:
             if prod_sap.strip() not in dict_operativo: dict_operativo[prod_sap.strip()] = "" 
-
         lista_autorizada = set([re.sub(r'\s+', ' ', str(k).strip().upper()) for k in dict_operativo.keys()])
         for p in productos_precio_sap: lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
             
@@ -303,7 +220,6 @@ def ejecutar():
             p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
             if p_clean in ["", "NONE", "NAN", "NAT", "<NA>"]: return ""
             if p_clean in cache_mapeo: return cache_mapeo[p_clean]
-            
             resultado = ""
             if p_clean in lista_autorizada: resultado = p_clean
             else:
@@ -320,11 +236,9 @@ def ejecutar():
         # ================= PROCESAMIENTO TRASLADOS =================
         df_traslados = pd.DataFrame()
         encabezados_limpios_tras = []
-        
         if datos_tras_crudos:
             columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION", "LOTE"]
             idx_head_t = next((i for i, row in enumerate(datos_tras_crudos[:15]) if "CONSECUTIVO" in [str(x).upper().strip() for x in row]), -1)
-            
             if idx_head_t != -1:
                 enc_brutos = [str(x).strip().upper() for x in datos_tras_crudos[idx_head_t]]
                 for j, h in enumerate(enc_brutos):
@@ -347,20 +261,16 @@ def ejecutar():
                 df_t = df_t.loc[:, ~df_t.columns.str.startswith('COL_VACIA_')]
                 df_t = df_t.loc[:, ~df_t.columns.duplicated()]
                 df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
-
                 cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
                 df_traslados = df_t[cols_presentes]
-                
                 if "PRODUCTO" in df_traslados.columns: df_traslados["PRODUCTO"] = df_traslados["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
                 if "PISTA" in df_traslados.columns: df_traslados["PISTA"] = df_traslados["PISTA"].apply(estandarizar_pista)
 
         # ================= PROCESAMIENTO INGRESOS =================
         df_ingresos = pd.DataFrame()
         encabezados_limpios_ing = []
-        
         if datos_ing_crudos:
             idx_head_i = next((i for i, row in enumerate(datos_ing_crudos[:5]) if "ESTADO / OBSERVACIÓN" in [str(x).upper().strip() for x in row] or "PRODUCTO" in [str(x).upper().strip() for x in row]), 0)
-            
             enc_brutos_i = [str(x).strip().upper() for x in datos_ing_crudos[idx_head_i]]
             for j, h in enumerate(enc_brutos_i):
                 if h == "": h = f"COL_VACIA_{j}"
@@ -377,7 +287,6 @@ def ejecutar():
             df_i = df_i.loc[:, ~df_i.columns.str.startswith('COL_VACIA_')]
             df_i = df_i.loc[:, ~df_i.columns.duplicated()]
             df_i['FILA_EXCEL'] = range(idx_head_i + 2, len(df_i) + idx_head_i + 2)
-            
             if "PRODUCTO" in df_i.columns: df_i["PRODUCTO"] = df_i["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
             if "PISTA" in df_i.columns: df_i["PISTA"] = df_i["PISTA"].apply(estandarizar_pista)
             df_ingresos = df_i
@@ -396,17 +305,14 @@ def ejecutar():
         else:
             df = df_ingresos
             COL_ESTADO = "ESTADO / OBSERVACIÓN"
-            
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
-            col_p pista = next((c for c in df.columns if "PISTA" in c), None)
+            col_pista = next((c for c in df.columns if "PISTA" in c), None)
             col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
             col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
 
-            if COL_ESTADO not in df.columns:
-                st.error(f"🚨 FALTA COLUMNA TÁCTICA: No se encontró la columna **{COL_ESTADO}**.")
+            if COL_ESTADO not in df.columns: st.error(f"🚨 FALTA COLUMNA TÁCTICA: No se encontró la columna **{COL_ESTADO}**.")
             else:
                 idx_col_estado = encabezados_limpios_ing.index(COL_ESTADO) + 1 
-
                 st.markdown("### 📡 Radares de Vencimiento")
                 limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
                 hoy_ts = pd.to_datetime(hoy_colombia)
@@ -431,7 +337,6 @@ def ejecutar():
                     c_tog1, c_tog2 = st.columns(2)
                     es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
                     modificar_prov = False
-                    
                     c_prod, c_mat, c_prov = st.columns([2, 1, 2])
                     
                     if es_nuevo_producto:
@@ -465,7 +370,7 @@ def ejecutar():
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
-                        # 💥 RASTREO DINÁMICO DE MATERIAL
+                        # 💥 RASTREO DINÁMICO DE MATERIAL (PLANTILLA)
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
                         c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
 
@@ -531,11 +436,7 @@ def ejecutar():
                         if not n_prod or str(n_prod).strip() == "": st.error("🚨 El nombre del producto no puede estar vacío.")
                         else:
                             prod_limpio = str(n_prod).strip().upper(); prov_limpio = str(n_prov).strip().upper()
-                            actualizar_dicc = False
-                            if es_nuevo_producto: actualizar_dicc = True
-                            elif (modificar_prov or not bool(proveedor_asignado.strip())) and prov_limpio and prov_limpio != proveedor_asignado.upper(): actualizar_dicc = True
-                            
-                            if actualizar_dicc:
+                            if es_nuevo_producto or ((modificar_prov or not bool(proveedor_asignado.strip())) and prov_limpio and prov_limpio != proveedor_asignado.upper()):
                                 try:
                                     gc_temp = inicializar_cliente_gspread()
                                     sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
@@ -591,62 +492,6 @@ def ejecutar():
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e: st.error(f"Error al inyectar datos: {e}")
 
-                # --- GENERADOR DE REPORTE CORREO ---
-                st.markdown("---")
-                st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
-                st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto.")
-                
-                col_fecha_rep, col_vacia = st.columns([1, 3])
-                fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
-                
-                if col_fecha_ingreso:
-                    df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
-                    mask = df['FECHA_ING_TEMP'].apply(lambda x: x.date() if pd.notna(x) else None) == fecha_reporte
-                    df_correo = df[mask].copy()
-                    if COL_ESTADO in df_correo.columns: df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
-                    if not df_correo.empty:
-                        df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
-                        df_correo.insert(0, "✅ INCLUIR", True)
-                        cols_ed = [c for c in df_correo.columns if c not in ["FILA_EXCEL", "FECHA_ING_TEMP", "FECHA_VENC_DT", COL_ESTADO]]
-                        st.markdown("👇 **Paso 1: Desmarca los registros que NO quieres enviar en el correo:**")
-                        df_editado_correo = st.data_editor(df_correo[cols_ed], column_config={"✅ INCLUIR": st.column_config.CheckboxColumn("✅ INCLUIR", default=True)}, disabled=[c for c in cols_ed if c != "✅ INCLUIR"], hide_index=True, use_container_width=True, key=f"editor_correo_{fecha_reporte}")
-                        df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
-                        if not df_correo_final.empty:
-                            mapa_columnas = {}
-                            for col_excel in df_correo_final.columns:
-                                c_up = str(col_excel).upper()
-                                if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
-                                elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
-                                elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
-                                elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
-                                elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
-                                elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
-                                elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
-                                elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
-                                elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
-                                elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
-                                elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
-                                elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
-                            df_correo_limpio = df_correo_final[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
-                            orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
-                            df_correo_limpio = df_correo_limpio[[col for col in orden_ideal if col in df_correo_limpio.columns]]
-                            html_manual = "<table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'><thead><tr>"
-                            for col_name in df_correo_limpio.columns: html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 8px 6px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase; white-space: nowrap;'>{col_name}</th>"
-                            html_manual += "</tr></thead><tbody>"
-                            for _, row in df_correo_limpio.iterrows():
-                                html_manual += "<tr>"
-                                for col_name in df_correo_limpio.columns:
-                                    val = row[col_name]
-                                    val_str = "" if pd.isna(val) or str(val).strip() == "" else (formatear_numero_sap(str(val).strip()) if col_name == "CANTIDAD" else str(val).strip())
-                                    if val_str.startswith("'"): val_str = val_str[1:]
-                                    html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
-                                html_manual += "</tr>"
-                            html_manual += "</tbody></table>"
-                            st.markdown("👇 **Paso 2: Copia la tabla a continuación y pégala en tu correo:**")
-                            st.markdown(html_manual, unsafe_allow_html=True)
-                        else: st.info("Has desmarcado todos los registros. La tabla final está vacía.")
-                    else: st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_reporte.strftime('%d/%m/%Y')}.")
-
                 # --- ESCÁNER DE AUDITORÍA ---
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
@@ -690,10 +535,9 @@ def ejecutar():
                 df_vista = df_filtrado[columnas_vista].copy()
                 
                 # 💥 LIMPIEZA VISUAL DEL APÓSTROFE EN AUDITORÍA
-                if "LOTE" in df_vista.columns:
-                    df_vista["LOTE"] = df_vista["LOTE"].astype(str).str.lstrip("'")
+                if "LOTE" in df_vista.columns: df_vista["LOTE"] = df_vista["LOTE"].astype(str).str.lstrip("'")
                 
-                col_config = {}
+                col_config = {COL_ESTADO: st.column_config.SelectboxColumn("🛡️ ESTADO / OBSERVACIÓN", help="Doble clic para anular o cambiar estado.", width="large", options=opciones_estado, required=True)}
                 for c in df_vista.columns:
                     c_up = c.upper()
                     if "SEMANA" in c_up: col_config[c] = st.column_config.TextColumn("📅 SEMANA", width="small")
@@ -709,61 +553,37 @@ def ejecutar():
                     elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO", width="medium")
                     elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
                     
-                col_config[COL_ESTADO] = st.column_config.SelectboxColumn("🛡️ ESTADO / OBSERVACIÓN", help="Doble clic para anular o cambiar estado.", width="large", options=opciones_estado, required=True)
-
                 df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
                     cambios = []
                     for i in range(len(df_filtrado)):
-                        estado_original = str(df_filtrado.iloc[i][COL_ESTADO]).strip()
-                        estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
-                        if estado_original != estado_nuevo: cambios.append({'fila': int(df_filtrado.iloc[i]['FILA_EXCEL']), 'nuevo': estado_nuevo})
-                    
+                        if str(df_filtrado.iloc[i][COL_ESTADO]).strip() != str(df_editado.iloc[i][COL_ESTADO]).strip():
+                            cambios.append({'fila': int(df_filtrado.iloc[i]['FILA_EXCEL']), 'nuevo': str(df_editado.iloc[i][COL_ESTADO]).strip()})
                     if cambios:
                         eliminaciones = [c for c in cambios if "ELIMINAR REGISTRO" in c['nuevo']]
                         actualizaciones = [c for c in cambios if "ELIMINAR REGISTRO" not in c['nuevo']]
                         cambios_exitosos = False
-                        
                         gc_temp = inicializar_cliente_gspread()
                         sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
                         ws_write_ing = sh_temp.worksheets()[0]
                         
                         for act in actualizaciones:
-                            with st.spinner(f"Actualizando estado en Fila {act['fila']}..."):
-                                try: ws_write_ing.update_cell(act['fila'], idx_col_estado, act['nuevo']); cambios_exitosos = True
-                                except Exception as e: st.error(f"Error al actualizar fila {act['fila']}: {e}")
+                            try: ws_write_ing.update_cell(act['fila'], idx_col_estado, act['nuevo']); cambios_exitosos = True
+                            except Exception as e: st.error(f"Error al actualizar fila {act['fila']}: {e}")
                                     
                         if eliminaciones:
                             for eli in sorted(eliminaciones, key=lambda x: x['fila'], reverse=True):
-                                with st.spinner(f"Destruyendo Fila {eli['fila']} de la base de datos..."):
-                                    try: ws_write_ing.delete_row(eli['fila']); cambios_exitosos = True
-                                    except AttributeError:
-                                        try: ws_write_ing.delete_rows(eli['fila']); cambios_exitosos = True
-                                        except Exception as e: st.error(f"Error fatal API Google. Fila {eli['fila']}. {e}")
-                                    except Exception as e: st.error(f"Error al eliminar fila {eli['fila']}. {e}")
+                                try: ws_write_ing.delete_row(eli['fila']); cambios_exitosos = True
+                                except AttributeError:
+                                    try: ws_write_ing.delete_rows(eli['fila']); cambios_exitosos = True
+                                    except Exception as e: st.error(f"Error fatal API Google. Fila {eli['fila']}. {e}")
+                                except Exception as e: st.error(f"Error al eliminar fila {eli['fila']}. {e}")
                         if cambios_exitosos:
                             st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
                             st.cache_data.clear(); st.rerun()
                     else: st.info("No se detectaron cambios ni órdenes de eliminación.")
-
-                st.markdown("---")
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
-                    ws_excel = writer.sheets['Auditoria_Ingresos']
-                    header_font, header_fill = Font(bold=True, color="FFFFFF"), PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    for cell in ws_excel[1]: cell.font = header_font; cell.fill = header_fill; cell.alignment = Alignment(horizontal='center', vertical='center')
-                    for col in ws_excel.columns:
-                        max_length = 0
-                        for cell in col:
-                            try:
-                                if len(str(cell.value)) > max_length: max_length = len(cell.value)
-                            except: pass
-                        ws_excel.column_dimensions[col[0].column_letter].width = (max_length + 2)
-
-                st.download_button("💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)", data=buffer.getvalue(), file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
     # ========================================================================
     # 🚚 PESTAÑA 2: MOVIMIENTOS INTERNOS (TRASLADOS)
@@ -913,11 +733,9 @@ def ejecutar():
             df_vista_t = df_traslados_vista[columnas_vista_t].copy()
             
             # 💥 LIMPIEZA VISUAL DEL APÓSTROFE EN AUDITORÍA
-            if "LOTE" in df_vista_t.columns:
-                df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
+            if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
             cols_disabled_t = [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
-
             col_config_t = {"🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)}
             
             for c in df_vista_t.columns:
@@ -926,7 +744,7 @@ def ejecutar():
                 if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
                 elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
                 elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
+                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
                 elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
                 elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
                 elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
@@ -945,39 +763,16 @@ def ejecutar():
                     ws_t = sh_temp.worksheet(titulo_ws_traslados)
 
                     for eli in sorted(eliminaciones, reverse=True):
-                        with st.spinner(f"💥 Destruyendo la Fila {eli} del historial..."):
-                            try: ws_t.delete_row(eli); cambios_exitosos = True
-                            except AttributeError:
-                                try: ws_t.delete_rows(eli); cambios_exitosos = True
-                                except Exception as e: st.error(f"Error API Fila {eli}: {e}")
-                            except Exception as e: st.error(f"Error al eliminar fila {eli}: {e}")
+                        try: ws_t.delete_row(eli); cambios_exitosos = True
+                        except AttributeError:
+                            try: ws_t.delete_rows(eli); cambios_exitosos = True
+                            except Exception as e: st.error(f"Error API Fila {eli}: {e}")
+                        except Exception as e: st.error(f"Error al eliminar fila {eli}: {e}")
 
                     if cambios_exitosos:
                         st.success("✅ ¡Objetivo neutralizado! El traslado ha sido borrado del sistema.")
                         st.cache_data.clear(); st.rerun()
                 else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
-
-            buffer_t = io.BytesIO()
-            with pd.ExcelWriter(buffer_t, engine='openpyxl') as writer:
-                df_exportar_t = df_editado_t.drop(columns=["🛡️ ACCIÓN"]) if "🛡️ ACCIÓN" in df_editado_t.columns else df_editado_t
-                df_exportar_t.to_excel(writer, sheet_name='Historial_Traslados', index=False)
-                ws_excel_t = writer.sheets['Historial_Traslados']
-                header_font_t, header_fill_t = Font(bold=True, color="FFFFFF"), PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
-                for cell in ws_excel_t[1]:
-                    cell.font = header_font_t
-                    cell.fill = header_fill_t
-                    cell.alignment = Alignment(horizontal='center', vertical='center')
-                for col in ws_excel_t.columns:
-                    max_length = 0
-                    for cell in col:
-                        try:
-                            if len(str(cell.value)) > max_length: max_length = len(cell.value)
-                        except: pass
-                    ws_excel_t.column_dimensions[col[0].column_letter].width = (max_length + 2)
-
-            st.download_button("💾 DESCARGAR HISTÓRICO DE TRASLADOS (EXCEL)", data=buffer_t.getvalue(), file_name=f"Reporte_Traslados_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-        else:
-            st.info("No se encontraron registros en el archivo histórico de traslados.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
