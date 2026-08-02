@@ -49,7 +49,7 @@ def obtener_datos_bovedas():
     except Exception as e:
         return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES (PLANTILLA) ---
+# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (PLANTILLA) ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
@@ -59,8 +59,16 @@ def extraer_mapeo_materiales():
         ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
-        if datos and len(datos) > 1:
-            encabezados = [str(x).strip().upper() for x in datos[0]]
+        if datos and len(datos) > 0:
+            # RASTREO DINÁMICO: Buscar en qué fila exacta están los encabezados
+            idx_head = 0
+            for i in range(min(10, len(datos))):
+                fila_up = [str(x).strip().upper() for x in datos[i]]
+                if "MATERIAL" in fila_up:
+                    idx_head = i
+                    break
+                    
+            encabezados = [str(x).strip().upper() for x in datos[idx_head]]
             idx_mat = encabezados.index("MATERIAL") if "MATERIAL" in encabezados else 0
             
             idx_desc = -1
@@ -71,7 +79,7 @@ def extraer_mapeo_materiales():
             else:
                 idx_desc = 12
 
-            for row in datos[1:]:
+            for row in datos[idx_head+1:]:
                 if len(row) > max(idx_mat, idx_desc):
                     mat = str(row[idx_mat]).strip()
                     desc = str(row[idx_desc]).strip().upper()
@@ -81,6 +89,19 @@ def extraer_mapeo_materiales():
         return mapeo
     except Exception:
         return {}
+
+def buscar_codigo_material(producto_nombre, mapeo):
+    prod_clean = str(producto_nombre).strip().upper()
+    if not prod_clean or not mapeo: return "S/N"
+    # 1. Match Exacto
+    if prod_clean in mapeo: return mapeo[prod_clean]
+    # 2. Match Parcial
+    for desc, cod in mapeo.items():
+        if prod_clean in desc or desc in prod_clean: return cod
+    # 3. Match Aproximado
+    matches = get_close_matches(prod_clean, list(mapeo.keys()), n=1, cutoff=0.6)
+    if matches: return mapeo[matches[0]]
+    return "S/N"
 
 # 💥 CIRUGÍA: RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
@@ -422,7 +443,9 @@ def ejecutar():
                         modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
-                        mat_item_ing = mapeo_materiales.get(n_prod, "S/N")
+                        
+                        # 💥 RASTREO DINÁMICO DE MATERIAL
+                        mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
                         c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
 
                         proveedor_asignado = dict_operativo.get(n_prod, "")
@@ -594,7 +617,6 @@ def ejecutar():
                                 for col_name in df_correo_limpio.columns:
                                     val = row[col_name]
                                     val_str = "" if pd.isna(val) or str(val).strip() == "" else (formatear_numero_sap(str(val).strip()) if col_name == "CANTIDAD" else str(val).strip())
-                                    # Fix leading apostrophes purely for the email visual display if present
                                     if val_str.startswith("'"): val_str = val_str[1:]
                                     html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
                                 html_manual += "</tr>"
@@ -645,6 +667,11 @@ def ejecutar():
 
                 columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
                 df_vista = df_filtrado[columnas_vista].copy()
+                
+                # 💥 LIMPIEZA VISUAL DEL APÓSTROFE EN AUDITORÍA
+                if "LOTE" in df_vista.columns:
+                    df_vista["LOTE"] = df_vista["LOTE"].astype(str).str.lstrip("'")
+                
                 col_config = {}
                 for c in df_vista.columns:
                     c_up = c.upper()
@@ -756,8 +783,8 @@ def ejecutar():
             tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
-            # --- RASTREADOR DE MATERIAL EN ACCIÓN ---
-            mat_item_tras = mapeo_materiales.get(t_producto, "S/N")
+            # 💥 RASTREO DINÁMICO DE MATERIAL
+            mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
             tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_{fk_t}")
 
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
@@ -814,7 +841,7 @@ def ejecutar():
                             
                             gc_temp = inicializar_cliente_gspread()
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                            ws_write = sh_temp.worksheet(titulo_ws_traslados)
+                            ws_write = sh_temp.worksheets()[0]
 
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
@@ -826,7 +853,7 @@ def ejecutar():
                             try: ws_write.update(range_name=rango_inyeccion, values=[nueva_fila_traslado], value_input_option='USER_ENTERED')
                             except: ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
-                        st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito en la fila {fila_destino}!")
+                        st.success(f"✅ ¡Traslado de {t_producto} registrado con éxito en la fila {fila_destino}!")
                         st.session_state['form_key_m19_traslados'] += 1
                         st.cache_data.clear(); st.rerun()
                     except Exception as e: st.error(f"Error al registrar traslado: {e}")
@@ -864,7 +891,7 @@ def ejecutar():
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in ['FILA_EXCEL', 'FECHA_SORT']]
             df_vista_t = df_traslados_vista[columnas_vista_t].copy()
             
-            # Limpiamos visualmente los apóstrofes para que la matriz quede impecable en pantalla
+            # 💥 LIMPIEZA VISUAL DEL APÓSTROFE EN AUDITORÍA
             if "LOTE" in df_vista_t.columns:
                 df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
@@ -894,7 +921,7 @@ def ejecutar():
                     cambios_exitosos = False
                     gc_temp = inicializar_cliente_gspread()
                     sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                    ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                    ws_t = sh_temp.worksheets()[0]
 
                     for eli in sorted(eliminaciones, reverse=True):
                         with st.spinner(f"💥 Destruyendo la Fila {eli} del historial..."):
