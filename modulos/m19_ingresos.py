@@ -41,7 +41,6 @@ def obtener_datos_bovedas():
         except: datos_dicc = []
         
         sh_tras = gc.open_by_url(URL_TRA)
-        # 💥 LEER SIEMPRE LA PESTAÑA 1 (INDICE 0)
         ws_tras = sh_tras.worksheets()[0] 
         datos_tras = ws_tras.get_all_values()
         titulo_tras = ws_tras.title 
@@ -49,6 +48,39 @@ def obtener_datos_bovedas():
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
     except Exception as e:
         return None, None, None, None, str(e)
+
+# --- 🔍 RASTREADOR DE MATERIALES (PLANTILLA) ---
+@st.cache_data(show_spinner=False, ttl=3600)
+def extraer_mapeo_materiales():
+    gc = inicializar_cliente_gspread()
+    if not gc: return {}
+    try:
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        ws = sh.worksheet("Plantilla")
+        datos = ws.get_all_values()
+        mapeo = {}
+        if datos and len(datos) > 1:
+            encabezados = [str(x).strip().upper() for x in datos[0]]
+            idx_mat = encabezados.index("MATERIAL") if "MATERIAL" in encabezados else 0
+            
+            idx_desc = -1
+            if "DESCRIPCIÓN ÚNICA" in encabezados:
+                idx_desc = encabezados.index("DESCRIPCIÓN ÚNICA")
+            elif "DESCRIPCIÓN DEL MATERIAL" in encabezados:
+                idx_desc = encabezados.index("DESCRIPCIÓN DEL MATERIAL")
+            else:
+                idx_desc = 12
+
+            for row in datos[1:]:
+                if len(row) > max(idx_mat, idx_desc):
+                    mat = str(row[idx_mat]).strip()
+                    desc = str(row[idx_desc]).strip().upper()
+                    desc_clean = re.sub(r'\s+', ' ', desc)
+                    if desc_clean and mat:
+                        mapeo[desc_clean] = mat
+        return mapeo
+    except Exception:
+        return {}
 
 # 💥 CIRUGÍA: RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
@@ -137,6 +169,11 @@ DICT_BASE_PRODUCTOS = {
     "SPRAYFIX": "AGRIANDES DAINSA", "THIOPRON 825 SC": "UPL", "TIMOREX PRO": "ADAMA", "XILOTROM": "AGRIFOL", "ZINTRAC x LITRO SV": "YARA S.A.S."
 }
 
+def limpiar_celda_none(val):
+    v = str(val).strip()
+    return "" if v.lower() in ["none", "nan", "nat", "<na>", "null"] else v
+
+# --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
     
@@ -202,6 +239,8 @@ def ejecutar():
             else:
                 st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
+
+        mapeo_materiales = extraer_mapeo_materiales()
 
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
@@ -351,10 +390,12 @@ def ejecutar():
                     es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
                     modificar_prov = False
                     
-                    c_prod, c_prov = st.columns(2)
+                    c_prod, c_mat, c_prov = st.columns([2, 1, 2])
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
+                        n_mat = c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True)
+                        mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                         with c_tog2:
                             st.markdown("<div style='margin-top: -5px;'></div>", unsafe_allow_html=True)
@@ -381,6 +422,9 @@ def ejecutar():
                         modificar_prov = c_tog2.toggle("✏️ Corregir / Modificar Proveedor")
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
+                        mat_item_ing = mapeo_materiales.get(n_prod, "S/N")
+                        c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
+
                         proveedor_asignado = dict_operativo.get(n_prod, "")
                         debe_desbloquear = modificar_prov or not bool(proveedor_asignado.strip())
                         n_prov = c_prov.text_input("🏭 Proveedor", value=proveedor_asignado, disabled=not debe_desbloquear, placeholder="Digite proveedor")
@@ -429,7 +473,8 @@ def ejecutar():
                     
                     st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
-                    cp1, cp2, cp3, cp4 = st.columns(4)
+                    cp_mat, cp1, cp2, cp3, cp4 = st.columns(5)
+                    with cp_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_ing if not es_nuevo_producto else "S/N", language="text")
                     with cp1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(n_cant), language="text")
                     with cp2: st.caption("📦 LOTE"); st.code(n_lote if n_lote else "...", language="text")
                     with cp3: st.caption("🧾 FACTURA"); st.code(n_factura if n_factura else "...", language="text")
@@ -460,6 +505,9 @@ def ejecutar():
                                     else: ws_dicc.append_row([prod_limpio, prov_limpio])
                                 except Exception as e: st.warning(f"Se guardó el diccionario: {e}")
 
+                            # 💥 TÁCTICA APÓSTROFE PARA PROTEGER EL CERO DEL LOTE
+                            lote_ing_inject = f"'{str(n_lote).strip()}" if str(n_lote).strip() else ""
+
                             nueva_fila_drive = []
                             for header in encabezados_limpios_ing:
                                 h = header.upper()
@@ -469,7 +517,7 @@ def ejecutar():
                                 elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
                                 elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
                                 elif "CANT" in h: nueva_fila_drive.append(str(n_cant))
-                                elif "LOTE" in h: nueva_fila_drive.append(str(n_lote))
+                                elif "LOTE" in h: nueva_fila_drive.append(lote_ing_inject)
                                 elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
                                 elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
                                 elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
@@ -546,6 +594,8 @@ def ejecutar():
                                 for col_name in df_correo_limpio.columns:
                                     val = row[col_name]
                                     val_str = "" if pd.isna(val) or str(val).strip() == "" else (formatear_numero_sap(str(val).strip()) if col_name == "CANTIDAD" else str(val).strip())
+                                    # Fix leading apostrophes purely for the email visual display if present
+                                    if val_str.startswith("'"): val_str = val_str[1:]
                                     html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
                                 html_manual += "</tr>"
                             html_manual += "</tbody></table>"
@@ -703,8 +753,13 @@ def ejecutar():
             lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
-            tr1, tr2, tr3 = st.columns([2, 1, 1])
+            tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
+            
+            # --- RASTREADOR DE MATERIAL EN ACCIÓN ---
+            mat_item_tras = mapeo_materiales.get(t_producto, "S/N")
+            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_{fk_t}")
+
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
@@ -719,7 +774,8 @@ def ejecutar():
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
 
-            cpt1, cpt2, cpt3, cpt4 = st.columns(4)
+            cpt_mat, cpt1, cpt2, cpt3, cpt4 = st.columns(5)
+            with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
             with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
             with cpt2: st.caption("📦 LOTE"); st.code(t_lote if t_lote else "...", language="text")
             with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
@@ -738,6 +794,9 @@ def ejecutar():
                             pista_combinada = f"{t_origen}-{t_destino}"
                             fecha_str = t_fecha.strftime("%d/%m/%Y")
                             cantidad_formateada = formatear_numero_sap(t_cantidad)
+
+                            # 💥 TÁCTICA APÓSTROFE PARA PROTEGER EL CERO DEL LOTE
+                            lote_tras_inject = f"'{str(t_lote).strip()}" if str(t_lote).strip() else ""
                             
                             nueva_fila_traslado = []
                             for h in encabezados_limpios_tras:
@@ -750,12 +809,12 @@ def ejecutar():
                                 elif "PISTA" in h_up: nueva_fila_traslado.append(pista_combinada)
                                 elif "SEMANA" in h_up: nueva_fila_traslado.append(str(semana_traslado))
                                 elif "OBSERVAC" in h_up: nueva_fila_traslado.append(str(t_observacion).strip())
-                                elif "LOTE" in h_up: nueva_fila_traslado.append(str(t_lote).strip())
+                                elif "LOTE" in h_up: nueva_fila_traslado.append(lote_tras_inject)
                                 else: nueva_fila_traslado.append("")
                             
                             gc_temp = inicializar_cliente_gspread()
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                            ws_write = sh_temp.worksheets()[0]
+                            ws_write = sh_temp.worksheet(titulo_ws_traslados)
 
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
@@ -767,7 +826,7 @@ def ejecutar():
                             try: ws_write.update(range_name=rango_inyeccion, values=[nueva_fila_traslado], value_input_option='USER_ENTERED')
                             except: ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
-                        st.success(f"✅ ¡Traslado de {t_producto} registrado con éxito en la fila {fila_destino}!")
+                        st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito en la fila {fila_destino}!")
                         st.session_state['form_key_m19_traslados'] += 1
                         st.cache_data.clear(); st.rerun()
                     except Exception as e: st.error(f"Error al registrar traslado: {e}")
@@ -804,6 +863,11 @@ def ejecutar():
 
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in ['FILA_EXCEL', 'FECHA_SORT']]
             df_vista_t = df_traslados_vista[columnas_vista_t].copy()
+            
+            # Limpiamos visualmente los apóstrofes para que la matriz quede impecable en pantalla
+            if "LOTE" in df_vista_t.columns:
+                df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
+            
             cols_disabled_t = [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
 
             col_config_t = {"🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)}
@@ -830,7 +894,7 @@ def ejecutar():
                     cambios_exitosos = False
                     gc_temp = inicializar_cliente_gspread()
                     sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                    ws_t = sh_temp.worksheets()[0]
+                    ws_t = sh_temp.worksheet(titulo_ws_traslados)
 
                     for eli in sorted(eliminaciones, reverse=True):
                         with st.spinner(f"💥 Destruyendo la Fila {eli} del historial..."):
