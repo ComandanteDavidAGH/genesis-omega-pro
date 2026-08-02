@@ -317,7 +317,9 @@ def ejecutar():
             # Bóveda Traslados
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             df_traslados_list = []
-            columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION"]
+            
+            # Se añade "LOTE" a las columnas oficiales permitidas
+            columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION", "LOTE"]
             
             for ws in sh_traslados.worksheets():
                 hoja_datos = ws.get_all_values()
@@ -433,7 +435,6 @@ def ejecutar():
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                         
-                        # 💥 NUEVO BOTÓN DE GUARDADO DEDICADO EN LA COLUMNA DERECHA
                         with c_tog2:
                             st.markdown("<div style='margin-top: -5px;'></div>", unsafe_allow_html=True)
                             if st.button("💾 GUARDAR EN DICCIONARIO", type="secondary", use_container_width=True):
@@ -860,7 +861,28 @@ def ejecutar():
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
-            t_observacion = st.text_input("📝 Observación (Opcional)", key=f"t_observacion_{fk_t}")
+            # 💥 INYECCIÓN DE CASILLA DE LOTE EN TRASLADOS
+            tr4, tr5 = st.columns(2)
+            t_observacion = tr4.text_input("📝 Observación (Opcional)", key=f"t_observacion_{fk_t}")
+            t_lote = tr5.text_input("📦 Lote", key=f"t_lote_{fk_t}")
+
+            # 💥 PANEL DE COPIADO RÁPIDO DUAL PARA TRASLADOS
+            st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
+
+            cpt1, cpt2, cpt3, cpt4 = st.columns(4)
+            with cpt1:
+                st.caption("⚖️ CANTIDAD")
+                st.code(formatear_numero_sap(t_cantidad), language="text")
+            with cpt2:
+                st.caption("📦 LOTE")
+                st.code(t_lote if t_lote else "...", language="text")
+            with cpt3:
+                st.caption("🛫 ORIGEN")
+                st.code(t_origen, language="text")
+            with cpt4:
+                st.caption("🛬 DESTINO")
+                st.code(t_destino, language="text")
 
             st.markdown("<br>", unsafe_allow_html=True)
             btn_guardar_traslado = st.button("🚀 REGISTRAR TRASLADO EN LA BÓVEDA", type="primary", use_container_width=True)
@@ -887,7 +909,8 @@ def ejecutar():
                                 str(t_unidad).upper(),
                                 pista_combinada,
                                 str(semana_traslado),
-                                str(t_observacion).strip()
+                                str(t_observacion).strip(),
+                                str(t_lote).strip() # 💥 SE ENVÍA EL LOTE AL FINAL DE LA FILA
                             ]
                             
                             try:
