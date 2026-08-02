@@ -198,12 +198,11 @@ def ejecutar():
                 except Exception: st.info("No había basura. La lista ya estaba limpia.")
 
     with st.spinner("📡 Sincronizando Bóvedas de Ingresos y Traslados (Caché Activo)..."):
-        # Llamado al Escudo de Memoria para evitar el 429
         datos_ing_crudos, datos_dicc_crudos, datos_tras_crudos, titulo_ws_traslados, error_api = obtener_datos_bovedas()
 
         if error_api:
             if "429" in error_api:
-                st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: El sistema hizo demasiadas recargas seguidas y Google pausó temporalmente la conexión para proteger tu cuenta. **Espera de 1 a 2 minutos y presiona 'Refrescar Radares'.** El nuevo escudo antibloqueos ya está instalado para prevenir que esto vuelva a ocurrir.")
+                st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: El sistema hizo demasiadas recargas seguidas y Google pausó temporalmente la conexión para proteger tu cuenta. **Espera de 1 a 2 minutos y presiona 'Refrescar Radares'.**")
             else:
                 st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
@@ -257,7 +256,6 @@ def ejecutar():
                     elif h == "": h = f"COL_VACIA_{j}"
                     encabezados_limpios_tras.append(h)
                 
-                # 💥 INYECCIÓN FORZADA: Si no estaban en Google, los creamos en pantalla
                 if "OBSERVACION" not in encabezados_limpios_tras: encabezados_limpios_tras.append("OBSERVACION")
                 if "LOTE" not in encabezados_limpios_tras: encabezados_limpios_tras.append("LOTE")
                 
@@ -269,20 +267,15 @@ def ejecutar():
                     datos_recortados.append(pad_row)
                     
                 df_t = pd.DataFrame(datos_recortados, columns=encabezados_limpios_tras)
-                
-                # Elimina columnas vacías (fantasma) pero deja las reales
                 df_t = df_t.loc[:, ~df_t.columns.str.startswith('COL_VACIA_')]
                 df_t = df_t.loc[:, ~df_t.columns.duplicated()]
-                
                 df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
 
                 cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
                 df_traslados = df_t[cols_presentes]
                 
-                if "PRODUCTO" in df_traslados.columns:
-                    df_traslados["PRODUCTO"] = df_traslados["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
-                if "PISTA" in df_traslados.columns:
-                    df_traslados["PISTA"] = df_traslados["PISTA"].apply(estandarizar_pista)
+                if "PRODUCTO" in df_traslados.columns: df_traslados["PRODUCTO"] = df_traslados["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
+                if "PISTA" in df_traslados.columns: df_traslados["PISTA"] = df_traslados["PISTA"].apply(estandarizar_pista)
 
         # ================= PROCESAMIENTO INGRESOS =================
         df_ingresos = pd.DataFrame()
@@ -328,16 +321,20 @@ def ejecutar():
             df = df_ingresos
             COL_ESTADO = "ESTADO / OBSERVACIÓN"
             
+            # --- 💥 REPARACIÓN DE LAS ETIQUETAS DE COLUMNAS DE INGRESOS ---
+            col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
+            col_pista = next((c for c in df.columns if "PISTA" in c), None)
+            col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
+            col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
+
             if COL_ESTADO not in df.columns:
                 st.error(f"🚨 FALTA COLUMNA TÁCTICA: No se encontró la columna **{COL_ESTADO}**.")
             else:
-                # Recalcular el index real para update celular
                 idx_col_estado = encabezados_limpios_ing.index(COL_ESTADO) + 1 
 
                 st.markdown("### 📡 Radares de Vencimiento")
                 limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
                 hoy_ts = pd.to_datetime(hoy_colombia)
-                col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
                 
                 lotes_vencidos, lotes_riesgo = 0, 0
                 if col_fv:
@@ -473,13 +470,26 @@ def ejecutar():
                     btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
                     
                     if btn_guardar_nuevo:
-                        if not n_prod or str(n_prod).strip() == "":
-                            st.error("🚨 El nombre del producto no puede estar vacío.")
+                        if not n_prod or str(n_prod).strip() == "": st.error("🚨 El nombre del producto no puede estar vacío.")
                         else:
-                            prod_limpio = str(n_prod).strip().upper()
-                            prov_limpio = str(n_prov).strip().upper()
+                            prod_limpio = str(n_prod).strip().upper(); prov_limpio = str(n_prov).strip().upper()
+                            actualizar_dicc = False
+                            if es_nuevo_producto: actualizar_dicc = True
+                            elif (modificar_prov or es_vacio) and prov_limpio and prov_limpio != proveedor_asignado.upper(): actualizar_dicc = True
+                            if actualizar_dicc:
+                                try:
+                                    try: ws_dicc = sh_ingresos.worksheet("DICCIONARIO")
+                                    except:
+                                        ws_dicc = sh_ingresos.add_worksheet(title="DICCIONARIO", rows="100", cols="2")
+                                        ws_dicc.append_row(["PRODUCTO", "PROVEEDOR"])
+                                    datos_d = ws_dicc.get_all_values(); fila_a_actualizar = -1
+                                    for idx_d, row_d in enumerate(datos_d):
+                                        if len(row_d) > 0 and str(row_d[0]).strip().upper() == prod_limpio:
+                                            fila_a_actualizar = idx_d + 1; break
+                                    if fila_a_actualizar != -1: ws_dicc.update_cell(fila_a_actualizar, 2, prov_limpio)
+                                    else: ws_dicc.append_row([prod_limpio, prov_limpio])
+                                except Exception as e: st.warning(f"Se guardó el diccionario: {e}")
 
-                            # 💥 ARMADO DINÁMICO DE FILA DE INGRESOS
                             nueva_fila_drive = []
                             for header in encabezados_limpios_ing:
                                 h = header.upper()
@@ -502,42 +512,37 @@ def ejecutar():
                                 with st.spinner("Enviando datos con láser matemático..."):
                                     gc_temp = inicializar_cliente_gspread()
                                     sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
-                                    ws_write = sh_temp.worksheets()[0]
+                                    ws_write_ing = sh_temp.worksheets()[0]
                                     
                                     try: idx_col_prod = encabezados_limpios_ing.index("PRODUCTO") + 1
                                     except: idx_col_prod = 4 
                                         
-                                    col_prod_data = ws_write.col_values(idx_col_prod)
+                                    col_prod_data = ws_write_ing.col_values(idx_col_prod)
                                     last_row_ing = len(col_prod_data)
-                                    while last_row_ing > 0 and str(col_prod_data[last_row_ing-1]).strip() == "":
-                                        last_row_ing -= 1
-                                    
+                                    while last_row_ing > 0 and str(col_prod_data[last_row_ing-1]).strip() == "": last_row_ing -= 1
                                     fila_destino = last_row_ing + 1
                                     letra_col = get_column_letter(len(encabezados_limpios_ing))
                                     rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
                                     
-                                    try: ws_write.update(range_name=rango_inyeccion, values=[nueva_fila_drive], value_input_option='USER_ENTERED')
-                                    except: ws_write.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
+                                    try: ws_write_ing.update(range_name=rango_inyeccion, values=[nueva_fila_drive], value_input_option='USER_ENTERED')
+                                    except: ws_write_ing.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
                                     
                                 st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
                                 st.session_state['form_key_m19'] += 1
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e: st.error(f"Error al inyectar datos: {e}")
 
-                # --- GENERADOR DE REPORTE CORREO ---
                 st.markdown("---")
                 st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
                 st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto.")
                 
                 col_fecha_rep, col_vacia = st.columns([1, 3])
                 fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
-                col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
                 
                 if col_fecha_ingreso:
                     df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
                     mask = df['FECHA_ING_TEMP'].apply(lambda x: x.date() if pd.notna(x) else None) == fecha_reporte
                     df_correo = df[mask].copy()
-                    
                     if COL_ESTADO in df_correo.columns: df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
                     if not df_correo.empty:
                         df_correo = df_correo.sort_values(by='FILA_EXCEL', ascending=False)
@@ -546,7 +551,6 @@ def ejecutar():
                         st.markdown("👇 **Paso 1: Desmarca los registros que NO quieres enviar en el correo:**")
                         df_editado_correo = st.data_editor(df_correo[cols_ed], column_config={"✅ INCLUIR": st.column_config.CheckboxColumn("✅ INCLUIR", default=True)}, disabled=[c for c in cols_ed if c != "✅ INCLUIR"], hide_index=True, use_container_width=True, key=f"editor_correo_{fecha_reporte}")
                         df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
-                        
                         if not df_correo_final.empty:
                             mapa_columnas = {}
                             for col_excel in df_correo_final.columns:
@@ -563,11 +567,9 @@ def ejecutar():
                                 elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
                                 elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
                                 elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
-                                
                             df_correo_limpio = df_correo_final[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
                             orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
                             df_correo_limpio = df_correo_limpio[[col for col in orden_ideal if col in df_correo_limpio.columns]]
-                            
                             html_manual = "<table style='border-collapse: collapse; width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; border: 2px solid #0d1b2a; margin-top: 10px; background-color: #ffffff;'><thead><tr>"
                             for col_name in df_correo_limpio.columns: html_manual += f"<th style='background-color: #0d1b2a; color: #d4af37; padding: 8px 6px; border: 2px solid #0d1b2a; text-align: center; font-weight: 900; text-transform: uppercase; white-space: nowrap;'>{col_name}</th>"
                             html_manual += "</tr></thead><tbody>"
@@ -584,7 +586,6 @@ def ejecutar():
                         else: st.info("Has desmarcado todos los registros. La tabla final está vacía.")
                     else: st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_reporte.strftime('%d/%m/%Y')}.")
 
-                # --- ESCÁNER DE AUDITORÍA ---
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
@@ -738,7 +739,6 @@ def ejecutar():
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
-            # 💥 NUEVO MENÚ DESPLEGABLE DE OBSERVACIÓN
             tr4, tr5 = st.columns(2)
             opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "OTRO"]
             t_observacion_sel = tr4.selectbox("📝 Observación", opciones_obs, key=f"t_obs_sel_{fk_t}")
@@ -770,7 +770,6 @@ def ejecutar():
                             fecha_str = t_fecha.strftime("%d/%m/%Y")
                             cantidad_formateada = formatear_numero_sap(t_cantidad)
                             
-                            # 💥 ESCÁNER DINÁMICO: EMPAQUETA LOS DATOS EN EL ORDEN EXACTO DEL EXCEL
                             nueva_fila_traslado = []
                             for h in encabezados_limpios_tras:
                                 h_up = h.upper()
