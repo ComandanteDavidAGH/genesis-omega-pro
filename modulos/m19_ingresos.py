@@ -258,6 +258,7 @@ def ejecutar():
 
     with st.spinner("📡 Sincronizando Bóvedas de Ingresos y Traslados..."):
         try:
+            # ================= BÓVEDA DE INGRESOS =================
             sh_ingresos = gc.open_by_url(URL_SHEET_INGRESOS)
             ws_ingresos = sh_ingresos.get_worksheet(0) 
             datos_crudos = ws_ingresos.get_all_values()
@@ -311,17 +312,15 @@ def ejecutar():
                 cache_mapeo[p_clean] = resultado
                 return resultado
 
-            # ================= BÓVEDA DE TRASLADOS (REDISEÑO BLOQUEO EXCLUSIVO) =================
+            # ================= BÓVEDA DE TRASLADOS (REDISEÑO EXCLUSIVO) =================
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             
-            # 💥 BLOQUEO TÁCTICO: Buscar SOLO la pestaña "TRASLADOS"
             ws_traslados = None
             for ws in sh_traslados.worksheets():
-                if ws.title.strip().upper() == "TRASLADOS":
+                if "TRASLADO" in ws.title.strip().upper():
                     ws_traslados = ws
                     break
             
-            # Si por algún motivo no se llama exactamente así, tomar la primera
             if not ws_traslados: 
                 ws_traslados = sh_traslados.get_worksheet(0)
                 
@@ -348,7 +347,6 @@ def ejecutar():
                     elif "LOTE" in h_up:
                         encabezados_temp[j] = "LOTE"
                 
-                # Si a pesar de todo la columna LOTE no está, forzar su existencia
                 if "LOTE" not in encabezados_temp:
                     encabezados_temp.append("LOTE")
                 
@@ -361,11 +359,15 @@ def ejecutar():
                     
                 df_t = pd.DataFrame(datos_padded, columns=encabezados_temp)
                 
-                df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
+                # 💥 1. PRIMERO EXTERMINAR COLUMNAS FANTASMAS Y DUPLICADAS
+                df_t = df_t.loc[:, df_t.columns.astype(str).str.strip() != '']
+                df_t = df_t.loc[:, ~df_t.columns.duplicated()]
                 
-                # 💥 DESTRUCTOR DE NONE Nivel ADN
+                # 💥 2. LUEGO EJECUTAR EL DESTRUCTOR DE NONE SOBRE COLUMNAS LIMPIAS
                 for col in df_t.columns:
                     df_t[col] = df_t[col].apply(limpiar_celda_none)
+                
+                df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
 
                 cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
                 df_t = df_t[cols_presentes]
@@ -415,12 +417,14 @@ def ejecutar():
                 
             df = pd.DataFrame(datos_ing_padded, columns=encabezados)
             
-            # Destructor de None para Ingresos también
+            # 💥 1. PRIMERO EXTERMINAR COLUMNAS FANTASMAS Y DUPLICADAS
+            df = df.loc[:, df.columns.astype(str).str.strip() != '']
+            df = df.loc[:, ~df.columns.duplicated()]
+            
+            # 💥 2. LUEGO DESTRUCTOR DE NONE
             for col in df.columns:
                 df[col] = df[col].apply(limpiar_celda_none)
             
-            df = df.loc[:, df.columns != '']
-            df = df.loc[:, ~df.columns.duplicated()]
             df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
@@ -956,16 +960,14 @@ def ejecutar():
                                 str(t_lote).strip()
                             ]
                             
-                            # 💥 TÁCTICA FRANCOTIRADOR: BUSCAR LA PESTAÑA EXACTA QUE SE LLAME TRASLADOS
                             ws_write = None
                             for ws in sh_traslados.worksheets():
-                                if ws.title.strip().upper() == "TRASLADOS":
+                                if "TRASLADO" in ws.title.strip().upper():
                                     ws_write = ws
                                     break
                             if not ws_write: 
                                 ws_write = sh_traslados.get_worksheet(0)
 
-                            # 💥 TÁCTICA FRANCOTIRADOR 2: LEER SOLO LA COLUMNA A (CONSECUTIVO) PARA EVITAR LAS SEMANAS "52"
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
                             while last_row > 0 and str(col_a[last_row-1]).strip() == "":
@@ -1054,7 +1056,7 @@ def ejecutar():
                     
                     ws_t = None
                     for ws in sh_traslados.worksheets():
-                        if ws.title.strip().upper() == "TRASLADOS":
+                        if "TRASLADO" in ws.title.strip().upper():
                             ws_t = ws
                             break
                     if not ws_t: 
