@@ -40,44 +40,52 @@ def obtener_datos_bovedas():
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
     except Exception as e: return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES (LECTURA DIRECTA INDESTRUCTIBLE) ---
+# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (PLANTILLA) ---
 @st.cache_data(show_spinner=False, ttl=3600)
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
     if not gc: return {}
     try:
-        # URL 100% Corregida
+        # 💥 COORDENADAS RESTAURADAS Y VERIFICADAS
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
         ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
-        
-        # Leemos fila por fila sin depender de los encabezados (que causan errores)
-        for row in datos:
-            if len(row) >= 10: # Aseguramos que la fila al menos llegue hasta la Columna J
-                mat = str(row[0]).strip() # Columna A
+        if datos and len(datos) > 0:
+            idx_head = -1
+            for i in range(min(15, len(datos))):
+                fila_up = [str(x).strip().upper() for x in datos[i]]
+                if "MATERIAL" in fila_up:
+                    idx_head = i
+                    break
+                    
+            if idx_head != -1:
+                encabezados = [str(x).strip().upper() for x in datos[idx_head]]
+                idx_mat = encabezados.index("MATERIAL")
                 
-                # Ignoramos la fila si está vacía o es el título
-                if not mat or mat.upper() == "MATERIAL": 
-                    continue
-                
-                # Columna J (Índice 9)
-                desc_j = str(row[9]).strip().upper()
-                if desc_j: 
-                    mapeo[re.sub(r'\s+', ' ', desc_j)] = mat
-                
-                # Columna K (Índice 10) si existe
-                if len(row) >= 11:
-                    desc_k = str(row[10]).strip().upper()
-                    if desc_k: 
-                        mapeo[re.sub(r'\s+', ' ', desc_k)] = mat
+                idx_desc_j = encabezados.index("DESCRIPCIÓN DEL MATERIAL") if "DESCRIPCIÓN DEL MATERIAL" in encabezados else -1
+                idx_desc_k = encabezados.index("DESCRIPCIÓN ÚNICA") if "DESCRIPCIÓN ÚNICA" in encabezados else -1
+
+                for row in datos[idx_head+1:]:
+                    mat = str(row[idx_mat]).strip() if len(row) > idx_mat else ""
+                    desc = ""
+                    
+                    if idx_desc_k != -1 and len(row) > idx_desc_k and str(row[idx_desc_k]).strip():
+                        desc = str(row[idx_desc_k]).strip().upper()
+                    elif idx_desc_j != -1 and len(row) > idx_desc_j and str(row[idx_desc_j]).strip():
+                        desc = str(row[idx_desc_j]).strip().upper()
+                        
+                    if desc and mat:
+                        desc_clean = re.sub(r'\s+', ' ', desc).strip()
+                        mapeo[desc_clean] = mat
         return mapeo
-    except Exception: return {}
+    except Exception as e: 
+        return {"ERROR_TECNICO": str(e)}
 
 def buscar_codigo_material(producto_nombre, mapeo):
+    if "ERROR_TECNICO" in mapeo: return "S/N"
     prod_clean = re.sub(r'\s+', ' ', str(producto_nombre).strip().upper())
     if not prod_clean or not mapeo: return "S/N"
-    
     if prod_clean in mapeo: return mapeo[prod_clean]
     for desc, cod in mapeo.items():
         if prod_clean in desc or desc in prod_clean: return cod
@@ -204,7 +212,9 @@ def ejecutar():
             return
 
         mapeo_materiales = extraer_mapeo_materiales()
-        
+        if "ERROR_TECNICO" in mapeo_materiales:
+            st.warning(f"⚠️ Alerta menor: No se pudo conectar a la pestaña Plantilla ({mapeo_materiales['ERROR_TECNICO']})")
+
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
             if len(row) >= 2 and str(row[0]).strip():
