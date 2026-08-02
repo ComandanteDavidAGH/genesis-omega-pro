@@ -274,12 +274,10 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 💥 CREACIÓN DE LA LISTA DE AUTORIZADOS SAP 
             lista_autorizada = set([re.sub(r'\s+', ' ', str(k).strip().upper()) for k in dict_operativo.keys()])
             for p in productos_precio_sap:
                 lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
                 
-            # 💥 MOTOR DE HOMOLOGACIÓN INTELIGENTE (FUZZY MATCHING)
             cache_mapeo = {}
             def estandarizar_y_marcar_inteligente(prod):
                 if pd.isna(prod) or str(prod).strip() == "" or str(prod).strip() == "None": return ""
@@ -310,7 +308,6 @@ def ejecutar():
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             df_traslados_list = []
             
-            # Se añade "LOTE" a las columnas oficiales permitidas
             columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION", "LOTE"]
             
             for ws in sh_traslados.worksheets():
@@ -327,7 +324,6 @@ def ejecutar():
                 if idx_head_t != -1:
                     encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
                     
-                    # 💥 ESCUDO ANTI-TILDES: Fusiona OBSERVACIÓN y OBSERVACION
                     for j in range(len(encabezados_temp)):
                         if encabezados_temp[j] == "OBSERVACIÓN":
                             encabezados_temp[j] = "OBSERVACION"
@@ -336,11 +332,13 @@ def ejecutar():
                     
                     df_t = pd.DataFrame(hoja_datos[idx_head_t+1:], columns=encabezados_temp)
                     
-                    # DESTRUCTOR DE "NONE": Purifica celdas vacías
+                    # 💥 Rastreo preciso de fila para poder eliminar después
+                    df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
+                    
                     df_t = df_t.fillna("")
                     df_t = df_t.replace({None: "", "None": "", "nan": "", "NaN": ""})
 
-                    cols_presentes = [c for c in columnas_oficiales if c in df_t.columns]
+                    cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
                     df_t = df_t[cols_presentes]
                     
                     if "PRODUCTO" in df_t.columns:
@@ -916,7 +914,6 @@ def ejecutar():
                             except:
                                 ws_write = sh_traslados.get_worksheet(0)
 
-                            # 💥 TÁCTICA FRANCOTIRADOR: Buscar última fila usando columna A
                             col_consecutivos = ws_write.col_values(1)
                             fila_destino = len(col_consecutivos) + 1
                             rango_inyeccion = f"A{fila_destino}:I{fila_destino}"
@@ -929,9 +926,9 @@ def ejecutar():
                     except Exception as e:
                         st.error(f"Error al registrar traslado: {e}")
 
-        # --- VISOR HISTÓRICO DE TRASLADOS ---
+        # --- VISOR HISTÓRICO DE TRASLADOS (MATRIZ DE BORRADO) ---
         st.markdown("---")
-        st.markdown("### 📋 Visor Histórico de Movimientos")
+        st.markdown("### 📋 Visor y Edición Histórica de Movimientos")
         
         if not df_traslados.empty:
             df_traslados_vista = df_traslados.copy()
@@ -954,16 +951,83 @@ def ejecutar():
             if producto_filtro_t != "TODOS" and col_prod_t:
                 df_traslados_vista = df_traslados_vista[df_traslados_vista[col_prod_t].str.upper() == producto_filtro_t]
 
+            # 💥 CIRUGÍA: CREACIÓN DE LA MATRIZ DE EDICIÓN PARA TRASLADOS
+            df_traslados_vista.insert(0, "🛡️ ACCIÓN", "✅ MANTENER")
+
             if "FECHA" in df_traslados_vista.columns:
                 df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
-                df_traslados_vista = df_traslados_vista.dropna(subset=['FECHA_SORT'])
-                df_traslados_vista = df_traslados_vista.sort_values(by='FECHA_SORT', ascending=False).drop(columns=['FECHA_SORT'])
+                df_traslados_vista = df_traslados_vista.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
+            else:
+                df_traslados_vista = df_traslados_vista.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
-            st.dataframe(df_traslados_vista, use_container_width=True, hide_index=True)
+            st.caption("🔒 Haz doble clic en la columna '🛡️ ACCIÓN' para marcar y **ELIMINAR** un traslado de la Bóveda de Google Sheets.")
+
+            columnas_vista_t = [c for c in df_traslados_vista.columns if c not in ['FILA_EXCEL', 'FECHA_SORT']]
+            df_vista_t = df_traslados_vista[columnas_vista_t].copy()
             
+            cols_disabled_t = [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
+
+            col_config_t = {
+                "🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila en Drive.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)
+            }
+            
+            # Formato de columnas para que se vea impecable
+            for c in df_vista_t.columns:
+                if c == "🛡️ ACCIÓN": continue
+                c_up = c.upper()
+                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
+                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
+                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
+                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
+                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
+                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
+                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
+                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+
+            df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("💾 EJECUTAR ELIMINACIÓN DE TRASLADOS EN DRIVE", type="primary", key="btn_del_traslados"):
+                eliminaciones = []
+                for i in range(len(df_traslados_vista)):
+                    accion = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
+                    if "ELIMINAR REGISTRO" in accion:
+                        eliminaciones.append(int(df_traslados_vista.iloc[i]['FILA_EXCEL']))
+
+                if eliminaciones:
+                    # Siempre ordenar de mayor a menor para borrar de abajo hacia arriba y no dañar los índices
+                    eliminaciones_ordenadas = sorted(eliminaciones, reverse=True)
+                    cambios_exitosos = False
+                    
+                    try:
+                        ws_t = sh_traslados.worksheet("TRASLADOS")
+                    except:
+                        ws_t = sh_traslados.get_worksheet(0)
+
+                    for eli in eliminaciones_ordenadas:
+                        with st.spinner(f"💥 Destruyendo la Fila {eli} del historial de traslados..."):
+                            try:
+                                ws_t.delete_row(eli)
+                                cambios_exitosos = True
+                            except AttributeError:
+                                try:
+                                    ws_t.delete_rows(eli)
+                                    cambios_exitosos = True
+                                except Exception as e: st.error(f"Error fatal de API. Fila {eli}: {e}")
+                            except Exception as e: st.error(f"Error al eliminar fila {eli}: {e}")
+
+                    if cambios_exitosos:
+                        st.success("✅ ¡Objetivo neutralizado! El traslado ha sido borrado del sistema.")
+                        st.cache_data.clear()
+                        st.rerun()
+                else:
+                    st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
+
             buffer_t = io.BytesIO()
             with pd.ExcelWriter(buffer_t, engine='openpyxl') as writer:
-                df_traslados_vista.to_excel(writer, sheet_name='Historial_Traslados', index=False)
+                # Quitamos la columna de acción para el reporte limpio de Excel
+                df_exportar_t = df_editado_t.drop(columns=["🛡️ ACCIÓN"]) if "🛡️ ACCIÓN" in df_editado_t.columns else df_editado_t
+                df_exportar_t.to_excel(writer, sheet_name='Historial_Traslados', index=False)
                 ws_excel_t = writer.sheets['Historial_Traslados']
                 header_font_t = Font(bold=True, color="FFFFFF")
                 header_fill_t = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
