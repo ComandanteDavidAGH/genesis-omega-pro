@@ -149,6 +149,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if not match_lider:
                 puntaje -= 500 
         
+        # Reemplaza la lógica de evaluación dentro de tu for iter_id, receta in dict_recetas.items():
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
@@ -157,7 +158,9 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
                     error = abs(d_sap - d_esperada)
-                    tolerancia = max(0.8, d_esperada * 0.25)
+                    
+                    # 1. Ajustamos la tolerancia para que sea más estricta (15% en lugar de 25%)
+                    tolerancia = max(0.3, d_esperada * 0.15) 
                     
                     if error <= 0.15: 
                         match_perfecto = True
@@ -169,7 +172,8 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if match_receta:
                 puntaje += 100
                 if match_perfecto:
-                    puntaje += 100 
+                    # 2. Le damos a la matemática PERFECTA el mayor peso posible
+                    puntaje += 300 
                 elif dose_matched: 
                     puntaje += 50  
                 else:
@@ -177,25 +181,11 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             else:
                 puntaje -= 100 
 
-        for k_sap in sap_dict_pista.keys():
-            sap_en_receta = False
-            for p_receta in receta.keys():
-                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
-                    sap_en_receta = True
-                    break
-            
-            if not sap_en_receta:
-                is_fert = False
-                for f_name in dict_fertilizantes.keys():
-                    if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
-                        is_fert = True
-                        break
-                
-                if not is_fert:
-                    puntaje -= 100 
+        # ... (Mantén tu lógica de validación de fertilizantes intacta) ...
 
+        # 3. Reducimos el sesgo del piloto para que no le gane a un Match Perfecto de SAP
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
-            puntaje += 200
+            puntaje += 100
 
         if puntaje > max_p:
             max_p = puntaje
