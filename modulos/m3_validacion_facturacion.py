@@ -109,8 +109,11 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
-# 🌟 NUEVO ESCÁNER UNIVERSAL DE DOSIS (Busca en TODAS las tablas de DD_Mesclas)
+# 🌟 ESCÁNER UNIVERSAL DE DOSIS (💥 BLINDADO CONTRA DATOS FANTASMA)
 def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
+    # BLINDAJE: Variables de salida neutras absolutas
+    dosis_encontrada = None
+    
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
     if not nombre_clean: return None
 
@@ -125,16 +128,20 @@ def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
                         val_num = str(df_mez.iloc[r_idx, c_idx + 1]).replace(",", ".")
                         dosis = float(re.sub(r'[^\d.]', '', val_num))
                         if 0 < dosis < 100:
-                            return dosis
+                            dosis_encontrada = dosis
+                            return dosis_encontrada
                     except Exception:
                         pass
-    return None
+    
+    # SALIDA SEGURA (Retorna None sin chocar con caché)
+    return dosis_encontrada
 
+# 💥 IA EMPAREJADORA (CALIBRADA PARA MATAR EL EFECTO DEDO Y DAR PESO A SAP)
 @st.cache_data(show_spinner=False, ttl=1800)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
-    max_p = -9999
+    max_p = -99999
 
     for iter_id, receta in dict_recetas.items():
         puntaje = 0
@@ -149,7 +156,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if not match_lider:
                 puntaje -= 500 
         
-        # Reemplaza la lógica de evaluación dentro de tu for iter_id, receta in dict_recetas.items():
         for p_receta, d_esperada in receta.items():
             match_receta = False
             dose_matched = False
@@ -159,8 +165,8 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                     match_receta = True
                     error = abs(d_sap - d_esperada)
                     
-                    # 1. Ajustamos la tolerancia para que sea más estricta (15% en lugar de 25%)
-                    tolerancia = max(0.3, d_esperada * 0.15) 
+                    # 💥 CORRECCIÓN: Tolerancia mucho más estricta (15% max en vez de 25%)
+                    tolerancia = max(0.3, d_esperada * 0.15)
                     
                     if error <= 0.15: 
                         match_perfecto = True
@@ -172,7 +178,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if match_receta:
                 puntaje += 100
                 if match_perfecto:
-                    # 2. Le damos a la matemática PERFECTA el mayor peso posible
+                    # 💥 CORRECCIÓN: Se prioriza SAP, Match perfecto suma muchísimo
                     puntaje += 300 
                 elif dose_matched: 
                     puntaje += 50  
@@ -181,9 +187,24 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             else:
                 puntaje -= 100 
 
-        # ... (Mantén tu lógica de validación de fertilizantes intacta) ...
+        for k_sap in sap_dict_pista.keys():
+            sap_en_receta = False
+            for p_receta in receta.keys():
+                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
+                    sap_en_receta = True
+                    break
+            
+            if not sap_en_receta:
+                is_fert = False
+                for f_name in dict_fertilizantes.keys():
+                    if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
+                        is_fert = True
+                        break
+                
+                if not is_fert:
+                    puntaje -= 100 
 
-        # 3. Reducimos el sesgo del piloto para que no le gane a un Match Perfecto de SAP
+        # 💥 CORRECCIÓN: El piloto ya no tiene poder absoluto (Baja de 200 a 100)
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
             puntaje += 100
 
@@ -372,7 +393,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operations")
-    
+        
         c_vacio, c_radar = st.columns([2, 2])
         pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
 
@@ -642,7 +663,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if f"rl_{casilla_key}" in st.session_state:
                         del st.session_state[f"rl_{casilla_key}"]
 
-                c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4) # ✅ Corrección de variables con sintaxis extraña
+                c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4) 
                 
                 recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=st.session_state[f"default_rec_idx_{casilla_key}"], key=f"rl_{casilla_key}")
                 
@@ -916,17 +937,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
                     if dosis_teorica is None:
-                        # 🌟 ESCÁNER UNIVERSAL (Búsqueda en TODA la hoja de mezclas)
                         dosis_rescatada = obtener_dosis_global_robusta(df_mez, nombre_limpio)
                         
                         if dosis_rescatada is not None:
                             dosis_teorica = dosis_rescatada
                         else:
-                            # 💥 CORRECCIÓN: Si TRULY no está en la base, agrupar los lotes para evitar división errónea
                             cant_total_agrupada = totales_sap_por_producto.get(nombre_limpio, cant_linea_sap)
                             dosis_teorica = cant_total_agrupada / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                    # 💥 REGLA DE ORO: DOSIS IDEAL 100% PURA (Dosis/Ha * Hectáreas)
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
@@ -1025,7 +1043,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         use_container_width=True, hide_index=True
                     )
 
-                    # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
                     st.write("")
                     st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
                     st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
@@ -1055,7 +1072,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             precio_columna_ref = dict_aviones.get(escuadron_aviones.iloc[0]['Avión'], 0) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
             precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadron_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
 
-            # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
             st.write("")
             st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
             m1, m2, m3, m4, m5 = st.columns(5)
