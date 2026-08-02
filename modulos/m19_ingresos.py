@@ -121,7 +121,7 @@ def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh_config.worksheet("Configuración") if "Configuración" in [w.title for w in sh_config.worksheets()] else sh_config.worksheet("DD_Mesclas")
         datos = ws.get_all_values()
         if not datos: return []
@@ -198,9 +198,7 @@ def ejecutar():
             return
 
         mapeo_materiales = extraer_mapeo_materiales()
-        if "ERROR" in mapeo_materiales:
-            st.error(f"🚨 FALLA DE CONEXIÓN CON PLANTILLA: {mapeo_materiales['ERROR']}")
-
+        
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
             if len(row) >= 2 and str(row[0]).strip():
@@ -340,8 +338,8 @@ def ejecutar():
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        # 💥 Llave única para evitar DuplicateElementId
-                        c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True, key="mat_ing_nuevo")
+                        # 💥 Llave dinámica ligada al nombre del producto
+                        c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True, key=f"mat_ing_nuevo_{st.session_state['form_key_m19']}_{n_prod}")
                         mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                         with c_tog2:
@@ -371,8 +369,8 @@ def ejecutar():
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
-                        # 💥 Llave única para evitar DuplicateElementId
-                        c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True, key="mat_ing_existente")
+                        # 💥 Llave dinámica ligada al nombre del producto para que cambie siempre
+                        c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True, key=f"mat_ing_exist_{st.session_state['form_key_m19']}_{n_prod}")
 
                         proveedor_asignado = dict_operativo.get(n_prod, "")
                         debe_desbloquear = modificar_prov or not bool(proveedor_asignado.strip())
@@ -699,8 +697,8 @@ def ejecutar():
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
-            # 💥 Llave única para evitar DuplicateElementId
-            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_cod_{fk_t}")
+            # 💥 Llave única dinámica ligada al nombre del producto para que se actualice sí o sí
+            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_cod_{fk_t}_{t_producto}")
 
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
@@ -712,7 +710,7 @@ def ejecutar():
             if t_observacion_sel == "OTRO": t_observacion = tr4.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
             else: t_observacion = t_observacion_sel
 
-            # 💥 NUEVO RASTREADOR TRIPLE A PARA LOTES
+            # 💥 RASTREADOR TRIPLE A PARA LOTES
             lotes_disp = []
             if not df_ingresos.empty:
                 c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
