@@ -304,7 +304,7 @@ def ejecutar():
                 cache_mapeo[p_clean] = resultado
                 return resultado
 
-            # Bóveda Traslados
+            # ================= BÓVEDA DE TRASLADOS =================
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             df_traslados_list = []
             
@@ -330,9 +330,17 @@ def ejecutar():
                         elif "COLUMNA1" in encabezados_temp[j] and "OBSERVACION" not in encabezados_temp:
                             encabezados_temp[j] = "OBSERVACION"
                     
-                    df_t = pd.DataFrame(hoja_datos[idx_head_t+1:], columns=encabezados_temp)
+                    # 💥 ESCUDO DE RELLENO ANTI-NONE: Igualar longitud de todas las filas al encabezado
+                    max_cols_t = len(encabezados_temp)
+                    datos_recortados = hoja_datos[idx_head_t+1:]
+                    datos_padded = []
+                    for row in datos_recortados:
+                        # Rellena con vacíos las columnas que falten (como la nueva columna LOTE)
+                        padded_row = row + [""] * (max_cols_t - len(row))
+                        datos_padded.append(padded_row[:max_cols_t])
+                        
+                    df_t = pd.DataFrame(datos_padded, columns=encabezados_temp)
                     
-                    # 💥 Rastreo preciso de fila para poder eliminar después
                     df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
                     
                     df_t = df_t.fillna("")
@@ -380,7 +388,16 @@ def ejecutar():
                     break
 
             encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
-            df = pd.DataFrame(datos_crudos[idx_header+1:], columns=encabezados)
+            
+            # 💥 ESCUDO DE RELLENO ANTI-NONE PARA INGRESOS
+            max_cols_ing = len(encabezados)
+            datos_ing_recortados = datos_crudos[idx_header+1:]
+            datos_ing_padded = []
+            for row in datos_ing_recortados:
+                pad_row = row + [""] * (max_cols_ing - len(row))
+                datos_ing_padded.append(pad_row[:max_cols_ing])
+                
+            df = pd.DataFrame(datos_ing_padded, columns=encabezados)
             
             df = df.loc[:, df.columns != '']
             df = df.loc[:, ~df.columns.duplicated()]
@@ -595,7 +612,18 @@ def ejecutar():
                             
                             try:
                                 with st.spinner("Enviando datos con láser matemático..."):
-                                    fila_destino = idx_header + len(df) + 2
+                                    # 💥 TÁCTICA FRANCOTIRADOR PARA INGRESOS: Busca la última celda real basándose en la columna PRODUCTO
+                                    try:
+                                        idx_col_prod = encabezados.index("PRODUCTO") + 1
+                                    except:
+                                        idx_col_prod = 4 # Por defecto la D
+                                        
+                                    col_prod_data = ws_ingresos.col_values(idx_col_prod)
+                                    last_row_ing = len(col_prod_data)
+                                    while last_row_ing > 0 and str(col_prod_data[last_row_ing-1]).strip() == "":
+                                        last_row_ing -= 1
+                                    
+                                    fila_destino = last_row_ing + 1
                                     letra_col = get_column_letter(len(encabezados))
                                     rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
                                     ws_ingresos.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
@@ -914,9 +942,14 @@ def ejecutar():
                             except:
                                 ws_write = sh_traslados.get_worksheet(0)
 
-                            col_consecutivos = ws_write.col_values(1)
-                            fila_destino = len(col_consecutivos) + 1
-                            rango_inyeccion = f"A{fila_destino}:I{fila_destino}"
+                            # 💥 TÁCTICA FRANCOTIRADOR PARA TRASLADOS: Busca la última celda real basándose en la columna CONSECUTIVO (Col 1)
+                            col_a = ws_write.col_values(1)
+                            last_row = len(col_a)
+                            while last_row > 0 and str(col_a[last_row-1]).strip() == "":
+                                last_row -= 1
+                                
+                            fila_destino = last_row + 1
+                            rango_inyeccion = f"A{fila_destino}:{get_column_letter(len(nueva_fila_traslado))}{fila_destino}"
                             ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
                         st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito en la fila {fila_destino}!")
@@ -951,7 +984,6 @@ def ejecutar():
             if producto_filtro_t != "TODOS" and col_prod_t:
                 df_traslados_vista = df_traslados_vista[df_traslados_vista[col_prod_t].str.upper() == producto_filtro_t]
 
-            # 💥 CIRUGÍA: CREACIÓN DE LA MATRIZ DE EDICIÓN PARA TRASLADOS
             df_traslados_vista.insert(0, "🛡️ ACCIÓN", "✅ MANTENER")
 
             if "FECHA" in df_traslados_vista.columns:
@@ -971,7 +1003,6 @@ def ejecutar():
                 "🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila en Drive.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)
             }
             
-            # Formato de columnas para que se vea impecable
             for c in df_vista_t.columns:
                 if c == "🛡️ ACCIÓN": continue
                 c_up = c.upper()
@@ -995,7 +1026,6 @@ def ejecutar():
                         eliminaciones.append(int(df_traslados_vista.iloc[i]['FILA_EXCEL']))
 
                 if eliminaciones:
-                    # Siempre ordenar de mayor a menor para borrar de abajo hacia arriba y no dañar los índices
                     eliminaciones_ordenadas = sorted(eliminaciones, reverse=True)
                     cambios_exitosos = False
                     
@@ -1025,7 +1055,6 @@ def ejecutar():
 
             buffer_t = io.BytesIO()
             with pd.ExcelWriter(buffer_t, engine='openpyxl') as writer:
-                # Quitamos la columna de acción para el reporte limpio de Excel
                 df_exportar_t = df_editado_t.drop(columns=["🛡️ ACCIÓN"]) if "🛡️ ACCIÓN" in df_editado_t.columns else df_editado_t
                 df_exportar_t.to_excel(writer, sheet_name='Historial_Traslados', index=False)
                 ws_excel_t = writer.sheets['Historial_Traslados']
