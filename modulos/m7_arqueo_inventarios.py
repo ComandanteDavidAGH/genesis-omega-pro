@@ -507,15 +507,37 @@ def ejecutar(quitar_tildes, purificar_lote):
             if not err_fantasmas.empty:
                 opciones = err_fantasmas.apply(lambda x: f"{x['PISTA']} | Prod: {x['PRODUCTO']} | Lote Físico: {x['LOTE']} ({x['SALDO_FISICO']} L/Kg)", axis=1).tolist()
                 sel = st.selectbox("1️⃣ Seleccione el error de digitación a corregir:", opciones)
+                
                 if sel:
                     row_s = err_fantasmas.iloc[opciones.index(sel)]
                     df_sap_pista = st.session_state.df_sap_raw[st.session_state.df_sap_raw['PISTA'] == row_s['PISTA']]
-                    df_exact = df_sap_pista[df_sap_pista['PRODUCTO'] == row_s['PRODUCTO']]
+                    prod_fisico = str(row_s['PRODUCTO']).strip().upper()
                     
-                    if not df_exact.empty: 
-                        lote_ok_str = st.selectbox(f"2️⃣ Seleccione el Lote Oficial de SAP de destino:", sorted(df_exact.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist()))
+                    # 💥 RASTREO INTELIGENTE (Táctica Módulo 19 inyectada)
+                    df_exact = df_sap_pista[df_sap_pista['PRODUCTO'].astype(str).str.upper() == prod_fisico]
+                    
+                    if df_exact.empty:
+                        # Si no es exacto, busco si uno contiene al otro
+                        mask = df_sap_pista['PRODUCTO'].astype(str).str.upper().apply(lambda x: x in prod_fisico or prod_fisico in x)
+                        df_exact = df_sap_pista[mask]
+                        
+                    if df_exact.empty:
+                        # Si todo falla, busco el texto más parecido
+                        import difflib
+                        sap_prods = df_sap_pista['PRODUCTO'].astype(str).str.upper().unique().tolist()
+                        matches = difflib.get_close_matches(prod_fisico, sap_prods, n=3, cutoff=0.4)
+                        if matches:
+                            df_exact = df_sap_pista[df_sap_pista['PRODUCTO'].astype(str).str.upper().isin(matches)]
+                    
+                    c_tog, _ = st.columns([1, 1])
+                    mostrar_todos = c_tog.toggle("🔄 Ver todo el arsenal de la pista (Ignorar filtro)", value=False)
+                    
+                    if not df_exact.empty and not mostrar_todos: 
+                        opciones_dest = sorted(df_exact.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
+                        lote_ok_str = st.selectbox(f"2️⃣ Lotes detectados para '{prod_fisico}' en SAP:", opciones_dest)
                     else: 
-                        lote_ok_str = st.selectbox(f"2️⃣ Arsenal completo de la pista en SAP:", sorted(df_sap_pista.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist()))
+                        opciones_dest = sorted(df_sap_pista.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
+                        lote_ok_str = st.selectbox(f"2️⃣ Arsenal completo de la pista ({row_s['PISTA']}) en SAP:", opciones_dest)
                     
                     if st.button("⚡ FUSIONAR Y CORREGIR LOTE", type="primary"):
                         prod_sap, lote_sap = lote_ok_str.split(" | Lote: ")[0].strip(), lote_ok_str.split(" | Lote: ")[1].strip()
