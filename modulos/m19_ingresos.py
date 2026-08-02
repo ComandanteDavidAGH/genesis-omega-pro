@@ -121,7 +121,7 @@ def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
         ws = sh_config.worksheet("Configuración") if "Configuración" in [w.title for w in sh_config.worksheets()] else sh_config.worksheet("DD_Mesclas")
         datos = ws.get_all_values()
         if not datos: return []
@@ -199,7 +199,7 @@ def ejecutar():
 
         mapeo_materiales = extraer_mapeo_materiales()
         if "ERROR" in mapeo_materiales:
-            st.warning(f"⚠️ Alerta menor: No se pudo conectar a la Plantilla ({mapeo_materiales['ERROR']})")
+            st.error(f"🚨 FALLA DE CONEXIÓN CON PLANTILLA: {mapeo_materiales['ERROR']}")
 
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
@@ -340,8 +340,8 @@ def ejecutar():
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        # 💥 Sin KEY para que actúe dinámico
-                        c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True)
+                        # 💥 Llave única para evitar DuplicateElementId
+                        c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True, key="mat_ing_nuevo")
                         mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                         with c_tog2:
@@ -371,8 +371,8 @@ def ejecutar():
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
-                        # 💥 Sin KEY para que actúe como espejo dinámico de lo que retorna la función
-                        c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
+                        # 💥 Llave única para evitar DuplicateElementId
+                        c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True, key="mat_ing_existente")
 
                         proveedor_asignado = dict_operativo.get(n_prod, "")
                         debe_desbloquear = modificar_prov or not bool(proveedor_asignado.strip())
@@ -698,10 +698,9 @@ def ejecutar():
             tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
-            # 💥 RASTREO DINÁMICO DE MATERIAL
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
-            # 💥 Sin KEY para que actúe como espejo dinámico
-            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True)
+            # 💥 Llave única para evitar DuplicateElementId
+            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_cod_{fk_t}")
 
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
