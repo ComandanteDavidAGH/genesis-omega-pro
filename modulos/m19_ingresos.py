@@ -46,8 +46,8 @@ def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
     if not gc: return {}
     try:
-        # 💥 COORDENADAS RESTAURADAS Y VERIFICADAS
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        # 💥 COORDENADAS EXACTAS CON "HaI" Y "gq" PARA EVITAR EL 404
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
@@ -135,7 +135,8 @@ def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        # 💥 COORDENADAS EXACTAS CON "HaI" Y "gq" PARA EVITAR EL 404
+        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh_config.worksheet("Configuración") if "Configuración" in [w.title for w in sh_config.worksheets()] else sh_config.worksheet("DD_Mesclas")
         datos = ws.get_all_values()
         if not datos: return []
