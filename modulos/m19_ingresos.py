@@ -170,13 +170,6 @@ DICT_BASE_PRODUCTOS = {
     "ZINTRAC x LITRO SV": "YARA S.A.S."
 }
 
-# --- DESTRUCTOR GLOBAL DE NONE ---
-def limpiar_celda_none(val):
-    v = str(val).strip()
-    if v.lower() in ["none", "nan", "nat", "<na>", "null"]:
-        return ""
-    return v
-
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
@@ -973,24 +966,15 @@ def ejecutar():
                             fila_destino = last_row + 1
                             rango_inyeccion = f"A{fila_destino}:{get_column_letter(len(nueva_fila_traslado))}{fila_destino}"
                             
-                            # 💥 CEBOS DE DEPURACIÓN EXTREMA 💥
-                            st.error(f"🚨 CEBO 1 (HOJA DESTINO): Intentando escribir en la pestaña -> '{ws_write.title}'")
-                            st.error(f"🚨 CEBO 2 (COORDENADA): El láser apuntó a la fila -> {fila_destino} (Rango de impacto: {rango_inyeccion})")
-                            st.error(f"🚨 CEBO 3 (PAQUETE): Datos a inyectar -> {nueva_fila_traslado}")
-                            st.error(f"🚨 CEBO 4 (TAMAÑO): Llevamos {len(nueva_fila_traslado)} datos para meter en Google Sheets.")
-                            
-                            # Inyección robusta con control de errores explícito
                             try:
                                 ws_write.update(range_name=rango_inyeccion, values=[nueva_fila_traslado], value_input_option='USER_ENTERED')
                             except TypeError:
-                                # Respaldo por si la librería gspread es de versión antigua
                                 ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
                         st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito en la fila {fila_destino}!")
                         st.session_state['form_key_m19_traslados'] += 1
                         st.cache_data.clear()
-                        # Detenemos el rerun temporalmente para que puedas ver y capturar los letreros rojos del CEBO
-                        # st.rerun() 
+                        st.rerun() 
                     except Exception as e:
                         st.error(f"Error al registrar traslado: {e}")
 
@@ -1070,7 +1054,7 @@ def ejecutar():
                             ws_t = ws
                             break
                     if not ws_t: 
-                        ws_t = sh_traslados.get_worksheet(0)
+                        ws_t = sh_traslados.worksheets()[0]
 
                     for eli in eliminaciones_ordenadas:
                         with st.spinner(f"💥 Destruyendo la Fila {eli} del historial de traslados..."):
