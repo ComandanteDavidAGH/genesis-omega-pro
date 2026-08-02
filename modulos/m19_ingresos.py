@@ -49,18 +49,24 @@ def obtener_datos_bovedas():
     except Exception as e:
         return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (PLANTILLA) ---
-@st.cache_data(show_spinner=False, ttl=3600)
+# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (💥 CON CEBO TÁCTICO) ---
+@st.cache_data(show_spinner=False, ttl=0) # TTL 0 para forzar el cebo a correr
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
-    if not gc: return {}
+    if not gc: return {}, "FALLO: No hay conexión con Google Cloud"
     try:
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
-        ws = sh.worksheet("Plantilla")
+        try:
+            ws = sh.worksheet("Plantilla")
+        except Exception:
+            hojas_disp = [w.title for w in sh.worksheets()]
+            return {}, f"FALLO: No encontró la pestaña 'Plantilla'. Pestañas disponibles: {hojas_disp}"
+            
         datos = ws.get_all_values()
         mapeo = {}
+        cebo_info = []
+        
         if datos and len(datos) > 0:
-            # RASTREO DINÁMICO: Buscar en qué fila exacta están los encabezados
             idx_head = 0
             for i in range(min(10, len(datos))):
                 fila_up = [str(x).strip().upper() for x in datos[i]]
@@ -69,6 +75,9 @@ def extraer_mapeo_materiales():
                     break
                     
             encabezados = [str(x).strip().upper() for x in datos[idx_head]]
+            cebo_info.append(f"FILA ENCABEZADOS: {idx_head+1}")
+            cebo_info.append(f"ENCABEZADOS: {encabezados[:12]}")
+            
             idx_mat = encabezados.index("MATERIAL") if "MATERIAL" in encabezados else 0
             
             idx_desc = -1
@@ -78,7 +87,10 @@ def extraer_mapeo_materiales():
                 idx_desc = encabezados.index("DESCRIPCIÓN DEL MATERIAL")
             else:
                 idx_desc = 12
+                
+            cebo_info.append(f"COL MATERIAL: {idx_mat} | COL DESC: {idx_desc}")
 
+            contador_muestra = 0
             for row in datos[idx_head+1:]:
                 if len(row) > max(idx_mat, idx_desc):
                     mat = str(row[idx_mat]).strip()
@@ -86,9 +98,16 @@ def extraer_mapeo_materiales():
                     desc_clean = re.sub(r'\s+', ' ', desc)
                     if desc_clean and mat:
                         mapeo[desc_clean] = mat
-        return mapeo
-    except Exception:
-        return {}
+                        contador_muestra += 1
+                        if contador_muestra <= 2: 
+                            cebo_info.append(f"EJEMPLO: '{desc_clean}' -> '{mat}'")
+            
+            cebo_info.append(f"TOTAL MAPEADOS: {len(mapeo)}")
+            return mapeo, " | ".join(cebo_info)
+        else:
+            return {}, "FALLO: Hoja 'Plantilla' está vacía."
+    except Exception as e:
+        return {}, f"ERROR TÉCNICO: {str(e)}"
 
 def buscar_codigo_material(producto_nombre, mapeo):
     prod_clean = str(producto_nombre).strip().upper()
@@ -261,7 +280,9 @@ def ejecutar():
                 st.error(f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
 
-        mapeo_materiales = extraer_mapeo_materiales()
+        # 💥 CEBO TÁCTICO EN ACCIÓN (SOLO LECTURA, SIN DAÑAR NADA)
+        mapeo_materiales, info_cebo = extraer_mapeo_materiales()
+        st.error(f"🚨 CEBO TÁCTICO MATERIALES: {info_cebo}")
 
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
@@ -377,7 +398,7 @@ def ejecutar():
             COL_ESTADO = "ESTADO / OBSERVACIÓN"
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
-            col_pista = next((c for c in df.columns if "PISTA" in c), None)
+            col_p pista = next((c for c in df.columns if "PISTA" in c), None)
             col_fecha_ingreso = next((c for c in df.columns if "FECHA DE INGRESO" in c), None)
             col_fv = next((c for c in df.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
 
@@ -841,7 +862,7 @@ def ejecutar():
                             
                             gc_temp = inicializar_cliente_gspread()
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                            ws_write = sh_temp.worksheets()[0]
+                            ws_write = sh_temp.worksheet(titulo_ws_traslados)
 
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
@@ -905,7 +926,7 @@ def ejecutar():
                 if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
                 elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
                 elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
+                elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
                 elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
                 elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
                 elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
@@ -921,7 +942,7 @@ def ejecutar():
                     cambios_exitosos = False
                     gc_temp = inicializar_cliente_gspread()
                     sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                    ws_t = sh_temp.worksheets()[0]
+                    ws_t = sh_temp.worksheet(titulo_ws_traslados)
 
                     for eli in sorted(eliminaciones, reverse=True):
                         with st.spinner(f"💥 Destruyendo la Fila {eli} del historial..."):
@@ -942,7 +963,10 @@ def ejecutar():
                 df_exportar_t.to_excel(writer, sheet_name='Historial_Traslados', index=False)
                 ws_excel_t = writer.sheets['Historial_Traslados']
                 header_font_t, header_fill_t = Font(bold=True, color="FFFFFF"), PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
-                for cell in ws_excel_t[1]: cell.font = header_font_t; cell.fill = header_fill_t; cell.alignment = Alignment(horizontal='center', vertical='center')
+                for cell in ws_excel_t[1]:
+                    cell.font = header_font_t
+                    cell.fill = header_fill_t
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
                 for col in ws_excel_t.columns:
                     max_length = 0
                     for cell in col:
