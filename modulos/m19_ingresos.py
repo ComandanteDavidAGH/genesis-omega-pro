@@ -170,13 +170,6 @@ DICT_BASE_PRODUCTOS = {
     "ZINTRAC x LITRO SV": "YARA S.A.S."
 }
 
-# --- DESTRUCTOR GLOBAL DE NONE ---
-def limpiar_celda_none(val):
-    v = str(val).strip()
-    if v.lower() in ["none", "nan", "nat", "<na>", "null"]:
-        return ""
-    return v
-
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
@@ -260,7 +253,7 @@ def ejecutar():
         try:
             # ================= BÓVEDA DE INGRESOS =================
             sh_ingresos = gc.open_by_url(URL_SHEET_INGRESOS)
-            ws_ingresos = sh_ingresos.get_worksheet(0) 
+            ws_ingresos = sh_ingresos.worksheets()[0] 
             datos_crudos = ws_ingresos.get_all_values()
             
             dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
@@ -312,7 +305,7 @@ def ejecutar():
                 cache_mapeo[p_clean] = resultado
                 return resultado
 
-            # ================= BÓVEDA DE TRASLADOS (REDISEÑO EXCLUSIVO) =================
+            # ================= BÓVEDA DE TRASLADOS (BLINDAJE PURO PYTHON) =================
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             
             ws_traslados = None
@@ -320,9 +313,8 @@ def ejecutar():
                 if "TRASLADO" in ws.title.strip().upper():
                     ws_traslados = ws
                     break
-            
             if not ws_traslados: 
-                ws_traslados = sh_traslados.get_worksheet(0)
+                ws_traslados = sh_traslados.worksheets()[0]
                 
             hoja_datos = ws_traslados.get_all_values()
             
@@ -336,36 +328,36 @@ def ejecutar():
                     break
                     
             if idx_head_t != -1:
-                encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
+                encabezados_brutos = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
                 
-                for j in range(len(encabezados_temp)):
-                    h_up = str(encabezados_temp[j]).strip().upper()
-                    if "OBSERVAC" in h_up:
-                        encabezados_temp[j] = "OBSERVACION"
-                    elif "COLUMNA1" in h_up and "OBSERVACION" not in encabezados_temp:
-                        encabezados_temp[j] = "OBSERVACION"
-                    elif "LOTE" in h_up:
-                        encabezados_temp[j] = "LOTE"
+                # 💥 LIMPIEZA TOTAL DE ENCABEZADOS EN LISTA (CERO PANDAS AQUÍ)
+                encabezados_limpios = []
+                for j, h in enumerate(encabezados_brutos):
+                    if "OBSERVAC" in h or ("COLUMNA1" in h and "OBSERVACION" not in encabezados_limpios):
+                        h = "OBSERVACION"
+                    elif "LOTE" in h:
+                        h = "LOTE"
+                    encabezados_limpios.append(h)
                 
-                if "LOTE" not in encabezados_temp:
-                    encabezados_temp.append("LOTE")
+                if "LOTE" not in encabezados_limpios:
+                    encabezados_limpios.append("LOTE")
                 
-                max_cols_t = len(encabezados_temp)
-                datos_recortados = hoja_datos[idx_head_t+1:]
-                datos_padded = []
-                for row in datos_recortados:
-                    padded_row = row + [""] * (max_cols_t - len(row))
-                    datos_padded.append(padded_row[:max_cols_t])
+                max_cols_t = len(encabezados_limpios)
+                
+                # 💥 RECORTE Y DESTRUCTOR DE NONE Nivel ADN
+                datos_recortados = []
+                for r, row in enumerate(hoja_datos[idx_head_t+1:]):
+                    pad_row = row + [""] * (max_cols_t - len(row))
+                    pad_row = pad_row[:max_cols_t]
+                    # Destruye el 'None' antes de que toque la tabla principal
+                    pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row]
+                    datos_recortados.append(pad_row)
                     
-                df_t = pd.DataFrame(datos_padded, columns=encabezados_temp)
+                df_t = pd.DataFrame(datos_recortados, columns=encabezados_limpios)
                 
-                # 💥 1. PRIMERO EXTERMINAR COLUMNAS FANTASMAS Y DUPLICADAS
-                df_t = df_t.loc[:, df_t.columns.astype(str).str.strip() != '']
+                # 💥 EXTERMINAR COLUMNAS FANTASMAS Y DUPLICADAS DE FORMA SEGURA
+                df_t = df_t.loc[:, df_t.columns != '']
                 df_t = df_t.loc[:, ~df_t.columns.duplicated()]
-                
-                # 💥 2. LUEGO EJECUTAR EL DESTRUCTOR DE NONE SOBRE COLUMNAS LIMPIAS
-                for col in df_t.columns:
-                    df_t[col] = df_t[col].apply(limpiar_celda_none)
                 
                 df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
 
@@ -406,25 +398,21 @@ def ejecutar():
                     idx_header = i
                     break
 
-            encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
+            # 💥 BLINDAJE PURO PYTHON TAMBIÉN PARA INGRESOS
+            encabezados_ing = [str(x).strip().upper() for x in datos_crudos[idx_header]]
+            max_cols_ing = len(encabezados_ing)
             
-            max_cols_ing = len(encabezados)
-            datos_ing_recortados = datos_crudos[idx_header+1:]
-            datos_ing_padded = []
-            for row in datos_ing_recortados:
+            datos_ing_limpios = []
+            for row in datos_crudos[idx_header+1:]:
                 pad_row = row + [""] * (max_cols_ing - len(row))
-                datos_ing_padded.append(pad_row[:max_cols_ing])
+                pad_row = pad_row[:max_cols_ing]
+                pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row]
+                datos_ing_limpios.append(pad_row)
                 
-            df = pd.DataFrame(datos_ing_padded, columns=encabezados)
+            df = pd.DataFrame(datos_ing_limpios, columns=encabezados_ing)
             
-            # 💥 1. PRIMERO EXTERMINAR COLUMNAS FANTASMAS Y DUPLICADAS
-            df = df.loc[:, df.columns.astype(str).str.strip() != '']
+            df = df.loc[:, df.columns != '']
             df = df.loc[:, ~df.columns.duplicated()]
-            
-            # 💥 2. LUEGO DESTRUCTOR DE NONE
-            for col in df.columns:
-                df[col] = df[col].apply(limpiar_celda_none)
-            
             df['FILA_EXCEL'] = range(idx_header + 2, len(df) + idx_header + 2)
             
             col_producto = next((c for c in df.columns if "PRODUCTO" in c), None)
@@ -440,7 +428,7 @@ def ejecutar():
             if COL_ESTADO not in df.columns:
                 st.error(f"🚨 FALTA COLUMNA TÁCTICA: No se encontró la columna **{COL_ESTADO}**.")
             else:
-                idx_col_estado = encabezados.index(COL_ESTADO) + 1 
+                idx_col_estado = encabezados_ing.index(COL_ESTADO) + 1 
 
                 st.markdown("### 📡 Radares de Vencimiento")
                 limite_90_dias = pd.to_datetime(hoy_colombia) + pd.to_timedelta(90, unit='D')
@@ -617,7 +605,7 @@ def ejecutar():
                                 except Exception as e: st.warning(f"Se guardó el diccionario: {e}")
 
                             nueva_fila_drive = []
-                            for header in encabezados:
+                            for header in encabezados_ing:
                                 h = header.upper()
                                 if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
                                 elif "PROV" in h: nueva_fila_drive.append(prov_limpio)
@@ -637,7 +625,7 @@ def ejecutar():
                             try:
                                 with st.spinner("Enviando datos con láser matemático..."):
                                     try:
-                                        idx_col_prod = encabezados.index("PRODUCTO") + 1
+                                        idx_col_prod = encabezados_ing.index("PRODUCTO") + 1
                                     except:
                                         idx_col_prod = 4 
                                         
@@ -647,7 +635,7 @@ def ejecutar():
                                         last_row_ing -= 1
                                     
                                     fila_destino = last_row_ing + 1
-                                    letra_col = get_column_letter(len(encabezados))
+                                    letra_col = get_column_letter(len(encabezados_ing))
                                     rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
                                     ws_ingresos.update(rango_inyeccion, [nueva_fila_drive])
                                 st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
@@ -966,8 +954,9 @@ def ejecutar():
                                     ws_write = ws
                                     break
                             if not ws_write: 
-                                ws_write = sh_traslados.get_worksheet(0)
+                                ws_write = sh_traslados.worksheets()[0]
 
+                            # 💥 TÁCTICA FRANCOTIRADOR: Buscar con precisión láser en la columna A
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
                             while last_row > 0 and str(col_a[last_row-1]).strip() == "":
@@ -1060,7 +1049,7 @@ def ejecutar():
                             ws_t = ws
                             break
                     if not ws_t: 
-                        ws_t = sh_traslados.get_worksheet(0)
+                        ws_t = sh_traslados.worksheets()[0]
 
                     for eli in eliminaciones_ordenadas:
                         with st.spinner(f"💥 Destruyendo la Fila {eli} del historial de traslados..."):
