@@ -41,7 +41,6 @@ def obtener_datos_bovedas():
     except Exception as e: return None, None, None, None, str(e)
 
 # --- 🔍 RASTREADOR DE MATERIALES (💥 FUERZA BRUTA - CERO CACHÉ) ---
-# Al quitar el decorador cache_data, obligamos al sistema a leer el Drive sí o sí.
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
     if not gc: return {"ERROR": "Sin conexión a los servidores de Google."}
@@ -53,7 +52,6 @@ def extraer_mapeo_materiales():
         
         # Lectura por Fuerza Bruta: Ignoramos los títulos. Empezamos a leer desde la fila 3 (índice 2)
         for row in datos[2:]:
-            # Nos aseguramos de que la fila tenga al menos 11 columnas (hasta la K)
             if len(row) >= 11:
                 mat = str(row[0]).strip() # Columna A
                 desc_j = str(row[9]).strip().upper() # Columna J
@@ -74,17 +72,11 @@ def buscar_codigo_material(producto_nombre, mapeo):
     prod_clean = re.sub(r'\s+', ' ', str(producto_nombre).strip().upper())
     if not prod_clean or not mapeo: return "S/N"
     
-    # 1. Match Exacto
     if prod_clean in mapeo: return mapeo[prod_clean]
-    
-    # 2. Match Contenido Parcial
     for desc, cod in mapeo.items():
         if prod_clean in desc or desc in prod_clean: return cod
-        
-    # 3. Match Aproximado (Fuzzy)
     matches = get_close_matches(prod_clean, list(mapeo.keys()), n=1, cutoff=0.6)
     if matches: return mapeo[matches[0]]
-    
     return "S/N"
 
 # 💥 RADAR CRONOLÓGICO Y ANTI-FALLOS
@@ -205,12 +197,9 @@ def ejecutar():
             st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: Espera de 1 a 2 minutos y presiona 'Refrescar Radares'." if "429" in error_api else f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
 
-        # 💥 EJECUCIÓN DEL RASTREADOR DE FUERZA BRUTA
         mapeo_materiales = extraer_mapeo_materiales()
         if "ERROR" in mapeo_materiales:
-            st.error(f"🚨 FALLA DE CONEXIÓN CON PLANTILLA: {mapeo_materiales['ERROR']}")
-        else:
-            st.success(f"✅ Bóveda Plantilla leída con éxito. ({len(mapeo_materiales)} productos memorizados)")
+            st.warning(f"⚠️ Alerta menor: No se pudo conectar a la Plantilla ({mapeo_materiales['ERROR']})")
 
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
@@ -351,7 +340,8 @@ def ejecutar():
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        n_mat = c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True)
+                        # 💥 Sin KEY para que actúe dinámico
+                        c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True)
                         mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                         with c_tog2:
@@ -380,8 +370,8 @@ def ejecutar():
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
-                        # 💥 BÚSQUEDA DE MATERIAL
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
+                        # 💥 Sin KEY para que actúe como espejo dinámico de lo que retorna la función
                         c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
 
                         proveedor_asignado = dict_operativo.get(n_prod, "")
@@ -708,9 +698,10 @@ def ejecutar():
             tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
-            # 💥 BÚSQUEDA DE MATERIAL
+            # 💥 RASTREO DINÁMICO DE MATERIAL
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
-            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_{fk_t}")
+            # 💥 Sin KEY para que actúe como espejo dinámico
+            tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True)
 
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
@@ -718,10 +709,34 @@ def ejecutar():
             tr4, tr5 = st.columns(2)
             opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "OTRO"]
             t_observacion_sel = tr4.selectbox("📝 Observación", opciones_obs, key=f"t_obs_sel_{fk_t}")
-            t_lote = tr5.text_input("📦 Lote", key=f"t_lote_{fk_t}")
-
-            if t_observacion_sel == "OTRO": t_observacion = st.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
+            
+            if t_observacion_sel == "OTRO": t_observacion = tr4.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
             else: t_observacion = t_observacion_sel
+
+            # 💥 NUEVO RASTREADOR TRIPLE A PARA LOTES
+            lotes_disp = []
+            if not df_ingresos.empty:
+                c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
+                c_pis_i = next((c for c in df_ingresos.columns if "PISTA" in c.upper()), None)
+                c_lot_i = next((c for c in df_ingresos.columns if "LOTE" in c.upper()), None)
+                c_est_i = "ESTADO / OBSERVACIÓN"
+                
+                if c_prod_i and c_pis_i and c_lot_i and c_est_i in df_ingresos.columns:
+                    m_prod = df_ingresos[c_prod_i].astype(str).str.strip().str.upper() == str(t_producto).strip().upper()
+                    m_pis = df_ingresos[c_pis_i].astype(str).str.strip().str.upper().str.contains(str(t_origen).strip().upper())
+                    m_est = ~df_ingresos[c_est_i].astype(str).str.upper().str.contains("ANULADO|ELIMINAR", na=False)
+                    
+                    l_crudos = df_ingresos[m_prod & m_pis & m_est][c_lot_i].dropna().unique().tolist()
+                    lotes_disp = sorted(list(set([str(x).strip().lstrip("'") for x in l_crudos if str(x).strip() != ""])))
+
+            opciones_lote = lotes_disp + ["➕ ESCRIBIR LOTE MANUALMENTE..."]
+            
+            with tr5:
+                lote_seleccionado = st.selectbox("📦 Lote (Base de Datos)", opciones_lote, key=f"t_lote_sel_{fk_t}")
+                if lote_seleccionado == "➕ ESCRIBIR LOTE MANUALMENTE...":
+                    t_lote = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
+                else:
+                    t_lote = lote_seleccionado
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -740,6 +755,7 @@ def ejecutar():
                 if not t_consecutivo.strip(): st.error("🚨 Debes ingresar un número de Consecutivo.")
                 elif t_cantidad <= 0: st.error("🚨 La cantidad debe ser mayor a cero.")
                 elif t_origen == t_destino: st.error("🚨 La pista de origen y destino no pueden ser la misma.")
+                elif not t_lote or str(t_lote).strip() == "": st.error("🚨 Debes especificar el Lote a trasladar.")
                 else:
                     try:
                         with st.spinner("Enviando traslado a la nube..."):
