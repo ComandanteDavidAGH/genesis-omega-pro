@@ -170,6 +170,13 @@ DICT_BASE_PRODUCTOS = {
     "ZINTRAC x LITRO SV": "YARA S.A.S."
 }
 
+# --- DESTRUCTOR GLOBAL DE NONE ---
+def limpiar_celda_none(val):
+    v = str(val).strip()
+    if v.lower() in ["none", "nan", "nat", "<na>", "null"]:
+        return ""
+    return v
+
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
     hoy_colombia = obtener_hora_colombia().date()
@@ -305,7 +312,7 @@ def ejecutar():
                 cache_mapeo[p_clean] = resultado
                 return resultado
 
-            # ================= BÓVEDA DE TRASLADOS (BLINDAJE PURO PYTHON) =================
+            # ================= BÓVEDA DE TRASLADOS =================
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
             
             ws_traslados = None
@@ -330,7 +337,6 @@ def ejecutar():
             if idx_head_t != -1:
                 encabezados_brutos = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
                 
-                # 💥 LIMPIEZA TOTAL DE ENCABEZADOS EN LISTA (CERO PANDAS AQUÍ)
                 encabezados_limpios = []
                 for j, h in enumerate(encabezados_brutos):
                     if "OBSERVAC" in h or ("COLUMNA1" in h and "OBSERVACION" not in encabezados_limpios):
@@ -344,18 +350,15 @@ def ejecutar():
                 
                 max_cols_t = len(encabezados_limpios)
                 
-                # 💥 RECORTE Y DESTRUCTOR DE NONE Nivel ADN
                 datos_recortados = []
                 for r, row in enumerate(hoja_datos[idx_head_t+1:]):
                     pad_row = row + [""] * (max_cols_t - len(row))
                     pad_row = pad_row[:max_cols_t]
-                    # Destruye el 'None' antes de que toque la tabla principal
                     pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row]
                     datos_recortados.append(pad_row)
                     
                 df_t = pd.DataFrame(datos_recortados, columns=encabezados_limpios)
                 
-                # 💥 EXTERMINAR COLUMNAS FANTASMAS Y DUPLICADAS DE FORMA SEGURA
                 df_t = df_t.loc[:, df_t.columns != '']
                 df_t = df_t.loc[:, ~df_t.columns.duplicated()]
                 
@@ -398,7 +401,6 @@ def ejecutar():
                     idx_header = i
                     break
 
-            # 💥 BLINDAJE PURO PYTHON TAMBIÉN PARA INGRESOS
             encabezados_ing = [str(x).strip().upper() for x in datos_crudos[idx_header]]
             max_cols_ing = len(encabezados_ing)
             
@@ -637,7 +639,7 @@ def ejecutar():
                                     fila_destino = last_row_ing + 1
                                     letra_col = get_column_letter(len(encabezados_ing))
                                     rango_inyeccion = f"A{fila_destino}:{letra_col}{fila_destino}"
-                                    ws_ingresos.update(rango_inyeccion, [nueva_fila_drive])
+                                    ws_ingresos.update(range_name=rango_inyeccion, values=[nueva_fila_drive], value_input_option='USER_ENTERED')
                                 st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
                                 st.session_state['form_key_m19'] += 1
                                 st.cache_data.clear()
@@ -898,9 +900,16 @@ def ejecutar():
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
+            # 💥 NUEVO MENÚ DESPLEGABLE DE OBSERVACIÓN
             tr4, tr5 = st.columns(2)
-            t_observacion = tr4.text_input("📝 Observación (Opcional)", key=f"t_observacion_{fk_t}")
+            opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "OTRO"]
+            t_observacion_sel = tr4.selectbox("📝 Observación", opciones_obs, key=f"t_obs_sel_{fk_t}")
             t_lote = tr5.text_input("📦 Lote", key=f"t_lote_{fk_t}")
+
+            if t_observacion_sel == "OTRO":
+                t_observacion = st.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
+            else:
+                t_observacion = t_observacion_sel
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -956,7 +965,6 @@ def ejecutar():
                             if not ws_write: 
                                 ws_write = sh_traslados.worksheets()[0]
 
-                            # 💥 TÁCTICA FRANCOTIRADOR: Buscar con precisión láser en la columna A
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
                             while last_row > 0 and str(col_a[last_row-1]).strip() == "":
@@ -964,12 +972,25 @@ def ejecutar():
                                 
                             fila_destino = last_row + 1
                             rango_inyeccion = f"A{fila_destino}:{get_column_letter(len(nueva_fila_traslado))}{fila_destino}"
-                            ws_write.update(rango_inyeccion, [nueva_fila_traslado])
+                            
+                            # 💥 CEBOS DE DEPURACIÓN EXTREMA 💥
+                            st.error(f"🚨 CEBO 1 (HOJA DESTINO): Intentando escribir en la pestaña -> '{ws_write.title}'")
+                            st.error(f"🚨 CEBO 2 (COORDENADA): El láser apuntó a la fila -> {fila_destino} (Rango de impacto: {rango_inyeccion})")
+                            st.error(f"🚨 CEBO 3 (PAQUETE): Datos a inyectar -> {nueva_fila_traslado}")
+                            st.error(f"🚨 CEBO 4 (TAMAÑO): Llevamos {len(nueva_fila_traslado)} datos para meter en Google Sheets.")
+                            
+                            # Inyección robusta con control de errores explícito
+                            try:
+                                ws_write.update(range_name=rango_inyeccion, values=[nueva_fila_traslado], value_input_option='USER_ENTERED')
+                            except TypeError:
+                                # Respaldo por si la librería gspread es de versión antigua
+                                ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
                         st.success(f"✅ ¡Traslado de {t_producto} desde {t_origen} hacia {t_destino} registrado con éxito en la fila {fila_destino}!")
                         st.session_state['form_key_m19_traslados'] += 1
                         st.cache_data.clear()
-                        st.rerun()
+                        # Detenemos el rerun temporalmente para que puedas ver y capturar los letreros rojos del CEBO
+                        # st.rerun() 
                     except Exception as e:
                         st.error(f"Error al registrar traslado: {e}")
 
@@ -1049,7 +1070,7 @@ def ejecutar():
                             ws_t = ws
                             break
                     if not ws_t: 
-                        ws_t = sh_traslados.worksheets()[0]
+                        ws_t = sh_traslados.get_worksheet(0)
 
                     for eli in eliminaciones_ordenadas:
                         with st.spinner(f"💥 Destruyendo la Fila {eli} del historial de traslados..."):
