@@ -25,7 +25,7 @@ def inicializar_cliente_gspread():
 
 # 💥 CIRUGÍA: RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
-    if pd.isna(val) or str(val).strip() == "" or str(val).strip() == "None": return pd.NaT
+    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
     
     if s.replace('.', '', 1).isdigit(): 
@@ -89,7 +89,7 @@ def formatear_numero_sap(val):
 
 # 💥 TRADUCTOR GEOGRÁFICO DE PISTAS (FINCAS)
 def estandarizar_pista(val):
-    if pd.isna(val) or str(val).strip() == "" or str(val).strip() == "None": return ""
+    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return ""
     p = str(val).strip().upper()
     p = p.replace("ORIHUECA", "PORI")
     p = p.replace("DIVAS", "PDIV")
@@ -169,6 +169,13 @@ DICT_BASE_PRODUCTOS = {
     "XILOTROM": "AGRIFOL",
     "ZINTRAC x LITRO SV": "YARA S.A.S."
 }
+
+# --- DESTRUCTOR GLOBAL DE NONE ---
+def limpiar_celda_none(val):
+    v = str(val).strip()
+    if v.lower() in ["none", "nan", "nat", "<na>", "null"]:
+        return ""
+    return v
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
@@ -274,15 +281,13 @@ def ejecutar():
                 if prod_sap_limpio not in dict_operativo:
                     dict_operativo[prod_sap_limpio] = "" 
 
-            # 💥 CREACIÓN DE LA LISTA DE AUTORIZADOS SAP 
             lista_autorizada = set([re.sub(r'\s+', ' ', str(k).strip().upper()) for k in dict_operativo.keys()])
             for p in productos_precio_sap:
                 lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
                 
-            # 💥 MOTOR DE HOMOLOGACIÓN INTELIGENTE (FUZZY MATCHING)
             cache_mapeo = {}
             def estandarizar_y_marcar_inteligente(prod):
-                if pd.isna(prod) or str(prod).strip() == "" or str(prod).strip() == "None": return ""
+                if pd.isna(prod) or str(prod).strip() == "" or str(prod).strip().lower() in ["none", "nan", "nat", "<na>"]: return ""
                 p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
                 
                 if p_clean in cache_mapeo:
@@ -306,67 +311,73 @@ def ejecutar():
                 cache_mapeo[p_clean] = resultado
                 return resultado
 
-            # ================= BÓVEDA DE TRASLADOS =================
+            # ================= BÓVEDA DE TRASLADOS (REDISEÑO BLOQUEO EXCLUSIVO) =================
             sh_traslados = gc.open_by_url(URL_SHEET_TRASLADOS)
-            df_traslados_list = []
+            
+            # 💥 BLOQUEO TÁCTICO: Buscar SOLO la pestaña "TRASLADOS"
+            ws_traslados = None
+            for ws in sh_traslados.worksheets():
+                if ws.title.strip().upper() == "TRASLADOS":
+                    ws_traslados = ws
+                    break
+            
+            # Si por algún motivo no se llama exactamente así, tomar la primera
+            if not ws_traslados: 
+                ws_traslados = sh_traslados.get_worksheet(0)
+                
+            hoja_datos = ws_traslados.get_all_values()
             
             columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION", "LOTE"]
             
-            for ws in sh_traslados.worksheets():
-                hoja_datos = ws.get_all_values()
-                if not hoja_datos: continue
+            idx_head_t = -1
+            for i, row in enumerate(hoja_datos[:15]):
+                fila_up = [str(x).upper().strip() for x in row]
+                if "CONSECUTIVO" in fila_up or "PRODUCTO" in fila_up or "PISTA" in fila_up:
+                    idx_head_t = i
+                    break
+                    
+            if idx_head_t != -1:
+                encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
                 
-                idx_head_t = -1
-                for i, row in enumerate(hoja_datos[:15]):
-                    fila_up = [str(x).upper().strip() for x in row]
-                    if "CONSECUTIVO" in fila_up or "PRODUCTO" in fila_up or "PISTA" in fila_up:
-                        idx_head_t = i
-                        break
-                        
-                if idx_head_t != -1:
-                    encabezados_temp = [str(x).strip().upper() for x in hoja_datos[idx_head_t]]
+                for j in range(len(encabezados_temp)):
+                    h_up = str(encabezados_temp[j]).strip().upper()
+                    if "OBSERVAC" in h_up:
+                        encabezados_temp[j] = "OBSERVACION"
+                    elif "COLUMNA1" in h_up and "OBSERVACION" not in encabezados_temp:
+                        encabezados_temp[j] = "OBSERVACION"
+                    elif "LOTE" in h_up:
+                        encabezados_temp[j] = "LOTE"
+                
+                # Si a pesar de todo la columna LOTE no está, forzar su existencia
+                if "LOTE" not in encabezados_temp:
+                    encabezados_temp.append("LOTE")
+                
+                max_cols_t = len(encabezados_temp)
+                datos_recortados = hoja_datos[idx_head_t+1:]
+                datos_padded = []
+                for row in datos_recortados:
+                    padded_row = row + [""] * (max_cols_t - len(row))
+                    datos_padded.append(padded_row[:max_cols_t])
                     
-                    # 💥 LIMPIEZA TOTAL DE ENCABEZADOS
-                    for j in range(len(encabezados_temp)):
-                        h_up = str(encabezados_temp[j]).strip().upper()
-                        if "OBSERVAC" in h_up:
-                            encabezados_temp[j] = "OBSERVACION"
-                        elif "COLUMNA1" in h_up and "OBSERVACION" not in encabezados_temp:
-                            encabezados_temp[j] = "OBSERVACION"
-                        elif "LOTE" in h_up:
-                            encabezados_temp[j] = "LOTE"
-                    
-                    # 💥 ESCUDO DE RELLENO ANTI-NONE: Igualar longitud de todas las filas al encabezado
-                    max_cols_t = len(encabezados_temp)
-                    datos_recortados = hoja_datos[idx_head_t+1:]
-                    datos_padded = []
-                    for row in datos_recortados:
-                        padded_row = row + [""] * (max_cols_t - len(row))
-                        datos_padded.append(padded_row[:max_cols_t])
-                        
-                    df_t = pd.DataFrame(datos_padded, columns=encabezados_temp)
-                    
-                    # 💥 Rastreo preciso de fila para poder eliminar después
-                    df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
-                    
-                    df_t = df_t.fillna("")
-                    df_t = df_t.replace({None: "", "None": "", "nan": "", "NaN": ""})
+                df_t = pd.DataFrame(datos_padded, columns=encabezados_temp)
+                
+                df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
+                
+                # 💥 DESTRUCTOR DE NONE Nivel ADN
+                for col in df_t.columns:
+                    df_t[col] = df_t[col].apply(limpiar_celda_none)
 
-                    cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
-                    df_t = df_t[cols_presentes]
+                cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
+                df_t = df_t[cols_presentes]
+                
+                if "PRODUCTO" in df_t.columns:
+                    df_t["PRODUCTO"] = df_t["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
+                    df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
                     
-                    if "PRODUCTO" in df_t.columns:
-                        df_t["PRODUCTO"] = df_t["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
-                        df_t = df_t[df_t["PRODUCTO"].astype(str).str.strip() != ""]
-                        df_t = df_t[~df_t["PRODUCTO"].str.contains("NONE", case=False)]
-                        
-                    if "PISTA" in df_t.columns:
-                        df_t["PISTA"] = df_t["PISTA"].apply(estandarizar_pista)
-                        
-                    df_traslados_list.append(df_t)
-
-            if df_traslados_list:
-                df_traslados = pd.concat(df_traslados_list, ignore_index=True)
+                if "PISTA" in df_t.columns:
+                    df_t["PISTA"] = df_t["PISTA"].apply(estandarizar_pista)
+                    
+                df_traslados = df_t
             else:
                 df_traslados = pd.DataFrame()
 
@@ -395,7 +406,6 @@ def ejecutar():
 
             encabezados = [str(x).strip().upper() for x in datos_crudos[idx_header]]
             
-            # 💥 ESCUDO DE RELLENO ANTI-NONE PARA INGRESOS
             max_cols_ing = len(encabezados)
             datos_ing_recortados = datos_crudos[idx_header+1:]
             datos_ing_padded = []
@@ -404,6 +414,10 @@ def ejecutar():
                 datos_ing_padded.append(pad_row[:max_cols_ing])
                 
             df = pd.DataFrame(datos_ing_padded, columns=encabezados)
+            
+            # Destructor de None para Ingresos también
+            for col in df.columns:
+                df[col] = df[col].apply(limpiar_celda_none)
             
             df = df.loc[:, df.columns != '']
             df = df.loc[:, ~df.columns.duplicated()]
@@ -945,7 +959,7 @@ def ejecutar():
                             # 💥 TÁCTICA FRANCOTIRADOR: BUSCAR LA PESTAÑA EXACTA QUE SE LLAME TRASLADOS
                             ws_write = None
                             for ws in sh_traslados.worksheets():
-                                if "TRASLADO" in ws.title.upper():
+                                if ws.title.strip().upper() == "TRASLADOS":
                                     ws_write = ws
                                     break
                             if not ws_write: 
@@ -1040,7 +1054,7 @@ def ejecutar():
                     
                     ws_t = None
                     for ws in sh_traslados.worksheets():
-                        if "TRASLADO" in ws.title.upper():
+                        if ws.title.strip().upper() == "TRASLADOS":
                             ws_t = ws
                             break
                     if not ws_t: 
