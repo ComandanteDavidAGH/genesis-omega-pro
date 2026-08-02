@@ -40,79 +40,55 @@ def obtener_datos_bovedas():
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
     except Exception as e: return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (💥 CON CEBO TÁCTICO) ---
-@st.cache_data(show_spinner=False, ttl=0) # TTL 0 PARA FORZAR EL CEBO A REPETIRSE SIEMPRE
+# --- 🔍 RASTREADOR DE MATERIALES DINÁMICO (PLANTILLA) ---
+@st.cache_data(show_spinner=False, ttl=3600)
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
-    if not gc: return {}, "FALLO: No hay conexión con Google."
+    if not gc: return {}
     try:
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        # 💥 COORDENADAS CORREGIDAS PARA EVITAR ERROR 404
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
-        cebo = []
-        
-        if not datos: return {}, "FALLO: La pestaña Plantilla está vacía."
-        
-        # Encontrar en qué fila están los títulos realmente
-        idx_head = -1
-        for i in range(min(15, len(datos))):
-            fila_up = [str(x).strip().upper() for x in datos[i]]
-            if "MATERIAL" in fila_up:
-                idx_head = i
-                break
+        if datos and len(datos) > 0:
+            idx_head = -1
+            for i in range(min(15, len(datos))):
+                fila_up = [str(x).strip().upper() for x in datos[i]]
+                if "MATERIAL" in fila_up:
+                    idx_head = i
+                    break
+                    
+            if idx_head != -1:
+                encabezados = [str(x).strip().upper() for x in datos[idx_head]]
+                idx_mat = encabezados.index("MATERIAL")
                 
-        if idx_head == -1:
-            return {}, f"FALLO: No encontré la palabra 'MATERIAL' en las primeras 15 filas. Filas iniciales: {datos[:3]}"
-            
-        encabezados = [str(x).strip().upper() for x in datos[idx_head]]
-        cebo.append(f"📍 Títulos en fila {idx_head + 1}.")
-        
-        idx_mat = encabezados.index("MATERIAL")
-        
-        # Buscar Columna J o K
-        idx_desc_j = encabezados.index("DESCRIPCIÓN DEL MATERIAL") if "DESCRIPCIÓN DEL MATERIAL" in encabezados else -1
-        idx_desc_k = encabezados.index("DESCRIPCIÓN ÚNICA") if "DESCRIPCIÓN ÚNICA" in encabezados else -1
-        
-        cebo.append(f"📊 Índices - MAT: {idx_mat}, DESC_J: {idx_desc_j}, DESC_K: {idx_desc_k}")
+                idx_desc_j = encabezados.index("DESCRIPCIÓN DEL MATERIAL") if "DESCRIPCIÓN DEL MATERIAL" in encabezados else -1
+                idx_desc_k = encabezados.index("DESCRIPCIÓN ÚNICA") if "DESCRIPCIÓN ÚNICA" in encabezados else -1
 
-        for row in datos[idx_head+1:]:
-            mat = str(row[idx_mat]).strip() if len(row) > idx_mat else ""
-            desc = ""
-            
-            # Intentar primero Columna K, si está vacía, intentar Columna J
-            if idx_desc_k != -1 and len(row) > idx_desc_k and str(row[idx_desc_k]).strip():
-                desc = str(row[idx_desc_k]).strip().upper()
-            elif idx_desc_j != -1 and len(row) > idx_desc_j and str(row[idx_desc_j]).strip():
-                desc = str(row[idx_desc_j]).strip().upper()
-                
-            if desc and mat:
-                desc_clean = re.sub(r'\s+', ' ', desc).strip()
-                mapeo[desc_clean] = mat
-                
-        cebo.append(f"✅ Total materiales memorizados: {len(mapeo)}.")
-        # Extraemos unos cuantos para ver si los está leyendo bien
-        muestras = list(mapeo.items())[:3]
-        cebo.append(f"🔍 Muestra: {muestras}")
-        
-        return mapeo, " | ".join(cebo)
-    except Exception as e: return {}, f"ERROR TÉCNICO: {str(e)}"
+                for row in datos[idx_head+1:]:
+                    mat = str(row[idx_mat]).strip() if len(row) > idx_mat else ""
+                    desc = ""
+                    
+                    if idx_desc_k != -1 and len(row) > idx_desc_k and str(row[idx_desc_k]).strip():
+                        desc = str(row[idx_desc_k]).strip().upper()
+                    elif idx_desc_j != -1 and len(row) > idx_desc_j and str(row[idx_desc_j]).strip():
+                        desc = str(row[idx_desc_j]).strip().upper()
+                        
+                    if desc and mat:
+                        desc_clean = re.sub(r'\s+', ' ', desc).strip()
+                        mapeo[desc_clean] = mat
+        return mapeo
+    except Exception: return {}
 
 def buscar_codigo_material(producto_nombre, mapeo):
     prod_clean = str(producto_nombre).strip().upper()
     if not prod_clean or not mapeo: return "S/N"
-    
-    # 1. Match Exacto
     if prod_clean in mapeo: return mapeo[prod_clean]
-    
-    # 2. Match Parcial (Ej: "BOSCALID" entra en "BOSCALID 50 WG")
     for desc, cod in mapeo.items():
         if prod_clean in desc or desc in prod_clean: return cod
-        
-    # 3. Match Aproximado
     matches = get_close_matches(prod_clean, list(mapeo.keys()), n=1, cutoff=0.6)
     if matches: return mapeo[matches[0]]
-    
     return "S/N"
 
 # 💥 RADAR CRONOLÓGICO Y ANTI-FALLOS
@@ -157,7 +133,8 @@ def extraer_catalogo_oficial_sap():
     gc = inicializar_cliente_gspread()
     if not gc: return []
     try:
-        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHalOnmFUJQYFggARP4/edit")
+        # 💥 COORDENADAS CORREGIDAS
+        sh_config = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         ws = sh_config.worksheet("Configuración") if "Configuración" in [w.title for w in sh_config.worksheets()] else sh_config.worksheet("DD_Mesclas")
         datos = ws.get_all_values()
         if not datos: return []
@@ -176,10 +153,6 @@ def extraer_catalogo_oficial_sap():
     except: return []
 
 DICT_BASE_PRODUCTOS = {"ACEITE DICAM": "ROYAL BIOCHEM", "ACONDICIONADOR SV": "SYS TECNOLOGIES", "ADHERENTE SV": "SYS TECNOLOGIES", "BANADAK": "PLANDAK", "BANANO Y PLATANO * LT": "INVESA S.A.S.", "BANATREL SC": "YARA S.A.S.", "BOSCALID 50 WG": "DVA COLOMBIA", "CERAQUINT SP": "CERADIS COLOMBIA", "CEROSTRESS SV * LT": "MICROFERTIZA", "COMPER SV": "ADAMA", "EPOXICONAZOLE DEL MONTE": "DEL MONTE SAS", "FENTRIUPH AGRO 88 OL": "DEL MONTE SAS", "FOSFOSTRESS SV": "MICROFERTIZA", "GLOBAFOL nf": "SYNGENTA", "IMBIOSIL O": "INBIOMA", "KURDO 250 EC": "INVESA S.A.S.", "KYVENTIQ": "CORTEVA", "LONSELOR 30 SC": "BASF QUÍMICA", "MANCOL 430 SC": "CASAGRO", "NATURAMIN WSP": "AGRIANDES DAINSA", "OPORTO": "ADAMA", "OPUS 12 EC": "BASF QUÍMICA", "POLYTHION SC": "UPL", "POWMYL SV": "SUMITOMO", "QUELAMIX": "INGEPLANT", "REFLECT": "SYNGENTA", "ROUTINE SC": "BAYER", "SEEKER": "SYNGENTA", "SICO": "SYNGENTA", "SIGANEX 60 SC": "BAYER", "SPRAYFIX": "AGRIANDES DAINSA", "THIOPRON 825 SC": "UPL", "TIMOREX PRO": "ADAMA", "XILOTROM": "AGRIFOL", "ZINTRAC x LITRO SV": "YARA S.A.S."}
-
-def limpiar_celda_none(val):
-    v = str(val).strip()
-    return "" if v.lower() in ["none", "nan", "nat", "<na>", "null"] else v
 
 # --- 🚀 EJECUCIÓN DEL MÓDULO ---
 def ejecutar():
@@ -237,10 +210,8 @@ def ejecutar():
             st.error("🚨 **LÍMITE DE PROTECCIÓN DE GOOGLE (Error 429)**: Espera de 1 a 2 minutos y presiona 'Refrescar Radares'." if "429" in error_api else f"🚨 Error de acceso a las Bóvedas. Detalle: {error_api}")
             return
 
-        # 🚨 CEBO 1: EXTRACCIÓN DE MATERIALES
-        mapeo_materiales, info_cebo_plantilla = extraer_mapeo_materiales()
-        st.error(f"🚨 CEBO 1 (PLANTILLA): {info_cebo_plantilla}")
-
+        mapeo_materiales = extraer_mapeo_materiales()
+        
         dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
         for row in datos_dicc_crudos[1:]:
             if len(row) >= 2 and str(row[0]).strip():
@@ -409,9 +380,7 @@ def ejecutar():
                         lista_prods_limpia = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
-                        # 💥 RASTREO DINÁMICO DE MATERIAL (PLANTILLA)
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
-                        st.warning(f"🚨 CEBO 2 (Búsqueda Ingresos): Has seleccionado '{n_prod}'. El rastreador encontró: '{mat_item_ing}'")
                         c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True)
 
                         proveedor_asignado = dict_operativo.get(n_prod, "")
@@ -740,7 +709,6 @@ def ejecutar():
             
             # 💥 RASTREO DINÁMICO DE MATERIAL
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
-            st.warning(f"🚨 CEBO 3 (Búsqueda Traslados): Has seleccionado '{t_producto}'. El rastreador encontró: '{mat_item_tras}'")
             tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_{fk_t}")
 
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
@@ -797,7 +765,7 @@ def ejecutar():
                             
                             gc_temp = inicializar_cliente_gspread()
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                            ws_write = sh_temp.worksheets()[0]
+                            ws_write = sh_temp.worksheet(titulo_ws_traslados)
 
                             col_a = ws_write.col_values(1)
                             last_row = len(col_a)
