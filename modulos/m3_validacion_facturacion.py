@@ -109,9 +109,8 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
-# 🌟 ESCÁNER UNIVERSAL DE DOSIS (💥 BLINDADO CONTRA DATOS FANTASMA)
+# 🌟 ESCÁNER UNIVERSAL DE DOSIS
 def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
-    # BLINDAJE: Variables de salida neutras absolutas
     dosis_encontrada = None
     
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
@@ -133,10 +132,9 @@ def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
                     except Exception:
                         pass
     
-    # SALIDA SEGURA (Retorna None sin chocar con caché)
     return dosis_encontrada
 
-# 💥 IA EMPAREJADORA (CALIBRADA PARA MATAR EL EFECTO DEDO Y DAR PESO A SAP)
+# 💥 IA EMPAREJADORA ORIGINAL RESTAURADA (SIN INTRUSOS NI CAMBIOS DE PESO)
 @st.cache_data(show_spinner=False, ttl=1800)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
     coctel_base = "SIN COINCIDENCIA"
@@ -164,9 +162,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
                     error = abs(d_sap - d_esperada)
-                    
-                    # 💥 CORRECCIÓN: Tolerancia mucho más estricta (15% max en vez de 25%)
-                    tolerancia = max(0.3, d_esperada * 0.15)
+                    tolerancia = max(0.3, d_esperada * 0.25)
                     
                     if error <= 0.15: 
                         match_perfecto = True
@@ -178,8 +174,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if match_receta:
                 puntaje += 100
                 if match_perfecto:
-                    # 💥 CORRECCIÓN: Se prioriza SAP, Match perfecto suma muchísimo
-                    puntaje += 300 
+                    puntaje += 200 
                 elif dose_matched: 
                     puntaje += 50  
                 else:
@@ -202,11 +197,10 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                         break
                 
                 if not is_fert:
-                    puntaje -= 100 
+                    puntaje -= 50 
 
-        # 💥 CORRECCIÓN: El piloto ya no tiene poder absoluto (Baja de 200 a 100)
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
-            puntaje += 100
+            puntaje += 200
 
         if puntaje > max_p:
             max_p = puntaje
@@ -756,7 +750,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista = {}
                 datos_extraidos_sap = []
 
-                # ⚡ 1:1 EXTRACCIÓN EXACTA POR FILA/POSICIÓN DE SAP
+                # 💥 RESTAURACIÓN DE LA LECTURA LÍNEA POR LÍNEA
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                     if not col_mat: 
@@ -861,12 +855,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 else:
                     df_sab_col0_clean = pd.Series(dtype=str)
 
-                # 💥 SOLUCIÓN DE AGRUPACIÓN (REGLA DE ORO) PARA EVITAR DISPAROS FALSOS EN LOTES PARTIDOS
-                totales_sap_por_producto = {}
-                for item_data in datos_extraidos_sap:
-                    totales_sap_por_producto[item_data['nombre_limpio']] = totales_sap_por_producto.get(item_data['nombre_limpio'], 0.0) + item_data['cant_total']
-
                 matriz_datos = []
+
                 for item_data in datos_extraidos_sap:
                     cod_item = str(item_data['cod']).strip().upper().lstrip('0')
                     nombre_p, nombre_limpio, cant_linea_sap = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
@@ -942,7 +932,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if dosis_rescatada is not None:
                             dosis_teorica = dosis_rescatada
                         else:
-                            cant_total_agrupada = totales_sap_por_producto.get(nombre_limpio, cant_linea_sap)
+                            # 💥 REGLA DE ORO: Si no está en ninguna parte, deducimos la dosis en base a todo lo facturado en SAP
+                            cant_total_agrupada = sap_dict_pista.get(nombre_limpio, 0.0) * ha_dosis_final
                             dosis_teorica = cant_total_agrupada / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
@@ -957,14 +948,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         "H: Saldo Real SAP": round(saldo_sap, 3), 
                         "I: Sugerido SAP (Total)": round(cant_linea_sap, 3)
                     })
-
+                
                 df_matriz = pd.DataFrame(matriz_datos)
                 
                 if not df_matriz.empty:
                     # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO EXACTO DE % EXTRA
+                    # 💥 CÁLCULO EXACTO DE % EXTRA USANDO EL TOTAL ACUMULADO DEL PRODUCTO
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Total (Sistema)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
@@ -975,8 +966,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         else:
                             df_matriz.at[idx_m, "C: X (Extra %)"] = 0.0
 
-                    df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * ha_dosis_final).round(3)
+                    def calcular_semaforo_misiones(row):
+                        base_pura = float(row["D: Dosis Total (Sistema)"])
+                        total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
+                        extra_pct = float(row.get("C: X (Extra %)", 0.0))
+                        
+                        diferencia = total_producto - base_pura
+                        
+                        if total_producto < (base_pura - 0.05):
+                            return "🔴 PELIGRO: SUB-DOSIS (---)"
+                        elif extra_pct > 0.01 or diferencia > 0.05:
+                            return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
+                        else:
+                            return "🟢 ÓPTIMO"
 
+                    df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
+                    
+                    columnas_ordenadas = [
+                        "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
+                        "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
+                        "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "TOTAL_PROD_SAP"
+                    ]
+                    df_matriz = df_matriz[columnas_ordenadas]
+                    
                     def estilizar_dosis_ideal(row):
                         estilos = [''] * len(row)
                         try:
@@ -1002,29 +1014,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             pass
                         return estilos
 
-                    def calcular_semaforo_misiones(row):
-                        base_pura = float(row["D: Dosis Total (Sistema)"])
-                        total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
-                        extra_pct = float(row.get("C: X (Extra %)", 0.0))
-                        
-                        diferencia = total_producto - base_pura
-                        
-                        if total_producto < (base_pura - 0.05):
-                            return "🔴 PELIGRO: SUB-DOSIS (---)"
-                        elif extra_pct > 0.01 or diferencia > 0.05:
-                            return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
-                        else:
-                            return "🟢 ÓPTIMO"
-
-                    df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
-                    
-                    columnas_ordenadas = [
-                        "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
-                        "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
-                        "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "TOTAL_PROD_SAP"
-                    ]
-                    df_matriz = df_matriz[columnas_ordenadas]
-                    
                     df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
 
                     edited_df = st.data_editor(
@@ -1255,7 +1244,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if not edited_df.empty:
                             for idx, row_m in edited_df.iterrows():
                                 nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
-                                if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
+                                if nombre_prod not in ["", "NAN"]:
                                     if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
                                         fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                         filas_memoria.append(fila_m)
