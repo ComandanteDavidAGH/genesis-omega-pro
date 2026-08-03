@@ -445,13 +445,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         if 'H_PROPORCIONAL' in super_base_bi.columns: super_base_bi['H_PROPORCIONAL'] = super_base_bi['H_PROPORCIONAL'].apply(limpiar_area)
         if 'SEMANA' in super_base_bi.columns: super_base_bi['SEMANA'] = pd.to_numeric(super_base_bi['SEMANA'], errors='coerce').fillna(0).astype(int)
 
-        if col_pista and 'HK' in super_base_bi.columns:
-            mask_hk = (super_base_bi['HK'] != "") & (super_base_bi['HK'] != "NAN")
-            if not super_base_bi[mask_hk].empty:
-                mask_pista_llena = mask_hk & (super_base_bi[col_pista] != "") & (super_base_bi[col_pista] != "NAN")
-                mapa_flota = super_base_bi[mask_pista_llena].groupby('HK')[col_pista].agg(lambda x: x.mode()[0] if not x.mode().empty else "").to_dict()
-                mask_pista_vacia = mask_hk & ((super_base_bi[col_pista] == "") | (super_base_bi[col_pista] == "NAN"))
-                super_base_bi.loc[mask_pista_vacia, col_pista] = super_base_bi.loc[mask_pista_vacia, 'HK'].map(mapa_flota).fillna("")
+        # 💥 CIRUGÍA: Eliminación del Piloto Automático de Pistas. Si está vacío, se marca en alerta.
+        if col_pista:
+            mask_pista_vacia = (super_base_bi[col_pista] == "") | (super_base_bi[col_pista] == "NAN") | (super_base_bi[col_pista].isna())
+            super_base_bi.loc[mask_pista_vacia, col_pista] = "🚨 SIN PISTA REGISTRADA"
 
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN', 'HK'],
@@ -527,7 +524,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             st.markdown(f"#### 📈 Dashboard Ejecutivo y BI Financiero")
             st.caption(f"🗓️ *{rango_txt}*")
             
-            df_drones = df_filt[df_filt['MODELO'].str.contains('DRON', na=False, case=False) | df_filt['HK'].str.contains('DR', na=False, case=False)]
+            # 💥 CIRUGÍA: Bloqueo de seguridad para clasificar Drones estrictamente.
+            df_drones = df_filt[df_filt['MODELO'].str.contains('DRON', na=False, case=False) | df_filt['HK'].str.startswith('DRON', na=False)]
             df_aviones = df_filt[~df_filt.index.isin(df_drones.index)]
 
             total_ha = df_filt['AREA_NUM'].sum()
@@ -576,7 +574,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     ha_drones_final = ha_drones * (1 + (pct_aumento / 100.0))
                     costo_tot_drones_final = ha_drones_final * prom_costo_dr
                     
-                    # 💥 CIRUGÍA: VISORES DE COMPARACIÓN (ANTES Y DESPUÉS)
                     cm1, cm2 = st.columns(2)
                     cm1.metric("📍 Ha Actuales (Real)", f"{fmt_latino(ha_drones, 1)} ha")
                     cm2.metric(f"🚀 Ha Proyectadas (+{pct_aumento}%)", f"{fmt_latino(ha_drones_final, 1)} ha", delta=f"{fmt_latino(ha_drones_final - ha_drones, 1)} ha")
@@ -721,7 +718,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         sum_costo_hk = datos_hk['COSTO_TOT'].sum()
                         
                         modelo = str(df_filt[df_filt['HK'] == hk]['MODELO'].iloc[0]).upper() if not df_filt[df_filt['HK'] == hk].empty else ""
-                        es_dron = "DRON" in modelo or "DR" in hk
+                        # 💥 CIRUGÍA: Clasificación de iconos estricta (Avión vs Dron)
+                        es_dron = "DRON" in modelo or hk.startswith("DRON")
                         emoji = "🛸 DRON:" if es_dron else "✈️ AVION:"
                         
                         fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
