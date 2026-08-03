@@ -323,6 +323,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                     
                     st.session_state.df_sap_raw = df_sap_clean 
                     
+                    # 💥 AGRUPACIÓN ESTRICTA SAP (Anti-clonación)
                     st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
                         'ITEM': 'first',
                         'PRODUCTO': 'first',
@@ -398,6 +399,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                                     lista_sup.append(df_s_c)
 
                     if lista_sup:
+                        # 💥 AGRUPACIÓN ESTRICTA SUPERVISOR (Anti-clonación)
                         st.session_state.df_sup_grouped_virgen = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
                             'PRODUCTO_SUP': 'first',
                             'LOTE_SUP': 'first',
@@ -511,7 +513,14 @@ def ejecutar(quitar_tildes, purificar_lote):
         with tab2:
             st.markdown("#### 🛠️ Conciliador e Historial de Correcciones")
             
-            err_fantasmas = st.session_state.cruce_final[(st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & (st.session_state.cruce_final['SALDO_SAP'] == 0) & (st.session_state.cruce_final['SALDO_FISICO'] > 0)]
+            # 💥 EL FILTRO MAESTRO: Solo muestra lotes "fantasmas" que NO hayan sido marcados como Físico Real/Justificado
+            mask_fantasmas = (
+                (st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & 
+                (st.session_state.cruce_final['SALDO_SAP'] == 0) & 
+                (st.session_state.cruce_final['SALDO_FISICO'] > 0) &
+                (~st.session_state.cruce_final['OBSERVACIONES'].astype(str).str.contains("FÍSICO REAL|JUSTIFICADO", case=False, na=False))
+            )
+            err_fantasmas = st.session_state.cruce_final[mask_fantasmas]
             
             if not err_fantasmas.empty:
                 opciones = err_fantasmas.apply(lambda x: f"{x['PISTA']} | Prod: {x['PRODUCTO']} | Lote Físico: {x['LOTE']} ({x['SALDO_FISICO']} L/Kg)", axis=1).tolist()
@@ -554,59 +563,94 @@ def ejecutar(quitar_tildes, purificar_lote):
                     c_tog, _ = st.columns([1, 1])
                     mostrar_todos = c_tog.toggle("🔄 Ver todo el arsenal de la pista (Ignorar filtro inteligente)", value=False)
                     
+                    opciones_dest = []
                     if not df_exact.empty and not mostrar_todos: 
                         st.success(f"🎯 Producto localizado automáticamente en SAP: **{df_exact.iloc[0]['PRODUCTO']}**")
                         opciones_dest = sorted(df_exact.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
-                        lote_ok_str = st.selectbox(f"2️⃣ Seleccione el Lote destino en SAP para unificarlos:", opciones_dest)
                     else: 
                         st.warning("⚠️ Mostrando el inventario completo de la base para selección manual.")
                         opciones_dest = sorted(df_sap_pista.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
-                        lote_ok_str = st.selectbox(f"2️⃣ Arsenal completo de la pista ({row_s['PISTA']}) en SAP:", opciones_dest)
                     
-                    if st.button("⚡ FUSIONAR Y CORREGIR LOTE", type="primary"):
-                        prod_sap, lote_sap = lote_ok_str.split(" | Lote: ")[0].strip(), lote_ok_str.split(" | Lote: ")[1].strip()
-                        mask = (st.session_state.df_sup_grouped['PISTA'] == row_s['PISTA']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == row_s['LOTE_KEY'])
-                        
-                        txt_obs = f"Corrección unificada con SAP ({prod_sap} - {lote_sap})"
-                        key_obs = f"{row_s['PISTA']}_{purificar_lote(lote_sap)}"
-                        st.session_state.observaciones_memoria[key_obs] = txt_obs
-                        
-                        st.session_state.historial_fusiones.append({
-                            "pista": row_s['PISTA'],
-                            "lote_erroneo": row_s['LOTE'],
-                            "lote_key_erroneo": row_s['LOTE_KEY'],
-                            "lote_destino": lote_sap,
-                            "producto": prod_sap,
-                            "volumen": row_s['SALDO_FISICO']
-                        })
-                        
-                        st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_sap
-                        st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
-                        st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
-                        
-                        # 💥 RE-AGRUPACIÓN ESTRICTA
-                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
-                            'PRODUCTO_SUP': 'first',
-                            'LOTE_SUP': 'first',
-                            'SALDO_FISICO': 'sum'
-                        })
-                        
-                        if 'supabase' in st.session_state:
-                            try:
-                                log_fusion = {
-                                    "semana": str(st.session_state.semana_actual).strip(),
-                                    "pista": str(row_s['PISTA']),
-                                    "lote_erroneo": str(row_s['LOTE']),
-                                    "lote_corregido_sap": str(lote_sap),
-                                    "insumo": str(prod_sap),
-                                    "fecha_correccion": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                }
-                                st.session_state['supabase'].table("arqueos_log_fusiones").insert(log_fusion).execute()
-                            except Exception:
-                                pass
+                    # 💥 NUEVA VÁLVULA DE ESCAPE OFICIAL
+                    opcion_na = "🚫 N/A - NO EXISTE EN SAP (MARCAR COMO FÍSICO REAL)"
+                    opciones_dest.insert(0, opcion_na)
+                    
+                    lote_ok_str = st.selectbox(f"2️⃣ Seleccione el Lote destino en SAP para unificarlos:", opciones_dest)
+                    
+                    if lote_ok_str == opcion_na:
+                        if st.button("💾 JUSTIFICAR Y OCULTAR DEL CONCILIADOR", type="primary"):
+                            txt_obs = "FÍSICO REAL - Pendiente de ingreso/traslado en SAP"
+                            key_obs = f"{row_s['PISTA']}_{row_s['LOTE_KEY']}"
+                            
+                            # Guardamos en la memoria local
+                            st.session_state.observaciones_memoria[key_obs] = txt_obs
+                            
+                            # Actualizamos de golpe el dataframe para que no toque esperar otro ciclo
+                            idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row_s['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == row_s['LOTE_KEY'])].index
+                            if not idx_m.empty: 
+                                st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = txt_obs
+                                
+                            # Si hay nube, lo inyectamos de una vez
+                            if 'supabase' in st.session_state:
+                                try:
+                                    obs_payload = {
+                                        "semana": str(st.session_state.semana_actual).strip(),
+                                        "lote_pista_key": str(key_obs),
+                                        "observacion": txt_obs,
+                                        "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    }
+                                    st.session_state['supabase'].table("arqueos_observaciones").upsert([obs_payload], on_conflict="semana,lote_pista_key").execute()
+                                except Exception:
+                                    pass
+                                    
+                            st.toast("✅ Lote justificado exitosamente.", icon="✅")
+                            generar_cruce()
+                            st.rerun()
+                    else:
+                        if st.button("⚡ FUSIONAR Y CORREGIR LOTE", type="primary"):
+                            prod_sap, lote_sap = lote_ok_str.split(" | Lote: ")[0].strip(), lote_ok_str.split(" | Lote: ")[1].strip()
+                            mask = (st.session_state.df_sup_grouped['PISTA'] == row_s['PISTA']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == row_s['LOTE_KEY'])
+                            
+                            txt_obs = f"Corrección unificada con SAP ({prod_sap} - {lote_sap})"
+                            key_obs = f"{row_s['PISTA']}_{purificar_lote(lote_sap)}"
+                            st.session_state.observaciones_memoria[key_obs] = txt_obs
+                            
+                            st.session_state.historial_fusiones.append({
+                                "pista": row_s['PISTA'],
+                                "lote_erroneo": row_s['LOTE'],
+                                "lote_key_erroneo": row_s['LOTE_KEY'],
+                                "lote_destino": lote_sap,
+                                "producto": prod_sap,
+                                "volumen": row_s['SALDO_FISICO']
+                            })
+                            
+                            st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_sap
+                            st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
+                            st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
+                            
+                            # 💥 RE-AGRUPACIÓN ESTRICTA (Anti-clonación post-fusión)
+                            st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
+                                'PRODUCTO_SUP': 'first',
+                                'LOTE_SUP': 'first',
+                                'SALDO_FISICO': 'sum'
+                            })
+                            
+                            if 'supabase' in st.session_state:
+                                try:
+                                    log_fusion = {
+                                        "semana": str(st.session_state.semana_actual).strip(),
+                                        "pista": str(row_s['PISTA']),
+                                        "lote_erroneo": str(row_s['LOTE']),
+                                        "lote_corregido_sap": str(lote_sap),
+                                        "insumo": str(prod_sap),
+                                        "fecha_correccion": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    }
+                                    st.session_state['supabase'].table("arqueos_log_fusiones").insert(log_fusion).execute()
+                                except Exception:
+                                    pass
 
-                        generar_cruce()
-                        st.rerun()
+                            generar_cruce()
+                            st.rerun()
             else:
                 st.success("✅ No se detectan lotes pendientes por fusionar.")
 
