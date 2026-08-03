@@ -322,7 +322,13 @@ def ejecutar(quitar_tildes, purificar_lote):
                     df_sap_clean['SALDO_SAP'] = df_sap_clean['SALDO_SAP'].apply(limpiar_numeros_generico)
                     
                     st.session_state.df_sap_raw = df_sap_clean 
-                    st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY', 'ITEM', 'PRODUCTO', 'LOTE'], as_index=False)['SALDO_SAP'].sum()
+                    
+                    st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
+                        'ITEM': 'first',
+                        'PRODUCTO': 'first',
+                        'LOTE': 'first',
+                        'SALDO_SAP': 'sum'
+                    })
 
                     lista_sup = []
                     sem_num = str(semana_obj).strip()
@@ -347,7 +353,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         if target_sheet:
                             df_raw = dict_dfs[target_sheet]
                             
-                            # DESTRUCCIÓN DE FILAS OCULTAS
                             if wb and target_sheet in wb.sheetnames:
                                 ws = wb[target_sheet]
                                 filas_ocultas = [r - 1 for r, dim in ws.row_dimensions.items() if dim.hidden]
@@ -393,7 +398,11 @@ def ejecutar(quitar_tildes, purificar_lote):
                                     lista_sup.append(df_s_c)
 
                     if lista_sup:
-                        st.session_state.df_sup_grouped_virgen = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        st.session_state.df_sup_grouped_virgen = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
+                            'PRODUCTO_SUP': 'first',
+                            'LOTE_SUP': 'first',
+                            'SALDO_FISICO': 'sum'
+                        })
                         st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
                         st.session_state.semana_actual = semana_obj
                         generar_cruce()
@@ -510,32 +519,47 @@ def ejecutar(quitar_tildes, purificar_lote):
                 
                 if sel:
                     row_s = err_fantasmas.iloc[opciones.index(sel)]
-                    df_sap_pista = st.session_state.df_sap_raw[st.session_state.df_sap_raw['PISTA'] == row_s['PISTA']]
-                    prod_fisico = str(row_s['PRODUCTO']).strip().upper()
                     
-                    # 💥 RASTREO INTELIGENTE (Táctica Módulo 19 inyectada)
-                    df_exact = df_sap_pista[df_sap_pista['PRODUCTO'].astype(str).str.upper() == prod_fisico]
+                    # Extraer copia limpia de SAP para esa pista
+                    df_sap_pista = st.session_state.df_sap_raw[st.session_state.df_sap_raw['PISTA'] == row_s['PISTA']].copy()
                     
+                    # Función de limpieza estricta (matar espacios extra)
+                    df_sap_pista['PROD_CLEAN'] = df_sap_pista['PRODUCTO'].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper())
+                    prod_fisico_clean = re.sub(r'\s+', ' ', str(row_s['PRODUCTO'])).strip().upper()
+                    
+                    # 💥 FILTRADO EN CASCADA (Nivel Triple A)
+                    # 1. Búsqueda Exacta
+                    df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'] == prod_fisico_clean]
+                    
+                    # 2. Búsqueda Contenida (Uno dentro del otro)
                     if df_exact.empty:
-                        # Si no es exacto, busco si uno contiene al otro
-                        mask = df_sap_pista['PRODUCTO'].astype(str).str.upper().apply(lambda x: x in prod_fisico or prod_fisico in x)
+                        mask = df_sap_pista['PROD_CLEAN'].apply(lambda x: x in prod_fisico_clean or prod_fisico_clean in x)
                         df_exact = df_sap_pista[mask]
                         
+                    # 3. Búsqueda por Primera Palabra Clave
                     if df_exact.empty:
-                        # Si todo falla, busco el texto más parecido
+                        p_word = prod_fisico_clean.split()[0] if prod_fisico_clean else ""
+                        if len(p_word) >= 3:
+                            mask = df_sap_pista['PROD_CLEAN'].str.contains(p_word, regex=False)
+                            df_exact = df_sap_pista[mask]
+                            
+                    # 4. Búsqueda por Aproximación (Fuzzy)
+                    if df_exact.empty:
                         import difflib
-                        sap_prods = df_sap_pista['PRODUCTO'].astype(str).str.upper().unique().tolist()
-                        matches = difflib.get_close_matches(prod_fisico, sap_prods, n=3, cutoff=0.4)
+                        sap_prods = df_sap_pista['PROD_CLEAN'].unique().tolist()
+                        matches = difflib.get_close_matches(prod_fisico_clean, sap_prods, n=3, cutoff=0.4)
                         if matches:
-                            df_exact = df_sap_pista[df_sap_pista['PRODUCTO'].astype(str).str.upper().isin(matches)]
+                            df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'].isin(matches)]
                     
                     c_tog, _ = st.columns([1, 1])
-                    mostrar_todos = c_tog.toggle("🔄 Ver todo el arsenal de la pista (Ignorar filtro)", value=False)
+                    mostrar_todos = c_tog.toggle("🔄 Ver todo el arsenal de la pista (Ignorar filtro inteligente)", value=False)
                     
                     if not df_exact.empty and not mostrar_todos: 
+                        st.success(f"🎯 Producto localizado automáticamente en SAP: **{df_exact.iloc[0]['PRODUCTO']}**")
                         opciones_dest = sorted(df_exact.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
-                        lote_ok_str = st.selectbox(f"2️⃣ Lotes detectados para '{prod_fisico}' en SAP:", opciones_dest)
+                        lote_ok_str = st.selectbox(f"2️⃣ Seleccione el Lote destino en SAP para unificarlos:", opciones_dest)
                     else: 
+                        st.warning("⚠️ Mostrando el inventario completo de la base para selección manual.")
                         opciones_dest = sorted(df_sap_pista.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
                         lote_ok_str = st.selectbox(f"2️⃣ Arsenal completo de la pista ({row_s['PISTA']}) en SAP:", opciones_dest)
                     
@@ -559,7 +583,13 @@ def ejecutar(quitar_tildes, purificar_lote):
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_sap
                         st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
                         st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
-                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                        
+                        # 💥 RE-AGRUPACIÓN ESTRICTA
+                        st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
+                            'PRODUCTO_SUP': 'first',
+                            'LOTE_SUP': 'first',
+                            'SALDO_FISICO': 'sum'
+                        })
                         
                         if 'supabase' in st.session_state:
                             try:
@@ -605,7 +635,11 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_KEY'] = purificar_lote(f_rest['lote_destino'])
                                 st.session_state.df_sup_grouped.loc[mask_r, 'PRODUCTO_SUP'] = f_rest['producto']
                             
-                            st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY', 'PRODUCTO_SUP', 'LOTE_SUP'], as_index=False)['SALDO_FISICO'].sum()
+                            st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
+                                'PRODUCTO_SUP': 'first',
+                                'LOTE_SUP': 'first',
+                                'SALDO_FISICO': 'sum'
+                            })
                             generar_cruce()
                             st.toast("✅ Fusión deshecha con éxito.", icon="↩️")
                             st.rerun()
