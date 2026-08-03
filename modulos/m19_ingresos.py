@@ -338,7 +338,6 @@ def ejecutar():
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        # 💥 Llave dinámica ligada al nombre del producto
                         c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True, key=f"mat_ing_nuevo_{st.session_state['form_key_m19']}_{n_prod}")
                         mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
@@ -369,7 +368,6 @@ def ejecutar():
                         n_prod = c_prod.selectbox("🧪 Producto (Integrado SAP)", sorted(list(lista_prods_limpia)))
                         
                         mat_item_ing = buscar_codigo_material(n_prod, mapeo_materiales)
-                        # 💥 Llave dinámica ligada al nombre del producto para que cambie siempre
                         c_mat.text_input("🔢 Cód. Material", value=mat_item_ing, disabled=True, key=f"mat_ing_exist_{st.session_state['form_key_m19']}_{n_prod}")
 
                         proveedor_asignado = dict_operativo.get(n_prod, "")
@@ -399,7 +397,7 @@ def ejecutar():
                                             st.cache_data.clear(); st.rerun()
                                         except Exception as e: st.error(f"🚨 Fallo: {e}")
 
-                with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD", expanded=True):
+                with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD (ENTRADAS MÚLTIPLES)", expanded=True):
                     col_espacio, col_limpiar = st.columns([3, 1])
                     col_limpiar.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_operativos, use_container_width=True)
                     f1, f2, f3 = st.columns(3)
@@ -407,31 +405,49 @@ def ejecutar():
                     semana_calculada = n_fecha_ing.isocalendar()[1]
                     n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
                     n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
-                    f4, f5, f6 = st.columns(3)
+                    
+                    f8, f9, f10 = st.columns(3)
                     fk = st.session_state['form_key_m19']
-                    n_cant = f4.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"in_cant_{fk}")
-                    n_lote = f5.text_input("📦 Lote", key=f"in_lote_{fk}")
-                    n_ff = f6.date_input("⚙️ F. Fabricación (F/F)", value=hoy_colombia)
-                    f7, f8, f9, f10 = st.columns(4)
-                    n_fv = f7.date_input("⏳ F. Vencimiento (F/V)", value=hoy_colombia)
                     n_factura = f8.text_input("🧾 Factura", key=f"in_factura_{fk}")
                     n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
                     n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
                     
+                    # 💥 NUEVA TABLA DINÁMICA MULTI-LOTE
+                    st.markdown("<hr style='margin: 10px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
+                    st.markdown("#### 📦 Detalle de Lotes Múltiples")
+                    st.caption("Añade tantas filas como líneas tenga el documento SAP.")
+                    df_lotes_base = pd.DataFrame([{"CANTIDAD": 0.0, "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
+                    
+                    config_lotes = {
+                        "CANTIDAD": st.column_config.NumberColumn("⚖️ Cantidad", min_value=0.0, format="%.2f"),
+                        "LOTE": st.column_config.TextColumn("📦 Lote"),
+                        "F_FABRICACION": st.column_config.DateColumn("⚙️ F. Fabricación (F/F)", format="YYYY-MM-DD"),
+                        "F_VENCIMIENTO": st.column_config.DateColumn("⏳ F. Vencimiento (F/V)", format="YYYY-MM-DD")
+                    }
+                    
+                    lotes_editados = st.data_editor(df_lotes_base, num_rows="dynamic", column_config=config_lotes, hide_index=True, use_container_width=True, key=f"multi_lote_{fk}")
+                    
+                    lotes_validos = [row for _, row in lotes_editados.iterrows() if float(row["CANTIDAD"]) > 0 and str(row["LOTE"]).strip() != ""]
+                    cant_total = sum([float(r['CANTIDAD']) for r in lotes_validos])
+                    lote_display = str(lotes_validos[0]['LOTE']).strip() + " ..." if len(lotes_validos) > 1 else (str(lotes_validos[0]['LOTE']).strip() if len(lotes_validos) == 1 else "...")
+
                     st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
                     cp_mat, cp1, cp2, cp3, cp4 = st.columns(5)
                     with cp_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_ing if not es_nuevo_producto else "S/N", language="text")
-                    with cp1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(n_cant), language="text")
-                    with cp2: st.caption("📦 LOTE"); st.code(n_lote if n_lote else "...", language="text")
+                    with cp1: st.caption("⚖️ CANT. TOTAL"); st.code(formatear_numero_sap(cant_total), language="text")
+                    with cp2: st.caption("📦 LOTES"); st.code(lote_display, language="text")
                     with cp3: st.caption("🧾 FACTURA"); st.code(n_factura if n_factura else "...", language="text")
                     with cp4: st.caption("🛒 PEDIDO"); st.code(n_pedido if n_pedido else "...", language="text")
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    btn_guardar_nuevo = st.button("🚀 INYECTAR NUEVO LOTE A LA BÓVEDA", type="primary", use_container_width=True)
+                    btn_guardar_nuevo = st.button("🚀 INYECTAR LOTE(S) A LA BÓVEDA", type="primary", use_container_width=True)
                     
                     if btn_guardar_nuevo:
-                        if not n_prod or str(n_prod).strip() == "": st.error("🚨 El nombre del producto no puede estar vacío.")
+                        if not n_prod or str(n_prod).strip() == "": 
+                            st.error("🚨 El nombre del producto no puede estar vacío.")
+                        elif not lotes_validos:
+                            st.error("🚨 Debes ingresar al menos una fila válida con Cantidad mayor a 0 y Lote.")
                         else:
                             prod_limpio = str(n_prod).strip().upper(); prov_limpio = str(n_prov).strip().upper()
                             if es_nuevo_producto or ((modificar_prov or not bool(proveedor_asignado.strip())) and prov_limpio and prov_limpio != proveedor_asignado.upper()):
@@ -448,29 +464,35 @@ def ejecutar():
                                     else: ws_dicc.append_row([prod_limpio, prov_limpio])
                                 except Exception as e: st.warning(f"Se guardó el diccionario: {e}")
 
-                            # 💥 TÁCTICA APÓSTROFE PARA PROTEGER EL CERO DEL LOTE
-                            lote_ing_inject = f"'{str(n_lote).strip()}" if str(n_lote).strip() else ""
-
-                            nueva_fila_drive = []
-                            for header in encabezados_limpios_ing:
-                                h = header.upper()
-                                if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
-                                elif "PROV" in h: nueva_fila_drive.append(prov_limpio)
-                                elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
-                                elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
-                                elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
-                                elif "CANT" in h: nueva_fila_drive.append(str(n_cant))
-                                elif "LOTE" in h: nueva_fila_drive.append(lote_ing_inject)
-                                elif "F/F" in h: nueva_fila_drive.append(n_ff.strftime("%d/%m/%Y"))
-                                elif "F/V" in h: nueva_fila_drive.append(n_fv.strftime("%d/%m/%Y"))
-                                elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
-                                elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
-                                elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
-                                elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
-                                else: nueva_fila_drive.append("") 
+                            # 💥 INYECCIÓN MASIVA EN DRIVE
+                            nuevas_filas_bulk = []
+                            for row_lote in lotes_validos:
+                                lote_ing_inject = f"'{str(row_lote['LOTE']).strip()}"
+                                cant = row_lote['CANTIDAD']
+                                ff = pd.to_datetime(row_lote['F_FABRICACION']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_FABRICACION']) else hoy_colombia.strftime("%d/%m/%Y")
+                                fv = pd.to_datetime(row_lote['F_VENCIMIENTO']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_VENCIMIENTO']) else hoy_colombia.strftime("%d/%m/%Y")
+                                
+                                nueva_fila_drive = []
+                                for header in encabezados_limpios_ing:
+                                    h = header.upper()
+                                    if "SEMANA" in h: nueva_fila_drive.append(str(semana_calculada))
+                                    elif "PROV" in h: nueva_fila_drive.append(prov_limpio)
+                                    elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
+                                    elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
+                                    elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
+                                    elif "CANT" in h: nueva_fila_drive.append(str(cant))
+                                    elif "LOTE" in h: nueva_fila_drive.append(lote_ing_inject)
+                                    elif "F/F" in h: nueva_fila_drive.append(ff)
+                                    elif "F/V" in h: nueva_fila_drive.append(fv)
+                                    elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
+                                    elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
+                                    elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
+                                    elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
+                                    else: nueva_fila_drive.append("") 
+                                nuevas_filas_bulk.append(nueva_fila_drive)
                             
                             try:
-                                with st.spinner("Enviando datos con láser matemático..."):
+                                with st.spinner(f"Inyectando {len(nuevas_filas_bulk)} lotes con láser matemático..."):
                                     gc_temp = inicializar_cliente_gspread()
                                     sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
                                     ws_write_ing = sh_temp.worksheets()[0]
@@ -479,13 +501,14 @@ def ejecutar():
                                     col_prod_data = ws_write_ing.col_values(idx_col_prod)
                                     last_row_ing = len(col_prod_data)
                                     while last_row_ing > 0 and str(col_prod_data[last_row_ing-1]).strip() == "": last_row_ing -= 1
+                                    
                                     fila_destino = last_row_ing + 1
-                                    rango_inyeccion = f"A{fila_destino}:{get_column_letter(len(encabezados_limpios_ing))}{fila_destino}"
+                                    rango_inyeccion = f"A{fila_destino}:{get_column_letter(len(encabezados_limpios_ing))}{fila_destino + len(nuevas_filas_bulk) - 1}"
                                     
-                                    try: ws_write_ing.update(range_name=rango_inyeccion, values=[nueva_fila_drive], value_input_option='USER_ENTERED')
-                                    except: ws_write_ing.update(rango_inyeccion, [nueva_fila_drive], value_input_option='USER_ENTERED')
+                                    try: ws_write_ing.update(range_name=rango_inyeccion, values=nuevas_filas_bulk, value_input_option='USER_ENTERED')
+                                    except: ws_write_ing.update(rango_inyeccion, nuevas_filas_bulk, value_input_option='USER_ENTERED')
                                     
-                                st.success(f"✅ ¡Lote de {prod_limpio} inyectado exactamente en la fila {fila_destino}!")
+                                st.success(f"✅ ¡{len(nuevas_filas_bulk)} lote(s) de {prod_limpio} inyectados exitosamente a partir de la fila {fila_destino}!")
                                 st.session_state['form_key_m19'] += 1
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e: st.error(f"Error al inyectar datos: {e}")
@@ -579,10 +602,20 @@ def ejecutar():
                     df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
                 else: df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
-                st.markdown("### 🛠️ Matriz de Anulaciones (Solo Lectura y Edición de Estado)")
-                st.caption("🔒 Haz doble clic en ESTADO/OBSERVACIÓN para anular o ELIMINAR el registro físicamente de la base de datos.")
+                st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
+                st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
-                cols_disabled = [col for col in df_filtrado.columns if col not in [COL_ESTADO, 'FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
+                # 💥 DESBLOQUEO DE COLUMNAS PARA PERMITIR COPIAR Y PEGAR
+                columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
+                columnas_editables_reales = [COL_ESTADO]
+                
+                for col in df_filtrado.columns:
+                    for nom_edit in columnas_editables_nombres:
+                        if nom_edit in str(col).upper() and col not in columnas_editables_reales:
+                            columnas_editables_reales.append(col)
+                            
+                cols_disabled = [col for col in df_filtrado.columns if col not in columnas_editables_reales and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
+                
                 opciones_estado = ["✅ VIGENTE", "❌ ANULADO: ERROR EN PRECIOS", "❌ ANULADO: ERROR DE CANTIDAD", "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR", "❌ ANULADO: ERROR EN LOTE/FECHAS", "❌ ANULADO: OTRO MOTIVO", "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"]
 
                 columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
@@ -598,43 +631,67 @@ def ejecutar():
                     elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn("🗓️ INGRESO SAP", width="medium")
                     elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
                     elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 BASE", width="small")
-                    elif "CANT" in c_up: col_config[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
-                    elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
+                    elif "CANT" in c_up: col_config[c] = st.column_config.TextColumn("⚖️ CANTIDAD (Editable)", width="medium")
+                    elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE (Editable)", width="medium")
                     elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn("⚙️ F/F", width="small")
                     elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn("⏳ F/V", width="small")
-                    elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA", width="medium")
-                    elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO", width="medium")
-                    elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+                    elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA (Editable)", width="medium")
+                    elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO (Editable)", width="medium")
+                    elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO (Editable)", width="medium")
                     
                 df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
-                    cambios = []
-                    for i in range(len(df_filtrado)):
-                        estado_original = str(df_filtrado.iloc[i][COL_ESTADO]).strip()
-                        estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
-                        if estado_original != estado_nuevo: cambios.append({'fila': int(df_filtrado.iloc[i]['FILA_EXCEL']), 'nuevo': estado_nuevo})
+                    cambios_actualizacion = []
+                    eliminaciones = []
                     
-                    if cambios:
-                        eliminaciones = [c for c in cambios if "ELIMINAR REGISTRO" in c['nuevo']]
-                        actualizaciones = [c for c in cambios if "ELIMINAR REGISTRO" not in c['nuevo']]
+                    # Buscamos los índices de columnas reales en Google Sheets
+                    idx_cols = {}
+                    for col in columnas_editables_reales:
+                        for idx_h, h in enumerate(encabezados_limpios_ing):
+                            if col.upper() == h.upper() or (col == COL_ESTADO and "ESTADO" in h.upper()):
+                                idx_cols[col] = idx_h + 1
+                                break
+
+                    for i in range(len(df_filtrado)):
+                        estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
+                        fila_excel = int(df_filtrado.iloc[i]['FILA_EXCEL'])
+                        
+                        if "ELIMINAR REGISTRO" in estado_nuevo:
+                            eliminaciones.append(fila_excel)
+                        else:
+                            for col in columnas_editables_reales:
+                                if col in df_filtrado.columns and col in df_editado.columns:
+                                    val_orig = str(df_filtrado.iloc[i][col]).strip()
+                                    val_nuevo = str(df_editado.iloc[i][col]).strip()
+                                    
+                                    if val_orig != val_nuevo:
+                                        val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                        if col in idx_cols:
+                                            cambios_actualizacion.append({'fila': fila_excel, 'col_idx': idx_cols[col], 'nuevo': val_inyectar})
+                    
+                    if cambios_actualizacion or eliminaciones:
                         cambios_exitosos = False
                         gc_temp = inicializar_cliente_gspread()
                         sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
                         ws_write_ing = sh_temp.worksheets()[0]
                         
-                        for act in actualizaciones:
-                            try: ws_write_ing.update_cell(act['fila'], idx_col_estado, act['nuevo']); cambios_exitosos = True
-                            except Exception as e: st.error(f"Error al actualizar fila {act['fila']}: {e}")
+                        with st.spinner(f"Enviando {len(cambios_actualizacion)} modificaciones y {len(eliminaciones)} eliminaciones..."):
+                            for act in cambios_actualizacion:
+                                try: 
+                                    ws_write_ing.update_cell(act['fila'], act['col_idx'], act['nuevo'])
+                                    cambios_exitosos = True
+                                except Exception as e: st.error(f"Error al actualizar fila {act['fila']}: {e}")
+                                        
+                            if eliminaciones:
+                                for eli in sorted(eliminaciones, reverse=True):
+                                    try: ws_write_ing.delete_row(eli); cambios_exitosos = True
+                                    except AttributeError:
+                                        try: ws_write_ing.delete_rows(eli); cambios_exitosos = True
+                                        except Exception as e: st.error(f"Error fatal API Google. Fila {eli}. {e}")
+                                    except Exception as e: st.error(f"Error al eliminar fila {eli}. {e}")
                                     
-                        if eliminaciones:
-                            for eli in sorted(eliminaciones, key=lambda x: x['fila'], reverse=True):
-                                try: ws_write_ing.delete_row(eli['fila']); cambios_exitosos = True
-                                except AttributeError:
-                                    try: ws_write_ing.delete_rows(eli['fila']); cambios_exitosos = True
-                                    except Exception as e: st.error(f"Error fatal API Google. Fila {eli['fila']}. {e}")
-                                except Exception as e: st.error(f"Error al eliminar fila {eli['fila']}. {e}")
                         if cambios_exitosos:
                             st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
                             st.cache_data.clear(); st.rerun()
@@ -697,7 +754,6 @@ def ejecutar():
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
-            # 💥 Llave única dinámica ligada al nombre del producto para que se actualice sí o sí
             tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_cod_{fk_t}_{t_producto}")
 
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
@@ -710,7 +766,6 @@ def ejecutar():
             if t_observacion_sel == "OTRO": t_observacion = tr4.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
             else: t_observacion = t_observacion_sel
 
-            # 💥 RASTREADOR TRIPLE A PARA LOTES
             lotes_disp = []
             if not df_ingresos.empty:
                 c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
@@ -760,7 +815,6 @@ def ejecutar():
                             fecha_str = t_fecha.strftime("%d/%m/%Y")
                             cantidad_formateada = formatear_numero_sap(t_cantidad)
 
-                            # 💥 TÁCTICA APÓSTROFE PARA PROTEGER EL CERO DEL LOTE
                             lote_tras_inject = f"'{str(t_lote).strip()}" if str(t_lote).strip() else ""
                             
                             nueva_fila_traslado = []
