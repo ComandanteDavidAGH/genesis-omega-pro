@@ -203,7 +203,10 @@ def cargar_diccionarios_crudos():
     return dict_recetas, dict_lideres, dict_fertilizantes
 
 @st.cache_data(show_spinner=False, ttl=1800)
-def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
+def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
+    # 💥 AHORA SÍ LLAMAMOS A LOS DICCIONARIOS INTERNAMENTE PARA EVITAR EL ERROR DE 3 ARGUMENTOS FALTANTES
+    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
+    
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
     max_p = -9999
@@ -236,7 +239,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             if "ACONDICIONADOR" in p_receta:
                 d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
             elif "ACEITE" in p_receta:
-                # 💥 Blindaje: Extrae dígitos correctamente aunque sean 2 números (Ej: KRMN12)
                 nums = re.findall(r'\d+', iter_id)
                 if nums:
                     d_receta_esperada = float(nums[0])
@@ -247,7 +249,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
                     error = abs(d_sap - d_receta_esperada)
-                    # 💥 Tolerancia estricta del 15% para que la matemática castigue desvíos y gane a la decisión del piloto
                     tolerancia = max(0.05, d_receta_esperada * 0.15) 
                     
                     if error <= 0.05: 
@@ -261,7 +262,7 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 puntaje += 100
                 if match_perfecto: puntaje += 100 
                 elif dose_matched: puntaje += 40  
-                else: puntaje -= 100 # Fuerte castigo si la dosis está mal, para que pierda el cóctel falso
+                else: puntaje -= 100 
             else:
                 puntaje -= 100 
 
@@ -280,7 +281,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
                 if not is_fert:
                     puntaje -= 100 
 
-        # 💥 NERF AL PILOTO: Solo 50 puntos para desempatar, la matemática de SAP tiene prioridad.
         if coctel_piloto_base and iter_id == coctel_piloto_base: 
             puntaje += 50
 
@@ -992,7 +992,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
         partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
         coctel_piloto_base = partes_coctel[0]
-        sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
 
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
