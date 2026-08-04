@@ -120,17 +120,17 @@ def obtener_matriz_fija_cruda():
     except Exception:
         return []
 
-def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
+def obtener_dosis_global_robusta(df_mez_dummy, nombre_producto_sap):
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
     if not nombre_clean: return 0.0
 
     datos_crudos = obtener_matriz_fija_cruda()
     if not datos_crudos: return 0.0
 
-    try:
-        # Escaneo implacable celda por celda (Ignora si hay o no encabezados y atrapa números)
-        for fila in datos_crudos:
-            for c_idx in range(len(fila) - 1):
+    # Escaneo implacable celda por celda blindado contra errores
+    for fila in datos_crudos:
+        for c_idx in range(len(fila) - 1):
+            try:
                 val_celda = str(fila[c_idx]).upper()
                 val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
                 
@@ -140,13 +140,14 @@ def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
                         val_str = str(fila[c_idx + 1]).replace(",", ".")
                         val_num = re.sub(r'[^\d.]', '', val_str)
                         
-                        if val_num:
+                        if val_num and val_num != ".":
                             dosis = float(val_num)
                             if 0 < dosis < 100:
                                 return dosis
-    except Exception:
-        pass
-        
+            except Exception:
+                # Si una celda tiene letras o errores, la ignora y SIGUE BUSCANDO.
+                continue
+                
     return 0.0
 
 @st.cache_data(show_spinner=False, ttl=1800)
@@ -185,7 +186,7 @@ def cargar_diccionarios_crudos():
             if cid and p_tabla and cid != "FINCA":
                 p_clean = p_tabla.replace(" ", "")
                 num_str = re.sub(r'[^\d.]', '', d_str)
-                d_tabla = float(num_str) if num_str else 0.0
+                d_tabla = float(num_str) if num_str and num_str != "." else 0.0
                 
                 es_lider = False
                 if len(fila) >= 4 and str(fila[3]).strip().upper() == "X":
@@ -809,9 +810,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
                                 dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
 
-                    # 💥 REGLA DE ORO: Cero adulteración. Si no hay dosis teórica oficial (porque es un intruso o porque no hay cóctel), es 0.0.
+                    # 💥 REGLA DE ORO: Cero adulteración. Si no hay dosis teórica oficial, es 0.0.
                     if dosis_teorica is None:
-                        dosis_rescatada = obtener_dosis_global_robusta(df_mez, nombre_limpio)
+                        dosis_rescatada = obtener_dosis_global_robusta(None, nombre_limpio)
                         if dosis_rescatada > 0: 
                             dosis_teorica = dosis_rescatada
                         else:
