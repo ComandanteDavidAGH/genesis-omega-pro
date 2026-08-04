@@ -382,7 +382,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     with st.container(border=True):
         st.markdown("### 📡 Panel de Operations")
-    
+        
         c_vacio, c_radar = st.columns([2, 2])
         pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
 
@@ -652,7 +652,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if f"rl_{casilla_key}" in st.session_state:
                         del st.session_state[f"rl_{casilla_key}"]
 
-                c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4) # ✅ Corrección de variables con sintaxis extraña
+                c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4) 
                 
                 recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=st.session_state[f"default_rec_idx_{casilla_key}"], key=f"rl_{casilla_key}")
                 
@@ -850,12 +850,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 else:
                     df_sab_col0_clean = pd.Series(dtype=str)
 
-                # 💥 SOLUCIÓN DE AGRUPACIÓN (REGLA DE ORO) PARA EVITAR DISPAROS FALSOS EN LOTES PARTIDOS
-                totales_sap_por_producto = {}
-                for item_data in datos_extraidos_sap:
-                    totales_sap_por_producto[item_data['nombre_limpio']] = totales_sap_por_producto.get(item_data['nombre_limpio'], 0.0) + item_data['cant_total']
-
                 matriz_datos = []
+
                 for item_data in datos_extraidos_sap:
                     cod_item = str(item_data['cod']).strip().upper().lstrip('0')
                     nombre_p, nombre_limpio, cant_linea_sap = item_data['nombre'], item_data['nombre_limpio'], item_data['cant_total']
@@ -926,17 +922,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     
                     if dosis_teorica is None:
-                        # 🌟 ESCÁNER UNIVERSAL (Búsqueda en TODA la hoja de mezclas)
                         dosis_rescatada = obtener_dosis_global_robusta(df_mez, nombre_limpio)
                         
                         if dosis_rescatada is not None:
                             dosis_teorica = dosis_rescatada
                         else:
-                            # 💥 CORRECCIÓN: Si TRULY no está en la base, agrupar los lotes para evitar división errónea
-                            cant_total_agrupada = totales_sap_por_producto.get(nombre_limpio, cant_linea_sap)
+                            # 💥 REGLA DE ORO: Si no está en ninguna parte, deducimos la dosis en base a todo lo facturado en SAP
+                            cant_total_agrupada = sap_dict_pista.get(nombre_limpio, 0.0) * ha_dosis_final
                             dosis_teorica = cant_total_agrupada / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                    # 💥 REGLA DE ORO: DOSIS IDEAL 100% PURA (Dosis/Ha * Hectáreas)
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
@@ -949,14 +943,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         "H: Saldo Real SAP": round(saldo_sap, 3), 
                         "I: Sugerido SAP (Total)": round(cant_linea_sap, 3)
                     })
-
+                
                 df_matriz = pd.DataFrame(matriz_datos)
                 
                 if not df_matriz.empty:
                     # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO EXACTO DE % EXTRA
+                    # 💥 CÁLCULO EXACTO DE % EXTRA USANDO EL TOTAL ACUMULADO DEL PRODUCTO
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Total (Sistema)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
@@ -967,8 +961,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         else:
                             df_matriz.at[idx_m, "C: X (Extra %)"] = 0.0
 
-                    df_matriz["D: Dosis Total (Sistema)"] = (df_matriz["B: Dosis/Ha (SAP)"].fillna(0.0) * ha_dosis_final).round(3)
+                    def calcular_semaforo_misiones(row):
+                        base_pura = float(row["D: Dosis Total (Sistema)"])
+                        total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
+                        extra_pct = float(row.get("C: X (Extra %)", 0.0))
+                        
+                        diferencia = total_producto - base_pura
+                        
+                        if total_producto < (base_pura - 0.05):
+                            return "🔴 PELIGRO: SUB-DOSIS (---)"
+                        elif extra_pct > 0.01 or diferencia > 0.05:
+                            return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
+                        else:
+                            return "🟢 ÓPTIMO"
 
+                    df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
+                    
+                    columnas_ordenadas = [
+                        "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
+                        "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
+                        "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "TOTAL_PROD_SAP"
+                    ]
+                    df_matriz = df_matriz[columnas_ordenadas]
+                    
                     def estilizar_dosis_ideal(row):
                         estilos = [''] * len(row)
                         try:
@@ -994,29 +1009,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             pass
                         return estilos
 
-                    def calcular_semaforo_misiones(row):
-                        base_pura = float(row["D: Dosis Total (Sistema)"])
-                        total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
-                        extra_pct = float(row.get("C: X (Extra %)", 0.0))
-                        
-                        diferencia = total_producto - base_pura
-                        
-                        if total_producto < (base_pura - 0.05):
-                            return "🔴 PELIGRO: SUB-DOSIS (---)"
-                        elif extra_pct > 0.01 or diferencia > 0.05:
-                            return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
-                        else:
-                            return "🟢 ÓPTIMO"
-
-                    df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
-                    
-                    columnas_ordenadas = [
-                        "A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", 
-                        "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
-                        "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "TOTAL_PROD_SAP"
-                    ]
-                    df_matriz = df_matriz[columnas_ordenadas]
-                    
                     df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
 
                     edited_df = st.data_editor(
@@ -1035,7 +1027,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         use_container_width=True, hide_index=True
                     )
 
-                    # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
                     st.write("")
                     st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
                     st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
@@ -1065,7 +1056,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             precio_columna_ref = dict_aviones.get(escuadron_aviones.iloc[0]['Avión'], 0) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
             precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadron_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
 
-            # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
             st.write("")
             st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
             m1, m2, m3, m4, m5 = st.columns(5)
@@ -1249,7 +1239,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if not edited_df.empty:
                             for idx, row_m in edited_df.iterrows():
                                 nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
-                                if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
+                                if nombre_prod not in ["", "NAN"]:
                                     if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
                                         fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                         filas_memoria.append(fila_m)
