@@ -428,17 +428,30 @@ def ejecutar():
                     lotes_editados = st.data_editor(df_lotes_base, num_rows="dynamic", column_config=config_lotes, hide_index=True, use_container_width=True, key=f"multi_lote_{fk}")
                     
                     lotes_validos = [row for _, row in lotes_editados.iterrows() if float(row["CANTIDAD"]) > 0 and str(row["LOTE"]).strip() != ""]
-                    cant_total = sum([float(r['CANTIDAD']) for r in lotes_validos])
-                    lote_display = str(lotes_validos[0]['LOTE']).strip() + " ..." if len(lotes_validos) > 1 else (str(lotes_validos[0]['LOTE']).strip() if len(lotes_validos) == 1 else "...")
 
+                    # 💥 CIRUGÍA APLICADA: PANEL DE COPIADO MÚLTIPLE (1 CAJITA POR LOTE VÁLIDO)
                     st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
-                    cp_mat, cp1, cp2, cp3, cp4 = st.columns(5)
-                    with cp_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_ing if not es_nuevo_producto else "S/N", language="text")
-                    with cp1: st.caption("⚖️ CANT. TOTAL"); st.code(formatear_numero_sap(cant_total), language="text")
-                    with cp2: st.caption("📦 LOTES"); st.code(lote_display, language="text")
-                    with cp3: st.caption("🧾 FACTURA"); st.code(n_factura if n_factura else "...", language="text")
-                    with cp4: st.caption("🛒 PEDIDO"); st.code(n_pedido if n_pedido else "...", language="text")
+                    
+                    if not lotes_validos:
+                        st.info("⚠️ Ingresa cantidades y lotes válidos en la tabla superior para generar el panel de copiado.")
+                    else:
+                        # Imprimir encabezados visuales una sola vez
+                        h1, h2, h3, h4, h5 = st.columns(5)
+                        h1.caption("🔢 MATERIAL")
+                        h2.caption("⚖️ CANTIDAD")
+                        h3.caption("📦 LOTE")
+                        h4.caption("🧾 FACTURA")
+                        h5.caption("🛒 PEDIDO")
+                        
+                        # Iterar y crear una fila de copiado por cada lote ingresado
+                        for row_lote in lotes_validos:
+                            c1, c2, c3, c4, c5 = st.columns(5)
+                            with c1: st.code(mat_item_ing if not es_nuevo_producto else "S/N", language="text")
+                            with c2: st.code(formatear_numero_sap(row_lote['CANTIDAD']), language="text")
+                            with c3: st.code(str(row_lote['LOTE']).strip(), language="text")
+                            with c4: st.code(n_factura if n_factura else "...", language="text")
+                            with c5: st.code(n_pedido if n_pedido else "...", language="text")
 
                     st.markdown("<br>", unsafe_allow_html=True)
                     btn_guardar_nuevo = st.button("🚀 INYECTAR LOTE(S) A LA BÓVEDA", type="primary", use_container_width=True)
@@ -922,7 +935,7 @@ def ejecutar():
                     if cambios_exitosos:
                         st.success("✅ ¡Objetivo neutralizado! El traslado ha sido borrado del sistema.")
                         st.cache_data.clear(); st.rerun()
-                else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
+            else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
