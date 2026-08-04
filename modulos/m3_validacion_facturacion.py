@@ -121,7 +121,6 @@ def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
         pass
     return 0.5 
 
-# 💥 NUEVO CEREBRO CRUDO (VERSIÓN 2): Evita siglas y cacheos corruptos
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_matriz_fija_cruda_v2():
     gc = obtener_cliente_gspread_unificado()
@@ -203,7 +202,8 @@ def cargar_diccionarios_crudos():
     return dict_recetas, dict_lideres, dict_fertilizantes
 
 @st.cache_data(show_spinner=False, ttl=1800)
-def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
+def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
+    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
     max_p = -9999
@@ -233,7 +233,6 @@ def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertili
             match_perfecto = False
             d_receta_esperada = d_esperada
             
-            # 💥 REGLAS MATEMÁTICAS RESTAURADAS A LA EXACTITUD
             if "ACONDICIONADOR" in p_receta:
                 d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
             elif "ACEITE" in p_receta:
@@ -641,7 +640,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""): 
                         item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0
                     elif "ACEITE" in item["PRODUCTO"]:
-                        # 👉 REGLA DE ORO ESTRICTA: El primer dígito determina la dosis de aceite
                         for char in coctel_u.split()[0]:
                             if char.isdigit():
                                 item["DOSIS"] = float(char)
@@ -1242,15 +1240,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             dosis_teorica = d_oficial
                             break
 
-                    # 💥 REGLAS MATEMÁTICAS RESTAURADAS A LA EXACTITUD
                     if "ACONDICIONADOR" in nombre_limpio: 
-                        tiene_acond_06 = any("ZINTRAC" in k.upper() or "ZITRON" in k.upper() or "BANATREL" in k.upper() for k in sap_dict_pista.keys())
-                        dosis_teorica = 0.06 if tiene_acond_06 else 0.02
+                        dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                     elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     elif "ACEITE" in nombre_limpio:
                         if coctel_ganador != "SIN COINCIDENCIA":
-                            # 👉 LEE ESTRICTAMENTE EL PRIMER DÍGITO COMO ACEITE
+                            # 👉 LEE ESTRICTAMENTE EL PRIMER DÍGITO COMO ACEITE EN FACTURACIÓN REAL
                             for char in coctel_ganador.split()[0]:
                                 if char.isdigit():
                                     dosis_teorica = float(char)
