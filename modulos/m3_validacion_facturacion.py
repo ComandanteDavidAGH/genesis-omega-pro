@@ -109,21 +109,34 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
-def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
+@st.cache_data(show_spinner=False, ttl=1800)
+def obtener_grilla_mezclas_cruda():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return []
+    try:
+        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        return boveda.worksheet("DD_Mesclas").get_all_values()
+    except Exception:
+        return []
+
+def obtener_dosis_global_robusta(df_mez_dummy, nombre_producto_sap):
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
     if not nombre_clean: return 0.0
 
+    datos_crudos = obtener_grilla_mezclas_cruda()
+    if not datos_crudos: return 0.0
+
     try:
-        # Escaneo profundo: Revisamos filas y columnas de la base de mezclas
-        for r_idx in range(len(df_mez)):
-            for c_idx in range(min(4, len(df_mez.columns) - 1)): 
-                val_celda = str(df_mez.iloc[r_idx, c_idx]).upper()
+        # Escaneo de fuerza bruta en la matriz cruda de Google Sheets (Ignora columnas ocultas o sin nombre)
+        for fila in datos_crudos:
+            for c_idx in range(len(fila) - 1):
+                val_celda = str(fila[c_idx]).upper()
                 val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
                 
                 if val_clean and len(val_clean) >= 4:
                     if nombre_clean in val_clean or val_clean in nombre_clean:
-                        # Extraer la dosis de la celda de la derecha, forzando formato numérico
-                        val_num = str(df_mez.iloc[r_idx, c_idx + 1]).replace(",", ".")
+                        # Extraer la dosis de la celda inmediatamente a la derecha
+                        val_num = str(fila[c_idx + 1]).replace(",", ".")
                         val_num = re.sub(r'[^\d.]', '', val_num)
                         
                         if val_num:
