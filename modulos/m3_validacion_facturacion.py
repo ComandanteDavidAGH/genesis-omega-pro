@@ -109,9 +109,9 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
-# 💥 NUEVO CEREBRO CRUDO: Extrae las tablas de GSheets ignorando fallos de Pandas (QUELAMIX FIX)
+# 💥 NUEVO CEREBRO CRUDO (VERSIÓN 2): Evita siglas y cacheos corruptos
 @st.cache_data(show_spinner=False, ttl=1800)
-def obtener_matriz_fija_cruda():
+def obtener_matriz_fija_cruda_v2():
     gc = obtener_cliente_gspread_unificado()
     if not gc: return []
     try:
@@ -120,14 +120,14 @@ def obtener_matriz_fija_cruda():
     except Exception:
         return []
 
-def obtener_dosis_global_robusta(df_mez_dummy, nombre_producto_sap):
+def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
     if not nombre_clean: return 0.0
 
-    datos_crudos = obtener_matriz_fija_cruda()
+    datos_crudos = obtener_matriz_fija_cruda_v2()
     if not datos_crudos: return 0.0
 
-    # Escaneo implacable celda por celda blindado contra errores
+    # Escaneo implacable celda por celda blindado contra siglas como "QM"
     for fila in datos_crudos:
         for c_idx in range(len(fila) - 1):
             try:
@@ -136,7 +136,7 @@ def obtener_dosis_global_robusta(df_mez_dummy, nombre_producto_sap):
                 
                 if val_clean and len(val_clean) >= 4:
                     if nombre_clean in val_clean or val_clean in nombre_clean:
-                        # Extrae la celda de al lado y elimina cualquier letra (evita las siglas como "QM")
+                        # Extrae la celda de al lado y elimina cualquier letra (si es "QM" lo vuelve vacío)
                         val_str = str(fila[c_idx + 1]).replace(",", ".")
                         val_num = re.sub(r'[^\d.]', '', val_str)
                         
@@ -145,19 +145,17 @@ def obtener_dosis_global_robusta(df_mez_dummy, nombre_producto_sap):
                             if 0 < dosis < 100:
                                 return dosis
             except Exception:
-                # Si una celda tiene letras o errores, la ignora y SIGUE BUSCANDO.
-                continue
+                continue # Si choca con una letra o error, lo ignora y SIGUE buscando el número real
                 
     return 0.0
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def cargar_diccionarios_crudos():
-    datos = obtener_matriz_fija_cruda()
+    datos = obtener_matriz_fija_cruda_v2()
     dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
     
     if not datos: return dict_recetas, dict_lideres, dict_fertilizantes
     
-    # Encontrar columna de fertilizantes
     f_col = -1
     for r in range(min(20, len(datos))):
         for c in range(len(datos[r])):
@@ -166,7 +164,6 @@ def cargar_diccionarios_crudos():
                 break
         if f_col != -1: break
     
-    # Poblar fertilizantes
     if f_col != -1 and f_col + 1 < len(datos[0]):
         for r in range(1, len(datos)):
             if len(datos[r]) > f_col + 1:
@@ -175,7 +172,6 @@ def cargar_diccionarios_crudos():
                 if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf:
                     dict_fertilizantes[nf.replace(" ", "")] = sf
 
-    # Construir recetas puras
     for r in range(1, len(datos)):
         fila = datos[r]
         if len(fila) >= 3:
@@ -207,12 +203,19 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
     dosis_oficiales_coctel = {}
     max_p = -999
 
+    # 1. EVALUAR REGLA DE ZINTRAC/ZITRON PARA EL ACONDICIONADOR DESDE SAP
+    tiene_acond_06 = False
+    for k_sap in sap_dict_pista.keys():
+        k_up = k_sap.upper()
+        if "ZINTRAC" in k_up or "ZITRON" in k_up or "BANATREL" in k_up:
+            tiene_acond_06 = True
+            break
+
     for iter_id, receta in dict_recetas.items():
         es_valido = True
         puntaje = 0
         lider_db = dict_lideres.get(iter_id, "")
         
-        # 1. VERIFICAR LÍDER DE LA RECETA
         match_lider = False
         if lider_db != "":
             for k_sap in sap_dict_pista.keys():
@@ -222,21 +225,17 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                     break
         
         if not match_lider and lider_db != "":
-            es_valido = False # Guillotina: Faltó el líder
+            es_valido = False # Guillotina
         else:
             puntaje += 1000
 
-        # 2. VERIFICAR PRODUCTOS Y CALCULAR PUNTOS
         if es_valido:
             for p_receta, d_esperada in receta.items():
                 d_receta_esperada = d_esperada
                 
-                # Reglas quemadas desde tu Excel
+                # 💥 REGLAS QUEMADAS (IDÉNTICAS A LA MACRO)
                 if "ACONDICIONADOR" in p_receta:
-                    if "ZN" in iter_id or "BT" in iter_id or "ZT" in iter_id or "ZITRON" in iter_id:
-                        d_receta_esperada = 0.06
-                    else:
-                        d_receta_esperada = 0.02
+                    d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
                 elif "ACEITE" in p_receta:
                     for char in iter_id:
                         if char.isdigit():
@@ -257,22 +256,18 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                         break
                 
                 if match_receta:
-                    if dose_matched:
-                        puntaje += 50
-                    else:
-                        puntaje += 10
+                    if dose_matched: puntaje += 50
+                    else: puntaje += 10
                 else:
-                    es_valido = False # Guillotina: Faltó un ingrediente
+                    es_valido = False # Guillotina
                     break
         
-        # 3. GUARDAR EL MEJOR PUNTAJE
         if es_valido:
             if puntaje > max_p:
                 max_p = puntaje
                 coctel_base = iter_id
                 dosis_oficiales_coctel = receta.copy()
 
-    # 4. RASTREO FERTILIZANTE FINAL (Como en la Macro)
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
@@ -280,8 +275,7 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                 if not ("IMBIOSIL" in f_name and str(coctel_base).startswith("IN")):
                     sigla_fertilizante = f" {f_sigla}"
                     break
-        if sigla_fertilizante: 
-            break
+        if sigla_fertilizante: break
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
@@ -708,7 +702,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista_math = {}
                 datos_extraidos_sap = []
 
-                # ⚡ 1:1 EXTRACCIÓN EXACTA POR FILA/POSICIÓN DE SAP (Visual) y Agrupación (Matemática)
+                # ⚡ 1:1 EXTRACCIÓN EXACTA
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                     if not col_mat: continue
@@ -730,9 +724,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
 
                     nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
-                    # SUMA MATEMÁTICA INTERNA (Para el Motor IA)
                     sap_dict_pista_math[nombre_limpio] = sap_dict_pista_math.get(nombre_limpio, 0.0) + dosis_pista
-                    # GUARDADO INDIVIDUAL (Para la Pantalla)
                     datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
                 # 💥 EJECUCIÓN DEL MOTOR IA CON CEREBRO CRUDO
@@ -791,34 +783,39 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     except Exception: pass
 
                     dosis_teorica = None
-                    # Si encontró el cóctel, sacamos las dosis de la receta oficial
+                    
                     if coctel_ganador != "SIN COINCIDENCIA":
                         for p_receta, d_oficial in dosis_oficiales_coctel.items():
                             if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                                 dosis_teorica = d_oficial
                                 break
 
-                        # Reglas especiales SÓLO si el cóctel es válido
-                        if dosis_teorica is None:
-                            if "ACONDICIONADOR" in nombre_limpio: 
-                                dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                            elif "ACEITE" in nombre_limpio:
-                                for char in coctel_ganador:
-                                    if char.isdigit():
-                                        dosis_teorica = float(char)
-                                        break
-                            elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
-                                dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
+                    # 💥 REGLAS DE ORO QUEMADAS (Imponen su ley siempre)
+                    if "ACONDICIONADOR" in nombre_limpio:
+                        tiene_acond_06 = any("ZINTRAC" in k.upper() or "ZITRON" in k.upper() or "BANATREL" in k.upper() for k in sap_dict_pista_math.keys())
+                        dosis_teorica = 0.06 if tiene_acond_06 else 0.02
+                        
+                    elif "ACEITE" in nombre_limpio:
+                        if coctel_ganador != "SIN COINCIDENCIA":
+                            for char in coctel_ganador.split()[0]: # Extrae solo del nombre base, sin mezclar con siglas
+                                if char.isdigit():
+                                    dosis_teorica = float(char)
+                                    break
+                                    
+                    elif "IMBIOSIL" in nombre_limpio.replace(" ", ""):
+                        if coctel_ganador != "SIN COINCIDENCIA":
+                            dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
+                        else:
+                            dosis_teorica = 1.0 # Rescate seguro si no hay cóctel
 
-                    # 💥 REGLA DE ORO: Cero adulteración. Si no hay dosis teórica oficial, es 0.0.
+                    # 💥 RESCATE DE FERTILIZANTES (Si aún no tiene dosis, ej. QUELAMIX)
                     if dosis_teorica is None:
-                        dosis_rescatada = obtener_dosis_global_robusta(None, nombre_limpio)
+                        dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
                         if dosis_rescatada > 0: 
                             dosis_teorica = dosis_rescatada
                         else:
                             dosis_teorica = 0.0
 
-                    # 💥 DOSIS IDEAL (LA PURA, LA INVIOLABLE)
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
@@ -835,10 +832,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_matriz = pd.DataFrame(matriz_datos)
                 
                 if not df_matriz.empty:
-                    # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO EXACTO DE % EXTRA (Usando la Dosis Ideal Pura)
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Ideal (Total)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
