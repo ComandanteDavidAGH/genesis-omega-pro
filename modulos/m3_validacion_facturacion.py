@@ -330,11 +330,122 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     dict_aviones, dict_drones = preprocesar_flota_gspread()
-    modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
+    modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Caja de Arena de IA)")
 
     if modo_simulacro:
-        st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación.")
-        st.stop()
+        st.success("🧪 **MESA DE PRUEBAS ACTIVA:** Construye tu matriz de SAP manualmente para poner a prueba la Inteligencia Artificial.")
+        
+        c_sim1, c_sim2 = st.columns(2)
+        ha_sim = c_sim1.number_input("🚜 Hectáreas a Simular:", min_value=0.1, value=50.0, step=1.0)
+        coctel_piloto_sim = c_sim2.text_input("👨‍✈️ Cóctel Reportado por Piloto (Opcional):", value="")
+
+        st.markdown("#### 📦 Inventario Simulado (Cantidades Totales)")
+        
+        # Obtenemos productos de tu BD real para el menú desplegable
+        dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
+        productos_base = set(["ACEITE DICAM", "ACONDICIONADOR SV", "ADHERENTE SV", "IMBIOSIL O", "ZINTRAC X LITRO SV", "MANCOL 430 SC"])
+        for receta in dict_recetas.values(): productos_base.update(receta.keys())
+        productos_base.update(dict_fertilizantes.keys())
+        lista_prods_sim = sorted(list(productos_base))
+
+        df_sim_base = pd.DataFrame([{"Producto": "", "Cantidad Total (L o Kg)": 0.0} for _ in range(6)])
+        df_sim_in = st.data_editor(df_sim_base, column_config={
+            "Producto": st.column_config.SelectboxColumn("🧪 Seleccionar Producto", options=lista_prods_sim, required=True),
+            "Cantidad Total (L o Kg)": st.column_config.NumberColumn("⚖️ Cantidad Total", min_value=0.0, format="%.2f")
+        }, num_rows="dynamic", use_container_width=True, key="editor_simulador")
+
+        if st.button("🚀 DETONAR SIMULACIÓN IA", type="primary", use_container_width=True):
+            sap_dict_sim = {}
+            for _, row in df_sim_in.iterrows():
+                p_name = str(row["Producto"]).strip().upper()
+                c_tot = float(row["Cantidad Total (L o Kg)"])
+                if p_name and c_tot > 0:
+                    p_clean = p_name.replace(" ", "")
+                    sap_dict_sim[p_clean] = sap_dict_sim.get(p_clean, 0.0) + (c_tot / ha_sim)
+
+            if not sap_dict_sim:
+                st.error("🚨 Ingresa al menos un producto con cantidad en la tabla de arriba.")
+            else:
+                coctel_ganador, dosis_oficiales = emparejar_coctel_ia(sap_dict_sim, coctel_piloto_sim.split()[0] if coctel_piloto_sim else "")
+
+                if coctel_ganador == "SIN COINCIDENCIA": st.error(f"🤖 **IA (Guillotina):** Cóctel Determinado: **SIN COINCIDENCIA**")
+                else: st.success(f"🤖 **IA (Guillotina):** Cóctel Determinado: **{coctel_ganador}**")
+
+                matriz_sim = []
+                for _, row in df_sim_in.iterrows():
+                    p_name = str(row["Producto"]).strip().upper()
+                    c_tot = float(row["Cantidad Total (L o Kg)"])
+                    if not p_name or c_tot <= 0: continue
+
+                    p_clean = p_name.replace(" ", "")
+                    dosis_teorica = None
+
+                    if coctel_ganador != "SIN COINCIDENCIA":
+                        for p_receta, d_oficial in dosis_oficiales.items():
+                            if p_receta == p_clean or (len(p_clean)>=4 and p_receta in p_clean) or (len(p_receta)>=4 and p_clean in p_receta):
+                                dosis_teorica = d_oficial
+                                break
+
+                    # Reglas de Acero
+                    if "ACONDICIONADOR" in p_clean:
+                        tiene_acond_06 = any("ZINTRAC" in k.upper() or "ZITRON" in k.upper() or "BANATREL" in k.upper() for k in sap_dict_sim.keys())
+                        dosis_teorica = 0.06 if tiene_acond_06 else 0.02
+                    elif "ACEITE" in p_clean:
+                        if coctel_ganador != "SIN COINCIDENCIA":
+                            for char in coctel_ganador.split()[0]:
+                                if char.isdigit():
+                                    dosis_teorica = float(char); break
+                    elif "IMBIOSIL" in p_clean:
+                        dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
+
+                    if dosis_teorica is None:
+                        dosis_rescatada = obtener_dosis_global_robusta_v2(None, p_clean)
+                        dosis_teorica = dosis_rescatada if dosis_rescatada > 0 else 0.0
+
+                    dosis_ideal_pura = round(dosis_teorica * ha_sim, 3)
+
+                    matriz_sim.append({
+                        "A: Producto": p_name,
+                        "B: Dosis Oficial/Ha": round(dosis_teorica, 3),
+                        "C: Extra %": 0.0,
+                        "D: Dosis Ideal (Total)": dosis_ideal_pura,
+                        "I: Sugerido SAP (Total)": round(c_tot, 3)
+                    })
+
+                df_matriz = pd.DataFrame(matriz_sim)
+                if not df_matriz.empty:
+                    df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
+
+                    for idx_m, r_m in df_matriz.iterrows():
+                        b_ideal = r_m["D: Dosis Ideal (Total)"]
+                        tot_p_sap = r_m["TOTAL_PROD_SAP"]
+                        df_matriz.at[idx_m, "C: Extra %"] = round(((tot_p_sap / b_ideal) - 1.0) * 100.0, 3) if b_ideal > 0 else 0.0
+
+                    def calc_semaforo(r):
+                        bp, tp, ex = float(r["D: Dosis Ideal (Total)"]), float(r.get("TOTAL_PROD_SAP", r["I: Sugerido SAP (Total)"])), float(r.get("C: Extra %", 0.0))
+                        if bp == 0.0 and tp > 0: return "⚠️ INTRUSO (SIN DOSIS)"
+                        elif tp < (bp - 0.05): return "🔴 SUB-DOSIS"
+                        elif ex > 0.01 or (tp - bp) > 0.05: return f"🔵 REC. TÉCNICA (+{ex:.1f}%)"
+                        else: return "🟢 ÓPTIMO"
+
+                    df_matriz["📊 Ajuste"] = df_matriz.apply(calc_semaforo, axis=1)
+                    df_matriz = df_matriz[["A: Producto", "B: Dosis Oficial/Ha", "C: Extra %", "D: Dosis Ideal (Total)", "I: Sugerido SAP (Total)", "📊 Ajuste", "TOTAL_PROD_SAP"]]
+
+                    def estilar(row):
+                        estilos = [''] * len(row)
+                        try:
+                            idx_s, idx_sap = row.index.get_loc("D: Dosis Ideal (Total)"), row.index.get_loc("I: Sugerido SAP (Total)")
+                            bp, tp, ex = float(row["D: Dosis Ideal (Total)"]), float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"])), float(row.get("C: Extra %", 0.0))
+                            if bp == 0.0 and tp > 0: col = 'background-color: #ffeeba; color: #856404; font-weight: bold;'
+                            elif (tp - bp) < -0.05: col = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
+                            elif ex > 0.01 or (tp - bp) > 0.05: col = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
+                            else: col = 'background-color: #d4edda; color: #155724; font-weight: bold;'
+                            estilos[idx_s] = col; estilos[idx_sap] = col
+                        except: pass
+                        return estilos
+
+                    st.dataframe(df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilar, axis=1), use_container_width=True, hide_index=True)
+        st.stop() # Freno de emergencia: detiene el resto de la app
 
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
