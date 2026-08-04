@@ -109,47 +109,65 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
+# 💥 NUEVO CEREBRO CRUDO: Lee la base de datos evadiendo los errores de Pandas con las columnas vacías
 @st.cache_data(show_spinner=False, ttl=1800)
-def obtener_grilla_mezclas_cruda():
+def cargar_diccionarios_crudos():
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return []
+    if not gc: return {}, {}, {}
     try:
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        return boveda.worksheet("DD_Mesclas").get_all_values()
-    except Exception:
-        return []
-
-def obtener_dosis_global_robusta(df_mez_dummy, nombre_producto_sap):
-    nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
-    if not nombre_clean: return 0.0
-
-    datos_crudos = obtener_grilla_mezclas_cruda()
-    if not datos_crudos: return 0.0
-
-    try:
-        # Escaneo de fuerza bruta en la matriz cruda de Google Sheets (Ignora columnas ocultas o sin nombre)
-        for fila in datos_crudos:
-            for c_idx in range(len(fila) - 1):
-                val_celda = str(fila[c_idx]).upper()
-                val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
-                
-                if val_clean and len(val_clean) >= 4:
-                    if nombre_clean in val_clean or val_clean in nombre_clean:
-                        # Extraer la dosis de la celda inmediatamente a la derecha
-                        val_num = str(fila[c_idx + 1]).replace(",", ".")
-                        val_num = re.sub(r'[^\d.]', '', val_num)
-                        
-                        if val_num:
-                            dosis = float(val_num)
-                            if 0 < dosis < 100:
-                                return dosis
-    except Exception:
-        pass
+        datos = boveda.worksheet("DD_Mesclas").get_all_values()
         
-    return 0.0
+        dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
+        
+        # Encontrar columna de fertilizantes
+        f_col = -1
+        for r in range(min(20, len(datos))):
+            for c in range(len(datos[r])):
+                if 'FERTILIZANTE' in str(datos[r][c]).upper():
+                    f_col = c
+                    break
+            if f_col != -1: break
+        
+        # Poblar fertilizantes
+        if f_col != -1 and f_col + 1 < len(datos[0]):
+            for r in range(1, len(datos)):
+                if len(datos[r]) > f_col + 1:
+                    nf = str(datos[r][f_col]).strip().upper()
+                    sf = str(datos[r][f_col+1]).strip().upper()
+                    if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf:
+                        dict_fertilizantes[nf.replace(" ", "")] = sf
+
+        # Construir recetas puras
+        for r in range(1, len(datos)):
+            fila = datos[r]
+            if len(fila) >= 3:
+                cid = str(fila[0]).strip().upper()
+                p_tabla = str(fila[1]).strip().upper()
+                d_str = str(fila[2]).replace(",", ".")
+                
+                if cid and p_tabla and cid != "FINCA":
+                    p_clean = p_tabla.replace(" ", "")
+                    num_str = re.sub(r'[^\d.]', '', d_str)
+                    d_tabla = float(num_str) if num_str else 0.0
+                    
+                    es_lider = False
+                    if len(fila) >= 4 and str(fila[3]).strip().upper() == "X":
+                        es_lider = True
+                        
+                    if cid not in dict_recetas: dict_recetas[cid] = {}
+                    dict_recetas[cid][p_clean] = d_tabla
+                    if es_lider: dict_lideres[cid] = p_clean
+                    
+        return dict_recetas, dict_lideres, dict_fertilizantes
+    except Exception:
+        return {}, {}, {}
+
 # 💥 SINERGIA: MOTOR CEREBRAL EXACTO DE TU MACRO "BUSCADOR_HIJO"
 @st.cache_data(show_spinner=False, ttl=1800)
-def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
+def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
+    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
+    
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
     max_p = -999
@@ -682,45 +700,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     # GUARDADO INDIVIDUAL (Para la Pantalla)
                     datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
-                dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
-                if not df_mez.empty:
-                    f_row, f_col = -1, -1
-                    for c in range(len(df_mez.columns)):
-                        if 'FERTILIZANTE' in str(df_mez.columns[c]).upper(): f_row, f_col = -1, c; break
-                    if f_col == -1:
-                        for c in range(len(df_mez.columns)):
-                            for r in range(min(200, len(df_mez))):
-                                if 'FERTILIZANTE' in str(df_mez.iloc[r, c]).upper(): f_row, f_col = r, c; break
-                            if f_col != -1: break
-                            
-                    if f_col != -1 and f_col + 1 < len(df_mez.columns):
-                        start_r = 0 if f_row == -1 else f_row + 1
-                        for r in range(start_r, len(df_mez)):
-                            n_f = str(df_mez.iloc[r, f_col]).strip().upper()
-                            s_f = str(df_mez.iloc[r, f_col + 1]).strip().upper()
-                            if n_f not in ["", "NAN", "NONE", "FERTILIZANTES"] and s_f not in ["", "NAN", "NONE", "SIGLAS"]:
-                                dict_fertilizantes[n_f.replace(" ", "")] = s_f
-
-                    for idx, row in df_mez.iterrows():
-                        if len(row) > 3:
-                            cid = str(row.iloc[0]).strip().upper()
-                            p_tabla_clean = str(row.iloc[1]).strip().upper().replace(" ", "")
-                            d_tabla = extraer_numero(row.iloc[2])
-                            # ENCONTRANDO EL LÍDER DE VERDAD (Columna D es índice 3)
-                            es_lider = False
-                            for col_idx in range(3, min(6, len(row))):
-                                if str(row.iloc[col_idx]).strip().upper() == "X":
-                                    es_lider = True
-                                    break
-
-                            if cid and cid != 'NAN' and p_tabla_clean:
-                                if cid not in dict_recetas: dict_recetas[cid] = {}
-                                dict_recetas[cid][p_tabla_clean] = d_tabla
-                                if es_lider: dict_lideres[cid] = p_tabla_clean
-
-                # 💥 EJECUCIÓN DEL MOTOR IA CON SINERGIA (MATEMÁTICA AGRUPADA)
-                coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista_math, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
-                st.success(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **{coctel_ganador}**")
+                # 💥 EJECUCIÓN DEL MOTOR IA CON CEREBRO CRUDO
+                coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista_math, coctel_piloto_base)
+                
+                if coctel_ganador == "SIN COINCIDENCIA":
+                    st.error(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **SIN COINCIDENCIA**")
+                else:
+                    st.success(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **{coctel_ganador}**")
                 
                 if not df_sab.empty:
                     df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
@@ -770,32 +756,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     except Exception: pass
 
                     dosis_teorica = None
-                    for p_receta, d_oficial in dosis_oficiales_coctel.items():
-                        if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
-                            dosis_teorica = d_oficial
-                            break
+                    # Si encontró el cóctel, sacamos las dosis de la receta oficial
+                    if coctel_ganador != "SIN COINCIDENCIA":
+                        for p_receta, d_oficial in dosis_oficiales_coctel.items():
+                            if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
+                                dosis_teorica = d_oficial
+                                break
 
-                    # Reglas quemadas originales para visualización de dosis teórica
-                    if dosis_teorica is None:
-                        if "ACONDICIONADOR" in nombre_limpio: 
-                            dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                        elif "ACEITE" in nombre_limpio:
-                            for char in coctel_ganador:
-                                if char.isdigit():
-                                    dosis_teorica = float(char)
-                                    break
-                        elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
-                            dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
-                    
-                    if dosis_teorica is None:
-                        dosis_rescatada = obtener_dosis_global_robusta(df_mez, nombre_limpio)
-                        if dosis_rescatada > 0: 
-                            dosis_teorica = dosis_rescatada
-                        else:
-                            # 💥 CORRECCIÓN: JAMÁS SE ADULTERA LA DOSIS. Si no hay dosis oficial, es 0.
-                            dosis_teorica = 0.0
+                        # Reglas especiales SÓLO si el cóctel es válido
+                        if dosis_teorica is None:
+                            if "ACONDICIONADOR" in nombre_limpio: 
+                                dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                            elif "ACEITE" in nombre_limpio:
+                                for char in coctel_ganador:
+                                    if char.isdigit():
+                                        dosis_teorica = float(char)
+                                        break
+                            elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
+                                dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
 
-                    # 💥 DOSIS IDEAL (LA PURA, LA INVIOLABLE)
+                    # 💥 REGLA DE ORO: Cero adulteración. Si no hay dosis teórica oficial (porque es un intruso o porque no hay cóctel), es 0.0.
+                    if dosis_teorica is None:
+                        dosis_teorica = 0.0
+
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
@@ -815,7 +798,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO EXACTO DE % EXTRA (Usando la Dosis Ideal Pura)
+                    # 💥 CÁLCULO EXACTO DE % EXTRA
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Ideal (Total)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
@@ -832,8 +815,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         extra_pct = float(row.get("C: Extra %", 0.0))
                         diferencia = total_producto - base_pura
                         
-                        if base_pura == 0.0 and total_producto > 0:
-                            return "⚠️ INTRUSO (SIN DOSIS OFICIAL)"
+                        if base_pura == 0.0 and total_producto > 0: return "⚠️ INTRUSO (SIN DOSIS OFICIAL)"
                         elif total_producto < (base_pura - 0.05): return "🔴 PELIGRO: SUB-DOSIS (---)"
                         elif extra_pct > 0.01 or diferencia > 0.05: return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
                         else: return "🟢 ÓPTIMO"
@@ -857,8 +839,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             extra_pct = float(row.get("C: Extra %", 0.0))
                             diferencia_real = total_producto - base_pura
                             
-                            if base_pura == 0.0 and total_producto > 0:
-                                color = 'background-color: #ffeeba; color: #856404; font-weight: bold;'
+                            if base_pura == 0.0 and total_producto > 0: color = 'background-color: #ffeeba; color: #856404; font-weight: bold;'
                             elif diferencia_real < -0.05: color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
                             elif extra_pct > 0.01 or diferencia_real > 0.05: color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                             else: color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
