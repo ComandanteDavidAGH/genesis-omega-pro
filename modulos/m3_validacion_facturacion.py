@@ -121,7 +121,7 @@ def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
         pass
     return 0.5 
 
-# 💥 NUEVO CEREBRO CRUDO (VERSIÓN 2): Evita siglas y cacheos corruptos (Para Facturación Real)
+# 💥 NUEVO CEREBRO CRUDO (VERSIÓN 2): Evita siglas y cacheos corruptos
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_matriz_fija_cruda_v2():
     gc = obtener_cliente_gspread_unificado()
@@ -203,10 +203,7 @@ def cargar_diccionarios_crudos():
     return dict_recetas, dict_lideres, dict_fertilizantes
 
 @st.cache_data(show_spinner=False, ttl=1800)
-def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
-    # 💥 AHORA SÍ LLAMAMOS A LOS DICCIONARIOS INTERNAMENTE PARA EVITAR EL ERROR DE 3 ARGUMENTOS FALTANTES
-    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
-    
+def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
     max_p = -9999
@@ -236,12 +233,15 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
             match_perfecto = False
             d_receta_esperada = d_esperada
             
+            # 💥 REGLAS MATEMÁTICAS RESTAURADAS A LA EXACTITUD
             if "ACONDICIONADOR" in p_receta:
                 d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
             elif "ACEITE" in p_receta:
-                nums = re.findall(r'\d+', iter_id)
-                if nums:
-                    d_receta_esperada = float(nums[0])
+                # 👉 LEE ESTRICTAMENTE EL PRIMER DÍGITO COMO ACEITE
+                for char in iter_id:
+                    if char.isdigit():
+                        d_receta_esperada = float(char)
+                        break
             elif "IMBIOSIL" in p_receta:
                 d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
                 
@@ -586,7 +586,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
                 subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
                 
-                # 💥 CÁLCULO MÁGICO DEL SERVICIO TÉCNICO POR LOTES
                 subtotal_st = 0.0
                 for _, r_area in df_areas_in.iterrows():
                     h_a = float(r_area["Hectáreas"])
@@ -597,7 +596,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 coctel_u = coctel_sim.upper().strip()
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
-                sigla_sim = partes[1] if len(partes) > 1 else ""
 
                 receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
                 prods_f = []
@@ -642,6 +640,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                     elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""): 
                         item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0
+                    elif "ACEITE" in item["PRODUCTO"]:
+                        # 👉 REGLA DE ORO ESTRICTA: El primer dígito determina la dosis de aceite
+                        for char in coctel_u.split()[0]:
+                            if char.isdigit():
+                                item["DOSIS"] = float(char)
+                                break
                 
                 tabla_visual = []
                 mezcla_total = 0
@@ -1238,15 +1242,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             dosis_teorica = d_oficial
                             break
 
+                    # 💥 REGLAS MATEMÁTICAS RESTAURADAS A LA EXACTITUD
                     if "ACONDICIONADOR" in nombre_limpio: 
-                        dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                        tiene_acond_06 = any("ZINTRAC" in k.upper() or "ZITRON" in k.upper() or "BANATREL" in k.upper() for k in sap_dict_pista.keys())
+                        dosis_teorica = 0.06 if tiene_acond_06 else 0.02
                     elif "IMBIOSIL" in nombre_limpio.replace(" ", ""): 
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     elif "ACEITE" in nombre_limpio:
                         if coctel_ganador != "SIN COINCIDENCIA":
-                            nums = re.findall(r'\d+', coctel_ganador.split()[0])
-                            if nums:
-                                dosis_teorica = float(nums[0])
+                            # 👉 LEE ESTRICTAMENTE EL PRIMER DÍGITO COMO ACEITE
+                            for char in coctel_ganador.split()[0]:
+                                if char.isdigit():
+                                    dosis_teorica = float(char)
+                                    break
                     
                     if dosis_teorica is None:
                         dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
