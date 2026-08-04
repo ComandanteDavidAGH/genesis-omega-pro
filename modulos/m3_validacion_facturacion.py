@@ -474,7 +474,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
             tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod)
 
-            st.markdown("##### 🚜 Desglose de Áreas y Ciclos (Soporta Finca Partida)")
+            st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
             st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días (ej. 92Ha a 25 días y 51Ha a 9 días), edite o añada filas. El ST se cobrará línea por línea.")
             
             df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(st.session_state.dias_ciclo_sim_mem)}])
@@ -482,7 +482,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_areas_def, 
                 num_rows="dynamic", 
                 column_config={
-                    "Hectáreas": st.column_config.NumberColumn("🚜 Hectáreas", min_value=0.0, format="%.2f"),
+                    "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", min_value=0.0, format="%.2f"),
                     "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
                 },
                 use_container_width=True, 
@@ -494,7 +494,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if ha_sim <= 0:
                 st.warning("⚠️ El área total debe ser mayor a 0 para simular.")
             else:
-                st.info(f"**🚜 Área Total Calculada a Cotizar:** {ha_sim:.2f} Ha")
+                st.info(f"**🗺️ Área Total Calculada a Cotizar:** {ha_sim:.2f} Ha")
 
         tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
         if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
@@ -681,7 +681,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 st.markdown("---")
                 st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
-                st.caption(f"🗓️ **Días Ciclo:** Variados (Finca Partida) | 🚜 **Área Total:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
+                st.caption(f"🗓️ **Días Ciclo:** Variados (Finca Partida) | 🗺️ **Área Total:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
                 st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
                 
                 st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
@@ -999,7 +999,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-            mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+            mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             with r1c1:
@@ -1064,7 +1064,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 horometro_final_avion = 0.0 
 
                 if mision_solo_dron:
-                    st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
+                    st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     
@@ -1397,7 +1397,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06);'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
             
             with m1:
-                st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
+                st.markdown(mini_metric("🗺️", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
             with m2: 
                 ha_av_r = float(escuadron_aviones['Hectáreas'].sum()) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
                 es_dr_dom = mision_solo_dron or (ha_av_r == 0 and precio_dron_ref > 0)
@@ -1413,7 +1413,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             with m5: 
                 st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
                 st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
-                st.markdown(mini_metric("🚁", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
+                st.markdown(mini_metric("🛸", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
             
             st.write("")
             c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
