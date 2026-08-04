@@ -109,59 +109,93 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
-# 💥 NUEVO CEREBRO CRUDO: Lee la base de datos evadiendo los errores de Pandas con las columnas vacías
+# 💥 NUEVO CEREBRO CRUDO: Extrae las tablas de GSheets ignorando fallos de Pandas (QUELAMIX FIX)
 @st.cache_data(show_spinner=False, ttl=1800)
-def cargar_diccionarios_crudos():
+def obtener_matriz_fija_cruda():
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return {}, {}, {}
+    if not gc: return []
     try:
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        datos = boveda.worksheet("DD_Mesclas").get_all_values()
-        
-        dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
-        
-        # Encontrar columna de fertilizantes
-        f_col = -1
-        for r in range(min(20, len(datos))):
-            for c in range(len(datos[r])):
-                if 'FERTILIZANTE' in str(datos[r][c]).upper():
-                    f_col = c
-                    break
-            if f_col != -1: break
-        
-        # Poblar fertilizantes
-        if f_col != -1 and f_col + 1 < len(datos[0]):
-            for r in range(1, len(datos)):
-                if len(datos[r]) > f_col + 1:
-                    nf = str(datos[r][f_col]).strip().upper()
-                    sf = str(datos[r][f_col+1]).strip().upper()
-                    if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf:
-                        dict_fertilizantes[nf.replace(" ", "")] = sf
-
-        # Construir recetas puras
-        for r in range(1, len(datos)):
-            fila = datos[r]
-            if len(fila) >= 3:
-                cid = str(fila[0]).strip().upper()
-                p_tabla = str(fila[1]).strip().upper()
-                d_str = str(fila[2]).replace(",", ".")
-                
-                if cid and p_tabla and cid != "FINCA":
-                    p_clean = p_tabla.replace(" ", "")
-                    num_str = re.sub(r'[^\d.]', '', d_str)
-                    d_tabla = float(num_str) if num_str else 0.0
-                    
-                    es_lider = False
-                    if len(fila) >= 4 and str(fila[3]).strip().upper() == "X":
-                        es_lider = True
-                        
-                    if cid not in dict_recetas: dict_recetas[cid] = {}
-                    dict_recetas[cid][p_clean] = d_tabla
-                    if es_lider: dict_lideres[cid] = p_clean
-                    
-        return dict_recetas, dict_lideres, dict_fertilizantes
+        return boveda.worksheet("DD_Mesclas").get_all_values()
     except Exception:
-        return {}, {}, {}
+        return []
+
+def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
+    nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
+    if not nombre_clean: return 0.0
+
+    datos_crudos = obtener_matriz_fija_cruda()
+    if not datos_crudos: return 0.0
+
+    try:
+        # Escaneo implacable celda por celda (Ignora si hay o no encabezados y atrapa números)
+        for fila in datos_crudos:
+            for c_idx in range(len(fila) - 1):
+                val_celda = str(fila[c_idx]).upper()
+                val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
+                
+                if val_clean and len(val_clean) >= 4:
+                    if nombre_clean in val_clean or val_clean in nombre_clean:
+                        # Extrae la celda de al lado y elimina cualquier letra (evita las siglas como "QM")
+                        val_str = str(fila[c_idx + 1]).replace(",", ".")
+                        val_num = re.sub(r'[^\d.]', '', val_str)
+                        
+                        if val_num:
+                            dosis = float(val_num)
+                            if 0 < dosis < 100:
+                                return dosis
+    except Exception:
+        pass
+        
+    return 0.0
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def cargar_diccionarios_crudos():
+    datos = obtener_matriz_fija_cruda()
+    dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
+    
+    if not datos: return dict_recetas, dict_lideres, dict_fertilizantes
+    
+    # Encontrar columna de fertilizantes
+    f_col = -1
+    for r in range(min(20, len(datos))):
+        for c in range(len(datos[r])):
+            if 'FERTILIZANTE' in str(datos[r][c]).upper():
+                f_col = c
+                break
+        if f_col != -1: break
+    
+    # Poblar fertilizantes
+    if f_col != -1 and f_col + 1 < len(datos[0]):
+        for r in range(1, len(datos)):
+            if len(datos[r]) > f_col + 1:
+                nf = str(datos[r][f_col]).strip().upper()
+                sf = str(datos[r][f_col+1]).strip().upper()
+                if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf:
+                    dict_fertilizantes[nf.replace(" ", "")] = sf
+
+    # Construir recetas puras
+    for r in range(1, len(datos)):
+        fila = datos[r]
+        if len(fila) >= 3:
+            cid = str(fila[0]).strip().upper()
+            p_tabla = str(fila[1]).strip().upper()
+            d_str = str(fila[2]).replace(",", ".")
+            
+            if cid and p_tabla and cid != "FINCA":
+                p_clean = p_tabla.replace(" ", "")
+                num_str = re.sub(r'[^\d.]', '', d_str)
+                d_tabla = float(num_str) if num_str else 0.0
+                
+                es_lider = False
+                if len(fila) >= 4 and str(fila[3]).strip().upper() == "X":
+                    es_lider = True
+                    
+                if cid not in dict_recetas: dict_recetas[cid] = {}
+                dict_recetas[cid][p_clean] = d_tabla
+                if es_lider: dict_lideres[cid] = p_clean
+                
+    return dict_recetas, dict_lideres, dict_fertilizantes
 
 # 💥 SINERGIA: MOTOR CEREBRAL EXACTO DE TU MACRO "BUSCADOR_HIJO"
 @st.cache_data(show_spinner=False, ttl=1800)
@@ -777,8 +811,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                     # 💥 REGLA DE ORO: Cero adulteración. Si no hay dosis teórica oficial (porque es un intruso o porque no hay cóctel), es 0.0.
                     if dosis_teorica is None:
-                        dosis_teorica = 0.0
+                        dosis_rescatada = obtener_dosis_global_robusta(df_mez, nombre_limpio)
+                        if dosis_rescatada > 0: 
+                            dosis_teorica = dosis_rescatada
+                        else:
+                            dosis_teorica = 0.0
 
+                    # 💥 DOSIS IDEAL (LA PURA, LA INVIOLABLE)
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
@@ -798,7 +837,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO EXACTO DE % EXTRA
+                    # 💥 CÁLCULO EXACTO DE % EXTRA (Usando la Dosis Ideal Pura)
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Ideal (Total)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
