@@ -113,22 +113,27 @@ def obtener_dosis_global_robusta(df_mez, nombre_producto_sap):
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
     if not nombre_clean: return 0.0
 
-    for c_idx in range(len(df_mez.columns) - 1):
+    try:
+        # Escaneo profundo: Revisamos filas y columnas de la base de mezclas
         for r_idx in range(len(df_mez)):
-            val_celda = str(df_mez.iloc[r_idx, c_idx]).upper()
-            val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
-            
-            if val_clean and len(val_clean) >= 4:
-                if nombre_clean in val_clean or val_clean in nombre_clean:
-                    try:
+            for c_idx in range(min(4, len(df_mez.columns) - 1)): 
+                val_celda = str(df_mez.iloc[r_idx, c_idx]).upper()
+                val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
+                
+                if val_clean and len(val_clean) >= 4:
+                    if nombre_clean in val_clean or val_clean in nombre_clean:
+                        # Extraer la dosis de la celda de la derecha, forzando formato numérico
                         val_num = str(df_mez.iloc[r_idx, c_idx + 1]).replace(",", ".")
-                        dosis = float(re.sub(r'[^\d.]', '', val_num))
-                        if 0 < dosis < 100:
-                            return dosis
-                    except Exception:
-                        pass
+                        val_num = re.sub(r'[^\d.]', '', val_num)
+                        
+                        if val_num:
+                            dosis = float(val_num)
+                            if 0 < dosis < 100:
+                                return dosis
+    except Exception:
+        pass
+        
     return 0.0
-
 # 💥 SINERGIA: MOTOR CEREBRAL EXACTO DE TU MACRO "BUSCADOR_HIJO"
 @st.cache_data(show_spinner=False, ttl=1800)
 def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
