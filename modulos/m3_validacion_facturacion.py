@@ -28,13 +28,8 @@ def obtener_cliente_gspread_unificado():
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_historial_completo_ciclos_cached():
-    """
-    Recupera el historial de ciclos desde Supabase en milisegundos.
-    Usa Google Sheets únicamente como respaldo de emergencia.
-    """
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     
-    # 1. Intentar lectura instantánea vía Supabase
     if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
         try:
             supabase_client = st.session_state['supabase']
@@ -47,7 +42,6 @@ def obtener_historial_completo_ciclos_cached():
         except Exception:
             pass
 
-    # 2. Fallback a Google Sheets si Supabase no responde
     gc = obtener_cliente_gspread_unificado()
     if not gc:
         return pd.DataFrame(), pd.DataFrame()
@@ -115,19 +109,7 @@ def preprocesar_flota_gspread():
     except Exception:
         return dict_aviones_default, dict_drones_default
 
-def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
-    try:
-        for col_idx in range(len(df_hoja.columns) - 1):
-            mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
-            if mask.any():
-                val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
-                if pd.notna(val) and val > 0: 
-                    return float(val)
-    except Exception: 
-        pass
-    return 0.5 
-
-# 💥 NUEVO CEREBRO CRUDO (VERSIÓN 2): Evita siglas y cacheos corruptos
+# 💥 CEREBRO CRUDO (VERSIÓN BLINDADA): Evita siglas y cacheos corruptos
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_matriz_fija_cruda_v2():
     gc = obtener_cliente_gspread_unificado()
@@ -145,7 +127,6 @@ def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
     datos_crudos = obtener_matriz_fija_cruda_v2()
     if not datos_crudos: return 0.0
 
-    # Escaneo implacable celda por celda blindado contra siglas como "QM"
     for fila in datos_crudos:
         for c_idx in range(len(fila) - 1):
             try:
@@ -154,32 +135,27 @@ def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
                 
                 if val_clean and len(val_clean) >= 4:
                     if nombre_clean in val_clean or val_clean in nombre_clean:
-                        # Extrae la celda de al lado y elimina cualquier letra (si es "QM" lo vuelve vacío)
                         val_str = str(fila[c_idx + 1]).replace(",", ".")
                         val_num = re.sub(r'[^\d.]', '', val_str)
-                        
                         if val_num and val_num != ".":
                             dosis = float(val_num)
                             if 0 < dosis < 100:
                                 return dosis
             except Exception:
-                continue # Si choca con una letra o error, lo ignora y SIGUE buscando el número real
-                
+                continue 
     return 0.0
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def cargar_diccionarios_crudos():
     datos = obtener_matriz_fija_cruda_v2()
     dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
-    
     if not datos: return dict_recetas, dict_lideres, dict_fertilizantes
     
     f_col = -1
     for r in range(min(20, len(datos))):
         for c in range(len(datos[r])):
             if 'FERTILIZANTE' in str(datos[r][c]).upper():
-                f_col = c
-                break
+                f_col = c; break
         if f_col != -1: break
     
     if f_col != -1 and f_col + 1 < len(datos[0]):
@@ -196,123 +172,87 @@ def cargar_diccionarios_crudos():
             cid = str(fila[0]).strip().upper()
             p_tabla = str(fila[1]).strip().upper()
             d_str = str(fila[2]).replace(",", ".")
-            
             if cid and p_tabla and cid != "FINCA":
                 p_clean = p_tabla.replace(" ", "")
                 num_str = re.sub(r'[^\d.]', '', d_str)
                 d_tabla = float(num_str) if num_str and num_str != "." else 0.0
-                
                 es_lider = False
-                if len(fila) >= 4 and str(fila[3]).strip().upper() == "X":
-                    es_lider = True
-                    
+                if len(fila) >= 4 and str(fila[3]).strip().upper() == "X": es_lider = True
                 if cid not in dict_recetas: dict_recetas[cid] = {}
                 dict_recetas[cid][p_clean] = d_tabla
                 if es_lider: dict_lideres[cid] = p_clean
                 
     return dict_recetas, dict_lideres, dict_fertilizantes
 
+# 💥 SINERGIA: MOTOR CEREBRAL EXACTO DE TU MACRO "BUSCADOR_HIJO"
 @st.cache_data(show_spinner=False, ttl=1800)
-def emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base):
+def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
+    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
     coctel_base = "SIN COINCIDENCIA"
     dosis_oficiales_coctel = {}
-    max_p = -9999
+    max_p = -999
 
-    # 1. EVALUAR REGLA DE ZINTRAC/ZITRON PARA EL ACONDICIONADOR DESDE SAP
     tiene_acond_06 = False
     for k_sap in sap_dict_pista.keys():
         k_up = k_sap.upper()
         if "ZINTRAC" in k_up or "ZITRON" in k_up or "BANATREL" in k_up:
-            tiene_acond_06 = True
-            break
+            tiene_acond_06 = True; break
 
     for iter_id, receta in dict_recetas.items():
+        es_valido = True
         puntaje = 0
-        
         lider_db = dict_lideres.get(iter_id, "")
-        if lider_db:
-            match_lider = False
-            for k_sap in sap_dict_pista.keys():
-                if lider_db == k_sap or (len(k_sap) >= 4 and lider_db in k_sap) or (len(lider_db) >= 4 and k_sap in lider_db):
-                    match_lider = True
-                    break
-            if not match_lider:
-                puntaje -= 500 
         
-        for p_receta, d_esperada in receta.items():
-            match_receta = False
-            dose_matched = False
-            match_perfecto = False
-            
-            d_receta_esperada = d_esperada
-            if "ACONDICIONADOR" in p_receta:
-                d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
-            elif "ACEITE" in p_receta:
-                for char in iter_id:
-                    if char.isdigit():
-                        d_receta_esperada = float(char)
+        match_lider = False
+        if lider_db != "":
+            for k_sap in sap_dict_pista.keys():
+                k_sap_clean = k_sap.replace(" ", "")
+                if lider_db == k_sap_clean or (len(k_sap_clean) >= 4 and lider_db in k_sap_clean) or (len(lider_db) >= 4 and k_sap_clean in lider_db) or (len(lider_db) >= 7 and len(k_sap_clean) >= 7 and k_sap_clean[:7] == lider_db[:7]):
+                    match_lider = True; break
+        
+        if not match_lider and lider_db != "": es_valido = False
+        else: puntaje += 1000
+
+        if es_valido:
+            for p_receta, d_esperada in receta.items():
+                d_receta_esperada = d_esperada
+                if "ACONDICIONADOR" in p_receta:
+                    d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
+                elif "ACEITE" in p_receta:
+                    for char in iter_id:
+                        if char.isdigit():
+                            d_receta_esperada = float(char); break
+                elif "IMBIOSIL" in p_receta:
+                    d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
+
+                match_receta = False
+                dose_matched = False
+                for k_sap, d_sap in sap_dict_pista.items():
+                    k_sap_clean = k_sap.replace(" ", "")
+                    if p_receta == k_sap_clean or (len(k_sap_clean) >= 4 and p_receta in k_sap_clean) or (len(p_receta) >= 4 and k_sap_clean in p_receta) or (len(p_receta) >= 7 and len(k_sap_clean) >= 7 and k_sap_clean[:7] == p_receta[:7]):
+                        match_receta = True
+                        if abs(d_sap - d_receta_esperada) <= 0.2: dose_matched = True
                         break
-            elif "IMBIOSIL" in p_receta:
-                d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
                 
-            for k_sap, d_sap in sap_dict_pista.items():
-                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
-                    match_receta = True
-                    error = abs(d_sap - d_receta_esperada)
-                    tolerancia = max(0.8, d_receta_esperada * 0.25)
-                    
-                    if error <= 0.15: 
-                        match_perfecto = True
-                        dose_matched = True
-                    elif error <= tolerancia: 
-                        dose_matched = True 
-                    break
-            
-            if match_receta:
-                puntaje += 100
-                if match_perfecto:
-                    puntaje += 100 
-                elif dose_matched: 
-                    puntaje += 50  
+                if match_receta:
+                    if dose_matched: puntaje += 50
+                    else: puntaje += 10
                 else:
-                    puntaje -= 50
-            else:
-                puntaje -= 100 
-
-        for k_sap in sap_dict_pista.keys():
-            sap_en_receta = False
-            for p_receta in receta.keys():
-                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
-                    sap_en_receta = True
-                    break
-            
-            if not sap_en_receta:
-                is_fert = False
-                for f_name in dict_fertilizantes.keys():
-                    if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
-                        is_fert = True
-                        break
-                
-                if not is_fert:
-                    puntaje -= 100 
-
-        if coctel_piloto_base and iter_id == coctel_piloto_base: 
-            puntaje += 200
-
-        if puntaje > max_p:
-            max_p = puntaje
-            coctel_base = iter_id
-            dosis_oficiales_coctel = receta.copy()
+                    es_valido = False; break
+        
+        if es_valido:
+            if puntaje > max_p:
+                max_p = puntaje
+                coctel_base = iter_id
+                dosis_oficiales_coctel = receta.copy()
 
     sigla_fertilizante = ""
     for k_sap in sap_dict_pista.keys():
         for f_name, f_sigla in dict_fertilizantes.items():
-            if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
+            if f_name == k_sap or (len(k_sap) >= 3 and f_name in k_sap) or (len(f_name) >= 3 and k_sap in f_name):
                 if not ("IMBIOSIL" in f_name and str(coctel_base).startswith("IN")):
-                    sigla_fertilizante = f" {f_sigla}"
-                    break
-        if sigla_fertilizante: 
-            break
+                    sigla_fertilizante = f" {f_sigla}"; break
+        if sigla_fertilizante: break
 
     final_coctel = coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA"
     return final_coctel, dosis_oficiales_coctel
@@ -327,64 +267,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
-    
-    div[data-testid="stDataEditor"],
-    div[data-testid="stDataFrame"] {
-        border: 3px solid #143521 !important; 
-        border-radius: 8px !important;
-        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; 
-        overflow: hidden !important;
-    }
-    
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stDateInput"] input {
-        background-color: #ffffff !important;
-        border: 3px solid #143521 !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
-    }
-    
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        background-color: transparent !important;
-        border: none !important;
-    }
-    
-    div[data-testid="stSelectbox"] *, 
-    div[data-testid="stTextInput"] *, 
-    div[data-testid="stNumberInput"] *, 
-    div[data-testid="stDateInput"] * {
-        color: #000000 !important;
-        font-weight: bold !important;
-    }
-    
-    div[data-testid="stMainBlockContainer"] label p {
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-    }
-    
-    div[data-testid="stCodeBlock"], 
-    div[data-testid="stCodeBlock"] pre, 
-    div[data-testid="stCodeBlock"] pre code {
-        background-color: #ffffff !important;
-        border: 3px solid #143521 !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
-        overflow: hidden !important;
-        padding: 2px 5px !important;
-    }
-    
-    div[data-testid="stCodeBlock"] code,
-    div[data-testid="stCodeBlock"] code span,
-    div[data-testid="stCodeBlock"] pre span {
-        color: #0d1b2a !important;
-        font-weight: 900 !important;
-        font-size: 17px !important;
-        font-family: 'Arial Black', monospace !important;
-    }
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
+    div[data-testid="stSelectbox"] *, div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stDateInput"] * { color: #000000 !important; font-weight: bold !important; }
+    div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
+    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; overflow: hidden !important; padding: 2px 5px !important; }
+    div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -416,14 +305,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         """
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
-    
     dict_aviones, dict_drones = preprocesar_flota_gspread()
     
-    # 💥 INICIO DEL NUEVO MODO SIMULADOR (CAJA DE ARENA) 💥
+    # 💥 MODO SIMULADOR (CAJA DE ARENA) ARREGLADO 💥
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Caja de Arena de IA)")
-
     if modo_simulacro:
-        st.success("🧪 **MESA DE PRUEBAS ACTIVA:** Construye tu matriz de SAP manualmente para poner a prueba la Inteligencia Artificial.")
+        st.success("🧪 **MESA DE PRUEBAS ACTIVA:** Construye tu matriz de SAP manualmente para poner a prueba la Inteligencia Artificial y generar Cotizaciones.")
         
         c_sim1, c_sim2 = st.columns(2)
         ha_sim = c_sim1.number_input("🚜 Hectáreas a Simular:", min_value=0.1, value=50.0, step=1.0)
@@ -431,9 +318,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         st.markdown("#### 📦 Inventario Simulado (Cantidades Totales)")
         
-        # Obtenemos productos de tu BD real para el menú desplegable
         dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
-        productos_base = set(["ACEITE DICAM", "ACONDICIONADOR SV", "ADHERENTE SV", "IMBIOSIL O", "ZINTRAC X LITRO SV", "MANCOL 430 SC"])
+        productos_base = set(["ACEITE DICAM", "ACONDICIONADOR SV", "ADHERENTE SV", "IMBIOSIL O", "ZINTRAC X LITRO SV", "MANCOL 430 SC", "KURDO 250 EC", "QUELAMIX", "BANATREL SC"])
         for receta in dict_recetas.values(): productos_base.update(receta.keys())
         productos_base.update(dict_fertilizantes.keys())
         lista_prods_sim = sorted(list(productos_base))
@@ -456,7 +342,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if not sap_dict_sim:
                 st.error("🚨 Ingresa al menos un producto con cantidad en la tabla de arriba.")
             else:
-                coctel_ganador, dosis_oficiales = emparejar_coctel_ia(sap_dict_sim, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_sim.split()[0] if coctel_piloto_sim else "")
+                # El Simulador ahora usa la tubería correcta con solo 2 argumentos:
+                coctel_ganador, dosis_oficiales = emparejar_coctel_ia(sap_dict_sim, coctel_piloto_sim.split()[0] if coctel_piloto_sim else "")
 
                 if coctel_ganador == "SIN COINCIDENCIA": st.error(f"🤖 **IA (Guillotina):** Cóctel Determinado: **SIN COINCIDENCIA**")
                 else: st.success(f"🤖 **IA (Guillotina):** Cóctel Determinado: **{coctel_ganador}**")
@@ -473,10 +360,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if coctel_ganador != "SIN COINCIDENCIA":
                         for p_receta, d_oficial in dosis_oficiales.items():
                             if p_receta == p_clean or (len(p_clean)>=4 and p_receta in p_clean) or (len(p_receta)>=4 and p_clean in p_receta):
-                                dosis_teorica = d_oficial
-                                break
+                                dosis_teorica = d_oficial; break
 
-                    # Reglas de Acero
+                    # Reglas de Acero para el simulador
                     if "ACONDICIONADOR" in p_clean:
                         tiene_acond_06 = any("ZINTRAC" in k.upper() or "ZITRON" in k.upper() or "BANATREL" in k.upper() for k in sap_dict_sim.keys())
                         dosis_teorica = 0.06 if tiene_acond_06 else 0.02
@@ -486,14 +372,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 if char.isdigit():
                                     dosis_teorica = float(char); break
                     elif "IMBIOSIL" in p_clean:
-                        dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
+                        dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
 
                     if dosis_teorica is None:
                         dosis_rescatada = obtener_dosis_global_robusta_v2(None, p_clean)
                         dosis_teorica = dosis_rescatada if dosis_rescatada > 0 else 0.0
 
                     dosis_ideal_pura = round(dosis_teorica * ha_sim, 3)
-
                     matriz_sim.append({
                         "A: Producto": p_name,
                         "B: Dosis Oficial/Ha": round(dosis_teorica, 3),
@@ -505,7 +390,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 df_matriz = pd.DataFrame(matriz_sim)
                 if not df_matriz.empty:
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
-
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal = r_m["D: Dosis Ideal (Total)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
@@ -535,8 +419,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         return estilos
 
                     st.dataframe(df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilar, axis=1), use_container_width=True, hide_index=True)
-        st.stop() # Freno de emergencia
-    # 💥 FIN DEL NUEVO MODO SIMULADOR 💥
+        st.stop() # Cierra el ciclo del simulador y detiene el resto del código
 
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
@@ -554,8 +437,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 idx_t2 = 0
                 for i in range(min(10, len(t2_data))):
                     if "FINCA" in [str(x).upper().strip() for x in t2_data[i]]:
-                        idx_t2 = i
-                        break
+                        idx_t2 = i; break
                 cols_limpias = [str(c).strip() for c in t2_data[idx_t2]]
                 df_t2_temp = pd.DataFrame(t2_data[idx_t2+1:], columns=cols_limpias)
                 
@@ -575,8 +457,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     else:
         fincas_reales = df_t2_cache.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
         fincas_reales = [f for f in fincas_reales if f not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']]
-        if len(fincas_reales) < 5:
-            necesita_sanacion = True  
+        if len(fincas_reales) < 5: necesita_sanacion = True  
 
     if necesita_sanacion:
         with st.spinner("🔄 Detectada anomalía de memoria. Iniciando Auto-Sanación de BD..."):
@@ -623,8 +504,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     for _, fila_ped in match_sap.iterrows():
                         valor_material = str(fila_ped[col_mat]).strip()
                         if valor_material == "459" or valor_material.split(".")[0] == "459": 
-                            ha_correcta = extraer_numero(fila_ped[col_ha])
-                            break
+                            ha_correcta = extraer_numero(fila_ped[col_ha]); break
                     
                     st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else extraer_numero(match_sap.iloc[0][col_ha])
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
@@ -647,7 +527,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             lista_fincas_raw = df_t2.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
             lista_fincas = sorted([f for f in lista_fincas_raw if f not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']])
         else:
-            st.error("🚨 CRÍTICO: El sistema no detecta la 'TABLA 2' maestra en memoria. Bloqueo de seguridad activado. Verifique la conexión con Google Drive.")
+            st.error("🚨 CRÍTICO: El sistema no detecta la 'TABLA 2' maestra en memoria. Bloqueo de seguridad activado.")
             st.stop()
                 
         opciones_finca = ["---"] + lista_fincas
@@ -656,8 +536,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if finca_sap:
             for i, f in enumerate(opciones_finca):
                 if f.upper() in finca_sap or finca_sap in f.upper(): 
-                    idx_finca = i
-                    break
+                    idx_finca = i; break
 
         finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
         vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
@@ -668,7 +547,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
 
-        # 💥 INICIALIZACIÓN TEMPRANA EN RAM DE VARIABLES PARA PREVENIR NameError
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
@@ -710,39 +588,31 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             fechas_encontradas = []
 
             def parsear_fecha_robusta(val):
-                if pd.isna(val) or str(val).strip() == "": 
-                    return pd.NaT
+                if pd.isna(val) or str(val).strip() == "": return pd.NaT
                 s = str(val).strip().lower()
-                if s.isdigit(): 
-                    return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+                if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
                 
                 meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
                 match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
                 if match1:
                     dia_str, mes_str, anio_str = match1.groups()
-                    if mes_str in meses: 
-                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                    if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
                 match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
                 if match2:
                     mes_str, dia_str, anio_str = match2.groups()
-                    if mes_str in meses: 
-                        return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                try: 
-                    return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
-                except Exception: 
-                    return pd.NaT
+                    if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+                except Exception: return pd.NaT
 
             def extraer_fechas(df_temp):
-                if df_temp.empty: 
-                    return
+                if df_temp.empty: return
                 col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
                 col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
                 
                 if col_f and col_d:
                     fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
                     mask = fincas_alpha == f_obj_alpha
-                    if not mask.any(): 
-                        mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
+                    if not mask.any(): mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
                     if not mask.any():
                         partes = f_obj_alpha.replace("COOP", "").replace("BANAFRU", "").replace("ASO", "").replace("COOBAMAG", "").strip()
                         clave = partes[:8] if len(partes) > 8 else partes
@@ -751,20 +621,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     df_fil = df_temp[mask]
                     for d_raw in df_fil[col_d]:
                         fecha_valida = parsear_fecha_robusta(d_raw)
-                        if pd.notna(fecha_valida): 
-                            fechas_encontradas.append(fecha_valida)
+                        if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
 
-            extraer_fechas(df_viva)
-            extraer_fechas(df_hist)
-            
+            extraer_fechas(df_viva); extraer_fechas(df_hist)
             if fechas_encontradas:
                 fecha_vuelo_dt = pd.to_datetime(fecha_operacion)
                 fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
                 if fechas_validas:
                     fecha_max = max(fechas_validas)
                     dias_ciclo_calc = (fecha_vuelo_dt - fecha_max).days
-                    if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: 
-                        dias_ciclo_calc = 0
+                    if dias_ciclo_calc < 0 or dias_ciclo_calc > 365: dias_ciclo_calc = 0
         except Exception:
             pass
 
@@ -772,16 +638,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         datos_raw = datos_vuelo.get('DATOS_FILA', {})
         
         num_pedido = "S/N"
-        if pedido_sap and len(str(pedido_sap)) >= 7: 
-            num_pedido = str(pedido_sap).strip()
-        elif datos_vuelo.get('PEDIDO_SAP') and str(datos_vuelo.get('PEDIDO_SAP')).strip() != "": 
-            num_pedido = str(datos_vuelo.get('PEDIDO_SAP')).strip()
+        if pedido_sap and len(str(pedido_sap)) >= 7: num_pedido = str(pedido_sap).strip()
+        elif datos_vuelo.get('PEDIDO_SAP') and str(datos_vuelo.get('PEDIDO_SAP')).strip() != "": num_pedido = str(datos_vuelo.get('PEDIDO_SAP')).strip()
         else:
             for idx in range(18, 40):
                 val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
                 if val_celda.isdigit() and len(val_celda) >= 7: 
-                    num_pedido = val_celda
-                    break
+                    num_pedido = val_celda; break
         
         lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
         pista_detectada = "PLUC"
@@ -793,30 +656,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if not match_ped.empty:
                 texto_pedido = match_ped.to_string().upper()
                 for p_val in lista_pistas_validas:
-                    if p_val in texto_pedido: 
-                        pista_detectada = p_val
-                        break
+                    if p_val in texto_pedido: pista_detectada = p_val; break
                         
                 col_ha_cands = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
                 col_ha = col_ha_cands[0] if col_ha_cands else df_ped.columns[6]
-                
                 col_mat_cands = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                 col_mat = col_mat_cands[0] if col_mat_cands else df_ped.columns[5]
 
                 for _, r_p in match_ped.iterrows():
                     val_mat = str(r_p[col_mat]).strip()
                     if val_mat == "459" or val_mat.split(".")[0] == "459":
-                        ha_dosis_detectada = extraer_numero(r_p[col_ha])
-                        break
+                        ha_dosis_detectada = extraer_numero(r_p[col_ha]); break
         
         ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
-        if ha_dosis_detectada == 0: 
-            ha_dosis_detectada = ha_cobro_detectada
+        if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
         partes_coctel = coctel_piloto_raw.replace("+", " ").replace("-", " ").split(" ")
         coctel_piloto_base = partes_coctel[0]
-        sigla_coctel = partes_coctel[1] if len(partes_coctel) > 1 else ""
 
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
@@ -825,17 +682,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-            with r1c1:
-                st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
-            with r1c2:
-                d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
+            with r1c1: st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
+            with r1c2: d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
             with r1c3:
                 ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
-                if ha_sugerida == 0.0: 
-                    ha_sugerida = float(ha_dosis_detectada)
+                if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
                 
                 widget_key = f"had_{casilla_key}"
-                
                 sap_val = st.session_state.get('ha_radar_sap', 0.0)
                 if sap_val > 0 and st.session_state.get(f"sync_{widget_key}") != sap_val:
                     st.session_state[widget_key] = float(sap_val)
@@ -863,15 +716,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif st.session_state[f"pista_last_{casilla_key}"] != pista_sel:
                     st.session_state[f"pista_last_{casilla_key}"] = pista_sel
                     st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
-                    if f"rl_{casilla_key}" in st.session_state:
-                        del st.session_state[f"rl_{casilla_key}"]
+                    if f"rl_{casilla_key}" in st.session_state: del st.session_state[f"rl_{casilla_key}"]
 
                 recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=st.session_state[f"default_rec_idx_{casilla_key}"], key=f"rl_{casilla_key}")
-                
-                if recargo_lista == "Otro Valor Manual...":
-                    recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
-                else:
-                    recargo_final = float(recargo_lista.split(" ")[0])
+                if recargo_lista == "Otro Valor Manual...": recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
+                else: recargo_final = float(recargo_lista.split(" ")[0])
 
             dict_topes_pista = {
                 "TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, 
@@ -896,10 +745,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     for _, row in escuadron_drones.iterrows():
                         dr_sel, ha_dr = row.get("Drone"), row.get("Hectáreas")
-                        if pd.isna(dr_sel) or ha_dr is None or float(ha_dr) <= 0: 
-                            continue
-                        ha_dr = float(ha_dr)
-                        total_ha_cobro_escuadron += ha_dr
+                        if pd.isna(dr_sel) or ha_dr is None or float(ha_dr) <= 0: continue
+                        ha_dr = float(ha_dr); total_ha_cobro_escuadron += ha_dr
                         tarifa_dron_neta = dict_drones.get(dr_sel, 0)
                         costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
                         costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final 
@@ -917,11 +764,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     
                     for index, row in escuadron_aviones.iterrows():
                         av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
-                        if pd.isna(av_sel) or ha_av is None or horo is None or float(ha_av) <= 0:
-                            continue
-                        ha_av, horo = float(ha_av), float(horo)
-                        total_ha_cobro_escuadron += ha_av
-                        horometro_final_avion += horo  
+                        if pd.isna(av_sel) or ha_av is None or horo is None or float(ha_av) <= 0: continue
+                        ha_av, horo = float(ha_av), float(horo); total_ha_cobro_escuadron += ha_av; horometro_final_avion += horo  
                         tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av if ha_av > 0 else 0
                         tarifa_base_tope = tarifa_base_ha if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope)
                         costo_neto_vuelo_total += (tarifa_base_tope * ha_av) 
@@ -929,10 +773,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                     for _, row in escuadron_drones.iterrows():
                         dr_sel, ha_dr = row.get("Drone"), row.get("Hectáreas")
-                        if pd.isna(dr_sel) or ha_dr is None or float(ha_dr) <= 0: 
-                            continue
-                        ha_dr = float(ha_dr)
-                        total_ha_cobro_escuadron += ha_dr
+                        if pd.isna(dr_sel) or ha_dr is None or float(ha_dr) <= 0: continue
+                        ha_dr = float(ha_dr); total_ha_cobro_escuadron += ha_dr
                         tarifa_dron_neta = dict_drones.get(dr_sel, 0)
                         costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
                         costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final
@@ -957,22 +799,17 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista = {}
                 datos_extraidos_sap = []
 
-                # ⚡ 1:1 EXTRACCIÓN EXACTA POR FILA/POSICIÓN DE SAP
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                    if not col_mat: 
-                        continue
+                    if not col_mat: continue
                     texto_material = str(fila_sap[col_mat[0]]).strip()
-                    if "459" in texto_material or "429" in texto_material:
-                        continue
+                    if "459" in texto_material or "429" in texto_material: continue
 
                     cod_item = texto_material.split('.')[0].lstrip('0')
                     
                     col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
-                    if col_cant_real: 
-                        cant_total = extraer_numero(fila_sap[col_cant_real[0]])
-                    else: 
-                        cant_total = 0.0
+                    if col_cant_real: cant_total = extraer_numero(fila_sap[col_cant_real[0]])
+                    else: cant_total = 0.0
                         
                     dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
@@ -982,25 +819,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         match_sabana = df_sab[df_sab_col0_clean == cod_item]
                         if not match_sabana.empty:
                             col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
-                            if col_nombre_sab: 
-                                nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
+                            if col_nombre_sab: nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
 
                     nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
                     sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
                     datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
-                dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
-                coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, dict_recetas, dict_lideres, dict_fertilizantes, coctel_piloto_base)
+                coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base)
                 
-                if coctel_ganador == "SIN COINCIDENCIA":
-                    st.error(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **SIN COINCIDENCIA**")
-                else:
-                    st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
+                if coctel_ganador == "SIN COINCIDENCIA": st.error(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **SIN COINCIDENCIA**")
+                else: st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
                 
-                if not df_sab.empty:
-                    df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
-                else:
-                    df_sab_col0_clean = pd.Series(dtype=str)
+                if not df_sab.empty: df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
+                else: df_sab_col0_clean = pd.Series(dtype=str)
 
                 matriz_datos = []
                 for item_data in datos_extraidos_sap:
@@ -1010,36 +841,27 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                     if not df_sab.empty:
                         match_sabana_global = df_sab[df_sab_col0_clean == cod_item]
-
                         if not match_sabana_global.empty:
-                            if idx_almacen != -1:
-                                match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)]
-                            else:
-                                match_pista_precio = match_sabana_global
+                            if idx_almacen != -1: match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)]
+                            else: match_pista_precio = match_sabana_global
 
                             fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
 
-                            if idx_precio != -1: 
-                                costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
+                            if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
                             if costo_unit == 0.0:
                                 col_v = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
                                 col_c = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
                                 if col_v and col_c:
                                     v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_c[0]])
-                                    if c_t > 0: 
-                                        costo_unit = v_t / c_t
+                                    if c_t > 0: costo_unit = v_t / c_t
 
-                            if idx_almacen != -1:
-                                match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
-                            else:
-                                match_pista = match_sabana_global
+                            if idx_almacen != -1: match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
+                            else: match_pista = match_sabana_global
 
                             if not match_pista.empty:
                                 fila_final = match_pista.iloc[0]
-                                if idx_lote != -1: 
-                                    lote_sap = str(fila_final.iloc[idx_lote])
-                                if idx_saldo != -1: 
-                                    saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
+                                if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
+                                if idx_saldo != -1: saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
 
                     try:
                         if not df_cfg.empty:
@@ -1047,25 +869,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             for i_cfg in range(min(5, len(df_cfg))):
                                 r_c = df_cfg.iloc[i_cfg].astype(str).str.upper().tolist()
                                 if 'PRODUCTO' in r_c and 'COSTO' in r_c: 
-                                    c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
-                                    break
-                            
+                                    c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO'); break
                             mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
-                            if not mask_cfg.any(): 
-                                mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
-                            
+                            if not mask_cfg.any(): mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
                             if mask_cfg.any():
                                 precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
-                                if precio_maestro > 0:
-                                    costo_unit = float(precio_maestro) 
-                    except Exception:
-                        pass
+                                if precio_maestro > 0: costo_unit = float(precio_maestro) 
+                    except Exception: pass
 
                     dosis_teorica = None
                     for p_receta, d_oficial in dosis_oficiales_coctel.items():
                         if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
-                            dosis_teorica = d_oficial
-                            break
+                            dosis_teorica = d_oficial; break
 
                     if "ACONDICIONADOR" in nombre_limpio: 
                         dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
@@ -1075,19 +890,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if coctel_ganador != "SIN COINCIDENCIA":
                             for char in coctel_ganador.split()[0]:
                                 if char.isdigit():
-                                    dosis_teorica = float(char)
-                                    break
+                                    dosis_teorica = float(char); break
                     
                     if dosis_teorica is None:
                         dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
-                        if dosis_rescatada > 0: 
-                            dosis_teorica = dosis_rescatada
-                        else:
-                            dosis_teorica = 0.0
+                        dosis_teorica = dosis_rescatada if dosis_rescatada > 0 else 0.0
 
-                    # 💥 REGLA DE ORO: DOSIS IDEAL 100% PURA (Dosis/Ha * Hectáreas)
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
-
                     matriz_datos.append({
                         "A: Producto": nombre_p, 
                         "B: Dosis Oficial/Ha": round(dosis_teorica, 3), 
@@ -1100,36 +909,25 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     })
 
                 df_matriz = pd.DataFrame(matriz_datos)
-                
                 if not df_matriz.empty:
-                    # 💥 REGLA DE ORO: SUMA ACUMULADA POR PRODUCTO PARA EVALUAR RECARGO REAL
                     df_matriz["TOTAL_PROD_SAP"] = df_matriz.groupby("A: Producto")["I: Sugerido SAP (Total)"].transform("sum")
 
-                    # 💥 CÁLCULO EXACTO DE % EXTRA
                     for idx_m, r_m in df_matriz.iterrows():
                         b_ideal_pura = r_m["D: Dosis Ideal (Total)"]
                         tot_p_sap = r_m["TOTAL_PROD_SAP"]
-
-                        if b_ideal_pura > 0:
-                            extra_pct = ((tot_p_sap / b_ideal_pura) - 1.0) * 100.0
-                            df_matriz.at[idx_m, "C: Extra %"] = round(extra_pct, 3)
-                        else:
-                            df_matriz.at[idx_m, "C: Extra %"] = 0.0
+                        df_matriz.at[idx_m, "C: Extra %"] = round(((tot_p_sap / b_ideal_pura) - 1.0) * 100.0, 3) if b_ideal_pura > 0 else 0.0
 
                     def calcular_semaforo_misiones(row):
                         base_pura = float(row["D: Dosis Ideal (Total)"])
                         total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
                         extra_pct = float(row.get("C: Extra %", 0.0))
-                        
                         diferencia = total_producto - base_pura
-                        
                         if base_pura == 0.0 and total_producto > 0: return "⚠️ INTRUSO (SIN DOSIS OFICIAL)"
                         elif total_producto < (base_pura - 0.05): return "🔴 PELIGRO: SUB-DOSIS (---)"
                         elif extra_pct > 0.01 or diferencia > 0.05: return f"🔵 REC. TÉCNICA (+{extra_pct:.1f}%)"
                         else: return "🟢 ÓPTIMO"
 
                     df_matriz["📊 Ajuste de Campo"] = df_matriz.apply(calcular_semaforo_misiones, axis=1)
-                    
                     columnas_ordenadas = [
                         "A: Producto", "B: Dosis Oficial/Ha", "C: Extra %", 
                         "D: Dosis Ideal (Total)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo",
@@ -1142,22 +940,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         try:
                             idx_sistema = row.index.get_loc("D: Dosis Ideal (Total)")
                             idx_sap = row.index.get_loc("I: Sugerido SAP (Total)")
-                            
                             base_pura = float(row["D: Dosis Ideal (Total)"])
                             total_producto = float(row.get("TOTAL_PROD_SAP", row["I: Sugerido SAP (Total)"]))
                             extra_pct = float(row.get("C: Extra %", 0.0))
-                            
                             diferencia_real = total_producto - base_pura
-                            
                             if base_pura == 0.0 and total_producto > 0: color = 'background-color: #ffeeba; color: #856404; font-weight: bold;'
                             elif diferencia_real < -0.05: color = 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
                             elif extra_pct > 0.01 or diferencia_real > 0.05: color = 'background-color: #fff3cd; color: #856404; font-weight: bold;'
                             else: color = 'background-color: #d4edda; color: #155724; font-weight: bold;'
-                                
-                            estilos[idx_sistema] = color
-                            estilos[idx_sap] = color
-                        except Exception:
-                            pass
+                            estilos[idx_sistema] = color; estilos[idx_sap] = color
+                        except Exception: pass
                         return estilos
 
                     df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
@@ -1178,7 +970,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         use_container_width=True, hide_index=True
                     )
 
-                    # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
                     st.write("")
                     st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
                     st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
@@ -1198,17 +989,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
             unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
-            
             subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
             subtotal_vuelo_finca = sap_round(unitario_vuelo * ha_dosis_final)
-            
             gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
             costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
 
             precio_columna_ref = dict_aviones.get(escuadron_aviones.iloc[0]['Avión'], 0) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
             precio_dron_ref = dict_drones.get(escuadron_drones.iloc[0]['Drone'], 0) if (not escuadron_drones.empty and pd.notna(escuadron_drones.iloc[0]['Drone'])) else 0
 
-            # 🎨 CORRECCIÓN DE SINTAXIS VISUAL (SEPARACIÓN LIMPIA)
             st.write("")
             st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
             m1, m2, m3, m4, m5 = st.columns(5)
@@ -1216,20 +1004,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             def mini_metric(i, t, v): 
                 return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06);'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
             
-            with m1:
-                st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
+            with m1: st.markdown(mini_metric("🚜", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
             with m2: 
                 ha_av_r = float(escuadron_aviones['Hectáreas'].sum()) if (not mision_solo_dron and not escuadron_aviones.empty) else 0
                 es_dr_dom = mision_solo_dron or (ha_av_r == 0 and precio_dron_ref > 0)
-                
                 pista_display_text = "PARCELA < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
                 st.markdown(mini_metric("¼️", "Pista", pista_display_text if not es_dr_dom else "DRON"), unsafe_allow_html=True)
                 st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
                 st.markdown(mini_metric("🚧", "Valor Tope", f"$ {fmt_sap(precio_dron_ref)}" if es_dr_dom else ("Sin Tope" if val_tope in [0, 999999] else f"$ {fmt_sap(val_tope)}")), unsafe_allow_html=True)
-            with m3:
-                st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
-            with m4:
-                st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
+            with m3: st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
+            with m4: st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
             with m5: 
                 st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
                 st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
@@ -1237,7 +1021,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             st.write("")
             c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
-            
             with c_sap1:
                 st.caption("👨‍🔬 UNITARIO ST (459)")
                 st.code(fmt_sap(unitario_st), language="text")
@@ -1311,8 +1094,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     try:
                         gc_save = obtener_cliente_gspread_unificado()
                         if not gc_save:
-                            st.error("🚨 Error crítico: No se pudo conectar al llavero de Google para guardar.")
-                            st.stop()
+                            st.error("🚨 Error crítico: No se pudo conectar al llavero de Google para guardar."); st.stop()
 
                         boveda = gc_save.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
@@ -1326,25 +1108,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                         bloque_f, sector_f, ha_bruta_f = "", "", ""
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_limpia.upper().strip()]
-                        if not match_f.empty:
-                            sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
+                        if not match_f.empty: sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
 
                         ha_f = float(ha_dosis_final)
+                        if pd.isna(ha_bruta_f) or str(ha_bruta_f).strip() == "": ha_bruta_f = ha_f
                         
-                        if pd.isna(ha_bruta_f) or str(ha_bruta_f).strip() == "":
-                            ha_bruta_f = ha_f
-                        
-                        if total_ha_cobro_escuadron == 0:
-                            h_total_v = 0.0
-                        else:
-                            h_total_v = ha_f / 10 if mision_solo_dron else ((ha_f / total_ha_cobro_escuadron) * horometro_final_avion)
+                        if total_ha_cobro_escuadron == 0: h_total_v = 0.0
+                        else: h_total_v = ha_f / 10 if mision_solo_dron else ((ha_f / total_ha_cobro_escuadron) * horometro_final_avion)
                             
                         vol_total_gln, rend_min = ha_f * 6, h_total_v * 60
                         
                         if total_ha_cobro_escuadron == 0:
-                            piloto_f = "CLIENTE (DRON PROPIO)"
-                            hk_f = "DRON PROPIO"
-                            tipo_mision_str = "DRONE PROPIO"
+                            piloto_f, hk_f, tipo_mision_str = "CLIENTE (DRON PROPIO)", "DRON PROPIO", "DRONE PROPIO"
                         else:
                             piloto_f = "OPERADOR DRONE" if mision_solo_dron else "PILOTO AVIÓN"
                             tipo_mision_str = 'DRONE' if mision_solo_dron else 'AVION'
@@ -1352,13 +1127,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 if not escuadron_drones.empty:
                                     dr_name_str = str(escuadron_drones.iloc[0].get('Drone', '')).upper()
                                     hk_f = "DR51" if "DATAROT" in dr_name_str else ("DR52" if "GENESYS" in dr_name_str else "DRONE_GEN")
-                                else: 
-                                    hk_f = "DRONE_GEN"
+                                else: hk_f = "DRONE_GEN"
                             else:
-                                if not escuadron_aviones.empty: 
-                                    hk_f = str(escuadron_aviones.iloc[0].get('Avión', 'AVION_REG')).upper()
-                                else: 
-                                    hk_f = "AVION_REG"
+                                if not escuadron_aviones.empty: hk_f = str(escuadron_aviones.iloc[0].get('Avión', 'AVION_REG')).upper()
+                                else: hk_f = "AVION_REG"
                         
                         tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                         total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
@@ -1380,10 +1152,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         f_apoyo = next((i+2 for i in range(len(col_apoyo)-1, -1, -1) if str(col_apoyo[i]).strip() != ""), 1)
                         fila_apoyo[0] = f_apoyo - 3
                         
-                        if f_azul > hoja_maestra.row_count: 
-                            hoja_maestra.add_rows(10)
-                        if f_apoyo > hoja_apoyo.row_count: 
-                            hoja_apoyo.add_rows(10)
+                        if f_azul > hoja_maestra.row_count: hoja_maestra.add_rows(10)
+                        if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
                         
                         set_existentes = {f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}" for r in datos_memoria[1:] if len(r) >= 10}
                         bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron or total_ha_cobro_escuadron == 0 else "BODEGA PRINCIPAL AVIÓN"
@@ -1398,8 +1168,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                         filas_memoria.append(fila_m)
                         
                         def limpiar_json(val):
-                            if pd.isna(val) or (isinstance(val, float) and math.isnan(val)):
-                                return ""
+                            if pd.isna(val) or (isinstance(val, float) and math.isnan(val)): return ""
                             return val
 
                         row_azul = [limpiar_json(x) for x in row_azul]
@@ -1408,34 +1177,24 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                         hoja_maestra.update(range_name=f"A{f_azul}", values=[row_azul], value_input_option='USER_ENTERED')
                         hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
-                        if filas_memoria: 
-                            hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
+                        if filas_memoria: hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
 
                         if 'supabase' in st.session_state:
                             try:
                                 supabase_client = st.session_state['supabase']
                                 payload_orden = {
-                                    "os_virtual": str(os_virtual),
-                                    "finca": str(finca_limpia),
-                                    "hectareas": float(ha_f),
-                                    "coctel": str(coctel_ganador),
-                                    "fecha": str(fecha_str),
-                                    "total_operacion": float(gran_total),
-                                    "pista": str(pista_manual),
-                                    "tipo_productor": str(tipo_productor)
+                                    "os_virtual": str(os_virtual), "finca": str(finca_limpia), "hectareas": float(ha_f), "coctel": str(coctel_ganador),
+                                    "fecha": str(fecha_str), "total_operacion": float(gran_total), "pista": str(pista_manual), "tipo_productor": str(tipo_productor)
                                 }
                                 supabase_client.table("facturas_detonadas").insert(payload_orden).execute()
-                            except Exception:
-                                pass
+                            except Exception: pass
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive y replicado en la bóveda relacional.")
                         st.toast("💾 Memoria Sincronizada con éxito.", icon="⚔️")
                         
-                        if 'memoria_excel' in st.session_state: 
-                            del st.session_state['memoria_excel']
-                    except Exception as e_save: 
-                        st.error(f"🚨 Falla en el Guardado: {e_save}")
+                        if 'memoria_excel' in st.session_state: del st.session_state['memoria_excel']
+                    except Exception as e_save: st.error(f"🚨 Falla en el Guardado: {e_save}")
 
 if __name__ == "__main__":
     pass
