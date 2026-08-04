@@ -593,7 +593,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
             c_sup1, c_sup2 = st.columns([3, 1])
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-            mision_solo_dron = c_sup2.toggle("🤖 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+            mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             with r1c1: st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
@@ -648,7 +648,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 costo_total_vuegos, costo_neto_vuelo_total, total_ha_cobro_escuadron, horometro_final_avion = 0.0, 0.0, 0.0, 0.0 
 
                 if mision_solo_dron:
-                    st.success("🚁 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
+                    st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     for _, row in escuadron_drones.iterrows():
@@ -797,7 +797,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                     elif "ACEITE" in nombre_limpio:
                         if coctel_ganador != "SIN COINCIDENCIA":
-                            for char in coctel_ganador.split()[0]: # Extrae solo del nombre base, sin mezclar con siglas
+                            for char in coctel_ganador.split()[0]:
                                 if char.isdigit():
                                     dosis_teorica = float(char)
                                     break
@@ -806,9 +806,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if coctel_ganador != "SIN COINCIDENCIA":
                             dosis_teorica = 1.5 if coctel_ganador.strip().upper().startswith("IN") else 1.0
                         else:
-                            dosis_teorica = 1.0 # Rescate seguro si no hay cóctel
+                            dosis_teorica = 1.0 
 
-                    # 💥 RESCATE DE FERTILIZANTES (Si aún no tiene dosis, ej. QUELAMIX)
+                    # 💥 RESCATE DE FERTILIZANTES
                     if dosis_teorica is None:
                         dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
                         if dosis_rescatada > 0: 
@@ -945,7 +945,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             with m5: 
                 st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
                 st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
-                st.markdown(mini_metric("🚁", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
+                st.markdown(mini_metric("🛸", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
             
             st.write("")
             c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
@@ -985,7 +985,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
             c_p1, c_p2 = st.columns(2)
             pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
-            c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
+            c_p2.info(f"{'🛸' if mision_solo_dron else '✈️'} Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
             st.markdown("""
                 <a href="#inicio_modulo" target="_self" style="
