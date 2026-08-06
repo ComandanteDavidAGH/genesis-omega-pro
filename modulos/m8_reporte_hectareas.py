@@ -115,14 +115,18 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     else:
         df_historico = pd.DataFrame()
 
-    # 💥 CIRUGÍA ÉLITE 2.0: Buscador Todoterreno de Pistas Históricas 2017-2019
+    # 💥 CIRUGÍA ÉLITE 3.0: Buscador Todoterreno Extremo para el Pasado
     ws_historico = None
     for bv in [boveda_act, boveda_hist]:
         if bv:
             try:
-                ws_historico = bv.worksheet("HISTORICO_PISTAS")
-                break
+                for ws in bv.worksheets():
+                    # No importa si le pusiste un espacio al final, este buscador lo caza
+                    if "HISTORICO" in ws.title.upper() and "PISTA" in ws.title.upper():
+                        ws_historico = ws
+                        break
             except: pass
+        if ws_historico: break
 
     if ws_historico:
         try:
@@ -131,16 +135,14 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
                 df_hist_pistas = pd.DataFrame(datos_pistas_antiguas[1:], columns=datos_pistas_antiguas[0])
                 df_hist_pistas = limpiar_encabezados(df_hist_pistas)
                 
-                # Buscador flexible (no importa si quedó un espacio o dice "Suma de Hectareas")
-                col_anio = next((c for c in df_hist_pistas.columns if 'AÑO' in c or 'ANO' in c), None)
-                col_mes = next((c for c in df_hist_pistas.columns if 'MES' in c), None)
-                col_pista = next((c for c in df_hist_pistas.columns if 'PISTA' in c or 'ALM' in c), None)
-                col_ha = next((c for c in df_hist_pistas.columns if 'HECTA' in c or 'AREA' in c), None)
+                # Caza las columnas sin importar cómo se llamen exactamente
+                col_anio = next((c for c in df_hist_pistas.columns if 'AÑO' in c or 'ANO' in c or 'YEAR' in c), None)
+                col_mes = next((c for c in df_hist_pistas.columns if 'MES' in c or 'FECHA' in c), None)
+                col_pista = next((c for c in df_hist_pistas.columns if 'PISTA' in c or 'ALM' in c or 'BASE' in c), None)
+                col_ha = next((c for c in df_hist_pistas.columns if 'HECTA' in c or 'AREA' in c or 'SUMA' in c or 'CANT' in c), None)
                 
                 if col_anio and col_mes and col_pista and col_ha:
                     df_hp_clean = pd.DataFrame()
-                    df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas[col_anio], errors='coerce')
-                    df_hp_clean = df_hp_clean.dropna(subset=['AÑO']) # Eliminar vacíos accidentales
                     
                     def parse_mes(m):
                         try:
@@ -150,22 +152,21 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
                             return int(float(m))
                         except: return 12
 
-                    df_hp_clean['MES_NUM'] = df_hist_pistas[col_mes].apply(parse_mes)
+                    df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas[col_anio], errors='coerce').fillna(2017).astype(int)
+                    df_hp_clean['MES_NUM'] = df_hist_pistas[col_mes].apply(parse_mes).astype(int)
                     df_hp_clean['AREA_MAESTRA'] = df_hist_pistas[col_ha].apply(limpiar_area)
                     df_hp_clean['PISTA'] = df_hist_pistas[col_pista].astype(str).str.upper().str.strip()
                     df_hp_clean['FINCA_MAESTRA'] = 'HISTORICO_SAP'
-                    df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean['AÑO'].astype(int).astype(str) + '-' + df_hp_clean['MES_NUM'].astype(str) + '-' + df_hp_clean.index.astype(str)
+                    df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean.index.astype(str)
                     df_hp_clean['COCTEL_MAESTRO'] = 'COCTEL_HISTORICO'
                     df_hp_clean['HK'] = 'HK-HIST'
                     df_hp_clean['MODELO'] = 'AVION_HISTORICO'
-                    
-                    # Fecha absoluta para no fallar jamás (Ej: 28/03/2017)
-                    df_hp_clean['FECHA_MAESTRA'] = '28/' + df_hp_clean['MES_NUM'].astype(int).astype(str).str.zfill(2) + '/' + df_hp_clean['AÑO'].astype(int).astype(str)
                     df_hp_clean['ORIGEN_BI'] = 'HISTORICO_ANTIGUO'
                     
-                    df_hp_clean = df_hp_clean.drop(columns=['MES_NUM'])
+                    # Ensamblar fecha perfecta e invulnerable
+                    df_hp_clean['FECHA_MAESTRA'] = df_hp_clean.apply(lambda r: f"28/{int(r['MES_NUM']):02d}/{int(r['AÑO'])}", axis=1)
                     
-                    # Fusión Maestro
+                    # Fusión de los tiempos
                     df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
         except Exception as e:
             pass
@@ -405,7 +406,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         col_pista = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         if col_pista: super_base_bi[col_pista] = super_base_bi[col_pista].astype(str).str.strip().str.upper()
 
-        # 💥 ESCUDO TEMPORAL: Rescate de fechas de SAP antiguo para evitar que se anulen
+        # 💥 ESCUDO TEMPORAL: Rescate de fechas de SAP antiguo
         def aplicar_fecha_robusta(row):
             if row.get('ORIGEN_BI') == 'HISTORICO_ANTIGUO':
                 return pd.to_datetime(row.get('FECHA_MAESTRA'), format='%d/%m/%Y', errors='coerce')
@@ -426,10 +427,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         if 'H_PROPORCIONAL' in super_base_bi.columns: super_base_bi['H_PROPORCIONAL'] = super_base_bi['H_PROPORCIONAL'].apply(limpiar_area)
         if 'SEMANA' in super_base_bi.columns: super_base_bi['SEMANA'] = pd.to_numeric(super_base_bi['SEMANA'], errors='coerce').fillna(0).astype(int)
 
-        if col_pista:
-            mask_pista_vacia = (super_base_bi[col_pista] == "") | (super_base_bi[col_pista] == "NAN") | (super_base_bi[col_pista].isna())
-            super_base_bi.loc[mask_pista_vacia, col_pista] = "🚨 SIN PISTA REGISTRADA"
-
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN', 'HK'],
             keep='last'
@@ -446,7 +443,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
         
-        # 💥 ESCUDO FINANCIERO: Separa las hectáreas que no traen costo de SAP antiguo para no dañar el promedio
+        # 💥 ESCUDO FINANCIERO: Separa las hectáreas que no traen costo
         super_base_bi['HA_CON_COSTO'] = np.where(super_base_bi['COSTO_NUM'] > 0, super_base_bi['AREA_NUM'], 0)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
@@ -471,7 +468,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2017, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
         fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
         
-        pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
+        pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique() if x != ""]) if col_pista else []
         pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v40")
 
         if vista_seleccionada != "📈 Dashboard Ejecutivo":
