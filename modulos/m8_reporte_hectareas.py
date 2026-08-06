@@ -80,6 +80,7 @@ def parsear_precio_colombia(val):
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     gc_nuevo = obtener_cliente_gspread_unificado()
     
+    boveda_act = None
     try:
         boveda_act = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
@@ -95,6 +96,7 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     else:
         df_vivos = pd.DataFrame()
 
+    boveda_hist = None
     datos_brutos_hist = []
     try:
         boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
@@ -113,45 +115,60 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     else:
         df_historico = pd.DataFrame()
 
-    # 💥 CIRUGÍA ÉLITE: Carga de Pistas Históricas 2017-2019 (AHORA MENSUAL)
-    try:
-        datos_pistas_antiguas = boveda_hist.worksheet("HISTORICO_PISTAS").get_all_values()
-        if len(datos_pistas_antiguas) > 1:
-            df_hist_pistas = pd.DataFrame(datos_pistas_antiguas[1:], columns=datos_pistas_antiguas[0])
-            df_hist_pistas = limpiar_encabezados(df_hist_pistas)
-            
-            if 'AÑO' in df_hist_pistas.columns and 'MES' in df_hist_pistas.columns and 'PISTA' in df_hist_pistas.columns and 'HECTAREAS' in df_hist_pistas.columns:
-                df_hp_clean = pd.DataFrame()
-                df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas['AÑO'], errors='coerce')
-                
-                # Función para traducir el MES sea número o texto
-                def parse_mes(m):
-                    try:
-                        m_str = str(m).upper().strip()[:3]
-                        meses = {'ENE':1,'FEB':2,'MAR':3,'ABR':4,'MAY':5,'JUN':6,'JUL':7,'AGO':8,'SEP':9,'OCT':10,'NOV':11,'DIC':12}
-                        if m_str in meses: return meses[m_str]
-                        return int(float(m))
-                    except: return 12
+    # 💥 CIRUGÍA ÉLITE 2.0: Buscador Todoterreno de Pistas Históricas 2017-2019
+    ws_historico = None
+    for bv in [boveda_act, boveda_hist]:
+        if bv:
+            try:
+                ws_historico = bv.worksheet("HISTORICO_PISTAS")
+                break
+            except: pass
 
-                df_hp_clean['MES_NUM'] = df_hist_pistas['MES'].apply(parse_mes)
-                df_hp_clean['AREA_MAESTRA'] = df_hist_pistas['HECTAREAS'].apply(limpiar_area)
-                df_hp_clean['PISTA'] = df_hist_pistas['PISTA'].astype(str).str.upper().str.strip()
-                df_hp_clean['FINCA_MAESTRA'] = 'HISTORICO_SAP'
-                df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean['AÑO'].astype(str) + '-' + df_hp_clean['MES_NUM'].astype(str) + '-' + df_hp_clean.index.astype(str)
-                df_hp_clean['COCTEL_MAESTRO'] = 'COCTEL_HISTORICO'
-                df_hp_clean['HK'] = 'HK-HIST'
-                df_hp_clean['MODELO'] = 'AVION'
+    if ws_historico:
+        try:
+            datos_pistas_antiguas = ws_historico.get_all_values()
+            if len(datos_pistas_antiguas) > 1:
+                df_hist_pistas = pd.DataFrame(datos_pistas_antiguas[1:], columns=datos_pistas_antiguas[0])
+                df_hist_pistas = limpiar_encabezados(df_hist_pistas)
                 
-                # Simulamos fecha 28 de cada mes para que los gráficos mensuales cuadren perfectos
-                df_hp_clean['FECHA_MAESTRA'] = df_hp_clean['AÑO'].astype(int).astype(str) + '-' + df_hp_clean['MES_NUM'].astype(int).astype(str).str.zfill(2) + '-28'
-                df_hp_clean['ORIGEN_BI'] = 'HISTORICO_ANTIGUO'
+                # Buscador flexible (no importa si quedó un espacio o dice "Suma de Hectareas")
+                col_anio = next((c for c in df_hist_pistas.columns if 'AÑO' in c or 'ANO' in c), None)
+                col_mes = next((c for c in df_hist_pistas.columns if 'MES' in c), None)
+                col_pista = next((c for c in df_hist_pistas.columns if 'PISTA' in c or 'ALM' in c), None)
+                col_ha = next((c for c in df_hist_pistas.columns if 'HECTA' in c or 'AREA' in c), None)
                 
-                df_hp_clean = df_hp_clean.drop(columns=['MES_NUM'])
-                
-                # Fusionamos el pasado profundo con el histórico reciente
-                df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
-    except Exception as e:
-        pass # Si la hoja no existe o hay error, el sistema ignora y avanza
+                if col_anio and col_mes and col_pista and col_ha:
+                    df_hp_clean = pd.DataFrame()
+                    df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas[col_anio], errors='coerce')
+                    df_hp_clean = df_hp_clean.dropna(subset=['AÑO']) # Eliminar vacíos accidentales
+                    
+                    def parse_mes(m):
+                        try:
+                            m_str = str(m).upper().strip()[:3]
+                            meses = {'ENE':1,'FEB':2,'MAR':3,'ABR':4,'MAY':5,'JUN':6,'JUL':7,'AGO':8,'SEP':9,'OCT':10,'NOV':11,'DIC':12}
+                            if m_str in meses: return meses[m_str]
+                            return int(float(m))
+                        except: return 12
+
+                    df_hp_clean['MES_NUM'] = df_hist_pistas[col_mes].apply(parse_mes)
+                    df_hp_clean['AREA_MAESTRA'] = df_hist_pistas[col_ha].apply(limpiar_area)
+                    df_hp_clean['PISTA'] = df_hist_pistas[col_pista].astype(str).str.upper().str.strip()
+                    df_hp_clean['FINCA_MAESTRA'] = 'HISTORICO_SAP'
+                    df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean['AÑO'].astype(int).astype(str) + '-' + df_hp_clean['MES_NUM'].astype(str) + '-' + df_hp_clean.index.astype(str)
+                    df_hp_clean['COCTEL_MAESTRO'] = 'COCTEL_HISTORICO'
+                    df_hp_clean['HK'] = 'HK-HIST'
+                    df_hp_clean['MODELO'] = 'AVION_HISTORICO'
+                    
+                    # Fecha absoluta para no fallar jamás (Ej: 28/03/2017)
+                    df_hp_clean['FECHA_MAESTRA'] = '28/' + df_hp_clean['MES_NUM'].astype(int).astype(str).str.zfill(2) + '/' + df_hp_clean['AÑO'].astype(int).astype(str)
+                    df_hp_clean['ORIGEN_BI'] = 'HISTORICO_ANTIGUO'
+                    
+                    df_hp_clean = df_hp_clean.drop(columns=['MES_NUM'])
+                    
+                    # Fusión Maestro
+                    df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
+        except Exception as e:
+            pass
 
     return df_vivos, df_historico
 
@@ -388,7 +405,15 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         col_pista = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
         if col_pista: super_base_bi[col_pista] = super_base_bi[col_pista].astype(str).str.strip().str.upper()
 
-        super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada_app)
+        # 💥 ESCUDO TEMPORAL: Rescate de fechas de SAP antiguo para evitar que se anulen
+        def aplicar_fecha_robusta(row):
+            if row.get('ORIGEN_BI') == 'HISTORICO_ANTIGUO':
+                return pd.to_datetime(row.get('FECHA_MAESTRA'), format='%d/%m/%Y', errors='coerce')
+            else:
+                try: return procesar_fecha_pesada_app(row.get('FECHA_MAESTRA'))
+                except: return pd.NaT
+
+        super_base_bi['FECHA_DT'] = super_base_bi.apply(aplicar_fecha_robusta, axis=1)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
         
         super_base_bi['FECHA_DT'] = pd.to_datetime(super_base_bi['FECHA_DT'])
@@ -420,9 +445,13 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_real, axis=1)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(limpiar_dinero) + super_base_bi['DOMINIC_MAESTRO'].apply(limpiar_dinero)
+        
+        # 💥 ESCUDO FINANCIERO: Separa las hectáreas que no traen costo de SAP antiguo para no dañar el promedio
+        super_base_bi['HA_CON_COSTO'] = np.where(super_base_bi['COSTO_NUM'] > 0, super_base_bi['AREA_NUM'], 0)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
-        costo_medio_historico = (super_base_bi['COSTO_NUM'].sum() / total_ha_historicas) if total_ha_historicas > 0 else 0
+        ha_con_costo_global = super_base_bi['HA_CON_COSTO'].sum()
+        costo_medio_historico = (super_base_bi['COSTO_NUM'].sum() / ha_con_costo_global) if ha_con_costo_global > 0 else 0
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
         hb1, hb2, hb3 = st.columns(3)
@@ -439,7 +468,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
         vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
         
-        # 💥 CIRUGÍA ÉLITE: Ampliación del rango de fechas hasta 2017 para que atrape tu Data Histórica
         fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2017, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
         fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
         
@@ -489,12 +517,14 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             ha_drones = df_drones['AREA_NUM'].sum()
             vuelos_drones = len(df_drones)
             costo_tot_drones = df_drones['COSTO_NUM'].sum()
-            prom_costo_dr = costo_tot_drones / ha_drones if ha_drones > 0 else 0
+            ha_con_costo_dr = df_drones['HA_CON_COSTO'].sum()
+            prom_costo_dr = costo_tot_drones / ha_con_costo_dr if ha_con_costo_dr > 0 else 0
 
             ha_aviones = df_aviones['AREA_NUM'].sum()
             vuelos_aviones = len(df_aviones)
             costo_tot_aviones = df_aviones['COSTO_NUM'].sum()
-            prom_costo_av = costo_tot_aviones / ha_aviones if ha_aviones > 0 else 0
+            ha_con_costo_av = df_aviones['HA_CON_COSTO'].sum()
+            prom_costo_av = costo_tot_aviones / ha_con_costo_av if ha_con_costo_av > 0 else 0
             
             st.markdown("### ⚔️ Batalla de Escuadrones: ✈️ Aviones vs 🛸 Drones")
             col_av, col_dr = st.columns(2)
@@ -573,7 +603,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             df_dash = df_filt.groupby(col_pista).agg(
                 VUELOS=(col_pista, 'count'),
                 HECTAREAS=('AREA_NUM', 'sum'),
-                COSTO_TOTAL=('COSTO_NUM', 'sum')
+                COSTO_TOTAL=('COSTO_NUM', 'sum'),
+                HA_CON_COSTO=('HA_CON_COSTO', 'sum')
             ).reset_index()
             
             df_dash['% VUELOS'] = (df_dash['VUELOS'] / total_vuelos) * 100
@@ -616,14 +647,15 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             df_hk = df_filt.groupby(['HK']).agg(
                 MISIONES=('HK', 'count'),
                 HECTAREAS=('AREA_NUM', 'sum'),
-                COSTO_TOTAL=('COSTO_NUM', 'sum')
+                COSTO_TOTAL=('COSTO_NUM', 'sum'),
+                HA_CON_COSTO=('HA_CON_COSTO', 'sum')
             ).reset_index()
             
-            df_hk['TARIFA_PROM ($/ha)'] = df_hk['COSTO_TOTAL'] / df_hk['HECTAREAS']
+            df_hk['TARIFA_PROM ($/ha)'] = np.where(df_hk['HA_CON_COSTO'] > 0, df_hk['COSTO_TOTAL'] / df_hk['HA_CON_COSTO'], 0)
             df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False)
             
             st.dataframe(
-                df_hk.style.format({
+                df_hk[['HK', 'MISIONES', 'HECTAREAS', 'COSTO_TOTAL', 'TARIFA_PROM ($/ha)']].style.format({
                     'MISIONES': lambda x: f"{x:,.0f}".replace(",", "."),
                     'HECTAREAS': fmt_latino,
                     'COSTO_TOTAL': fmt_dinero,
@@ -640,7 +672,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             st.markdown(f"#### 📑 Consolidado Gerencial")
             st.caption(f"🗓️ *{rango_txt}*")
             tabla_final = []
-            total_hr_gral, total_ha_gral, total_costo_gral = 0, 0, 0
+            total_hr_gral, total_ha_gral, total_costo_gral, total_ha_costo_gral = 0, 0, 0, 0
             
             col_rend = 'REND_HR' if 'REND_HR' in df_filt.columns else ('H_PROPORCIONAL' if 'H_PROPORCIONAL' in df_filt.columns else 'AREA_NUM')
 
@@ -648,7 +680,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 df_gerencia = df_filt.groupby([col_pista, 'HK', 'AÑO', 'MES_NMB']).agg(
                     REND_HR=(col_rend, 'sum'), 
                     AREA_FUMIG=('AREA_NUM', 'sum'),
-                    COSTO_TOT=('COSTO_NUM', 'sum')
+                    COSTO_TOT=('COSTO_NUM', 'sum'),
+                    HA_CON_COSTO=('HA_CON_COSTO', 'sum')
                 ).reset_index()
                 
                 for pista in sorted(df_gerencia[col_pista].unique()):
@@ -656,6 +689,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     sum_hr_pista = df_pista['REND_HR'].sum()
                     sum_ha_pista = df_pista['AREA_FUMIG'].sum()
                     sum_costo_pista = df_pista['COSTO_TOT'].sum()
+                    sum_hcc_pista = df_pista['HA_CON_COSTO'].sum()
                     
                     fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': '', 'AÑO': 'TOTAL', 'MES': ''}
                     if mostrar_horas or calcular_rend_prom: fila_pista['REND (hr)'] = sum_hr_pista
@@ -663,7 +697,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     if calcular_rend_prom: fila_pista['PROMEDIO (ha/hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
                     
                     fila_pista['COSTO TOTAL ($)'] = sum_costo_pista
-                    fila_pista['TARIFA PROM ($/ha)'] = sum_costo_pista / sum_ha_pista if sum_ha_pista > 0 else 0.0
+                    fila_pista['TARIFA PROM ($/ha)'] = sum_costo_pista / sum_hcc_pista if sum_hcc_pista > 0 else 0.0
                     tabla_final.append(fila_pista)
                     
                     for hk in sorted(df_pista['HK'].unique()):
@@ -671,6 +705,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         sum_hr_hk = datos_hk['REND_HR'].sum()
                         sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
                         sum_costo_hk = datos_hk['COSTO_TOT'].sum()
+                        sum_hcc_hk = datos_hk['HA_CON_COSTO'].sum()
                         
                         modelo = str(df_filt[df_filt['HK'] == hk]['MODELO'].iloc[0]).upper() if not df_filt[df_filt['HK'] == hk].empty else ""
                         es_dron = "DRON" in modelo or hk.startswith("DRON")
@@ -682,7 +717,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         if calcular_rend_prom: fila_hk['PROMEDIO (ha/hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
                         
                         fila_hk['COSTO TOTAL ($)'] = sum_costo_hk
-                        fila_hk['TARIFA PROM ($/ha)'] = sum_costo_hk / sum_ha_hk if sum_ha_hk > 0 else 0.0
+                        fila_hk['TARIFA PROM ($/ha)'] = sum_costo_hk / sum_hcc_hk if sum_hcc_hk > 0 else 0.0
                         tabla_final.append(fila_hk)
                         
                         for _, row in datos_hk.iterrows():
@@ -692,12 +727,13 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                             if calcular_rend_prom: fila_mes['PROMEDIO (ha/hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
                             
                             fila_mes['COSTO TOTAL ($)'] = row['COSTO_TOT']
-                            fila_mes['TARIFA PROM ($/ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
+                            fila_mes['TARIFA PROM ($/ha)'] = row['COSTO_TOT'] / row['HA_CON_COSTO'] if row['HA_CON_COSTO'] > 0 else 0.0
                             tabla_final.append(fila_mes)
                             
                     total_hr_gral += sum_hr_pista
                     total_ha_gral += sum_ha_pista
                     total_costo_gral += sum_costo_pista
+                    total_ha_costo_gral += sum_hcc_pista
                     
                 fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'AÑO': '', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
@@ -705,14 +741,15 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 if calcular_rend_prom: fila_tot['PROMEDIO (ha/hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 
                 fila_tot['COSTO TOTAL ($)'] = total_costo_gral
-                fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
+                fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_costo_gral if total_ha_costo_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
                 
             else:
                 df_gerencia = df_filt.groupby([col_pista, 'AÑO', 'MES_NMB']).agg(
                     REND_HR=(col_rend, 'sum'), 
                     AREA_FUMIG=('AREA_NUM', 'sum'),
-                    COSTO_TOT=('COSTO_NUM', 'sum')
+                    COSTO_TOT=('COSTO_NUM', 'sum'),
+                    HA_CON_COSTO=('HA_CON_COSTO', 'sum')
                 ).reset_index()
                 
                 for pista in sorted(df_gerencia[col_pista].unique()):
@@ -720,6 +757,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     sum_hr = datos_pista['REND_HR'].sum()
                     sum_ha = datos_pista['AREA_FUMIG'].sum()
                     sum_costo = datos_pista['COSTO_TOT'].sum()
+                    sum_hcc = datos_pista['HA_CON_COSTO'].sum()
                     
                     fila_sub = {'NIVEL': f"📍 BASE: {pista}", 'AÑO': 'TOTAL', 'MES': ''}
                     if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
@@ -727,7 +765,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     if calcular_rend_prom: fila_sub['PROMEDIO (ha/hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
                     
                     fila_sub['COSTO TOTAL ($)'] = sum_costo
-                    fila_sub['TARIFA PROM ($/ha)'] = sum_costo / sum_ha if sum_ha > 0 else 0.0
+                    fila_sub['TARIFA PROM ($/ha)'] = sum_costo / sum_hcc if sum_hcc > 0 else 0.0
                     tabla_final.append(fila_sub)
                     
                     for _, row in datos_pista.iterrows():
@@ -737,12 +775,13 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         if calcular_rend_prom: fila_mes['PROMEDIO (ha/hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
                         
                         fila_mes['COSTO TOTAL ($)'] = row['COSTO_TOT']
-                        fila_mes['TARIFA PROM ($/ha)'] = row['COSTO_TOT'] / row['AREA_FUMIG'] if row['AREA_FUMIG'] > 0 else 0.0
+                        fila_mes['TARIFA PROM ($/ha)'] = row['COSTO_TOT'] / row['HA_CON_COSTO'] if row['HA_CON_COSTO'] > 0 else 0.0
                         tabla_final.append(fila_mes)
                         
                     total_hr_gral += sum_hr
                     total_ha_gral += sum_ha
                     total_costo_gral += sum_costo
+                    total_ha_costo_gral += sum_hcc
                     
                 fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AÑO': '', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
@@ -750,7 +789,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 if calcular_rend_prom: fila_tot['PROMEDIO (ha/hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
                 
                 fila_tot['COSTO TOTAL ($)'] = total_costo_gral
-                fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_gral if total_ha_gral > 0 else 0.0
+                fila_tot['TARIFA PROM ($/ha)'] = total_costo_gral / total_ha_costo_gral if total_ha_costo_gral > 0 else 0.0
                 tabla_final.append(fila_tot)
 
             df_visual = pd.DataFrame(tabla_final)
@@ -832,6 +871,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             total_vuelos_exp = df_export['VUELOS'].sum()
             total_ha_exp = df_export['HECTAREAS'].sum()
             total_costo_exp = df_export['COSTO_TOTAL'].sum()
+            total_hcc_exp = df_export['HA_CON_COSTO'].sum()
             
             headers = ['BASE OPERATIVA', 'TOTAL MISIONES', 'HECTÁREAS NETAS', 'COSTO TOTAL ($)', 'TARIFA PROM ($/ha)']
             start_row = 6
@@ -851,7 +891,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 ws.cell(row=curr_row, column=4).border = borde
                 ws.cell(row=curr_row, column=5, value=row['COSTO_TOTAL']).number_format = '$#,##0'
                 ws.cell(row=curr_row, column=5).border = borde
-                tarifa_base = row['COSTO_TOTAL'] / row['HECTAREAS'] if row['HECTAREAS'] > 0 else 0
+                tarifa_base = row['COSTO_TOTAL'] / row['HA_CON_COSTO'] if row['HA_CON_COSTO'] > 0 else 0
                 ws.cell(row=curr_row, column=6, value=tarifa_base).number_format = '$#,##0'
                 ws.cell(row=curr_row, column=6).border = borde
                 curr_row += 1
@@ -871,7 +911,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             ws.cell(row=curr_row, column=5).font = font_tot
             ws.cell(row=curr_row, column=5).border = borde
             ws.cell(row=curr_row, column=5).number_format = '$#,##0'
-            tarifa_total = total_costo_exp / total_ha_exp if total_ha_exp > 0 else 0
+            tarifa_total = total_costo_exp / total_hcc_exp if total_hcc_exp > 0 else 0
             ws.cell(row=curr_row, column=6, value=tarifa_total).fill = fill_tot
             ws.cell(row=curr_row, column=6).font = font_tot
             ws.cell(row=curr_row, column=6).border = borde
