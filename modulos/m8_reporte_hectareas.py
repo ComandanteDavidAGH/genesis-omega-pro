@@ -113,6 +113,46 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     else:
         df_historico = pd.DataFrame()
 
+    # 💥 CIRUGÍA ÉLITE: Carga de Pistas Históricas 2017-2019 (AHORA MENSUAL)
+    try:
+        datos_pistas_antiguas = boveda_hist.worksheet("HISTORICO_PISTAS").get_all_values()
+        if len(datos_pistas_antiguas) > 1:
+            df_hist_pistas = pd.DataFrame(datos_pistas_antiguas[1:], columns=datos_pistas_antiguas[0])
+            df_hist_pistas = limpiar_encabezados(df_hist_pistas)
+            
+            if 'AÑO' in df_hist_pistas.columns and 'MES' in df_hist_pistas.columns and 'PISTA' in df_hist_pistas.columns and 'HECTAREAS' in df_hist_pistas.columns:
+                df_hp_clean = pd.DataFrame()
+                df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas['AÑO'], errors='coerce')
+                
+                # Función para traducir el MES sea número o texto
+                def parse_mes(m):
+                    try:
+                        m_str = str(m).upper().strip()[:3]
+                        meses = {'ENE':1,'FEB':2,'MAR':3,'ABR':4,'MAY':5,'JUN':6,'JUL':7,'AGO':8,'SEP':9,'OCT':10,'NOV':11,'DIC':12}
+                        if m_str in meses: return meses[m_str]
+                        return int(float(m))
+                    except: return 12
+
+                df_hp_clean['MES_NUM'] = df_hist_pistas['MES'].apply(parse_mes)
+                df_hp_clean['AREA_MAESTRA'] = df_hist_pistas['HECTAREAS'].apply(limpiar_area)
+                df_hp_clean['PISTA'] = df_hist_pistas['PISTA'].astype(str).str.upper().str.strip()
+                df_hp_clean['FINCA_MAESTRA'] = 'HISTORICO_SAP'
+                df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean['AÑO'].astype(str) + '-' + df_hp_clean['MES_NUM'].astype(str) + '-' + df_hp_clean.index.astype(str)
+                df_hp_clean['COCTEL_MAESTRO'] = 'COCTEL_HISTORICO'
+                df_hp_clean['HK'] = 'HK-HIST'
+                df_hp_clean['MODELO'] = 'AVION'
+                
+                # Simulamos fecha 28 de cada mes para que los gráficos mensuales cuadren perfectos
+                df_hp_clean['FECHA_MAESTRA'] = df_hp_clean['AÑO'].astype(int).astype(str) + '-' + df_hp_clean['MES_NUM'].astype(int).astype(str).str.zfill(2) + '-28'
+                df_hp_clean['ORIGEN_BI'] = 'HISTORICO_ANTIGUO'
+                
+                df_hp_clean = df_hp_clean.drop(columns=['MES_NUM'])
+                
+                # Fusionamos el pasado profundo con el histórico reciente
+                df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
+    except Exception as e:
+        pass # Si la hoja no existe o hay error, el sistema ignora y avanza
+
     return df_vivos, df_historico
 
 @st.cache_data(show_spinner=False, ttl=600)
@@ -234,90 +274,6 @@ def limpiar_dinero(val):
         return float(v)
     except:
         return 0.0
-
-def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
-    coctel_u = str(coctel_sel).upper().strip()
-    coctel_norm = coctel_u.replace("+", " ").replace("-", " ")
-    partes_coctel = coctel_norm.split()
-    
-    base_coctel = partes_coctel[0] if len(partes_coctel) > 0 else ""
-    aditivos = partes_coctel[1:] if len(partes_coctel) > 1 else []
-    
-    dict_prods = {}
-    es_organico = False
-    
-    try:
-        if not df_t2.empty:
-            match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
-            if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
-    except: pass
-
-    base_buscar = f"{base_coctel}O" if es_organico and not base_coctel.endswith('O') else base_coctel
-
-    if not df_mezclas.empty:
-        col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
-        rb = df_mezclas[col_0_limpia == base_buscar]
-        if rb.empty and es_organico: 
-            rb = df_mezclas[col_0_limpia == base_coctel]
-            
-        for _, r in rb.iterrows():
-            p = str(r.iloc[1]).strip().upper()
-            d = limpiar_area(r.iloc[2])
-            if d > 0 and p not in ['NAN', 'NONE', '']: dict_prods[p] = d
-
-    if not df_dicc.empty and aditivos:
-        for ad in aditivos:
-            m_s = df_dicc[df_dicc['SIGLA'].astype(str).str.upper().str.strip() == ad]
-            if not m_s.empty:
-                p_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper()
-                d_ad = limpiar_area(m_s.iloc[0]['DOSIS'])
-                if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']:
-                    dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
-
-    for p in list(dict_prods.keys()):
-        if "ACONDICIONADOR" in p:
-            if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]): dict_prods[p] = 0.06
-        elif "IMBIOSIL" in p.replace(" ", ""):
-            if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel: dict_prods[p] = 1.5
-        if es_organico and "ADHERENTE" in p: del dict_prods[p]
-
-    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = 0.2
-    return dict_prods
-
-def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
-    if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
-    if finca_seleccionada != "TODAS":
-        fechas = sorted(df_area['FECHA_DT'].dt.date.unique())
-        if not fechas: return 0, 0.0
-        ciclos = 1
-        inicios_ciclo = [fechas[0]]
-        for i in range(1, len(fechas)):
-            if (fechas[i] - fechas[i-1]).days > 5:
-                ciclos += 1
-                inicios_ciclo.append(fechas[i])
-        avg_int = sum([(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]) / (ciclos - 1) if ciclos > 1 else 0.0
-        return ciclos, avg_int
-
-    fincas_presentes = df_area['FINCA_MAESTRA'].unique()
-    total_ciclos_todas, total_suma_dias, total_intervalos_contados, fincas_validas = 0, 0, 0, 0
-    for f in fincas_presentes:
-        df_sub = df_area[df_area['FINCA_MAESTRA'] == f]
-        fechas_f = sorted(df_sub['FECHA_DT'].dt.date.unique())
-        if not fechas_f: continue
-        c_f = 1
-        inicios_c_f = [fechas_f[0]]
-        for i in range(1, len(fechas_f)):
-            if (fechas_f[i] - fechas_f[i-1]).days > 5:
-                c_f += 1
-                inicios_c_f.append(fechas_f[i])
-        total_ciclos_todas += c_f
-        fincas_validas += 1
-        if c_f > 1:
-            total_suma_dias += sum([(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)])
-            total_intervalos_contados += (c_f - 1)
-    promedio_ciclos = int(round(total_ciclos_todas / fincas_validas)) if fincas_validas > 0 else 0
-    promedio_intervalo = total_suma_dias / total_intervalos_contados if total_intervalos_contados > 0 else 0.0
-    return promedio_ciclos, promedio_intervalo
 
 # =================================================================
 # 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
@@ -445,7 +401,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         if 'H_PROPORCIONAL' in super_base_bi.columns: super_base_bi['H_PROPORCIONAL'] = super_base_bi['H_PROPORCIONAL'].apply(limpiar_area)
         if 'SEMANA' in super_base_bi.columns: super_base_bi['SEMANA'] = pd.to_numeric(super_base_bi['SEMANA'], errors='coerce').fillna(0).astype(int)
 
-        # 💥 CIRUGÍA: Eliminación del Piloto Automático de Pistas. Si está vacío, se marca en alerta.
         if col_pista:
             mask_pista_vacia = (super_base_bi[col_pista] == "") | (super_base_bi[col_pista] == "NAN") | (super_base_bi[col_pista].isna())
             super_base_bi.loc[mask_pista_vacia, col_pista] = "🚨 SIN PISTA REGISTRADA"
@@ -484,8 +439,9 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
         vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
         
-        fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2026, 1, 1), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
-        fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2024, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
+        # 💥 CIRUGÍA ÉLITE: Ampliación del rango de fechas hasta 2017 para que atrape tu Data Histórica
+        fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2017, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
+        fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
         
         pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique()]) if col_pista else []
         pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v40")
@@ -512,7 +468,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         meses_nom_largo = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
         
         df_filt['MES_NUM'] = df_filt['FECHA_DT'].apply(lambda x: x.month)
-        df_filt['MES'] = df_filt['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
+        df_filt['MES_NMB'] = df_filt['MES_NUM'].apply(lambda x: meses_nom.get(x, "Desconocido"))
         
         st.markdown("---")
         rango_txt = f"{fecha_sel_ini.day} de {meses_nom_largo.get(fecha_sel_ini.month, '')} {fecha_sel_ini.year} ⸺ {fecha_sel_fin.day} de {meses_nom_largo.get(fecha_sel_fin.month, '')} {fecha_sel_fin.year}"
@@ -524,7 +480,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             st.markdown(f"#### 📈 Dashboard Ejecutivo y BI Financiero")
             st.caption(f"🗓️ *{rango_txt}*")
             
-            # 💥 CIRUGÍA: Bloqueo de seguridad para clasificar Drones estrictamente.
             df_drones = df_filt[df_filt['MODELO'].str.contains('DRON', na=False, case=False) | df_filt['HK'].str.startswith('DRON', na=False)]
             df_aviones = df_filt[~df_filt.index.isin(df_drones.index)]
 
@@ -690,7 +645,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             col_rend = 'REND_HR' if 'REND_HR' in df_filt.columns else ('H_PROPORCIONAL' if 'H_PROPORCIONAL' in df_filt.columns else 'AREA_NUM')
 
             if agrupar_avion:
-                df_gerencia = df_filt.groupby([col_pista, 'HK', 'MES']).agg(
+                df_gerencia = df_filt.groupby([col_pista, 'HK', 'AÑO', 'MES_NMB']).agg(
                     REND_HR=(col_rend, 'sum'), 
                     AREA_FUMIG=('AREA_NUM', 'sum'),
                     COSTO_TOT=('COSTO_NUM', 'sum')
@@ -702,7 +657,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     sum_ha_pista = df_pista['AREA_FUMIG'].sum()
                     sum_costo_pista = df_pista['COSTO_TOT'].sum()
                     
-                    fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': '', 'MES': 'TOTAL BASE'}
+                    fila_pista = {'NIVEL': f"📍 BASE: {pista}", 'AVIÓN (HK)': '', 'AÑO': 'TOTAL', 'MES': ''}
                     if mostrar_horas or calcular_rend_prom: fila_pista['REND (hr)'] = sum_hr_pista
                     fila_pista['ÁREA FUMIG (ha)'] = sum_ha_pista
                     if calcular_rend_prom: fila_pista['PROMEDIO (ha/hr)'] = sum_ha_pista / sum_hr_pista if sum_hr_pista > 0 else 0.0
@@ -712,17 +667,16 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     tabla_final.append(fila_pista)
                     
                     for hk in sorted(df_pista['HK'].unique()):
-                        datos_hk = df_pista[df_pista['HK'] == hk].sort_values(by='MES')
+                        datos_hk = df_pista[df_pista['HK'] == hk].sort_values(by=['AÑO'])
                         sum_hr_hk = datos_hk['REND_HR'].sum()
                         sum_ha_hk = datos_hk['AREA_FUMIG'].sum()
                         sum_costo_hk = datos_hk['COSTO_TOT'].sum()
                         
                         modelo = str(df_filt[df_filt['HK'] == hk]['MODELO'].iloc[0]).upper() if not df_filt[df_filt['HK'] == hk].empty else ""
-                        # 💥 CIRUGÍA: Clasificación de iconos estricta (Avión vs Dron)
                         es_dron = "DRON" in modelo or hk.startswith("DRON")
                         emoji = "🛸 DRON:" if es_dron else "✈️ AVION:"
                         
-                        fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'MES': 'Total Flota'}
+                        fila_hk = {'NIVEL': '', 'AVIÓN (HK)': f"{emoji} {hk}", 'AÑO': 'Total Flota', 'MES': ''}
                         if mostrar_horas or calcular_rend_prom: fila_hk['REND (hr)'] = sum_hr_hk
                         fila_hk['ÁREA FUMIG (ha)'] = sum_ha_hk
                         if calcular_rend_prom: fila_hk['PROMEDIO (ha/hr)'] = sum_ha_hk / sum_hr_hk if sum_hr_hk > 0 else 0.0
@@ -732,7 +686,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         tabla_final.append(fila_hk)
                         
                         for _, row in datos_hk.iterrows():
-                            fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'MES': f"  ↳ {row['MES']}"}
+                            fila_mes = {'NIVEL': '', 'AVIÓN (HK)': '', 'AÑO': f"  ↳ {row['AÑO']}", 'MES': f"{row['MES_NMB']}"}
                             if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                             fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
                             if calcular_rend_prom: fila_mes['PROMEDIO (ha/hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
@@ -745,7 +699,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     total_ha_gral += sum_ha_pista
                     total_costo_gral += sum_costo_pista
                     
-                fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'MES': ''}
+                fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AVIÓN (HK)': '', 'AÑO': '', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                 fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
                 if calcular_rend_prom: fila_tot['PROMEDIO (ha/hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
@@ -755,19 +709,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 tabla_final.append(fila_tot)
                 
             else:
-                df_gerencia = df_filt.groupby([col_pista, 'MES']).agg(
+                df_gerencia = df_filt.groupby([col_pista, 'AÑO', 'MES_NMB']).agg(
                     REND_HR=(col_rend, 'sum'), 
                     AREA_FUMIG=('AREA_NUM', 'sum'),
                     COSTO_TOT=('COSTO_NUM', 'sum')
                 ).reset_index()
                 
                 for pista in sorted(df_gerencia[col_pista].unique()):
-                    datos_pista = df_gerencia[df_gerencia[col_pista] == pista].sort_values(by='MES')
+                    datos_pista = df_gerencia[df_gerencia[col_pista] == pista].sort_values(by=['AÑO', 'MES_NMB'])
                     sum_hr = datos_pista['REND_HR'].sum()
                     sum_ha = datos_pista['AREA_FUMIG'].sum()
                     sum_costo = datos_pista['COSTO_TOT'].sum()
                     
-                    fila_sub = {'NIVEL': f"📍 BASE: {pista}", 'MES': 'TOTAL BASE'}
+                    fila_sub = {'NIVEL': f"📍 BASE: {pista}", 'AÑO': 'TOTAL', 'MES': ''}
                     if mostrar_horas or calcular_rend_prom: fila_sub['REND (hr)'] = sum_hr
                     fila_sub['ÁREA FUMIG (ha)'] = sum_ha
                     if calcular_rend_prom: fila_sub['PROMEDIO (ha/hr)'] = sum_ha / sum_hr if sum_hr > 0 else 0.0
@@ -777,7 +731,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     tabla_final.append(fila_sub)
                     
                     for _, row in datos_pista.iterrows():
-                        fila_mes = {'NIVEL': '', 'MES': f"  ↳ {row['MES']}"}
+                        fila_mes = {'NIVEL': '', 'AÑO': f"  ↳ {row['AÑO']}", 'MES': f"{row['MES_NMB']}"}
                         if mostrar_horas or calcular_rend_prom: fila_mes['REND (hr)'] = row['REND_HR']
                         fila_mes['ÁREA FUMIG (ha)'] = row['AREA_FUMIG']
                         if calcular_rend_prom: fila_mes['PROMEDIO (ha/hr)'] = row['AREA_FUMIG'] / row['REND_HR'] if row['REND_HR'] > 0 else 0.0
@@ -790,7 +744,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     total_ha_gral += sum_ha
                     total_costo_gral += sum_costo
                     
-                fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'MES': ''}
+                fila_tot = {'NIVEL': '👑 TOTAL GENERAL', 'AÑO': '', 'MES': ''}
                 if mostrar_horas or calcular_rend_prom: fila_tot['REND (hr)'] = total_hr_gral
                 fila_tot['ÁREA FUMIG (ha)'] = total_ha_gral
                 if calcular_rend_prom: fila_tot['PROMEDIO (ha/hr)'] = total_ha_gral / total_hr_gral if total_hr_gral > 0 else 0.0
@@ -803,7 +757,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             
             cols_base = ['NIVEL']
             if agrupar_avion: cols_base.append('AVIÓN (HK)')
-            cols_base.append('MES')
+            cols_base.extend(['AÑO', 'MES'])
             
             cols_op = cols_base.copy()
             if mostrar_horas or calcular_rend_prom: cols_op.append('REND (hr)')
@@ -842,14 +796,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 st.dataframe(df_financiero.style.apply(aplicar_estilos_originales, axis=1).format(fmt_fin), use_container_width=True, hide_index=True)
 
         else:
-            matriz = pd.pivot_table(df_filt, values='AREA_NUM', index='MES', columns='SEMANA', aggfunc='sum', fill_value=0)
-            matriz = matriz.sort_index()
-            cols_ordenadas = sorted(matriz.columns, key=lambda x: int(x) if str(x).isdigit() else 999)
-            matriz = matriz[cols_ordenadas]
-            matriz['TOTAL MES'] = matriz.sum(axis=1)
-            matriz.loc['TOTAL ANUAL'] = matriz.sum(axis=0)
+            matriz = pd.pivot_table(df_filt, values='AREA_NUM', index=['AÑO', 'MES_NMB'], columns='PISTA', aggfunc='sum', fill_value=0)
+            matriz['TOTAL'] = matriz.sum(axis=1)
             
-            st.markdown(f"#### 🛩️ Rendimiento Semana a Semana")
+            st.markdown(f"#### 🛩️ Evolución de Hectáreas por Año y Mes")
             st.caption(f"🗓️ *{rango_txt}*")
             st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
@@ -1028,12 +978,12 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                                             cell.number_format = '$#,##0'
                                             cell.alignment = Alignment(horizontal='center')
                                     except: pass
-                                
+                        
                 elif vista_seleccionada == "📅 Mapa Semanal":
-                    matriz.to_excel(writer, sheet_name='Mapa_Semanal', startrow=3)
-                    ws = writer.sheets['Mapa_Semanal']
+                    matriz.to_excel(writer, sheet_name='Mapa_Mensual', startrow=3)
+                    ws = writer.sheets['Mapa_Mensual']
                     
-                    ws['A1'] = "MAPA SEMANAL DE HECTÁREAS"
+                    ws['A1'] = "MAPA MENSUAL DE HECTÁREAS"
                     ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
                     ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                     ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
