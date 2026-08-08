@@ -473,12 +473,26 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             pivot_mes['TOTAL MES'] = pivot_mes.sum(axis=1)
             st.dataframe(pivot_mes.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
+            # 💥 EL HELICÓPTERO DE EXTRACCIÓN (Botón de descarga para el Macro Histórico)
+            st.markdown("---")
+            buffer_macro = io.BytesIO()
+            with pd.ExcelWriter(buffer_macro, engine='openpyxl') as writer:
+                pivot_anual.to_excel(writer, sheet_name='Resumen_Anual')
+                pivot_mes.to_excel(writer, sheet_name='Desglose_Mensual')
+            
+            st.download_button(
+                label="💾 DESCARGAR HISTÓRICO MACRO EN EXCEL",
+                data=buffer_macro.getvalue(),
+                file_name="Reporte_Macro_Historico_2017_2026.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
         else:
             # 💥 FLUJO NORMAL DE TRABAJO (2026 en adelante)
             c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
             vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
             
-            # Fecha default 2026 para no abrumar la vista regular
             fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2026, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
             fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
             
