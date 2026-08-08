@@ -473,15 +473,48 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             pivot_mes['TOTAL MES'] = pivot_mes.sum(axis=1)
             st.dataframe(pivot_mes.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
 
-            # 💥 EL HELICÓPTERO DE EXTRACCIÓN (Botón de descarga para el Macro Histórico)
+            # 💥 EL HELICÓPTERO DE EXTRACCIÓN VIP (Reporte Macro Formateado)
             st.markdown("---")
             buffer_macro = io.BytesIO()
-            with pd.ExcelWriter(buffer_macro, engine='openpyxl') as writer:
-                pivot_anual.to_excel(writer, sheet_name='Resumen_Anual')
-                pivot_mes.to_excel(writer, sheet_name='Desglose_Mensual')
             
+            # Preparamos las tablas planas para el Excel
+            df_exp_anual = pivot_anual.reset_index()
+            df_exp_mes = pivot_mes.reset_index()
+
+            with pd.ExcelWriter(buffer_macro, engine='openpyxl') as writer:
+                df_exp_anual.to_excel(writer, sheet_name='Resumen_Anual', index=False, startrow=3)
+                df_exp_mes.to_excel(writer, sheet_name='Desglose_Mensual', index=False, startrow=3)
+                
+                for s_name, df_sheet in [('Resumen_Anual', df_exp_anual), ('Desglose_Mensual', df_exp_mes)]:
+                    ws = writer.sheets[s_name]
+                    
+                    # Título Principal
+                    ws['A1'] = f"REPORTE MACRO-HISTÓRICO - {s_name.replace('_', ' ').upper()}"
+                    ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
+                    ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+                    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_sheet.columns))
+                    
+                    # Encabezados Dorados
+                    header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                    header_font = Font(bold=True, color="000000")
+                    for col_num in range(1, len(df_sheet.columns) + 1):
+                        cell = ws.cell(row=4, column=col_num)
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                        ws.column_dimensions[get_column_letter(col_num)].width = 16
+                    
+                    # Formato de números y centrado
+                    for r_idx in range(5, len(df_sheet) + 5):
+                        for c_idx in range(1, len(df_sheet.columns) + 1):
+                            cell = ws.cell(row=r_idx, column=c_idx)
+                            if isinstance(cell.value, (int, float)):
+                                cell.number_format = '#,##0.00'
+                            cell.alignment = Alignment(horizontal='center')
+
             st.download_button(
-                label="💾 DESCARGAR HISTÓRICO MACRO EN EXCEL",
+                label="💾 DESCARGAR HISTÓRICO MACRO EN EXCEL VIP",
                 data=buffer_macro.getvalue(),
                 file_name="Reporte_Macro_Historico_2017_2026.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
