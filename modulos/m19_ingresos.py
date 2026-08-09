@@ -819,7 +819,9 @@ def ejecutar():
             if btn_guardar_traslado:
                 if not t_consecutivo.strip(): st.error("🚨 Debes ingresar un número de Consecutivo.")
                 elif t_cantidad <= 0: st.error("🚨 La cantidad debe ser mayor a cero.")
-                elif t_origen == t_destino: st.error("🚨 La pista de origen y destino no pueden ser la misma.")
+                # 💥 EXCLUSIÓN TÁCTICA APLICADA AQUÍ:
+                elif t_origen == t_destino and t_observacion_sel not in ["TRANSFORMACIÓN DE LOTE", "OTRO"]: 
+                    st.error("🚨 Para mover material dentro de la misma pista, la observación debe ser 'TRANSFORMACIÓN DE LOTE' u 'OTRO'.")
                 elif not t_lote or str(t_lote).strip() == "": st.error("🚨 Debes especificar el Lote a trasladar.")
                 else:
                     try:
@@ -935,7 +937,7 @@ def ejecutar():
                     if cambios_exitosos:
                         st.success("✅ ¡Objetivo neutralizado! El traslado ha sido borrado del sistema.")
                         st.cache_data.clear(); st.rerun()
-            else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
+        else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
