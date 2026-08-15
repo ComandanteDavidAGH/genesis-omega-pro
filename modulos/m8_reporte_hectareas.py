@@ -472,6 +472,42 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         super_base_bi['MES_NMB'] = super_base_bi['MES'].apply(lambda x: meses_nom.get(x, "Desconocido"))
 
         st.markdown("### 🎛️ Centro de Comando y Filtros")
+
+        # 💥 NUEVO: BÓVEDA DE TARIFAS MAESTRAS (VISIBLE Y DESCARGABLE)
+        with st.expander("🏦 BÓVEDA DE TARIFAS MAESTRAS (MASTER DATA)", expanded=False):
+            df_tarifas = cargar_matriz_tarifas()
+            if not df_tarifas.empty:
+                st.info("💡 **CEREBRO CENTRAL:** El sistema lee esta matriz en tiempo real. Al cambiar un porcentaje en Google Sheets, impactará toda la facturación y proyecciones automáticamente.")
+                
+                # Tabla visible
+                st.dataframe(df_tarifas, use_container_width=True, hide_index=True)
+                
+                # Botón de Descarga
+                buf_tarifas = io.BytesIO()
+                with pd.ExcelWriter(buf_tarifas, engine='openpyxl') as writer:
+                    df_tarifas.to_excel(writer, sheet_name='Tarifario_Maestro', index=False)
+                    ws_t = writer.sheets['Tarifario_Maestro']
+                    for cell in ws_t[1]:
+                        cell.font = Font(bold=True, color="FFFFFF")
+                        cell.fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                
+                st.download_button("💾 DESCARGAR TARIFARIO MÁSTER (EXCEL)", data=buf_tarifas.getvalue(), file_name=f"Tarifario_Oficial_MasterData_{hoy_colombia.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
+                # Curva de Inflación
+                try:
+                    df_t = df_tarifas.copy()
+                    anios_cols = [c for c in df_t.columns if str(c).isdigit()]
+                    df_melt = df_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_cols, var_name='AÑO', value_name='TARIFA')
+                    df_melt['TARIFA'] = df_melt['TARIFA'].apply(limpiar_dinero)
+                    df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
+                    
+                    fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
+                    fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
+                    st.plotly_chart(fig_tarifas, use_container_width=True)
+                except Exception as e: pass
+            else:
+                st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía. (Asegúrate de presionar el botón amarillo 'Sincronizar Nube').")
+
         
         modo_historico_global = st.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO (Hectáreas 2017 - 2026 por Pista y Mes)", value=False)
 
