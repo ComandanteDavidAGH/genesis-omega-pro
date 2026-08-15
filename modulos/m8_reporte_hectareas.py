@@ -179,7 +179,6 @@ def cargar_matriz_tarifas():
         datos = ws.get_all_values()
         if len(datos) > 1:
             df = pd.DataFrame(datos[1:], columns=datos[0])
-            # Limpieza para ignorar filas/columnas vacías que deja Excel
             df = df.loc[:, df.columns.astype(str).str.strip() != '']
             df = df[df['PISTA'].str.strip() != '']
             return df
@@ -491,7 +490,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         cell.font = Font(bold=True, color="FFFFFF")
                         cell.fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                 
-                st.download_button("💾 DESCARGAR TARIFARIO MÁSTER (EXCEL)", data=buf_tarifas.getvalue(), file_name=f"Tarifario_Oficial_MasterData_{hoy_colombia.strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button("💾 DESCARGAR TARIFARIO MÁSTER (EXCEL)", data=buf_tarifas.getvalue(), file_name=f"Tarifario_Oficial_MasterData_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
                 # Curva de Inflación
                 try:
@@ -721,31 +720,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     """, unsafe_allow_html=True)
 
                 st.write("")
-                
-                # 💥 NUEVO: VISOR DE MATRIZ DE TARIFAS MASTER DATA
-                df_tarifas = cargar_matriz_tarifas()
-                if not df_tarifas.empty:
-                    st.markdown("---")
-                    st.markdown("### 📈 Evolución y Proyección de Tarifas (Master Data)")
-                    st.caption("Esta curva lee en tiempo real tu `MATRIZ_TARIFAS`. Cualquier cambio de porcentaje en el Drive se reflejará aquí y en la facturación automáticamente.")
-                    
-                    try:
-                        df_t = df_tarifas.copy()
-                        anios_cols = [c for c in df_t.columns if str(c).isdigit()]
-                        df_melt = df_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_cols, var_name='AÑO', value_name='TARIFA')
-                        df_melt['TARIFA'] = df_melt['TARIFA'].apply(limpiar_dinero)
-                        df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
-                        
-                        fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
-                        fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
-                        st.plotly_chart(fig_tarifas, use_container_width=True)
-                        
-                        with st.expander("👀 VER MATRIZ DE TARIFAS COMPLETA"):
-                            st.dataframe(df_tarifas, use_container_width=True, hide_index=True)
-                    except Exception as e:
-                        st.error(f"Error graficando tarifas: {e}")
-                
-                st.markdown("---")
                 
                 df_dash = df_filt.groupby(col_pista).agg(
                     VUELOS=(col_pista, 'count'),
