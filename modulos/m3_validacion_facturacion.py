@@ -16,7 +16,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 
 def obtener_hora_colombia():
-    # Fuerza el reloj al huso horario de Colombia (UTC -5)
     return datetime.utcnow() + timedelta(hours=-5)
 
 def extraer_numero(val):
@@ -90,7 +89,6 @@ def cargar_matriz_tarifas_mod3():
     return pd.DataFrame()
 
 def extraer_tarifas_dinamicas(df_tarifas, anio_str):
-    # Variables a devolver
     dict_av = {}
     dict_dr = {}
     dict_topes = {
@@ -99,14 +97,12 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
         "TOPE PARCELA INTER < 20HA": {}
     }
     
-    # Valores de emergencia si la tabla no carga
     if df_tarifas.empty:
         return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes
         
     anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
     col_anio = anio_str if anio_str in anios_disp else None
     
-    # Lógica de rastreo de año más cercano
     if not col_anio:
         valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
         col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
@@ -117,7 +113,6 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
             equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
             tarifa_val = extraer_numero(r[col_anio])
             
-            # Clasificador Inteligente
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
             elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
@@ -127,7 +122,6 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
             elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
                  dict_av[equipo] = tarifa_val
                  
-    # Seguros de vida
     if not dict_av: dict_av = {"AIR TRACTOR": 4665109}
     if not dict_dr: dict_dr = {"DRONE DATAROT": 84428}
     
@@ -305,7 +299,6 @@ def procesar_fecha_estricta(val):
 # =================================================================
 
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
-    # Reloj central de Colombia
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
@@ -352,7 +345,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    # Pre-cargamos la matriz de tarifas maestras para no saturar memoria
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
     def forzar_descarga_maestros():
@@ -441,14 +433,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 except Exception: pass
 
         c0, c1, c2 = st.columns([1, 2, 2])
-        # FECHA DE VUELO: CLAVE PARA LA MÁQUINA DEL TIEMPO
         if 'fecha_sim_mem' not in st.session_state:
             st.session_state.fecha_sim_mem = hoy_colombia_date
 
         fecha_operacion = c0.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
         anio_vuelo = str(fecha_operacion.year)
         
-        # 💥 EJECUCIÓN DE LA MÁQUINA DEL TIEMPO (EXTRACCIÓN DE TARIFAS)
         dict_aviones, dict_drones, dict_topes, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
         
         if col_anio_detectado:
@@ -489,7 +479,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
             st.stop()
 
-        # 💥 INICIALIZACIÓN TEMPRANA EN RAM
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
@@ -599,7 +588,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     num_pedido = val_celda
                     break
         
-        lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+        lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "AVIL", "DATAROT", "GENESYS", "ASA", "PROPIA", "Z-1", "Z-2"]
         pista_detectada = "PLUC"
         ha_dosis_detectada = 0.0
         match_ped = pd.DataFrame()
@@ -660,14 +649,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
                 interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
 
+            # 💥 CORRECCIÓN TÁCTICA: SELECTOR DE PISTA SIEMPRE VISIBLE
+            st.markdown("##### 🛣️ Parámetros de Base / Empresa")
+            r2c1, r2c2, r2c3 = st.columns(3)
+            pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
+            pista_sel = r2c1.selectbox("Pista / Empresa", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
+            
             recargo_final = 0.0
-            pista_sel = "PLUC"
             if not mision_solo_dron:
-                st.markdown("##### 🛣️ Parámetros Terrestres (Aviones)")
-                r2c1, r2c2, r2c3 = st.columns(3)
-                pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
-                pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
-                
                 opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
                 
                 if f"pista_last_{casilla_key}" not in st.session_state:
@@ -1097,7 +1086,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("---")
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
             c_p1, c_p2 = st.columns(2)
-            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
+            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", lista_pistas_validas, index=lista_pistas_validas.index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
             c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
             st.markdown("""
