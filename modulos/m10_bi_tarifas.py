@@ -364,6 +364,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
+    # 💥 FUNCIÓN PARA GENERAR TARJETAS KPI ESTILO GALA VIP 💥
+    def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
+        delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
+        return f"""
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px;'>
+            <p style='font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
+            <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
+        </div>
+        """
+
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
         st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:#d4af37;'>(v4.0 - TARIFAS REALES GLOBAL)</span></h1>", unsafe_allow_html=True)
@@ -486,13 +496,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         if tipo_periodo == "RANGO PERSONALIZADO":
             k1, k2 = st.columns(2)
-            k1.metric(label="Costo Promedio Ha", value=f"$ {formato_latino(costo_b, 0)}")
-            k2.metric(label="Total Operaciones (OS)", value=f"{df_periodo_b['OS_MAESTRA'].nunique()} OS")
+            k1.markdown(tarjeta_kpi("Costo Promedio Ha", f"$ {formato_latino(costo_b, 0)}"), unsafe_allow_html=True)
+            k2.markdown(tarjeta_kpi("Total Operaciones (OS)", f"{df_periodo_b['OS_MAESTRA'].nunique()} OS"), unsafe_allow_html=True)
             
             st.markdown("#### 🗺️ Volumen Operativo (Hectáreas Aplicadas)")
             h1, h2 = st.columns(2)
-            h1.metric("Total Hectáreas", f"{formato_latino(area_b, 1)} Ha")
-            h2.metric("Total Inversión Estimada", f"$ {formato_latino(costo_b * area_b, 0)}")
+            h1.markdown(tarjeta_kpi("Total Hectáreas", f"{formato_latino(area_b, 1)} Ha"), unsafe_allow_html=True)
+            h2.markdown(tarjeta_kpi("Total Inversión Estimada", f"$ {formato_latino(costo_b * area_b, 0)}"), unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.info("ℹ️ **MODO AUDITORÍA AISLADA:** Mostrando información absoluta del rango seleccionado.")
@@ -500,8 +510,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
             c1, c2 = st.columns(2)
-            c1.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos")
-            c2.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A")
+            c1.markdown(tarjeta_kpi("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos"), unsafe_allow_html=True)
+            c2.markdown(tarjeta_kpi("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A"), unsafe_allow_html=True)
             
             st.markdown("---")
             st.markdown("### 🧬 Análisis de Causa Raíz: Tendencia Operativa")
@@ -622,16 +632,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         else:
             delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
             k1, k2, k3 = st.columns(3)
-            k1.metric(label=f"Costo Promedio Ha ({año_base})", value=f"$ {formato_latino(costo_a, 0)}")
-            k2.metric(label=f"Costo Promedio Ha ({año_comp})", value=f"$ {formato_latino(costo_b, 0)}")
-            k3.metric(label="Variación Total (%)", value=f"{delta_pct:+.2f} %", delta=f"{delta_pct:+.2f}%", delta_color="inverse")
+            k1.markdown(tarjeta_kpi(f"Costo Prom. Ha ({año_base})", f"$ {formato_latino(costo_a, 0)}"), unsafe_allow_html=True)
+            k2.markdown(tarjeta_kpi(f"Costo Prom. Ha ({año_comp})", f"$ {formato_latino(costo_b, 0)}"), unsafe_allow_html=True)
+            color_k = "#ff4b4b" if delta_pct > 0 else ("#28a745" if delta_pct < 0 else "#a0aec0")
+            k3.markdown(tarjeta_kpi("Variación Total (%)", f"{delta_pct:+.2f} %", f"{'↗' if delta_pct > 0 else '↘' if delta_pct < 0 else '='}", color_k), unsafe_allow_html=True)
             
             st.markdown("#### 🗺️ Volumen Operativo (Hectáreas Aplicadas)")
             var_area = ((area_b - area_a) / area_a * 100) if area_a > 0 else 0
             h1, h2, h3 = st.columns(3)
-            h1.metric(f"Total Hectáreas ({año_base})", f"{formato_latino(area_a, 1)} Ha")
-            h2.metric(f"Total Hectáreas ({año_comp})", f"{formato_latino(area_b, 1)} Ha")
-            h3.metric("Variación de Área", f"{var_area:+.1f} %" if area_a > 0 else "N/A", delta=f"{var_area:+.1f}%" if area_a > 0 else None)
+            h1.markdown(tarjeta_kpi(f"Total Hectáreas ({año_base})", f"{formato_latino(area_a, 1)} Ha"), unsafe_allow_html=True)
+            h2.markdown(tarjeta_kpi(f"Total Hectáreas ({año_comp})", f"{formato_latino(area_b, 1)} Ha"), unsafe_allow_html=True)
+            color_h = "#28a745" if var_area > 0 else ("#ff4b4b" if var_area < 0 else "#a0aec0")
+            h3.markdown(tarjeta_kpi("Variación de Área", f"{var_area:+.1f} %" if area_a > 0 else "N/A", f"{'↗' if var_area > 0 else '↘' if var_area < 0 else '='}" if area_a > 0 else "", color_h), unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
             if delta_pct > 10: st.error(f"⚠️ **ALERTA DE DESVIACIÓN:** El costo operativo presenta un incremento del **{delta_pct:.1f}%**.")
@@ -642,10 +654,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_a} ciclos")
-            c2.metric("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos", delta=f"{ciclos_b - ciclos_a} ciclos", delta_color="inverse")
-            c3.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_a, 1)} días" if int_a > 0 else "N/A")
-            c4.metric("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A", delta=f"{int_b - int_a:+.1f} días" if (int_a > 0 and int_b > 0) else None)
+            
+            c1.markdown(tarjeta_kpi("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_a} ciclos"), unsafe_allow_html=True)
+            dif_c = ciclos_b - ciclos_a
+            c_color_c = "#ff4b4b" if dif_c < 0 else "#28a745"
+            c2.markdown(tarjeta_kpi(f"Ciclos ({año_comp})", f"{ciclos_b} ciclos", f"{dif_c:+} ciclos" if dif_c != 0 else "", c_color_c), unsafe_allow_html=True)
+            
+            c3.markdown(tarjeta_kpi("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_a, 1)} días" if int_a > 0 else "N/A"), unsafe_allow_html=True)
+            dif_i = int_b - int_a
+            c_color_i = "#ff4b4b" if dif_i > 0 else "#28a745"
+            c4.markdown(tarjeta_kpi(f"Intervalo ({año_comp})", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A", f"{dif_i:+.1f} días" if (int_a > 0 and int_b > 0 and dif_i != 0) else "", c_color_i), unsafe_allow_html=True)
             
             st.markdown("---")
             st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
@@ -828,9 +846,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     st.download_button(label="📄 Exportar Receta vs Año (CSV)", data=csv_n2, file_name=f"Comparativo_{coctel_sel}.csv", mime="text/csv", key="btn_down_n2")
                     
                     c1, c2, c3 = st.columns(3)
-                    c1.metric(f"Total Teórico ({año_base})", f"$ {formato_latino(costo_total_a, 0)}")
-                    c2.metric(f"Total Teórico ({año_comp})", f"$ {formato_latino(costo_total_b, 0)}")
-                    c3.metric("Variación Cóctel", f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", delta=f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", delta_color="inverse")
+                    c1.markdown(tarjeta_kpi(f"Total Teórico ({año_base})", f"$ {formato_latino(costo_total_a, 0)}"), unsafe_allow_html=True)
+                    c2.markdown(tarjeta_kpi(f"Total Teórico ({año_comp})", f"$ {formato_latino(costo_total_b, 0)}"), unsafe_allow_html=True)
+                    c3.markdown(tarjeta_kpi("Variación Cóctel", f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", "#ff4b4b" if (costo_total_b - costo_total_a) > 0 else "#28a745"), unsafe_allow_html=True)
 
         # =====================================================================
         # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA Y AUDITORÍA DE INVENTARIOS
@@ -998,10 +1016,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         tar_dom_raw = limpiar_dinero(row['DOMINIC_MAESTRO'])
                         tarita_unitaria_actual = tar_avion_raw + tar_dom_raw
 
-                        # 💥 CIRUGÍA TÁCTICA: Eliminada la restricción de tarifas > 0.
                         if row['AREA_NUM'] > 0:
                             t_act_red = red_excel(tarita_unitaria_actual)
-                            # Prevenir división por cero matemáticamente si la tarifa es $0
                             if tarita_unitaria_actual > 0:
                                 t_nue_red = red_excel((tarita_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
                             else:
@@ -1020,9 +1036,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         st.markdown("### 🎯 Impacto Financiero Real de la Simulación")
                         
                         k1, k2, k3 = st.columns(3)
-                        k1.metric(f"💰 Total Actual ({margen_actual}%)", f"$ {formato_latino(df_resultados['TOTAL ACTUAL ($)'].sum(), 0)}")
-                        k2.metric(f"📈 Proyección ({margen_nuevo}%)", f"$ {formato_latino(df_resultados['NUEVO TOTAL ($)'].sum(), 0)}")
-                        k3.metric("⚖️ Dinero Real en Juego", f"$ {formato_latino(abs(df_resultados['DIFERENCIA ($)'].sum()), 0)}", delta=f"$ {formato_latino(df_resultados['DIFERENCIA ($)'].sum(), 0)}")
+                        k1.markdown(tarjeta_kpi(f"💰 Total Actual ({margen_actual}%)", f"$ {formato_latino(df_resultados['TOTAL ACTUAL ($)'].sum(), 0)}"), unsafe_allow_html=True)
+                        k2.markdown(tarjeta_kpi(f"📈 Proyección ({margen_nuevo}%)", f"$ {formato_latino(df_resultados['NUEVO TOTAL ($)'].sum(), 0)}"), unsafe_allow_html=True)
+                        k3.markdown(tarjeta_kpi("⚖️ Dinero Real en Juego", f"$ {formato_latino(abs(df_resultados['DIFERENCIA ($)'].sum()), 0)}", f"{'↗' if df_resultados['DIFERENCIA ($)'].sum() > 0 else '↘' if df_resultados['DIFERENCIA ($)'].sum() < 0 else '='} $ {formato_latino(abs(df_resultados['DIFERENCIA ($)'].sum()), 0)}", "#ff4b4b" if df_resultados['DIFERENCIA ($)'].sum() < 0 else "#28a745"), unsafe_allow_html=True)
 
                         tab_resumen, tab_detalle = st.tabs(["📊 Resumen", "📋 Desglose"])
                         with tab_resumen:
