@@ -304,7 +304,7 @@ def procesar_fecha_estricta(val):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-def ejecutar(fmt_sap):
+def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     # Reloj central de Colombia
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
