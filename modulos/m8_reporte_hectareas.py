@@ -494,7 +494,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     df_export_t.to_excel(writer, sheet_name='Tarifario_Maestro', index=False, startrow=3)
                     ws_t = writer.sheets['Tarifario_Maestro']
                     
-                    # Título de Gala
+                    # Título de Gala (Centrado)
                     ws_t['A1'] = "REPORTE MÁSTER: MATRIZ DE TARIFAS AUTORIZADAS"
                     ws_t['A1'].font = Font(size=14, bold=True, color="FFFFFF")
                     ws_t['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
@@ -506,7 +506,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     ws_t['A3'].font = Font(italic=True, color="555555", bold=True)
                     ws_t.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_export_t.columns))
 
-                    # Encabezados Dorados
+                    # Encabezados Dorados (Centrados)
                     header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
                     header_font = Font(bold=True, color="000000")
                     for col_num in range(1, len(df_export_t.columns) + 1):
@@ -521,14 +521,15 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     for col_num in range(3, len(df_export_t.columns) + 1):
                         ws_t.column_dimensions[get_column_letter(col_num)].width = 16
                         
-                    # Aplicar formato de Moneda real de Excel (Elimina el triángulo verde)
+                    # Aplicar formato de Moneda real y ALINEACIÓN A LA IZQUIERDA
                     for r_idx in range(5, len(df_export_t) + 5):
                         for c_idx in range(1, len(df_export_t.columns) + 1):
                             cell = ws_t.cell(row=r_idx, column=c_idx)
                             if c_idx > 2: # Columnas de dinero
                                 if cell.value != "" and cell.value is not None and cell.value != 0:
                                     cell.number_format = '$#,##0'
-                            cell.alignment = Alignment(horizontal='center')
+                            # Aquí aplicamos la alineación a la izquierda para los datos
+                            cell.alignment = Alignment(horizontal='left') 
 
                 st.download_button(
                     label="💾 DESCARGAR TARIFARIO MÁSTER VIP (EXCEL)", 
