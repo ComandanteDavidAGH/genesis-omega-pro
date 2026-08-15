@@ -115,7 +115,6 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
     else:
         df_historico = pd.DataFrame()
 
-    # 💥 CIRUGÍA ÉLITE 3.0: Buscador Todoterreno Extremo para el Pasado
     ws_historico = None
     for bv in [boveda_act, boveda_hist]:
         if bv:
@@ -168,6 +167,86 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
             pass
 
     return df_vivos, df_historico
+
+# 💥 NUEVO: MOTOR LECTOR DE TARIFAS MASTER DATA
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_matriz_tarifas():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
+    try:
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        ws = sh.worksheet("MATRIZ_TARIFAS")
+        datos = ws.get_all_values()
+        if len(datos) > 1:
+            df = pd.DataFrame(datos[1:], columns=datos[0])
+            # Limpieza para ignorar filas/columnas vacías que deja Excel
+            df = df.loc[:, df.columns.astype(str).str.strip() != '']
+            df = df[df['PISTA'].str.strip() != '']
+            return df
+    except: pass
+    return pd.DataFrame()
+
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_boveda_recetas_y_precios():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    try:
+        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        try:
+            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+            if data_mez:
+                df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+        except Exception as e: st.error(f"🚨 Falla en DD_Mesclas: {e}")
+
+        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        except: pass
+        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        except: pass
+        try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
+        except: pass
+    except Exception as e:
+        st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
+
+    try:
+        url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+        sh_precios = gc.open_by_url(url_precios)
+        precios_consolidados = []
+        for ws in sh_precios.worksheets():
+            datos_hoja = ws.get_all_values()
+            if not datos_hoja: continue
+            idx_header, col_anio, col_prod = -1, -1, -1
+            for i in range(min(10, len(datos_hoja))):
+                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
+            if idx_header != -1:
+                for row in datos_hoja[idx_header+1:]:
+                    if len(row) > max(col_anio, col_prod):
+                        anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
+                        if anio_str and str_prod:
+                            col_inicio = max(col_anio, col_prod) + 1
+                            vals = []
+                            for v in row[col_inicio:]:
+                                val_num = parsear_precio_colombia(v)
+                                if val_num is not None and val_num > 0:
+                                    vals.append(val_num)
+                            
+                            prom = sum(vals)/len(vals) if vals else 0.0
+                            prod_limpio = re.sub(r'\s+', ' ', str_prod).strip()
+                            precios_consolidados.append({
+                                'AÑO': anio_str, 
+                                'PRODUCTO': prod_limpio, 
+                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""),
+                                'PRECIO_PROM': prom
+                            })
+        df_precios = pd.DataFrame(precios_consolidados)
+    except Exception as e: pass
+
+    return df_mezclas, df_conf, df_dicc, df_precios, df_t2
 
 def limpiar_encabezados(df):
     df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
@@ -606,6 +685,31 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     """, unsafe_allow_html=True)
 
                 st.write("")
+                
+                # 💥 NUEVO: VISOR DE MATRIZ DE TARIFAS MASTER DATA
+                df_tarifas = cargar_matriz_tarifas()
+                if not df_tarifas.empty:
+                    st.markdown("---")
+                    st.markdown("### 📈 Evolución y Proyección de Tarifas (Master Data)")
+                    st.caption("Esta curva lee en tiempo real tu `MATRIZ_TARIFAS`. Cualquier cambio de porcentaje en el Drive se reflejará aquí y en la facturación automáticamente.")
+                    
+                    try:
+                        df_t = df_tarifas.copy()
+                        anios_cols = [c for c in df_t.columns if str(c).isdigit()]
+                        df_melt = df_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_cols, var_name='AÑO', value_name='TARIFA')
+                        df_melt['TARIFA'] = df_melt['TARIFA'].apply(limpiar_dinero)
+                        df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
+                        
+                        fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
+                        fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
+                        st.plotly_chart(fig_tarifas, use_container_width=True)
+                        
+                        with st.expander("👀 VER MATRIZ DE TARIFAS COMPLETA"):
+                            st.dataframe(df_tarifas, use_container_width=True, hide_index=True)
+                    except Exception as e:
+                        st.error(f"Error graficando tarifas: {e}")
+                
+                st.markdown("---")
                 
                 df_dash = df_filt.groupby(col_pista).agg(
                     VUELOS=(col_pista, 'count'),
