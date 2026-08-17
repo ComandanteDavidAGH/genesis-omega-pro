@@ -50,7 +50,6 @@ def extraer_mapeo_materiales():
         datos = ws.get_all_values()
         mapeo = {}
         
-        # Lectura por Fuerza Bruta: Ignoramos los títulos. Empezamos a leer desde la fila 3 (índice 2)
         for row in datos[2:]:
             if len(row) >= 11:
                 mat = str(row[0]).strip() # Columna A
@@ -862,62 +861,6 @@ def ejecutar():
                 else:
                     # Limpiamos el texto "(Saldo SAP...)" o "(Histórico)" para guardar solo el Lote puro
                     t_lote_origen = lote_seleccionado.split(" (Saldo")[0].split(" (Histórico")[0].strip()
-
-            # Lógica de Lote Final para visualización y base de datos
-            lote_final_print = t_lote_origen
-            if t_observacion_sel == "TRANSFORMACIÓN DE LOTE" and t_lote_nuevo.strip():
-                lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
-            lotes_disp = []
-            df_sabana_memoria = st.session_state.get('df_sabana', pd.DataFrame())
-            
-            if not df_sabana_memoria.empty:
-                # Buscar columnas clave en la Sábana SAP
-                col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
-                col_mat_sap = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
-                col_alm_sap = next((c for c in df_sabana_memoria.columns if 'ALMACEN' in str(c).upper() or 'PISTA' in str(c).upper()), None)
-                col_sal_sap = next((c for c in df_sabana_memoria.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()), None)
-
-                if col_lote_sap and col_mat_sap and col_alm_sap:
-                    # Filtrar por Pista Origen y Producto
-                    mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(str(t_origen).strip().upper(), na=False)
-                    mask_prod = df_sabana_memoria[col_mat_sap].astype(str).str.upper().str.contains(str(t_producto).strip().upper(), na=False)
-                    
-                    df_filtro_sap = df_sabana_memoria[mask_pista & mask_prod]
-                    
-                    for _, row_s in df_filtro_sap.iterrows():
-                        l_val = str(row_s[col_lote_sap]).strip()
-                        s_val = row_s[col_sal_sap] if col_sal_sap else 0
-                        if l_val and l_val not in ["nan", "None", ""]:
-                            # Limpiar formato de número si es posible
-                            try: s_val_str = f"{float(s_val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                            except: s_val_str = str(s_val)
-                            lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
-
-            # Fallback a ingresos históricos si SAP no tiene el dato
-            if not lotes_disp and not df_ingresos.empty:
-                c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
-                c_pis_i = next((c for c in df_ingresos.columns if "PISTA" in c.upper()), None)
-                c_lot_i = next((c for c in df_ingresos.columns if "LOTE" in c.upper()), None)
-                c_est_i = "ESTADO / OBSERVACIÓN"
-                
-                if c_prod_i and c_pis_i and c_lot_i and c_est_i in df_ingresos.columns:
-                    m_prod = df_ingresos[c_prod_i].astype(str).str.strip().str.upper() == str(t_producto).strip().upper()
-                    m_pis = df_ingresos[c_pis_i].astype(str).str.strip().str.upper().str.contains(str(t_origen).strip().upper())
-                    m_est = ~df_ingresos[c_est_i].astype(str).str.upper().str.contains("ANULADO|ELIMINAR", na=False)
-                    l_crudos = df_ingresos[m_prod & m_pis & m_est][c_lot_i].dropna().unique().tolist()
-                    lotes_disp = [str(x).strip().lstrip("'") for x in l_crudos if str(x).strip() != ""]
-
-            # Eliminar duplicados manteniendo orden
-            lotes_disp = list(dict.fromkeys(lotes_disp))
-            opciones_lote = lotes_disp + ["➕ ESCRIBIR LOTE MANUALMENTE..."]
-            
-            with tr5:
-                lote_seleccionado = st.selectbox("📦 Lote Origen (Base de Datos / SAP)", opciones_lote, key=f"t_lote_sel_{fk_t}")
-                if lote_seleccionado == "➕ ESCRIBIR LOTE MANUALMENTE...":
-                    t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
-                else:
-                    # Limpiamos el texto "(Saldo SAP: ...)" para quedarnos solo con el lote
-                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
 
             # Lógica de Lote Final para visualización y base de datos
             lote_final_print = t_lote_origen
