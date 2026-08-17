@@ -776,11 +776,45 @@ def ejecutar():
             opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "OTRO"]
             t_observacion_sel = tr4.selectbox("📝 Observación", opciones_obs, key=f"t_obs_sel_{fk_t}")
             
-            if t_observacion_sel == "OTRO": t_observacion = tr4.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
-            else: t_observacion = t_observacion_sel
+            if t_observacion_sel == "OTRO": 
+                t_observacion = tr4.text_input("📝 Especifique la observación:", key=f"t_obs_otro_{fk_t}")
+            else: 
+                t_observacion = t_observacion_sel
 
+            # 💥 NUEVO: CAMPO MUTANTE PARA TRANSFORMACIÓN
+            t_lote_nuevo = ""
+            if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
+                t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
+
+            # 💥 NUEVO: BÚSQUEDA INTELIGENTE EN SÁBANA SAP
             lotes_disp = []
-            if not df_ingresos.empty:
+            df_sabana_memoria = st.session_state.get('df_sabana', pd.DataFrame())
+            
+            if not df_sabana_memoria.empty:
+                # Buscar columnas clave en la Sábana SAP
+                col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
+                col_mat_sap = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
+                col_alm_sap = next((c for c in df_sabana_memoria.columns if 'ALMACEN' in str(c).upper() or 'PISTA' in str(c).upper()), None)
+                col_sal_sap = next((c for c in df_sabana_memoria.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()), None)
+
+                if col_lote_sap and col_mat_sap and col_alm_sap:
+                    # Filtrar por Pista Origen y Producto
+                    mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(str(t_origen).strip().upper(), na=False)
+                    mask_prod = df_sabana_memoria[col_mat_sap].astype(str).str.upper().str.contains(str(t_producto).strip().upper(), na=False)
+                    
+                    df_filtro_sap = df_sabana_memoria[mask_pista & mask_prod]
+                    
+                    for _, row_s in df_filtro_sap.iterrows():
+                        l_val = str(row_s[col_lote_sap]).strip()
+                        s_val = row_s[col_sal_sap] if col_sal_sap else 0
+                        if l_val and l_val not in ["nan", "None", ""]:
+                            # Limpiar formato de número si es posible
+                            try: s_val_str = f"{float(s_val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                            except: s_val_str = str(s_val)
+                            lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
+
+            # Fallback a ingresos históricos si SAP no tiene el dato
+            if not lotes_disp and not df_ingresos.empty:
                 c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
                 c_pis_i = next((c for c in df_ingresos.columns if "PISTA" in c.upper()), None)
                 c_lot_i = next((c for c in df_ingresos.columns if "LOTE" in c.upper()), None)
@@ -790,18 +824,25 @@ def ejecutar():
                     m_prod = df_ingresos[c_prod_i].astype(str).str.strip().str.upper() == str(t_producto).strip().upper()
                     m_pis = df_ingresos[c_pis_i].astype(str).str.strip().str.upper().str.contains(str(t_origen).strip().upper())
                     m_est = ~df_ingresos[c_est_i].astype(str).str.upper().str.contains("ANULADO|ELIMINAR", na=False)
-                    
                     l_crudos = df_ingresos[m_prod & m_pis & m_est][c_lot_i].dropna().unique().tolist()
-                    lotes_disp = sorted(list(set([str(x).strip().lstrip("'") for x in l_crudos if str(x).strip() != ""])))
+                    lotes_disp = [str(x).strip().lstrip("'") for x in l_crudos if str(x).strip() != ""]
 
+            # Eliminar duplicados manteniendo orden
+            lotes_disp = list(dict.fromkeys(lotes_disp))
             opciones_lote = lotes_disp + ["➕ ESCRIBIR LOTE MANUALMENTE..."]
             
             with tr5:
-                lote_seleccionado = st.selectbox("📦 Lote (Base de Datos)", opciones_lote, key=f"t_lote_sel_{fk_t}")
+                lote_seleccionado = st.selectbox("📦 Lote Origen (Base de Datos / SAP)", opciones_lote, key=f"t_lote_sel_{fk_t}")
                 if lote_seleccionado == "➕ ESCRIBIR LOTE MANUALMENTE...":
-                    t_lote = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
+                    t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
                 else:
-                    t_lote = lote_seleccionado
+                    # Limpiamos el texto "(Saldo SAP: ...)" para quedarnos solo con el lote
+                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
+
+            # Lógica de Lote Final para visualización y base de datos
+            lote_final_print = t_lote_origen
+            if t_observacion_sel == "TRANSFORMACIÓN DE LOTE" and t_lote_nuevo.strip():
+                lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -809,7 +850,7 @@ def ejecutar():
             cpt_mat, cpt1, cpt2, cpt3, cpt4 = st.columns(5)
             with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
             with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
-            with cpt2: st.caption("📦 LOTE"); st.code(t_lote if t_lote else "...", language="text")
+            with cpt2: st.caption("📦 LOTE"); st.code(lote_final_print if lote_final_print else "...", language="text")
             with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
             with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
 
@@ -819,10 +860,10 @@ def ejecutar():
             if btn_guardar_traslado:
                 if not t_consecutivo.strip(): st.error("🚨 Debes ingresar un número de Consecutivo.")
                 elif t_cantidad <= 0: st.error("🚨 La cantidad debe ser mayor a cero.")
-                # 💥 EXCLUSIÓN TÁCTICA APLICADA AQUÍ:
                 elif t_origen == t_destino and t_observacion_sel not in ["TRANSFORMACIÓN DE LOTE", "OTRO"]: 
                     st.error("🚨 Para mover material dentro de la misma pista, la observación debe ser 'TRANSFORMACIÓN DE LOTE' u 'OTRO'.")
-                elif not t_lote or str(t_lote).strip() == "": st.error("🚨 Debes especificar el Lote a trasladar.")
+                elif not t_lote_origen or str(t_lote_origen).strip() == "": st.error("🚨 Debes especificar el Lote a trasladar.")
+                elif t_observacion_sel == "TRANSFORMACIÓN DE LOTE" and not t_lote_nuevo.strip(): st.error("🚨 Debes ingresar el NUEVO LOTE destino de la transformación.")
                 else:
                     try:
                         with st.spinner("Enviando traslado a la nube..."):
@@ -830,7 +871,7 @@ def ejecutar():
                             fecha_str = t_fecha.strftime("%d/%m/%Y")
                             cantidad_formateada = formatear_numero_sap(t_cantidad)
 
-                            lote_tras_inject = f"'{str(t_lote).strip()}" if str(t_lote).strip() else ""
+                            lote_tras_inject = f"'{lote_final_print}"
                             
                             nueva_fila_traslado = []
                             for h in encabezados_limpios_tras:
@@ -860,10 +901,10 @@ def ejecutar():
                             try: ws_write.update(range_name=rango_inyeccion, values=[nueva_fila_traslado], value_input_option='USER_ENTERED')
                             except: ws_write.update(rango_inyeccion, [nueva_fila_traslado], value_input_option='USER_ENTERED')
                             
-                        st.success(f"✅ ¡Traslado de {t_producto} registrado con éxito en la fila {fila_destino}!")
+                        st.success(f"✅ ¡Operación registrada con éxito en la fila {fila_destino}!")
                         st.session_state['form_key_m19_traslados'] += 1
                         st.cache_data.clear(); st.rerun()
-                    except Exception as e: st.error(f"Error al registrar traslado: {e}")
+                    except Exception as e: st.error(f"Error al registrar operación: {e}")
 
         # --- VISOR HISTÓRICO DE TRASLADOS ---
         st.markdown("---")
