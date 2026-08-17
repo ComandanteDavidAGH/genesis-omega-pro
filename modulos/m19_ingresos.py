@@ -771,11 +771,15 @@ def ejecutar():
             if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
                 t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
 
-            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CONEXIÓN DIRECTA CORREGIDA)
+            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (ESCUDO ANTI-CRASH APLICADO)
             lotes_disp = []
+            df_sabana_memoria = pd.DataFrame()
             
-            # 💥 EL CAMBIO MÁGICO: La llave correcta era 'mem_sabana', no 'df_sabana'
-            df_sabana_memoria = st.session_state.get('mem_sabana', pd.DataFrame())
+            # 🛡️ TRAMPA DE TIPO DE DATO: Evita que el sistema intente leer un texto como si fuera una tabla
+            if 'df_sabana' in st.session_state and isinstance(st.session_state['df_sabana'], pd.DataFrame):
+                df_sabana_memoria = st.session_state['df_sabana']
+            elif 'mem_sabana' in st.session_state and isinstance(st.session_state['mem_sabana'], pd.DataFrame):
+                df_sabana_memoria = st.session_state['mem_sabana']
             
             prod_keywords = str(t_producto).strip().upper().split()
             prod_clave = prod_keywords[0] if prod_keywords else ""
@@ -836,7 +840,7 @@ def ejecutar():
                         lote_seleccionado = st.selectbox("📦 Seleccione el Lote", lotes_disp, key=f"t_lote_sel_{fk_t}")
                         t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
                     else:
-                        st.warning("⚠️ SAP no reporta saldo para este producto en esta pista.")
+                        st.warning("⚠️ Sábana sin procesar o sin saldo. (Usa botón 'Iniciar Procesamiento' en Mód 2).")
                         t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
