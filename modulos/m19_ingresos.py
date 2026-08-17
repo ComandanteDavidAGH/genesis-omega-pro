@@ -812,15 +812,20 @@ def ejecutar():
 
             # Eliminar duplicados y mantener orden
             lotes_disp = list(dict.fromkeys(lotes_disp))
-            opciones_lote = lotes_disp + ["➕ ESCRIBIR LOTE MANUALMENTE..."]
             
             with tr5:
-                lote_seleccionado = st.selectbox("📦 Lote Origen (Base de Datos / SAP)", opciones_lote, key=f"t_lote_sel_{fk_t}")
-                if lote_seleccionado == "➕ ESCRIBIR LOTE MANUALMENTE...":
-                    t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
+                # 💥 LA SOLUCIÓN DEL COMANDANTE: SELECTOR DUAL 💥
+                opcion_metodo = st.selectbox("⚙️ Origen del Lote", ["📋 ELEGIR DE LA LISTA SAP", "✍️ ESCRIBIR MANUALMENTE"], key=f"metodo_lote_{fk_t}")
+                
+                if opcion_metodo == "📋 ELEGIR DE LA LISTA SAP":
+                    if lotes_disp:
+                        lote_seleccionado = st.selectbox("📦 Seleccione el Lote", lotes_disp, key=f"t_lote_sel_{fk_t}")
+                        t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
+                    else:
+                        st.warning("⚠️ SAP no reporta saldo para este producto en esta pista.")
+                        t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
                 else:
-                    # Limpiamos el texto "(Saldo SAP...)" para guardar solo el Lote puro
-                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
+                    t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
 
             # Lógica de Lote Final para visualización y base de datos
             lote_final_print = t_lote_origen
