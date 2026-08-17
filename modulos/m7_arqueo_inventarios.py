@@ -21,7 +21,7 @@ def inicializar_cliente_gspread():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-# 💥 URL MAESTRA EXTRAÍDA DE LA IMAGEN DEL COMANDANTE
+# 💥 URL MAESTRA DEL COMANDANTE
 URL_BASE_AFOROS = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
 @st.cache_data(show_spinner=False, ttl=300)
@@ -35,6 +35,13 @@ def extraer_tablas_aforo():
         df_aforo = pd.DataFrame(datos)
         
         df_aforo.columns = [str(c).strip().upper() for c in df_aforo.columns]
+        
+        # 💥 ESCUDO ANTI-FANTASMAS (Elimina filas vacías de Google Sheets)
+        if 'PISTA' in df_aforo.columns and 'TANQUE' in df_aforo.columns:
+            df_aforo['PISTA'] = df_aforo['PISTA'].astype(str).str.strip().str.upper()
+            df_aforo['TANQUE'] = df_aforo['TANQUE'].astype(str).str.strip().str.upper()
+            # Destruye cualquier fila donde la pista o el tanque no tengan nombre
+            df_aforo = df_aforo[(df_aforo['PISTA'] != '') & (df_aforo['TANQUE'] != '')]
         
         # 💥 EL NUEVO PURIFICADOR DE NÚMEROS (Anti-espacios, Anti-comas y Anti-puntos dobles)
         def purificador_numeros(x):
@@ -65,9 +72,6 @@ def extraer_tablas_aforo():
             
         if 'CM' in df_aforo.columns:
             df_aforo['CM'] = pd.to_numeric(df_aforo['CM'], errors='coerce').fillna(0).astype(int)
-            
-        if 'TANQUE' in df_aforo.columns:
-            df_aforo['TANQUE'] = df_aforo['TANQUE'].astype(str).str.strip()
             
         return df_aforo, None
     except Exception as e:
@@ -235,7 +239,7 @@ def renderizar_radar_plomadas():
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
                 litros_totales = galones_totales * 3.78541
                 
-                st.success(f"✅ Medida validada en Certificado para el **{tanque_sel}** en **{pista_sel}**.")
+                st.success(f"✅ Medida validada en Certificado para el **Tanque {tanque_sel}** en **{pista_sel}**.")
                 
                 k1, k2 = st.columns(2)
                 k1.markdown(f"<div class='hud-arqueo'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>💧 Volumen Total Físico (GALONES)</p><p class='hud-arqueo-value'>{galones_totales:,.2f} Gal</p></div></div>", unsafe_allow_html=True)
