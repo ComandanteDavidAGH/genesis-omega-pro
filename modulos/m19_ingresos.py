@@ -780,21 +780,21 @@ def ejecutar():
             cod_clean = str(mat_item_tras).strip().lstrip('0')
 
             if not df_sabana_memoria.empty:
-                # Buscar columnas clave en la Sábana SAP
+                # 💥 ELIMINACIÓN DEL INTRUSO: Limpiamos tildes al buscar las columnas
                 col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
                 col_mat_desc = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
-                col_mat_cod = next((c for c in df_sabana_memoria.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()), None)
-                col_alm_sap = next((c for c in df_sabana_memoria.columns if 'ALMACEN' in str(c).upper() or 'PISTA' in str(c).upper()), None)
+                col_mat_cod = next((c for c in df_sabana_memoria.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper().replace('Ó','O') or 'COD' in str(c).upper()), None)
+                col_alm_sap = next((c for c in df_sabana_memoria.columns if 'ALMACEN' in str(c).upper().replace('É','E') or 'PISTA' in str(c).upper()), None)
                 col_sal_sap = next((c for c in df_sabana_memoria.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()), None)
 
                 if col_lote_sap and col_alm_sap:
-                    # Match exacto de Pista
+                    # Match exacto de Pista (Ahora sí usará PLUC, PORI, etc. de forma directa)
                     mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(str(t_origen).strip().upper(), na=False)
                     
                     # Match flexible de Producto
                     mask_prod = pd.Series(False, index=df_sabana_memoria.index)
                     if col_mat_cod and cod_clean and cod_clean != "S/N":
-                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.upper().str.contains(cod_clean, regex=False, na=False)
+                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.replace(".0", "", regex=False).str.strip().str.lstrip('0') == cod_clean
                     
                     if not mask_prod.any() and col_mat_desc and prod_clave:
                         mask_prod = df_sabana_memoria[col_mat_desc].astype(str).str.upper().str.contains(prod_clave, na=False)
