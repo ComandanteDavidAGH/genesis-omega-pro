@@ -36,13 +36,32 @@ def extraer_tablas_aforo():
         
         df_aforo.columns = [str(c).strip().upper() for c in df_aforo.columns]
         
-        # 🛡️ ESCUDO ANTI-DECIMALES (Corrección en RAM)
-        if 'INCREMENTO_MM' in df_aforo.columns:
-            df_aforo['INCREMENTO_MM'] = pd.to_numeric(df_aforo['INCREMENTO_MM'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
-            df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(lambda x: x / 1000 if x > 10 else x)
-            
+        # 💥 EL NUEVO PURIFICADOR DE NÚMEROS (Anti-espacios, Anti-comas y Anti-puntos dobles)
+        def purificador_numeros(x):
+            if pd.isna(x) or x is None: return 0.0
+            if isinstance(x, (int, float)): return float(x)
+            # Quitar espacios en blanco que deja el PDF (Ej: "1 892.22" -> "1892.22")
+            s = str(x).strip().replace(' ', '').replace("'", "")
+            if not s or s.lower() in ['nan', 'none', '']: return 0.0
+            # Detectar si trae ambos punto y coma (Ej: "1,892.22" o "1.892,22")
+            if '.' in s and ',' in s:
+                if s.rfind(',') > s.rfind('.'): # Formato latino: 1.892,22
+                    s = s.replace('.', '').replace(',', '.')
+                else: # Formato gringo: 1,892.22
+                    s = s.replace(',', '')
+            elif ',' in s: # Si solo trae coma, asumimos que es decimal
+                s = s.replace(',', '.')
+            try: return float(s)
+            except: return 0.0
+
+        # 🛡️ APLICAMOS EL ESCUDO A LAS COLUMNAS MATEMÁTICAS
         if 'VOLUMEN_GAL' in df_aforo.columns:
-            df_aforo['VOLUMEN_GAL'] = pd.to_numeric(df_aforo['VOLUMEN_GAL'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0.0)
+            df_aforo['VOLUMEN_GAL'] = df_aforo['VOLUMEN_GAL'].apply(purificador_numeros)
+            
+        if 'INCREMENTO_MM' in df_aforo.columns:
+            df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(purificador_numeros)
+            # Dividimos entre 1000 solo si el número es ilógico para un incremento (ej: 582)
+            df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(lambda x: x / 1000 if x > 10 else x)
             
         if 'CM' in df_aforo.columns:
             df_aforo['CM'] = pd.to_numeric(df_aforo['CM'], errors='coerce').fillna(0).astype(int)
@@ -170,14 +189,13 @@ def compilar_html_pdf(cruce_final, semana, css_vip):
     html_out += "</div></body></html>"
     return html_out
 
-
 # =================================================================
 # 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS
 # =================================================================
 def renderizar_radar_plomadas():
     st.write("Calculadora oficial de volúmenes de aceite basada en los certificados de calibración técnica (API MPMS).")
     
-    with st.spinner("Descargando tablas de aforo de la Bóveda..."):
+    with st.spinner("Descargando y purificando tablas de aforo de la Bóveda..."):
         df_aforo, error_aforo = extraer_tablas_aforo()
         
     if error_aforo:
@@ -217,7 +235,7 @@ def renderizar_radar_plomadas():
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
                 litros_totales = galones_totales * 3.78541
                 
-                st.success(f"✅ Medida validada en Certificado para el **Tanque {tanque_sel}** en **{pista_sel}**.")
+                st.success(f"✅ Medida validada en Certificado para el **{tanque_sel}** en **{pista_sel}**.")
                 
                 k1, k2 = st.columns(2)
                 k1.markdown(f"<div class='hud-arqueo'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>💧 Volumen Total Físico (GALONES)</p><p class='hud-arqueo-value'>{galones_totales:,.2f} Gal</p></div></div>", unsafe_allow_html=True)
@@ -239,7 +257,6 @@ Conversión a Litros (* 3.78541): {litros_totales:,.3f}
                 st.error(f"🚨 Error: El tanque '{tanque_sel}' no tiene un registro para {cm_input} cm en la tabla de aforo.")
         else:
             st.warning("No hay datos de aforo para el tanque seleccionado.")
-
 
 # =================================================================
 # 👑 INTERFAZ GRÁFICA Y NÚCLEO DE AUDITORÍA
