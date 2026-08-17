@@ -40,7 +40,7 @@ def obtener_datos_bovedas():
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
     except Exception as e: return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES (💥 FUERZA BRUTA - CERO CACHÉ) ---
+# --- 🔍 RASTREADOR DE MATERIALES ---
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
     if not gc: return {"ERROR": "Sin conexión a los servidores de Google."}
@@ -49,19 +49,14 @@ def extraer_mapeo_materiales():
         ws = sh.worksheet("Plantilla")
         datos = ws.get_all_values()
         mapeo = {}
-        
         for row in datos[2:]:
             if len(row) >= 11:
-                mat = str(row[0]).strip() # Columna A
-                desc_j = str(row[9]).strip().upper() # Columna J
-                desc_k = str(row[10]).strip().upper() # Columna K
-                
+                mat = str(row[0]).strip()
+                desc_j = str(row[9]).strip().upper()
+                desc_k = str(row[10]).strip().upper()
                 if mat and mat != "MATERIAL":
-                    if desc_k:
-                        mapeo[re.sub(r'\s+', ' ', desc_k)] = mat
-                    if desc_j:
-                        mapeo[re.sub(r'\s+', ' ', desc_j)] = mat
-                        
+                    if desc_k: mapeo[re.sub(r'\s+', ' ', desc_k)] = mat
+                    if desc_j: mapeo[re.sub(r'\s+', ' ', desc_j)] = mat
         return mapeo
     except Exception as e: 
         return {"ERROR": str(e)}
@@ -70,7 +65,6 @@ def buscar_codigo_material(producto_nombre, mapeo):
     if "ERROR" in mapeo: return "S/N"
     prod_clean = re.sub(r'\s+', ' ', str(producto_nombre).strip().upper())
     if not prod_clean or not mapeo: return "S/N"
-    
     if prod_clean in mapeo: return mapeo[prod_clean]
     for desc, cod in mapeo.items():
         if prod_clean in desc or desc in prod_clean: return cod
@@ -411,7 +405,6 @@ def ejecutar():
                     n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
                     n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
                     
-                    # 💥 NUEVA TABLA DINÁMICA MULTI-LOTE
                     st.markdown("<hr style='margin: 10px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("#### 📦 Detalle de Lotes Múltiples")
                     st.caption("Añade tantas filas como líneas tenga el documento SAP.")
@@ -428,14 +421,12 @@ def ejecutar():
                     
                     lotes_validos = [row for _, row in lotes_editados.iterrows() if float(row["CANTIDAD"]) > 0 and str(row["LOTE"]).strip() != ""]
 
-                    # 💥 CIRUGÍA APLICADA: PANEL DE COPIADO MÚLTIPLE (1 CAJITA POR LOTE VÁLIDO)
                     st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
                     
                     if not lotes_validos:
                         st.info("⚠️ Ingresa cantidades y lotes válidos en la tabla superior para generar el panel de copiado.")
                     else:
-                        # Imprimir encabezados visuales una sola vez
                         h1, h2, h3, h4, h5 = st.columns(5)
                         h1.caption("🔢 MATERIAL")
                         h2.caption("⚖️ CANTIDAD")
@@ -443,7 +434,6 @@ def ejecutar():
                         h4.caption("🧾 FACTURA")
                         h5.caption("🛒 PEDIDO")
                         
-                        # Iterar y crear una fila de copiado por cada lote ingresado
                         for row_lote in lotes_validos:
                             c1, c2, c3, c4, c5 = st.columns(5)
                             with c1: st.code(mat_item_ing if not es_nuevo_producto else "S/N", language="text")
@@ -476,7 +466,6 @@ def ejecutar():
                                     else: ws_dicc.append_row([prod_limpio, prov_limpio])
                                 except Exception as e: st.warning(f"Se guardó el diccionario: {e}")
 
-                            # 💥 INYECCIÓN MASIVA EN DRIVE
                             nuevas_filas_bulk = []
                             for row_lote in lotes_validos:
                                 lote_ing_inject = f"'{str(row_lote['LOTE']).strip()}"
@@ -525,7 +514,6 @@ def ejecutar():
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e: st.error(f"Error al inyectar datos: {e}")
 
-                # --- GENERADOR DE REPORTE CORREO ---
                 st.markdown("---")
                 st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
                 st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto.")
@@ -581,7 +569,6 @@ def ejecutar():
                         else: st.info("Has desmarcado todos los registros. La tabla final está vacía.")
                     else: st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_reporte.strftime('%d/%m/%Y')}.")
 
-                # --- ESCÁNER DE AUDITORÍA ---
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
@@ -617,7 +604,6 @@ def ejecutar():
                 st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
                 st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
-                # 💥 DESBLOQUEO DE COLUMNAS PARA PERMITIR COPIAR Y PEGAR
                 columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
                 columnas_editables_reales = [COL_ESTADO]
                 
@@ -658,7 +644,6 @@ def ejecutar():
                     cambios_actualizacion = []
                     eliminaciones = []
                     
-                    # Buscamos los índices de columnas reales en Google Sheets
                     idx_cols = {}
                     for col in columnas_editables_reales:
                         for idx_h, h in enumerate(encabezados_limpios_ing):
@@ -762,6 +747,7 @@ def ejecutar():
             lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
+            # 💥 CAMBIO AQUÍ: OBTENEMOS EL PRODUCTO Y PREPARAMOS VARIABLES
             tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
@@ -789,12 +775,11 @@ def ejecutar():
             lotes_disp = []
             df_sabana_memoria = st.session_state.get('df_sabana', pd.DataFrame())
             
-            # Palabras clave para búsqueda flexible (evita errores de espacios o nombres incompletos)
             prod_keywords = str(t_producto).strip().upper().split()
             prod_clave = prod_keywords[0] if prod_keywords else ""
+            cod_clean = str(mat_item_tras).strip().lstrip('0')
 
             if not df_sabana_memoria.empty:
-                # Buscar columnas clave en la Sábana SAP
                 col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
                 col_mat_desc = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
                 col_mat_cod = next((c for c in df_sabana_memoria.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()), None)
@@ -802,29 +787,30 @@ def ejecutar():
                 col_sal_sap = next((c for c in df_sabana_memoria.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()), None)
 
                 if col_lote_sap and col_alm_sap:
-                    # Match Pista
-                    mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(str(t_origen).strip().upper(), na=False)
-                    
-                    # Match Producto (Prioridad a Código, luego a la palabra clave)
                     mask_prod = pd.Series(False, index=df_sabana_memoria.index)
-                    if col_mat_cod and mat_item_tras and mat_item_tras != "S/N":
-                        cod_clean = str(mat_item_tras).strip().lstrip('0')
-                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.strip().str.lstrip('0') == cod_clean
+                    if col_mat_cod and cod_clean and cod_clean != "S/N":
+                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.replace(".0", "", regex=False).str.strip().str.lstrip('0') == cod_clean
                     
                     if not mask_prod.any() and col_mat_desc and prod_clave:
                         mask_prod = df_sabana_memoria[col_mat_desc].astype(str).str.upper().str.contains(prod_clave, na=False)
                     
-                    df_filtro_sap = df_sabana_memoria[mask_pista & mask_prod]
+                    df_filtro_sap = df_sabana_memoria[mask_prod]
                     
                     for _, row_s in df_filtro_sap.iterrows():
                         l_val = str(row_s[col_lote_sap]).strip()
+                        p_val = str(row_s[col_alm_sap]).strip().upper()
                         s_val = row_s[col_sal_sap] if col_sal_sap else 0
+                        
                         if l_val and l_val not in ["nan", "None", ""]:
                             try: s_val_str = f"{float(s_val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                             except: s_val_str = str(s_val)
-                            lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
+                            
+                            if str(t_origen).strip().upper() in p_val:
+                                lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
+                            else:
+                                p_corta = p_val[:4] if len(p_val) >= 4 else p_val
+                                lotes_disp.append(f"{l_val} (En SAP dice: {p_corta} | Saldo: {s_val_str})")
 
-            # Fallback a ingresos históricos (Por si SAP no está cargado o no cruzó)
             if not df_ingresos.empty:
                 c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
                 c_pis_i = next((c for c in df_ingresos.columns if "PISTA" in c.upper()), None)
@@ -832,25 +818,22 @@ def ejecutar():
                 c_est_i = "ESTADO / OBSERVACIÓN" if "ESTADO / OBSERVACIÓN" in df_ingresos.columns else None
                 
                 if c_prod_i and c_pis_i and c_lot_i:
-                    # Macheo flexible con la palabra clave
                     m_prod = df_ingresos[c_prod_i].astype(str).str.strip().str.upper().str.contains(prod_clave, na=False) if prod_clave else pd.Series(False, index=df_ingresos.index)
-                    m_pis = df_ingresos[c_pis_i].astype(str).str.strip().str.upper().str.contains(str(t_origen).strip().upper())
-                    
                     if c_est_i:
                         m_est = ~df_ingresos[c_est_i].astype(str).str.upper().str.contains("ANULADO|ELIMINAR", na=False)
-                        df_historico_lotes = df_ingresos[m_prod & m_pis & m_est]
+                        df_hist_prod = df_ingresos[m_prod & m_est]
                     else:
-                        df_historico_lotes = df_ingresos[m_prod & m_pis]
+                        df_hist_prod = df_ingresos[m_prod]
                         
-                    l_crudos = df_historico_lotes[c_lot_i].dropna().unique().tolist()
-                    
-                    for l in l_crudos:
-                        l_cl = str(l).strip().lstrip("'")
-                        # Agregar solo si no es vacío y si no fue detectado ya por SAP
-                        if l_cl and l_cl not in ["nan", "None", ""] and not any(l_cl in x for x in lotes_disp):
-                            lotes_disp.append(f"{l_cl} (Histórico)")
+                    for _, r_h in df_hist_prod.iterrows():
+                        l_cl = str(r_h[c_lot_i]).strip().lstrip("'")
+                        p_cl = str(r_h[c_pis_i]).strip().upper()
+                        if l_cl and l_cl not in ["nan", "None", ""] and not any(l_cl == x.split(" (")[0].strip() for x in lotes_disp):
+                            if str(t_origen).strip().upper() in p_cl:
+                                lotes_disp.append(f"{l_cl} (Histórico)")
+                            else:
+                                lotes_disp.append(f"{l_cl} (Histórico en: {p_cl[:4]})")
 
-            # Eliminar duplicados y mantener orden
             lotes_disp = list(dict.fromkeys(lotes_disp))
             opciones_lote = lotes_disp + ["➕ ESCRIBIR LOTE MANUALMENTE..."]
             
@@ -859,8 +842,7 @@ def ejecutar():
                 if lote_seleccionado == "➕ ESCRIBIR LOTE MANUALMENTE...":
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
                 else:
-                    # Limpiamos el texto "(Saldo SAP...)" o "(Histórico)" para guardar solo el Lote puro
-                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].split(" (Histórico")[0].strip()
+                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].split(" (En SAP")[0].split(" (Histórico")[0].strip()
 
             # Lógica de Lote Final para visualización y base de datos
             lote_final_print = t_lote_origen
