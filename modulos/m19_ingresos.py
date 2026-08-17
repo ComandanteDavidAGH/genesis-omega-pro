@@ -771,7 +771,7 @@ def ejecutar():
             if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
                 t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
 
-            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CERO HISTÓRICOS)
+            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CON DIAGNÓSTICO INCORPORADO)
             lotes_disp = []
             df_sabana_memoria = st.session_state.get('df_sabana', pd.DataFrame())
             
@@ -779,27 +779,51 @@ def ejecutar():
             prod_clave = prod_keywords[0] if prod_keywords else ""
             cod_clean = str(mat_item_tras).strip().lstrip('0')
 
-            if not df_sabana_memoria.empty:
-                # 💥 ELIMINACIÓN DEL INTRUSO: Limpiamos tildes al buscar las columnas
+            debug_info = [] # Array para guardar el registro de operaciones del escáner
+
+            if df_sabana_memoria.empty:
+                debug_info.append("🔴 FALLO PASO 1 (RAM VACÍA): No se encontró la Sábana SAP en memoria. Sube el Excel en el Módulo 2 (Carga Facturación) y vuelve aquí sin recargar la página.")
+            else:
+                debug_info.append(f"🟢 PASO 1 OK (RAM): Sábana SAP cargada con {len(df_sabana_memoria)} filas.")
+                
+                # Buscar columnas (Excluyendo explícitamente las de 'VALOR' para el saldo)
                 col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
                 col_mat_desc = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
                 col_mat_cod = next((c for c in df_sabana_memoria.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper().replace('Ó','O') or 'COD' in str(c).upper()), None)
                 col_alm_sap = next((c for c in df_sabana_memoria.columns if 'ALMACEN' in str(c).upper().replace('É','E') or 'PISTA' in str(c).upper()), None)
-                col_sal_sap = next((c for c in df_sabana_memoria.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()), None)
+                col_sal_sap = next((c for c in df_sabana_memoria.columns if ('LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()) and 'VALOR' not in str(c).upper()), None)
+
+                debug_info.append(f"🔍 PASO 2 (Columnas): Lote='{col_lote_sap}', Pista='{col_alm_sap}', Cod='{col_mat_cod}', Saldo='{col_sal_sap}'")
 
                 if col_lote_sap and col_alm_sap:
-                    # Match exacto de Pista (Ahora sí usará PLUC, PORI, etc. de forma directa)
-                    mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(str(t_origen).strip().upper(), na=False)
+                    # Match flexible de Pista
+                    pista_busqueda = str(t_origen).strip().upper()
+                    pista_sap_alias = pista_busqueda
+                    if pista_busqueda == "PLUC": pista_sap_alias = "LUCHA"
+                    elif pista_busqueda == "PORI": pista_sap_alias = "ORIHUECA"
+                    elif pista_busqueda == "PDIV": pista_sap_alias = "DIVAS"
+                    elif pista_busqueda == "TEHO": pista_sap_alias = "TEHOBROMINA"
+
+                    mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(pista_busqueda, na=False) | \
+                                 df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(pista_sap_alias, na=False)
                     
+                    debug_info.append(f"📍 PASO 3 (Filtro Pista): Encontró {mask_pista.sum()} filas en '{pista_busqueda}'.")
+
                     # Match flexible de Producto
-                    mask_prod = pd.Series(False, index=df_sabana_memoria.index)
+                    mask_prod_cod = pd.Series(False, index=df_sabana_memoria.index)
                     if col_mat_cod and cod_clean and cod_clean != "S/N":
-                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.replace(".0", "", regex=False).str.strip().str.lstrip('0') == cod_clean
+                        col_cod_limpia = df_sabana_memoria[col_mat_cod].astype(str).str.replace(".0", "", regex=False).str.strip().str.lstrip('0')
+                        mask_prod_cod = col_cod_limpia.str.contains(cod_clean, regex=False, na=False)
                     
-                    if not mask_prod.any() and col_mat_desc and prod_clave:
-                        mask_prod = df_sabana_memoria[col_mat_desc].astype(str).str.upper().str.contains(prod_clave, na=False)
+                    mask_prod_desc = pd.Series(False, index=df_sabana_memoria.index)
+                    if col_mat_desc and prod_clave:
+                        mask_prod_desc = df_sabana_memoria[col_mat_desc].astype(str).str.upper().str.contains(prod_clave, na=False)
+                    
+                    mask_prod = mask_prod_cod | mask_prod_desc
+                    debug_info.append(f"🧪 PASO 4 (Filtro Producto): Encontró {mask_prod.sum()} filas del código '{cod_clean}'.")
                     
                     df_filtro_sap = df_sabana_memoria[mask_pista & mask_prod]
+                    debug_info.append(f"✅ PASO 5 (Cruce Pista+Producto): Quedaron {len(df_filtro_sap)} filas exactas.")
                     
                     for _, row_s in df_filtro_sap.iterrows():
                         l_val = str(row_s[col_lote_sap]).strip()
@@ -809,6 +833,8 @@ def ejecutar():
                             try: s_val_str = f"{float(s_val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                             except: s_val_str = str(s_val)
                             lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
+                else:
+                    debug_info.append("🔴 FALLO PASO 2 (COLUMNAS): SAP no tiene una columna llamada 'ALMACÉN' o 'LOTE'.")
 
             # Eliminar duplicados y mantener orden
             lotes_disp = list(dict.fromkeys(lotes_disp))
@@ -824,6 +850,14 @@ def ejecutar():
                     else:
                         st.warning("⚠️ SAP no reporta saldo para este producto en esta pista.")
                         t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
+                        
+                        # 💥 DIAGNÓSTICO EN TIEMPO REAL PARA EL COMANDANTE
+                        with st.expander("🛠️ Ver Diagnóstico del Escáner SAP", expanded=False):
+                            for linea in debug_info:
+                                if "FALLO" in linea or " 0 " in linea:
+                                    st.markdown(f"<span style='color:red; font-weight:bold;'>{linea}</span>", unsafe_allow_html=True)
+                                else:
+                                    st.caption(linea)
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
 
