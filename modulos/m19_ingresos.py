@@ -570,7 +570,6 @@ def ejecutar():
                         else: st.info("Has desmarcado todos los registros. La tabla final está vacía.")
                     else: st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_reporte.strftime('%d/%m/%Y')}.")
 
-                # --- ESCÁNER DE AUDITORÍA ---
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
@@ -604,7 +603,7 @@ def ejecutar():
                 else: df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
                 st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
-                st.caption("🔒 Haz doble clic en las columns para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
+                st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
                 columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
                 columnas_editables_reales = [COL_ESTADO]
@@ -779,7 +778,7 @@ def ejecutar():
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
             tr4, tr5 = st.columns(2)
-            opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "OTRO"]
+            opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES", "OTRO"]
             t_observacion_sel = tr4.selectbox("📝 Observación", opciones_obs, key=f"t_obs_sel_{fk_t}")
             
             if t_observacion_sel == "OTRO": 
@@ -787,14 +786,8 @@ def ejecutar():
             else: 
                 t_observacion = t_observacion_sel
 
-            # 💥 NUEVO: CAMPO MUTANTE PARA TRANSFORMACIÓN
-            t_lote_nuevo = ""
-            if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
-                t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
-
-            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CONEXIÓN DIRECTA CORREGIDA)
+            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CERO HISTÓRICOS)
             lotes_disp = []
-            
             df_sabana_memoria = st.session_state.get('mem_sabana', pd.DataFrame())
             
             prod_keywords = str(t_producto).strip().upper().split()
@@ -846,6 +839,18 @@ def ejecutar():
 
             # Eliminar duplicados y mantener orden
             lotes_disp = list(dict.fromkeys(lotes_disp))
+
+            t_lote_nuevo = ""
+            with tr4:
+                if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
+                    t_lote_nuevo = st.text_input("🔄 NUEVO LOTE (Crear Manual):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
+                elif t_observacion_sel == "AJUSTE ENTRE LOTES":
+                    if lotes_disp:
+                        lote_dest_sel = st.selectbox("🔄 LOTE DESTINO (SAP):", lotes_disp, key=f"t_lote_dest_sel_{fk_t}")
+                        t_lote_nuevo = lote_dest_sel.split(" (Saldo")[0].strip()
+                    else:
+                        st.warning("⚠️ SAP no reporta otros lotes aquí.")
+                        t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
             
             with tr5:
                 # 💥 LA SOLUCIÓN DEL COMANDANTE: SELECTOR DUAL 💥
@@ -856,14 +861,14 @@ def ejecutar():
                         lote_seleccionado = st.selectbox("📦 Seleccione el Lote", lotes_disp, key=f"t_lote_sel_{fk_t}")
                         t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
                     else:
-                        st.warning("⚠️ SAP no reporta saldo para este producto en esta pista.")
+                        st.warning("⚠️ Sábana sin procesar o sin saldo. (Súbela arriba o usa el Módulo 2).")
                         t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
 
             # Lógica de Lote Final para visualización y base de datos
             lote_final_print = t_lote_origen
-            if t_observacion_sel == "TRANSFORMACIÓN DE LOTE" and t_lote_nuevo.strip():
+            if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
@@ -882,10 +887,10 @@ def ejecutar():
             if btn_guardar_traslado:
                 if not t_consecutivo.strip(): st.error("🚨 Debes ingresar un número de Consecutivo.")
                 elif t_cantidad <= 0: st.error("🚨 La cantidad debe ser mayor a cero.")
-                elif t_origen == t_destino and t_observacion_sel not in ["TRANSFORMACIÓN DE LOTE", "OTRO"]: 
-                    st.error("🚨 Para mover material dentro de la misma pista, la observación debe ser 'TRANSFORMACIÓN DE LOTE' u 'OTRO'.")
+                elif t_origen == t_destino and t_observacion_sel not in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES", "OTRO"]: 
+                    st.error("🚨 Para mover material dentro de la misma pista, la observación debe ser 'TRANSFORMACIÓN DE LOTE', 'AJUSTE ENTRE LOTES' u 'OTRO'.")
                 elif not t_lote_origen or str(t_lote_origen).strip() == "": st.error("🚨 Debes especificar el Lote a trasladar.")
-                elif t_observacion_sel == "TRANSFORMACIÓN DE LOTE" and not t_lote_nuevo.strip(): st.error("🚨 Debes ingresar el NUEVO LOTE destino de la transformación.")
+                elif t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and not t_lote_nuevo.strip(): st.error("🚨 Debes ingresar el LOTE DESTINO para el ajuste/transformación.")
                 else:
                     try:
                         with st.spinner("Enviando traslado a la nube..."):
@@ -972,7 +977,7 @@ def ejecutar():
                 if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
                 elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
                 elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
+                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
                 elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
                 elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
                 elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
