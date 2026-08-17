@@ -771,7 +771,7 @@ def ejecutar():
             if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
                 t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
 
-            # 💥 NUEVO: BÚSQUEDA INTELIGENTE EN SÁBANA SAP Y BÓVEDA HISTÓRICA
+            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CERO HISTÓRICOS)
             lotes_disp = []
             df_sabana_memoria = st.session_state.get('df_sabana', pd.DataFrame())
             
@@ -780,6 +780,7 @@ def ejecutar():
             cod_clean = str(mat_item_tras).strip().lstrip('0')
 
             if not df_sabana_memoria.empty:
+                # Buscar columnas clave en la Sábana SAP
                 col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
                 col_mat_desc = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
                 col_mat_cod = next((c for c in df_sabana_memoria.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()), None)
@@ -787,53 +788,29 @@ def ejecutar():
                 col_sal_sap = next((c for c in df_sabana_memoria.columns if 'LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()), None)
 
                 if col_lote_sap and col_alm_sap:
+                    # Match exacto de Pista
+                    mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(str(t_origen).strip().upper(), na=False)
+                    
+                    # Match flexible de Producto
                     mask_prod = pd.Series(False, index=df_sabana_memoria.index)
                     if col_mat_cod and cod_clean and cod_clean != "S/N":
-                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.replace(".0", "", regex=False).str.strip().str.lstrip('0') == cod_clean
+                        mask_prod = df_sabana_memoria[col_mat_cod].astype(str).str.upper().str.contains(cod_clean, regex=False, na=False)
                     
                     if not mask_prod.any() and col_mat_desc and prod_clave:
                         mask_prod = df_sabana_memoria[col_mat_desc].astype(str).str.upper().str.contains(prod_clave, na=False)
                     
-                    df_filtro_sap = df_sabana_memoria[mask_prod]
+                    df_filtro_sap = df_sabana_memoria[mask_pista & mask_prod]
                     
                     for _, row_s in df_filtro_sap.iterrows():
                         l_val = str(row_s[col_lote_sap]).strip()
-                        p_val = str(row_s[col_alm_sap]).strip().upper()
                         s_val = row_s[col_sal_sap] if col_sal_sap else 0
                         
                         if l_val and l_val not in ["nan", "None", ""]:
                             try: s_val_str = f"{float(s_val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                             except: s_val_str = str(s_val)
-                            
-                            if str(t_origen).strip().upper() in p_val:
-                                lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
-                            else:
-                                p_corta = p_val[:4] if len(p_val) >= 4 else p_val
-                                lotes_disp.append(f"{l_val} (En SAP dice: {p_corta} | Saldo: {s_val_str})")
+                            lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
 
-            if not df_ingresos.empty:
-                c_prod_i = next((c for c in df_ingresos.columns if "PRODUCTO" in c.upper()), None)
-                c_pis_i = next((c for c in df_ingresos.columns if "PISTA" in c.upper()), None)
-                c_lot_i = next((c for c in df_ingresos.columns if "LOTE" in c.upper()), None)
-                c_est_i = "ESTADO / OBSERVACIÓN" if "ESTADO / OBSERVACIÓN" in df_ingresos.columns else None
-                
-                if c_prod_i and c_pis_i and c_lot_i:
-                    m_prod = df_ingresos[c_prod_i].astype(str).str.strip().str.upper().str.contains(prod_clave, na=False) if prod_clave else pd.Series(False, index=df_ingresos.index)
-                    if c_est_i:
-                        m_est = ~df_ingresos[c_est_i].astype(str).str.upper().str.contains("ANULADO|ELIMINAR", na=False)
-                        df_hist_prod = df_ingresos[m_prod & m_est]
-                    else:
-                        df_hist_prod = df_ingresos[m_prod]
-                        
-                    for _, r_h in df_hist_prod.iterrows():
-                        l_cl = str(r_h[c_lot_i]).strip().lstrip("'")
-                        p_cl = str(r_h[c_pis_i]).strip().upper()
-                        if l_cl and l_cl not in ["nan", "None", ""] and not any(l_cl == x.split(" (")[0].strip() for x in lotes_disp):
-                            if str(t_origen).strip().upper() in p_cl:
-                                lotes_disp.append(f"{l_cl} (Histórico)")
-                            else:
-                                lotes_disp.append(f"{l_cl} (Histórico en: {p_cl[:4]})")
-
+            # Eliminar duplicados y mantener orden
             lotes_disp = list(dict.fromkeys(lotes_disp))
             opciones_lote = lotes_disp + ["➕ ESCRIBIR LOTE MANUALMENTE..."]
             
@@ -842,7 +819,8 @@ def ejecutar():
                 if lote_seleccionado == "➕ ESCRIBIR LOTE MANUALMENTE...":
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
                 else:
-                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].split(" (En SAP")[0].split(" (Histórico")[0].strip()
+                    # Limpiamos el texto "(Saldo SAP...)" para guardar solo el Lote puro
+                    t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
 
             # Lógica de Lote Final para visualización y base de datos
             lote_final_print = t_lote_origen
