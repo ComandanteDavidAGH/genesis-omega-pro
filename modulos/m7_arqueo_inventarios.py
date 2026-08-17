@@ -40,34 +40,29 @@ def extraer_tablas_aforo():
         if 'PISTA' in df_aforo.columns and 'TANQUE' in df_aforo.columns:
             df_aforo['PISTA'] = df_aforo['PISTA'].astype(str).str.strip().str.upper()
             df_aforo['TANQUE'] = df_aforo['TANQUE'].astype(str).str.strip().str.upper()
-            # Destruye cualquier fila donde la pista o el tanque no tengan nombre
             df_aforo = df_aforo[(df_aforo['PISTA'] != '') & (df_aforo['TANQUE'] != '')]
         
-        # 💥 EL NUEVO PURIFICADOR DE NÚMEROS (Anti-espacios, Anti-comas y Anti-puntos dobles)
+        # 💥 PURIFICADOR DE NÚMEROS (Anti-espacios, Anti-comas y Anti-puntos dobles)
         def purificador_numeros(x):
             if pd.isna(x) or x is None: return 0.0
             if isinstance(x, (int, float)): return float(x)
-            # Quitar espacios en blanco que deja el PDF (Ej: "1 892.22" -> "1892.22")
             s = str(x).strip().replace(' ', '').replace("'", "")
             if not s or s.lower() in ['nan', 'none', '']: return 0.0
-            # Detectar si trae ambos punto y coma (Ej: "1,892.22" o "1.892,22")
             if '.' in s and ',' in s:
-                if s.rfind(',') > s.rfind('.'): # Formato latino: 1.892,22
+                if s.rfind(',') > s.rfind('.'): 
                     s = s.replace('.', '').replace(',', '.')
-                else: # Formato gringo: 1,892.22
+                else: 
                     s = s.replace(',', '')
-            elif ',' in s: # Si solo trae coma, asumimos que es decimal
+            elif ',' in s: 
                 s = s.replace(',', '.')
             try: return float(s)
             except: return 0.0
 
-        # 🛡️ APLICAMOS EL ESCUDO A LAS COLUMNAS MATEMÁTICAS
         if 'VOLUMEN_GAL' in df_aforo.columns:
             df_aforo['VOLUMEN_GAL'] = df_aforo['VOLUMEN_GAL'].apply(purificador_numeros)
             
         if 'INCREMENTO_MM' in df_aforo.columns:
             df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(purificador_numeros)
-            # Dividimos entre 1000 solo si el número es ilógico para un incremento (ej: 582)
             df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(lambda x: x / 1000 if x > 10 else x)
             
         if 'CM' in df_aforo.columns:
@@ -193,6 +188,9 @@ def compilar_html_pdf(cruce_final, semana, css_vip):
     html_out += "</div></body></html>"
     return html_out
 
+def obtener_hora_colombia():
+    return datetime.utcnow() + timedelta(hours=-5)
+
 # =================================================================
 # 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS
 # =================================================================
@@ -209,12 +207,14 @@ def renderizar_radar_plomadas():
     else:
         pistas_disponibles = sorted(df_aforo['PISTA'].dropna().unique().tolist())
         
-        st.markdown("### 1. Ubicación del Activo")
-        col1, col2 = st.columns(2)
-        pista_sel = col1.selectbox("📍 Base Operativa (Pista)", pistas_disponibles)
+        st.markdown("### 1. Ubicación del Activo y Fecha")
+        col1, col2, col3 = st.columns(3)
+        fecha_plomada = col1.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
+        semana_calculada = fecha_plomada.isocalendar()[1]
+        pista_sel = col2.selectbox("📍 Base Operativa (Pista)", pistas_disponibles)
         
         tanques_disponibles = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
-        tanque_sel = col2.selectbox("🛢️ Tanque a Medir", tanques_disponibles)
+        tanque_sel = col3.selectbox("🛢️ Tanque a Medir", tanques_disponibles)
         
         st.markdown("---")
         st.markdown("### 2. Medición Física (Plomada)")
@@ -239,12 +239,50 @@ def renderizar_radar_plomadas():
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
                 litros_totales = galones_totales * 3.78541
                 
-                st.success(f"✅ Medida validada en Certificado para el **Tanque {tanque_sel}** en **{pista_sel}**.")
+                st.success(f"✅ Medida validada en Certificado para el **{tanque_sel}** en **{pista_sel}**.")
                 
                 k1, k2 = st.columns(2)
                 k1.markdown(f"<div class='hud-arqueo'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>💧 Volumen Total Físico (GALONES)</p><p class='hud-arqueo-value'>{galones_totales:,.2f} Gal</p></div></div>", unsafe_allow_html=True)
                 k2.markdown(f"<div class='hud-arqueo'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>🛢️ Volumen Total Físico (LITROS)</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales:,.2f} L</p></div></div>", unsafe_allow_html=True)
                 
+                # 💥 BOTÓN INYECTOR EN LA BÓVEDA
+                st.markdown("<br>", unsafe_allow_html=True)
+                btn_registrar_plomada = st.button("💾 REGISTRAR LECTURA OFICIAL EN LA BÓVEDA", type="primary", use_container_width=True)
+                
+                if btn_registrar_plomada:
+                    with st.spinner("Enviando registro de plomada a la matriz..."):
+                        try:
+                            gc = inicializar_cliente_gspread()
+                            sh = gc.open_by_url(URL_BASE_AFOROS)
+                            try:
+                                ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
+                            except:
+                                ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="9")
+                                ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "USUARIO"])
+                            
+                            usuario_actual = st.session_state.get('usuario_nombre', 'Operador/Comandante')
+                            
+                            # Formateamos con coma para que Excel no se confunda
+                            galones_str = f"{galones_totales:.3f}".replace('.', ',')
+                            litros_str = f"{litros_totales:.3f}".replace('.', ',')
+                            
+                            nueva_fila = [
+                                fecha_plomada.strftime("%d/%m/%Y"),
+                                str(semana_calculada),
+                                str(pista_sel),
+                                str(tanque_sel),
+                                int(cm_input),
+                                int(mm_input),
+                                galones_str,
+                                litros_str,
+                                usuario_actual
+                            ]
+                            
+                            ws_reg.append_row(nueva_fila)
+                            st.success(f"✅ ¡Operación exitosa! La plomada de {litros_totales:.2f} Litros ha sido registrada en la Bóveda Oficial.")
+                        except Exception as e:
+                            st.error(f"🚨 Error al guardar el registro: {e}")
+
                 with st.expander("🔬 Ver Auditoría Matemática", expanded=False):
                     st.code(f"""
 CÁLCULO DE AFORO (API MPMS)
@@ -273,6 +311,7 @@ def ejecutar(quitar_tildes, purificar_lote):
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     
     div[data-testid="stTextInput"] input,
+    div[data-testid="stDateInput"] input,
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {
         border: 2px solid #0d1b2a !important;
