@@ -871,15 +871,25 @@ def ejecutar():
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
 
+            # 💥 CAMBIO APLICADO AQUÍ: PANEL DINÁMICO DE 6 COLUMNAS PARA AJUSTES
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
 
-            cpt_mat, cpt1, cpt2, cpt3, cpt4 = st.columns(5)
-            with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
-            with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
-            with cpt2: st.caption("📦 LOTE"); st.code(lote_final_print if lote_final_print else "...", language="text")
-            with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
-            with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
+            if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"]:
+                cpt_mat, cpt1, cpt2_o, cpt2_d, cpt3, cpt4 = st.columns(6)
+                with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
+                with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
+                with cpt2_o: st.caption("📦 L. ORIGEN"); st.code(t_lote_origen if t_lote_origen else "...", language="text")
+                with cpt2_d: st.caption("📦 L. DESTINO"); st.code(t_lote_nuevo.strip() if t_lote_nuevo.strip() else "...", language="text")
+                with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
+                with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
+            else:
+                cpt_mat, cpt1, cpt2, cpt3, cpt4 = st.columns(5)
+                with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
+                with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
+                with cpt2: st.caption("📦 LOTE"); st.code(lote_final_print if lote_final_print else "...", language="text")
+                with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
+                with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
 
             st.markdown("<br>", unsafe_allow_html=True)
             btn_guardar_traslado = st.button("🚀 REGISTRAR TRASLADO EN LA BÓVEDA", type="primary", use_container_width=True)
