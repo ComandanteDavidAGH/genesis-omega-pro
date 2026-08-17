@@ -514,6 +514,7 @@ def ejecutar():
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e: st.error(f"Error al inyectar datos: {e}")
 
+                # --- GENERADOR DE REPORTE CORREO ---
                 st.markdown("---")
                 st.markdown("### 📧 Reporte Rápido para Correo (Copy & Paste)")
                 st.info("💡 **Filtro Anti-Infiltración:** Los registros anulados se ocultan por defecto.")
@@ -569,6 +570,7 @@ def ejecutar():
                         else: st.info("Has desmarcado todos los registros. La tabla final está vacía.")
                     else: st.warning(f"No se encontraron ingresos válidos en la bóveda con la fecha {fecha_reporte.strftime('%d/%m/%Y')}.")
 
+                # --- ESCÁNER DE AUDITORÍA ---
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
@@ -602,7 +604,7 @@ def ejecutar():
                 else: df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
                 st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
-                st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
+                st.caption("🔒 Haz doble clic en las columns para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
                 columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
                 columnas_editables_reales = [COL_ESTADO]
@@ -718,6 +720,26 @@ def ejecutar():
         st.markdown(f"<a href='{URL_SHEET_TRASLADOS}' target='_blank' class='btn-ascensor' style='background-color:#2F75B5; border-color:#1d4e7a; color:#ffffff !important;'>👁️ VER BASE DE TRASLADOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
+        # 💥 NUEVO: PUERTO DE CARGA INDEPENDIENTE (BYPASS DEL MÓDULO 2)
+        if 'mem_sabana' not in st.session_state or st.session_state['mem_sabana'].empty:
+            st.info("💡 **Conexión Directa:** No necesitas ir al Módulo 2. Sube tu Sábana SAP aquí mismo para habilitar la lectura automática de lotes.")
+            archivo_bypass = st.file_uploader("📥 Cargar Sábana SAP (MB52)", type=["xlsx", "xls", "csv"], key="uploader_bypass_m19")
+            if archivo_bypass:
+                with st.spinner("Leyendo Sábana SAP..."):
+                    try:
+                        if archivo_bypass.name.endswith('.csv'): df_bypass = pd.read_csv(archivo_bypass, sep=';', encoding='latin1', on_bad_lines='skip')
+                        else: df_bypass = pd.read_excel(archivo_bypass)
+                        st.session_state['mem_sabana'] = df_bypass
+                        st.success("✅ ¡Sábana conectada! El escáner de lotes ya está activo.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error leyendo el archivo: {e}")
+        else:
+            st.success("✅ Sábana SAP conectada en memoria. El escáner de lotes está 100% operativo.")
+            if st.button("🗑️ Liberar Sábana de la Memoria", key="btn_clear_sabana"):
+                del st.session_state['mem_sabana']
+                st.rerun()
+
         if not df_traslados.empty: st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>{len(df_traslados)}</p></div>", unsafe_allow_html=True)
         else: st.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>🚚 Movimientos Históricos Registrados</div><p class='kpi-valor'>0</p></div>", unsafe_allow_html=True)
         
@@ -747,7 +769,6 @@ def ejecutar():
             lista_prods_limpia_t = set([p for p in lista_autorizada if len(p) > 3 and "🛑" not in p])
             lista_prods_ordenada_t = sorted(list(lista_prods_limpia_t))
 
-            # 💥 CAMBIO AQUÍ: OBTENEMOS EL PRODUCTO Y PREPARAMOS VARIABLES
             tr1, tr_mat, tr2, tr3 = st.columns([2, 1, 1, 1])
             t_producto = tr1.selectbox("🧪 Producto a Trasladar", lista_prods_ordenada_t, key=f"t_producto_{fk_t}")
             
@@ -771,15 +792,10 @@ def ejecutar():
             if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
                 t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
 
-            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (ESCUDO ANTI-CRASH APLICADO)
+            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CONEXIÓN DIRECTA CORREGIDA)
             lotes_disp = []
-            df_sabana_memoria = pd.DataFrame()
             
-            # 🛡️ TRAMPA DE TIPO DE DATO: Evita que el sistema intente leer un texto como si fuera una tabla
-            if 'df_sabana' in st.session_state and isinstance(st.session_state['df_sabana'], pd.DataFrame):
-                df_sabana_memoria = st.session_state['df_sabana']
-            elif 'mem_sabana' in st.session_state and isinstance(st.session_state['mem_sabana'], pd.DataFrame):
-                df_sabana_memoria = st.session_state['mem_sabana']
+            df_sabana_memoria = st.session_state.get('mem_sabana', pd.DataFrame())
             
             prod_keywords = str(t_producto).strip().upper().split()
             prod_clave = prod_keywords[0] if prod_keywords else ""
@@ -840,7 +856,7 @@ def ejecutar():
                         lote_seleccionado = st.selectbox("📦 Seleccione el Lote", lotes_disp, key=f"t_lote_sel_{fk_t}")
                         t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
                     else:
-                        st.warning("⚠️ Sábana sin procesar o sin saldo. (Usa botón 'Iniciar Procesamiento' en Mód 2).")
+                        st.warning("⚠️ SAP no reporta saldo para este producto en esta pista.")
                         t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
@@ -956,7 +972,7 @@ def ejecutar():
                 if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
                 elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
                 elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
+                elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
                 elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
                 elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
                 elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
