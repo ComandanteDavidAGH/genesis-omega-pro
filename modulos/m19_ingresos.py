@@ -771,20 +771,37 @@ def ejecutar():
             if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
                 t_lote_nuevo = tr4.text_input("🔄 NUEVO LOTE (Destino):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
 
-            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CON DIAGNÓSTICO INCORPORADO)
+            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CON CEBO DE RAM INCORPORADO)
             lotes_disp = []
-            df_sabana_memoria = st.session_state.get('df_sabana', pd.DataFrame())
+            
+            # --- 🪤 INICIO DEL CEBO ---
+            debug_info = []
+            debug_info.append("🪤 --- REPORTE DEL CEBO DE MEMORIA (RAM) --- 🪤")
+            llaves_ram = [k for k in st.session_state.keys()]
+            debug_info.append(f"🗝️ Llaves detectadas en el sistema: {llaves_ram}")
+            
+            df_sabana_memoria = pd.DataFrame()
+            if 'df_sabana' in st.session_state:
+                dato = st.session_state['df_sabana']
+                debug_info.append(f"📦 'df_sabana' ENCONTRADO. Tipo: {type(dato)}")
+                if isinstance(dato, pd.DataFrame):
+                    df_sabana_memoria = dato
+                    debug_info.append(f"📊 Filas en df_sabana: {len(df_sabana_memoria)}")
+                else:
+                    debug_info.append("⚠️ CUIDADO: 'df_sabana' NO es una tabla (DataFrame).")
+            else:
+                debug_info.append("🚨 ALERTA: La llave 'df_sabana' NO EXISTE en la memoria actual.")
+            debug_info.append("-------------------------------------------------")
+            # --- 🪤 FIN DEL CEBO ---
             
             prod_keywords = str(t_producto).strip().upper().split()
             prod_clave = prod_keywords[0] if prod_keywords else ""
             cod_clean = str(mat_item_tras).strip().lstrip('0')
 
-            debug_info = [] # Array para guardar el registro de operaciones del escáner
-
             if df_sabana_memoria.empty:
-                debug_info.append("🔴 FALLO PASO 1 (RAM VACÍA): No se encontró la Sábana SAP en memoria. Sube el Excel en el Módulo 2 (Carga Facturación) y vuelve aquí sin recargar la página.")
+                debug_info.append("🔴 FALLO PASO 1: No hay datos para procesar en la Sábana SAP.")
             else:
-                debug_info.append(f"🟢 PASO 1 OK (RAM): Sábana SAP cargada con {len(df_sabana_memoria)} filas.")
+                debug_info.append(f"🟢 PASO 1 OK: Procesando Sábana SAP con {len(df_sabana_memoria)} filas.")
                 
                 # Buscar columnas (Excluyendo explícitamente las de 'VALOR' para el saldo)
                 col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
@@ -820,7 +837,7 @@ def ejecutar():
                         mask_prod_desc = df_sabana_memoria[col_mat_desc].astype(str).str.upper().str.contains(prod_clave, na=False)
                     
                     mask_prod = mask_prod_cod | mask_prod_desc
-                    debug_info.append(f"🧪 PASO 4 (Filtro Producto): Encontró {mask_prod.sum()} filas del código '{cod_clean}'.")
+                    debug_info.append(f"🧪 PASO 4 (Filtro Producto): Encontró {mask_prod.sum()} filas del código '{cod_clean}' o nombre '{prod_clave}'.")
                     
                     df_filtro_sap = df_sabana_memoria[mask_pista & mask_prod]
                     debug_info.append(f"✅ PASO 5 (Cruce Pista+Producto): Quedaron {len(df_filtro_sap)} filas exactas.")
@@ -854,7 +871,7 @@ def ejecutar():
                         # 💥 DIAGNÓSTICO EN TIEMPO REAL PARA EL COMANDANTE
                         with st.expander("🛠️ Ver Diagnóstico del Escáner SAP", expanded=False):
                             for linea in debug_info:
-                                if "FALLO" in linea or " 0 " in linea:
+                                if "FALLO" in linea or " 0 " in linea or "ALERTA" in linea or "CUIDADO" in linea:
                                     st.markdown(f"<span style='color:red; font-weight:bold;'>{linea}</span>", unsafe_allow_html=True)
                                 else:
                                     st.caption(linea)
