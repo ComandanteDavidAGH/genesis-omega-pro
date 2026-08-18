@@ -426,6 +426,67 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     st.session_state.idx_prod_sim = lista_productores.index(datos.get("Productor"))
                 
             tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod_sim)
+            
+            c_f4_sim, _ = st.columns([1, 3])
+            fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
+            
+            # 💥 INTELIGENCIA DE CICLOS INYECTADA EN EL SIMULADOR
+            if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
+                dias_ciclo_calc_sim = 14
+                try:
+                    f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
+                    df_viva, df_hist = obtener_historial_completo_ciclos_cached()
+                    fechas_encontradas = []
+
+                    def parsear_fecha_robusta_sim(val):
+                        if pd.isna(val) or str(val).strip() == "": return pd.NaT
+                        s = str(val).strip().lower()
+                        if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+                        meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
+                        match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+                        if match1:
+                            dia_str, mes_str, anio_str = match1.groups()
+                            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                        match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
+                        if match2:
+                            mes_str, dia_str, anio_str = match2.groups()
+                            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                        try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+                        except Exception: return pd.NaT
+
+                    def extraer_fechas_sim(df_temp):
+                        if df_temp.empty: return
+                        col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+                        col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
+                        if col_f and col_d:
+                            fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+                            mask = fincas_alpha == f_obj_alpha
+                            if not mask.any(): mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
+                            if not mask.any():
+                                partes = f_obj_alpha.replace("COOP", "").replace("BANAFRU", "").replace("ASO", "").replace("COOBAMAG", "").strip()
+                                clave = partes[:8] if len(partes) > 8 else partes
+                                mask = fincas_alpha.str.contains(clave, regex=False, na=False)
+                            df_fil = df_temp[mask]
+                            for d_raw in df_fil[col_d]:
+                                fecha_valida = parsear_fecha_robusta_sim(d_raw)
+                                if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
+
+                    extraer_fechas_sim(df_viva)
+                    extraer_fechas_sim(df_hist)
+                    
+                    if fechas_encontradas:
+                        fecha_vuelo_dt = pd.to_datetime(fecha_eval_sim)
+                        fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
+                        if fechas_validas:
+                            fecha_max = max(fechas_validas)
+                            dias_ciclo_calc_sim = (fecha_vuelo_dt - fecha_max).days
+                            if dias_ciclo_calc_sim < 0 or dias_ciclo_calc_sim > 365: dias_ciclo_calc_sim = 14
+                except Exception: pass
+
+                st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
+                st.session_state.finca_anterior_sim = finca_sim
+                st.session_state.fecha_sim_mem = fecha_eval_sim
+                st.rerun()
 
             st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
             st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días (ej. 92Ha a 25 días y 51Ha a 9 días), edite o añada filas. El ST se cobrará línea por línea.")
@@ -455,9 +516,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         with st.container(border=True):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
-            c_f1, c_f2, c_f3, c_f4 = st.columns(4)
-            
-            fecha_eval_sim = c_f4.date_input("📅 Fecha de Misión", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
+            c_f1, c_f2, c_f3 = st.columns(3)
             
             # 💥 EXTRACCIÓN DINÁMICA DE TARIFAS POR AÑO
             anio_vuelo_sim = str(fecha_eval_sim.year)
@@ -470,12 +529,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             pista_sim = c_f2.selectbox("🛣️ Pista Base", pistas_base_lista)
             
             horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-            
-            if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
-                st.session_state.dias_ciclo_sim_mem = 14
-                st.session_state.finca_anterior_sim = finca_sim
-                st.session_state.fecha_sim_mem = fecha_eval_sim
-                st.rerun()
             
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
@@ -939,7 +992,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
                 interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
 
-            # 💥 CORRECCIÓN TÁCTICA: SELECTOR DE PISTA SIEMPRE VISIBLE
             st.markdown("##### 🛣️ Parámetros de Base / Empresa")
             r2c1, r2c2, r2c3 = st.columns(3)
             pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
@@ -964,7 +1016,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 else:
                     recargo_final = float(recargo_lista.split(" ")[0])
 
-            # 💥 INTEGRACIÓN DE LA MATRIZ DE TARIFAS MAESTRA 💥
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
             val_tope = dict_topes.get(tope_clave_efectiva, {}).get(pista_sel, 0.0)
             if val_tope == 0.0: val_tope = dict_topes.get(tope_clave_efectiva, {}).get("PLUC", 999999)
@@ -1042,7 +1093,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 sap_dict_pista = {}
                 datos_extraidos_sap = []
 
-                # ⚡ 1:1 EXTRACCIÓN EXACTA POR FILA/POSICIÓN DE SAP
                 for _, fila_sap in match_ped.iterrows():
                     col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
                     if not col_mat: 
@@ -1157,7 +1207,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     elif "ACEITE" in nombre_limpio:
                         if coctel_ganador != "SIN COINCIDENCIA":
-                            # 👉 LEE ESTRICTAMENTE EL PRIMER DÍGITO COMO ACEITE EN FACTURACIÓN REAL
                             for char in coctel_ganador.split()[0]:
                                 if char.isdigit():
                                     dosis_teorica = float(char)
@@ -1170,7 +1219,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         else:
                             dosis_teorica = 0.0
 
-                    # 💥 REGLA DE ORO: DOSIS IDEAL 100% PURA
                     dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                     matriz_datos.append({
