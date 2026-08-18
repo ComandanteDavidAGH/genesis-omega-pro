@@ -63,7 +63,7 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# 💥 NUEVO MOTOR: EXTRACCIÓN DE CONSUMOS TEÓRICOS (TABLA 1)
+# 💥 MOTOR: EXTRACCIÓN DE CONSUMOS TEÓRICOS (TABLA 1)
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
@@ -89,23 +89,20 @@ def extraer_consumos_teoricos():
         c_pista_raw = next((c for c in df_vuelos.columns if "PISTA" in c), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw]):
-            return pd.DataFrame(), "Faltan columnas clave (FINCA, ÁREA FUMIG, COCTEL, SEM, PISTA) en TABLA 1."
+            return pd.DataFrame(), "Faltan columnas clave en TABLA 1."
 
-        # 🎯 REGLA TÁCTICA 1: Extracción del PRIMER DÍGITO absoluto
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
-            # Busca estrictamente el primer dígito (0-9) que aparezca en el texto
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
-        # 🎯 REGLA TÁCTICA 2: Mapeo de Pistas y Excepción Lucila Marina
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
             if 'GENESYS' in p:
                 if 'LUCILA MARINA' in f: return 'LUCI'
-                return 'PLUC' # El resto de GENESYS va para PLUC
+                return 'PLUC' 
             if 'FUMIGARAY' in p: return 'PLUC'
             if 'AEROPENORT' in p: return 'PORI'
             if 'ASA' in p: return 'PDIV'
@@ -120,13 +117,13 @@ def extraer_consumos_teoricos():
             except: return 0.0
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
-        
-        # CALCULAR EL CONSUMO TEÓRICO (LITROS)
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS']
         
         df_teorico = df_vuelos.groupby([c_sem, 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['SEMANA', 'PISTA', 'LITROS_TEORICOS']
-        df_teorico['SEMANA'] = df_teorico['SEMANA'].astype(str).str.strip()
+        
+        # 💥 BLINDAJE DE LA SEMANA (Elimina .0 y espacios ocultos para que el match sea exacto)
+        df_teorico['SEMANA'] = df_teorico['SEMANA'].astype(str).str.replace('.0', '', regex=False).str.strip()
         
         return df_teorico, None
     except Exception as e:
@@ -206,7 +203,9 @@ def renderizar_radar_plomadas():
         
         c_f, c_p = st.columns(2)
         fecha_plomada = c_f.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
-        semana_calculada = str(fecha_plomada.isocalendar()[1])
+        # 💥 Garantiza que la semana de la interfaz sea texto limpio sin decimales
+        semana_calculada = str(fecha_plomada.isocalendar()[1]).strip()
+        
         pista_sel = c_p.selectbox("📍 Pista", pistas_disponibles)
         
         tanques_disponibles = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
@@ -251,7 +250,7 @@ def renderizar_radar_plomadas():
                         except Exception as e: st.error(f"🚨 Error: {e}")
             else: st.error(f"🚨 El tanque no tiene un registro para {cm_input} cm.")
 
-    # 💥 PANEL DE CONCILIACIÓN
+    # 💥 EL NUEVO PANEL DE CONCILIACIÓN
     with col_cruce:
         st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo Semanal</h3>", unsafe_allow_html=True)
         
@@ -267,6 +266,10 @@ def renderizar_radar_plomadas():
             st.info(f"**Semana Auditada:** {semana_calculada} | **Base:** {pista_sel}")
             st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
             st.caption("Calculado multiplicando Áreas x 1er Dígito del Coctel.")
+            
+            # 💥 DIAGNÓSTICO EN CASO DE 0
+            if litros_teoricos_sap == 0:
+                st.caption(f"ℹ️ El radar buscó en la TABLA 1 vuelos de la Pista '{pista_sel}' en la Semana '{semana_calculada}', pero no encontró registros o suman 0.")
             
             st.markdown("---")
             st.markdown("**🔍 Datos para el Consumo Físico:**")
@@ -292,6 +295,7 @@ def renderizar_radar_plomadas():
                 <p style="color: {color_merma}; font-weight: bold; margin: 0;">{icono_merma}</p>
             </div>
             """, unsafe_allow_html=True)
+
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL 
