@@ -65,7 +65,7 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA ÁREA x DOSIS DE ACEITE
+# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA ÁREA x DOSIS (CON BLINDAJE DE AÑO)
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
@@ -81,7 +81,6 @@ def extraer_consumos_teoricos():
         
         idx_head = next((i for i, row in enumerate(datos[:15]) if any("COCTEL" in str(x).upper() for x in row)), 4)
         
-        # LIMPIEZA DE ESPACIOS PARA ENCONTRAR COLUMNAS EXACTAS
         encabezados = [re.sub(r'\s+', ' ', str(x).strip().upper()) for x in datos[idx_head]]
         df_vuelos = pd.DataFrame(datos[idx_head+1:], columns=encabezados)
         
@@ -90,19 +89,19 @@ def extraer_consumos_teoricos():
         c_coctel = next((c for c in df_vuelos.columns if "COCTEL" in c), None)
         c_sem = next((c for c in df_vuelos.columns if c in ["SEM", "SEMANA"]), None)
         c_pista_raw = next((c for c in df_vuelos.columns if "PISTA" in c), None)
+        c_fecha = next((c for c in df_vuelos.columns if "FECHA" in c), None)
         
-        if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw]):
-            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw]) if v is None]
-            return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
+        if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]):
+            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas clave (FINCA, AREA FUMIG, COCTEL, SEM, PISTA o FECHA) en TABLA 1."
 
-        # 🎯 REGLA DE ORO 1: Extracción del PRIMER DÍGITO (Litros de Aceite)
+        # 🎯 REGLA DE ORO 1: Extracción del PRIMER DÍGITO (Dosis de Aceite)
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
-        # 🎯 REGLA DE ORO 2: Mapeo Estricto de Pistas (Alineado con el Comandante)
+        # 🎯 REGLA DE ORO 2: Mapeo Estricto de Pistas
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
@@ -114,6 +113,14 @@ def extraer_consumos_teoricos():
             if 'ASA' in p: return 'PDIV'
             return p
 
+        # 💥 NUEVO BLINDAJE: Extracción del Año de la Fecha
+        def extraer_anio(fecha_val):
+            fecha_str = str(fecha_val).strip()
+            match = re.search(r'(202\d)', fecha_str)
+            if match: return match.group(1)
+            return "HISTORICO"
+
+        df_vuelos['AÑO'] = df_vuelos[c_fecha].apply(extraer_anio)
         df_vuelos['DOSIS_ACEITE_L'] = df_vuelos[c_coctel].apply(extraer_dosis)
         df_vuelos['PISTA_OFICIAL'] = df_vuelos.apply(mapear_pista_oficial, axis=1)
         
@@ -124,22 +131,21 @@ def extraer_consumos_teoricos():
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
         
-        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis = Litros (DIRECTO Y SIN CONVERSIONES)
+        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis = Litros (SIN conversiones locas)
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_ACEITE_L']
         
-        # BLINDAJE DE LA SEMANA
         df_vuelos['SEMANA_LIMPIA'] = df_vuelos[c_sem].astype(str).str.replace('.0', '', regex=False).str.strip()
         
-        df_teorico = df_vuelos.groupby(['SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
-        df_teorico.columns = ['SEMANA', 'PISTA', 'LITROS_TEORICOS']
+        # 💥 AGRUPAR TENIENDO EN CUENTA EL AÑO
+        df_teorico = df_vuelos.groupby(['AÑO', 'SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
+        df_teorico.columns = ['AÑO', 'SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
-        # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
-        df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_ACEITE_L', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'PISTA_OFICIAL']].copy()
-        df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS ACEITE (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'PISTA']
+        df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_ACEITE_L', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'AÑO', 'PISTA_OFICIAL']].copy()
+        df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS ACEITE (L)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'AÑO', 'PISTA']
         
         return df_teorico, df_auditoria, None
     except Exception as e:
-        return pd.DataFrame(), pd.DataFrame(), f"Error al extraer vuelos de TABLA 1: {str(e)}"
+        return pd.DataFrame(), pd.DataFrame(), f"Error al extraer vuelos: {str(e)}"
 
 # =================================================================
 # ⚡ COMPILADORES DE ESTRUCTURA Y ESTILOS 
@@ -219,6 +225,7 @@ def renderizar_radar_plomadas():
         c_f, c_p = st.columns(2)
         fecha_plomada = c_f.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
         semana_calculada = str(fecha_plomada.isocalendar()[1]).strip()
+        anio_calculado = str(fecha_plomada.year)
         
         pista_sel = c_p.selectbox("📍 Pista", pistas_disponibles)
         
@@ -241,7 +248,7 @@ def renderizar_radar_plomadas():
                 vol_gal_base = float(fila_medida['VOLUMEN_GAL'].values[0])
                 inc_mm = float(fila_medida['INCREMENTO_MM'].values[0])
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
-                # OJO: La medición de la plomada física sí necesita multiplicarse porque la tabla de calibración de los tanques viene en galones.
+                # OJO: La medición física SÍ usa 3.78 porque los tanques vienen calibrados en galones en la API MPMS.
                 litros_totales_actuales = galones_totales * 3.78541
                 
                 k1, k2 = st.columns(2)
@@ -272,32 +279,32 @@ def renderizar_radar_plomadas():
         if df_teorico.empty:
             st.warning("⚠️ No hay datos teóricos procesados. Revisa la TABLA 1.")
         else:
-            df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel)]
+            # 💥 FILTRO TRIPLE: SEMANA + PISTA + AÑO
+            df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel) & (df_teorico['AÑO'] == anio_calculado)]
             
             litros_teoricos_sap = 0.0
             if not df_teorico_filtrado.empty:
                 litros_teoricos_sap = df_teorico_filtrado['LITROS_TEORICOS'].sum()
                 
-            st.info(f"**Semana Auditada:** {semana_calculada} | **Base:** {pista_sel}")
+            st.info(f"**Semana Auditada:** {semana_calculada} | **Año:** {anio_calculado} | **Base:** {pista_sel}")
             st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
-            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Exactos de Aceite.")
+            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Exactos de Aceite. (Filtrado estricto por Año, Semana y Pista)")
             
             if litros_teoricos_sap == 0:
-                semanas_bd = df_teorico['SEMANA'].unique().tolist()
+                semanas_bd = df_teorico[df_teorico['AÑO'] == anio_calculado]['SEMANA'].unique().tolist()
                 st.warning("⚠️ Diagnóstico del Escáner Teórico:")
                 if semana_calculada in semanas_bd:
-                    pistas_sem = df_teorico[df_teorico['SEMANA'] == semana_calculada]['PISTA'].unique().tolist()
-                    st.caption(f"- ✅ La semana **{semana_calculada}** sí existe en la TABLA 1.")
+                    pistas_sem = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['AÑO'] == anio_calculado)]['PISTA'].unique().tolist()
+                    st.caption(f"- ✅ La semana **{semana_calculada} del {anio_calculado}** sí existe en la TABLA 1.")
                     st.caption(f"- 🚨 Pero en esa semana solo se registraron vuelos en estas pistas: **{pistas_sem}**.")
                 else:
-                    st.caption(f"- 🚨 La semana **{semana_calculada}** NO tiene ningún vuelo registrado en toda la TABLA 1.")
+                    st.caption(f"- 🚨 La semana **{semana_calculada} del {anio_calculado}** NO tiene ningún vuelo registrado en toda la TABLA 1.")
             else:
-                # 💥 LA TABLA DE LA VERDAD (Desglosa las filas que Python leyó, incluyendo ocultas)
                 with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
-                    vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel)]
+                    vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel) & (df_auditoria['AÑO'] == anio_calculado)]
                     vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
-                    st.caption(f"El sistema multiplicó (Área x Dosis en Litros) de estos **{len(vuelos_auditoria)} vuelos** (incluso los ocultos por filtros en Excel):")
-                    st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA']), use_container_width=True, hide_index=True)
+                    st.caption(f"El sistema sumó (Área x Dosis en Litros) de estos **{len(vuelos_auditoria)} vuelos** en el año {anio_calculado}:")
+                    st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA', 'AÑO']), use_container_width=True, hide_index=True)
             
             st.markdown("---")
             st.markdown("**🔍 Datos para el Consumo Físico:**")
