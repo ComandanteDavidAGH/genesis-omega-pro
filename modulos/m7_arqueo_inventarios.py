@@ -219,6 +219,11 @@ def renderizar_radar_plomadas():
         
     col_radar, col_cruce = st.columns([1, 1], gap="large")
     
+    # Declaración de variables a nivel de scope superior
+    litros_totales_actuales = 0.0
+    galones_totales = 0.0
+    litros_teoricos_input = 0.0
+    
     with col_radar:
         st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📍 1. Medición de Plomada (Físico)</h3>", unsafe_allow_html=True)
         
@@ -244,16 +249,13 @@ def renderizar_radar_plomadas():
         cm_input = c_cm.number_input("📏 CM de la cinta:", min_value=0, max_value=max_cm, step=1, value=0)
         mm_input = c_mm.number_input("🤏 MM extra:", min_value=0, max_value=9, step=1, value=0)
         
-        litros_totales_actuales = 0.0
-        galones_totales = 0.0
-        
         if not df_tanque_especifico.empty:
             fila_medida = df_tanque_especifico[df_tanque_especifico['CM'] == cm_input]
             if not fila_medida.empty:
                 vol_gal_base = float(fila_medida['VOLUMEN_GAL'].values[0])
                 inc_mm = float(fila_medida['INCREMENTO_MM'].values[0])
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
-                # OJO: La medición de la plomada física sí necesita multiplicarse porque la tabla de calibración de los tanques viene en galones.
+                # OJO: La medición física SÍ usa 3.78 porque los tanques vienen calibrados en galones
                 litros_totales_actuales = galones_totales * 3.78541
                 
                 k1, k2 = st.columns(2)
@@ -261,7 +263,8 @@ def renderizar_radar_plomadas():
                 k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>LITROS FÍSICOS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
                 
                 st.markdown("---")
-                litros_teoricos_input = st.number_input("🧪 Litros Teóricos (AZ/Sistema):", min_value=0.0, value=0.0, step=10.0)
+                # 💥 LA NUEVA CASILLA (Se vincula al Panel Derecho)
+                litros_teoricos_input = st.number_input("💻 Litros Teóricos (Saldo en AZ/Sistema):", min_value=0.0, value=0.0, step=10.0)
                 
                 btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="primary", use_container_width=True)
                 if btn_registrar_plomada:
@@ -272,7 +275,7 @@ def renderizar_radar_plomadas():
                             try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
                             except:
                                 ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
-                                ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEÓRICOS", "USUARIO"])
+                                ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEORICOS", "USUARIO"])
                             
                             usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
                             ws_reg.append_row([
@@ -291,14 +294,13 @@ def renderizar_radar_plomadas():
                         except Exception as e: st.error(f"🚨 Error: {e}")
             else: st.error(f"🚨 El tanque no tiene un registro para {cm_input} cm.")
 
-    # 💥 PANEL DE CONCILIACIÓN
+    # 💥 PANEL DE CONCILIACIÓN DERECHO (LA NAVAJA SUIZA)
     with col_cruce:
-        st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo Semanal</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo y Saldos</h3>", unsafe_allow_html=True)
         
         if df_teorico.empty:
             st.warning("⚠️ No hay datos teóricos procesados. Revisa la TABLA 1.")
         else:
-            # 💥 FILTRO TRIPLE: SEMANA + PISTA + AÑO
             df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel) & (df_teorico['AÑO'] == anio_calculado)]
             
             litros_teoricos_sap = 0.0
@@ -326,29 +328,54 @@ def renderizar_radar_plomadas():
                     st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA', 'AÑO']), use_container_width=True, hide_index=True)
             
             st.markdown("---")
-            st.markdown("**🔍 Datos para el Consumo Físico:**")
-            col_in1, col_in2 = st.columns(2)
-            litros_iniciales = col_in1.number_input("📦 Litros Iniciales (Apertura):", min_value=0.0, value=0.0, step=10.0)
-            litros_ingresos = col_in2.number_input("📥 Litros Ingresados (Nuevos):", min_value=0.0, value=0.0, step=10.0)
+            st.markdown("#### 🛠️ Herramientas de Conciliación (Elige tu método)")
             
-            litros_finales = st.number_input("🏁 Litros Finales (Plomada Actual):", min_value=0.0, value=float(litros_totales_actuales), step=10.0)
+            # 💥 PESTAÑAS PARA LOS DOS MÉTODOS DE TRABAJO EN PISTA
+            tab_directo, tab_kardex = st.tabs(["📊 Método Directo (Físico vs AZ)", "🧮 Método Kárdex (Por Consumo)"])
             
-            consumo_fisico = (litros_iniciales + litros_ingresos) - litros_finales
-            merma_litros = consumo_fisico - litros_teoricos_sap
-            
-            st.markdown("---")
-            st.markdown(f"#### 📏 Consumo Físico Real: `{consumo_fisico:,.2f} L`")
-            
-            color_merma = "#00ff66" if abs(merma_litros) <= 5.0 else "#ff3333"
-            icono_merma = "✅ OK" if abs(merma_litros) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
-            
-            st.markdown(f"""
-            <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma};">
-                <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE (Físico vs SAP):</p>
-                <h2 style="color: {color_merma}; margin: 5px 0;">{merma_litros:,.2f} L</h2>
-                <p style="color: {color_merma}; font-weight: bold; margin: 0;">{icono_merma}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            with tab_directo:
+                st.caption("💡 Útil cuando el supervisor cruza la regla física contra el sistema AZ sin reportar tanqueos (Ej: Divas, Lucha).")
+                
+                # Cruce Directo: Plomada Física vs Lo que el Comandante anotó de AZ
+                diferencia_inventario = litros_totales_actuales - litros_teoricos_input
+                
+                c_res1, c_res2 = st.columns(2)
+                c_res1.metric("🏁 Saldo Físico (Plomada)", f"{litros_totales_actuales:,.2f} L")
+                c_res2.metric("💻 Saldo Teórico (AZ)", f"{litros_teoricos_input:,.2f} L")
+                
+                color_merma_dir = "#00ff66" if abs(diferencia_inventario) <= 5.0 else "#ff3333"
+                icono_merma_dir = "✅ OK" if abs(diferencia_inventario) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
+                
+                st.markdown(f"""
+                <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma_dir}; margin-top: 10px;">
+                    <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE GLOBAL (Físico vs AZ):</p>
+                    <h2 style="color: {color_merma_dir}; margin: 5px 0;">{diferencia_inventario:,.2f} L</h2>
+                    <p style="color: {color_merma_dir}; font-weight: bold; margin: 0;">{icono_merma_dir}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with tab_kardex:
+                st.caption("💡 Útil para auditar el consumo exacto cuando llegan camiones a descargar (Ej: Tanqueo en Orihueca).")
+                
+                col_k1, col_k2 = st.columns(2)
+                litros_iniciales = col_k1.number_input("📦 Litros Iniciales (Apertura):", min_value=0.0, value=0.0, step=10.0, key="kardex_ini")
+                litros_ingresos = col_k2.number_input("📥 Litros Recibidos (Tanqueo):", min_value=0.0, value=0.0, step=10.0, key="kardex_in")
+                
+                consumo_fisico = (litros_iniciales + litros_ingresos) - litros_totales_actuales
+                merma_litros = consumo_fisico - litros_teoricos_sap
+                
+                st.markdown(f"**Consumo Físico Calculado:** `{consumo_fisico:,.2f} L`")
+                
+                color_merma_k = "#00ff66" if abs(merma_litros) <= 5.0 else "#ff3333"
+                icono_merma_k = "✅ OK" if abs(merma_litros) <= 5.0 else "🚨 MERMA O EXCESO"
+                
+                st.markdown(f"""
+                <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma_k}; margin-top: 10px;">
+                    <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE DE CONSUMO (Físico vs Tabla 1):</p>
+                    <h2 style="color: {color_merma_k}; margin: 5px 0;">{merma_litros:,.2f} L</h2>
+                    <p style="color: {color_merma_k}; font-weight: bold; margin: 0;">{icono_merma_k}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL 
