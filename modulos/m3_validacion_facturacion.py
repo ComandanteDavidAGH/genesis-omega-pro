@@ -98,7 +98,7 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
     }
     
     if df_tarifas.empty:
-        return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes
+        return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes, None
         
     anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
     col_anio = anio_str if anio_str in anios_disp else None
@@ -346,6 +346,296 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
+
+    # =================================================================
+    # 💥 MODO SIMULADOR DE COTIZACIONES (MATRIZ MEGAZORD MULTI-LOTE)
+    # =================================================================
+    modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
+
+    if modo_simulacro:
+        st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico de Tarifas 2026.")
+        if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
+            st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
+            url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
+            if url_drive:
+                try:
+                    file_id = url_drive.split('/d/')[1].split('/')[0] if '/d/' in url_drive else None
+                    if file_id:
+                        dl_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx' if 'spreadsheets' in url_drive else f'https://drive.google.com/uc?export=download&id={file_id}'
+                        with st.spinner("📥 Descargando matrices y TABLA 2..."):
+                            resp = requests.get(dl_url, timeout=30)
+                            if resp.status_code == 200:
+                                xls = pd.ExcelFile(io.BytesIO(resp.content))
+                                st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
+                                st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
+                                st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
+                                hojas = xls.sheet_names
+                                nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
+                                st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
+                                st.success("✅ Matrices cargadas y listas.")
+                                st.rerun()
+                            else: 
+                                st.error(f"❌ Error de descarga: {resp.status_code}")
+                    else: 
+                        st.error("❌ Link inválido.")
+                except Exception as e: 
+                    st.error(f"🚨 Error: {e}")
+            st.stop()
+
+        df_cfg = st.session_state['df_cfg']
+        df_recetas = st.session_state['df_recetas']
+        df_t2 = st.session_state['df_t2']
+
+        diccionario_fincas = {}
+        lista_fincas = []
+        try:
+            for idx, row in df_t2.iterrows():
+                f_name = str(row.iloc[0]).strip().upper()
+                if f_name not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']:
+                    p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "TERCERO"
+                    t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
+                    diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
+                    if f_name not in lista_fincas: 
+                        lista_fincas.append(f_name)
+        except Exception: 
+            pass
+            
+        if not lista_fincas: 
+            lista_fincas = ["NUEVO MUNDO"]
+        lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
+
+        if 'finca_anterior_sim' not in st.session_state:
+            st.session_state.finca_anterior_sim = lista_fincas[0]
+            st.session_state.idx_prod_sim = 3
+            
+        if 'fecha_sim_mem' not in st.session_state:
+            st.session_state.fecha_sim_mem = datetime.now().date()
+
+        if 'dias_ciclo_sim_mem' not in st.session_state:
+            st.session_state.dias_ciclo_sim_mem = 14
+
+        with st.container(border=True):
+            st.markdown("#### 📝 Parámetros de la Operación")
+            cs1, cs3, cs4 = st.columns(3)
+            coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
+            finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
+            
+            if finca_sim != st.session_state.finca_anterior_sim:
+                datos = diccionario_fincas.get(finca_sim, {})
+                if datos.get("Productor") in lista_productores:
+                    st.session_state.idx_prod_sim = lista_productores.index(datos.get("Productor"))
+                
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod_sim)
+
+            st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
+            st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días (ej. 92Ha a 25 días y 51Ha a 9 días), edite o añada filas. El ST se cobrará línea por línea.")
+            
+            df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(st.session_state.dias_ciclo_sim_mem)}])
+            df_areas_in = st.data_editor(
+                df_areas_def, 
+                num_rows="dynamic", 
+                column_config={
+                    "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", min_value=0.0, format="%.2f"),
+                    "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
+                },
+                use_container_width=True, 
+                key=f"areas_simulador_{finca_sim}_{st.session_state.fecha_sim_mem}",
+                hide_index=True
+            )
+            
+            ha_sim = float(df_areas_in["Hectáreas"].sum())
+            if ha_sim <= 0:
+                st.warning("⚠️ El área total debe ser mayor a 0 para simular.")
+            else:
+                st.info(f"**🗺️ Área Total Calculada a Cotizar:** {ha_sim:.2f} Ha")
+
+        tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
+        if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
+            tope_finca_auto = "TOPE MAX GENERAL"
+
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
+            c_f1, c_f2, c_f3, c_f4 = st.columns(4)
+            
+            fecha_eval_sim = c_f4.date_input("📅 Fecha de Misión", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
+            
+            # 💥 EXTRACCIÓN DINÁMICA DE TARIFAS POR AÑO
+            anio_vuelo_sim = str(fecha_eval_sim.year)
+            dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
+
+            lista_opciones_flota_sim = list(dict_aviones_sim.keys()) + list(dict_drones_sim.keys())
+            vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
+            
+            pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+            pista_sim = c_f2.selectbox("🛣️ Pista Base", pistas_base_lista)
+            
+            horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+            
+            if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
+                st.session_state.dias_ciclo_sim_mem = 14
+                st.session_state.finca_anterior_sim = finca_sim
+                st.session_state.fecha_sim_mem = fecha_eval_sim
+                st.rerun()
+            
+            st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
+            recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
+
+        if st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True) and ha_sim > 0:
+            try:
+                if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
+                elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "COOPERATIVA": mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
+                elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
+                else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
+                
+                # Rescatar tope dinámico del año seleccionado
+                val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
+                if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
+                if val_tope == 999999: val_tope = 0.0
+
+                if vuelo_sim in dict_drones_sim: 
+                    tarifa_vuelo_base = float(dict_drones_sim.get(vuelo_sim, 0))
+                    unitario_vuelo = tarifa_vuelo_base * mult_v
+                else:
+                    tarifa_vuelo_base = float(dict_aviones_sim.get(vuelo_sim, 4606562.0))
+                    costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                    if val_tope > 0 and pista_sim != "PDIV": 
+                        costo_bruto = min(costo_bruto, val_tope)
+                    unitario_vuelo = costo_bruto * mult_v
+                
+                subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
+                
+                subtotal_st = 0.0
+                for _, r_area in df_areas_in.iterrows():
+                    h_a = float(r_area["Hectáreas"])
+                    d_c = int(r_area["Días Ciclo"])
+                    if h_a > 0:
+                        subtotal_st += round(st_base, 0) * d_c * h_a
+
+                coctel_u = coctel_sim.upper().strip()
+                partes = coctel_u.split(" ")
+                base_c = partes[0]
+
+                receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
+                prods_f = []
+                for idx, row in receta_c.iterrows():
+                    p = str(row.iloc[1]).upper().strip()
+                    d = pd.to_numeric(row.iloc[2], errors='coerce')
+                    if pd.notna(d) and d > 0 and p not in ['NAN', '']:
+                        prods_f.append({"PRODUCTO": p, "DOSIS": d})
+
+                coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
+                
+                fert_encontrado_obj = None
+                sigla_f = partes[1] if len(partes) > 1 else ""
+                if sigla_f:
+                    try:
+                        for idx, row in df_recetas.iterrows():
+                            if len(row) > 13:
+                                f_n = str(row.iloc[12]).strip().upper()
+                                f_s = str(row.iloc[13]).strip().upper()
+                                if f_s == sigla_f and f_n not in ["NAN", "FERTILIZANTES", ""]:
+                                    fert_encontrado_obj = f_n
+                                    break
+                    except Exception: 
+                        pass
+                
+                if not fert_encontrado_obj:
+                    if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): 
+                        fert_encontrado_obj = "ZINTRAC X LITRO SV"
+                    elif " BT" in coctel_texto_puro or coctel_texto_puro.endswith("BT"): 
+                        fert_encontrado_obj = "BANATREL SC"
+                    elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): 
+                        fert_encontrado_obj = "NATURAMIN WSP"
+                    elif " QM" in coctel_texto_puro or coctel_texto_puro.endswith("QM"): 
+                        fert_encontrado_obj = "QUELAMIX"
+                
+                if fert_encontrado_obj:
+                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
+                    prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
+
+                for item in prods_f:
+                    if "ACONDICIONADOR" in item["PRODUCTO"]: 
+                        item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""): 
+                        item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0
+                    elif "ACEITE" in item["PRODUCTO"]:
+                        for char in coctel_u.split()[0]:
+                            if char.isdigit():
+                                item["DOSIS"] = float(char)
+                                break
+                
+                tabla_visual = []
+                mezcla_total = 0
+                c_p_i, c_c_i = 8, 9 
+                
+                for i in range(5):
+                    r_c = df_cfg.iloc[i].astype(str).str.upper().tolist()
+                    if 'PRODUCTO' in r_c and 'COSTO' in r_c: 
+                        c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
+                        break
+
+                for item in prods_f:
+                    p, d = item["PRODUCTO"], item["DOSIS"]
+                    
+                    mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                    if not mask.any() and "NEMATICIDA" in p:
+                        mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
+                        if mask.any(): 
+                            p = df_cfg[mask].iloc[0, c_p_i] 
+                    
+                    if mask.any():
+                        p_b = pd.to_numeric(df_cfg[mask].iloc[0, c_c_i], errors='coerce')
+                        if pd.notna(p_b):
+                            p_m = p_b * mult_m
+                            c_t_p = round((d * ha_sim) * p_m, 0)
+                            mezcla_total += c_t_p
+                            tabla_visual.append({"PRODUCTO": p, "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": f"$ {p_b:,.0f}".replace(",","."), "P. + MARGEN": f"$ {p_m:,.0f}".replace(",","."), "COSTO TOTAL": f"$ {c_t_p:,.0f}".replace(",",".")})
+                    else:
+                        tabla_visual.append({"PRODUCTO": f"⚠️ {p}", "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": "$ 0", "P. + MARGEN": "$ 0", "COSTO TOTAL": "$ 0"})
+
+                recargo_m = round(recargo_sim * mult_v, 0)
+                valor_recargo_t = recargo_m * ha_sim
+                total_finca = subtotal_vuelo + subtotal_st + mezcla_total + valor_recargo_t
+                costo_ha = total_finca / ha_sim if ha_sim > 0 else 0
+
+                st.markdown("---")
+                st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
+                st.caption(f"🗓️ **Días Ciclo:** Variados | 🗺️ **Área Total:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
+                st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
+                
+                st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.markdown(f"<h3 style='text-align: center; color: #0d1b2a; font-weight: 900; user-select: all;' title='Doble clic para copiar'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h3>".replace(",", "."), unsafe_allow_html=True)
+                
+                st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
+                cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
+                with cc1:
+                    st.write("👨‍🔬 Serv. Tec")
+                    st.code(f"{subtotal_st:,.0f}".replace(",", "."), language="text")
+                with cc2:
+                    st.write("✈️ Vuelo")
+                    st.code(f"{subtotal_vuelo:,.0f}".replace(",", "."), language="text")
+                with cc3:
+                    st.write("🧪 Mezcla")
+                    st.code(f"{mezcla_total:,.0f}".replace(",", "."), language="text")
+                with cc4:
+                    st.write("⚠️ Recargo")
+                    st.code(f"{valor_recargo_t:,.0f}".replace(",", "."), language="text")
+                with cc5:
+                    st.write("💰 Costo x Ha")
+                    st.code(f"{costo_ha:,.0f}".replace(",", "."), language="text")
+                with cc6:
+                    st.write("🔥 TOTAL")
+                    st.code(f"{total_finca:,.0f}".replace(",", "."), language="text")
+
+            except Exception as e: 
+                st.error(f"Error: {e}")
+        st.stop()
+    # =================================================================
+    # 💥 FIN DEL SIMULADOR DE COTIZACIONES
+    # =================================================================
 
     def forzar_descarga_maestros():
         gc_maestro = obtener_cliente_gspread_unificado()
@@ -867,6 +1157,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     elif "ACEITE" in nombre_limpio:
                         if coctel_ganador != "SIN COINCIDENCIA":
+                            # 👉 LEE ESTRICTAMENTE EL PRIMER DÍGITO COMO ACEITE EN FACTURACIÓN REAL
                             for char in coctel_ganador.split()[0]:
                                 if char.isdigit():
                                     dosis_teorica = float(char)
