@@ -65,7 +65,7 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA ÁREA x DOSIS
+# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA ÁREA x DOSIS DE ACEITE
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
@@ -95,14 +95,14 @@ def extraer_consumos_teoricos():
             faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw]) if v is None]
             return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
 
-        # 🎯 LA REGLA ABSOLUTA: Extraer solo el 1er dígito (Esa es la dosis en Litros)
+        # 🎯 REGLA DE ORO 1: Extracción del PRIMER DÍGITO (Litros de Aceite)
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
-        # 🎯 MAPEO ESTRICTO DE LAS 3 PISTAS PRINCIPALES
+        # 🎯 REGLA DE ORO 2: Mapeo Estricto de Pistas (Alineado con el Comandante)
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
@@ -124,7 +124,7 @@ def extraer_consumos_teoricos():
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
         
-        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis = Litros Totales (SIN conversiones de galones)
+        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis = Litros (DIRECTO Y SIN CONVERSIONES)
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_ACEITE_L']
         
         # BLINDAJE DE LA SEMANA
@@ -135,7 +135,7 @@ def extraer_consumos_teoricos():
         
         # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
         df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_ACEITE_L', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'PISTA_OFICIAL']].copy()
-        df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS ACEITE (L)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'PISTA']
+        df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS ACEITE (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'PISTA']
         
         return df_teorico, df_auditoria, None
     except Exception as e:
@@ -241,7 +241,7 @@ def renderizar_radar_plomadas():
                 vol_gal_base = float(fila_medida['VOLUMEN_GAL'].values[0])
                 inc_mm = float(fila_medida['INCREMENTO_MM'].values[0])
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
-                # OJO: La medición de la plomada física sí necesita multiplicarse porque la tabla de calibración viene en galones.
+                # OJO: La medición de la plomada física sí necesita multiplicarse porque la tabla de calibración de los tanques viene en galones.
                 litros_totales_actuales = galones_totales * 3.78541
                 
                 k1, k2 = st.columns(2)
@@ -280,7 +280,7 @@ def renderizar_radar_plomadas():
                 
             st.info(f"**Semana Auditada:** {semana_calculada} | **Base:** {pista_sel}")
             st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
-            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Reales de Aceite.")
+            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Exactos de Aceite.")
             
             if litros_teoricos_sap == 0:
                 semanas_bd = df_teorico['SEMANA'].unique().tolist()
@@ -296,7 +296,7 @@ def renderizar_radar_plomadas():
                 with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
                     vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel)]
                     vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
-                    st.caption(f"El sistema multiplicó (Área x Dosis) de estos **{len(vuelos_auditoria)} vuelos** (incluso los ocultos por filtros en Excel):")
+                    st.caption(f"El sistema multiplicó (Área x Dosis en Litros) de estos **{len(vuelos_auditoria)} vuelos** (incluso los ocultos por filtros en Excel):")
                     st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA']), use_container_width=True, hide_index=True)
             
             st.markdown("---")
