@@ -409,7 +409,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.session_state.idx_prod_sim = 3
             
         if 'fecha_sim_mem' not in st.session_state:
-            st.session_state.fecha_sim_mem = datetime.now().date()
+            st.session_state.fecha_sim_mem = hoy_colombia_date
 
         if 'dias_ciclo_sim_mem' not in st.session_state:
             st.session_state.dias_ciclo_sim_mem = 14
@@ -541,7 +541,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                # Rescatar tope dinámico del año seleccionado
                 val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
                 if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
                 if val_tope == 999999: val_tope = 0.0
@@ -736,6 +735,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
         st.cache_data.clear()
+        
+        # 💥 ESCUDO: RESETEO AL SINCRONIZAR
+        st.session_state.fecha_sim_mem = hoy_colombia_date
+        st.session_state['fecha_vuelo_master'] = hoy_colombia_date
+        
         st.toast("✅ Módulo 3 Sincronizado y Memoria Vaciada.", icon="🔄")
         st.rerun()
 
@@ -817,6 +821,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
         lista_origenes = vuegos_informe['ORIGEN'].unique().tolist() if not vuegos_informe.empty else []
         vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
+
+        # 💥 ESCUDO FINANCIERO: Reseteo automático de Fecha al cambiar informe
+        if 'vuelo_ref_anterior' not in st.session_state:
+            st.session_state.vuelo_ref_anterior = vuelo_ref
+
+        if vuelo_ref != st.session_state.vuelo_ref_anterior:
+            st.session_state.vuelo_ref_anterior = vuelo_ref
+            st.session_state.fecha_sim_mem = hoy_colombia_date
+            st.session_state['fecha_vuelo_master'] = hoy_colombia_date
+            st.rerun()
 
         if finca_sel == "---" or vuelo_ref == "---":
             st.info("⚠️ Seleccione Finca y Pedido para rugir motores.")
@@ -1564,6 +1578,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive y replicado en la bóveda relacional.")
                         st.toast("💾 Memoria Sincronizada con éxito.", icon="⚔️")
+                        
+                        # 💥 ESCUDO: RESET DE SEGURIDAD DESPUÉS DE FACTURAR
+                        st.session_state.fecha_sim_mem = hoy_colombia_date
+                        st.session_state['fecha_vuelo_master'] = hoy_colombia_date
+                        st.session_state.vuelo_ref_anterior = "---"
                         
                         if 'memoria_excel' in st.session_state: 
                             del st.session_state['memoria_excel']
