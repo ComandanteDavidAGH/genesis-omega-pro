@@ -141,8 +141,10 @@ def ordenar_base_datos_global():
             col_finca = db_cols[2] if len(db_cols) > 2 else db_cols[0]
             
             filas_validas = (df_val[col_id].astype(str).str.strip() != "") | (df_val[col_finca].astype(str).str.strip() != "")
-            df_form = df_form[filas_validas].copy()
-            df_val = df_val[filas_validas].copy()
+            
+            # 💥 ESCUDO ANTI-DESALINEACIÓN DE PANDAS (.values neutraliza el error)
+            df_form = df_form[filas_validas.values].copy()
+            df_val = df_val[filas_validas.values].copy()
 
             col_fecha = db_cols[7] if len(db_cols) > 7 else next((c for c in db_cols if "FECHA" in c.upper()), db_cols[0])
 
