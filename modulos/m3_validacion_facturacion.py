@@ -541,6 +541,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
+                # Rescatar tope dinámico del año seleccionado
                 val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
                 if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
                 if val_tope == 999999: val_tope = 0.0
@@ -738,7 +739,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         
         # 💥 ESCUDO: RESETEO AL SINCRONIZAR
         st.session_state.fecha_sim_mem = hoy_colombia_date
-        st.session_state['fecha_vuelo_master'] = hoy_colombia_date
+        if 'fecha_vuelo_master' in st.session_state:
+            del st.session_state['fecha_vuelo_master']
         
         st.toast("✅ Módulo 3 Sincronizado y Memoria Vaciada.", icon="🔄")
         st.rerun()
@@ -829,7 +831,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if vuelo_ref != st.session_state.vuelo_ref_anterior:
             st.session_state.vuelo_ref_anterior = vuelo_ref
             st.session_state.fecha_sim_mem = hoy_colombia_date
-            st.session_state['fecha_vuelo_master'] = hoy_colombia_date
+            if 'fecha_vuelo_master' in st.session_state:
+                del st.session_state['fecha_vuelo_master']
             st.rerun()
 
         if finca_sel == "---" or vuelo_ref == "---":
@@ -1581,7 +1584,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                         # 💥 ESCUDO: RESET DE SEGURIDAD DESPUÉS DE FACTURAR
                         st.session_state.fecha_sim_mem = hoy_colombia_date
-                        st.session_state['fecha_vuelo_master'] = hoy_colombia_date
+                        if 'fecha_vuelo_master' in st.session_state:
+                            del st.session_state['fecha_vuelo_master']
                         st.session_state.vuelo_ref_anterior = "---"
                         
                         if 'memoria_excel' in st.session_state: 
