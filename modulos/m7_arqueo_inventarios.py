@@ -63,47 +63,39 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# 💥 NUEVO MOTOR: EXTRACCIÓN DE CONSUMOS TEÓRICOS (TABLA 1)
+# 💥 MOTOR: EXTRACCIÓN DE CONSUMOS TEÓRICOS (TABLA 1)
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
-    if not gc: return pd.DataFrame(), "Sin conexión a Google Cloud"
+    if not gc: return pd.DataFrame(), pd.DataFrame(), "Sin conexión a Google Cloud"
     try:
         sh = gc.open_by_url(URL_BASE_AFOROS)
         hojas = [w.title for w in sh.worksheets()]
         nombre_hoja = next((h for h in hojas if "TABLA 1" in h.upper()), None)
-        if not nombre_hoja: return pd.DataFrame(), "No se encontró la pestaña TABLA 1 en el Excel Maestro."
+        if not nombre_hoja: return pd.DataFrame(), pd.DataFrame(), "No se encontró la pestaña TABLA 1."
         
         ws = sh.worksheet(nombre_hoja)
         datos = ws.get_all_values()
         
         idx_head = next((i for i, row in enumerate(datos[:15]) if any("COCTEL" in str(x).upper() for x in row)), 4)
-        
-        # 💥 LIMPIEZA DE ESPACIOS PARA ENCONTRAR COLUMNAS EXACTAS
         encabezados = [re.sub(r'\s+', ' ', str(x).strip().upper()) for x in datos[idx_head]]
         df_vuelos = pd.DataFrame(datos[idx_head+1:], columns=encabezados)
         
         c_finca = next((c for c in df_vuelos.columns if "FINCA" in c), None)
         c_area = next((c for c in df_vuelos.columns if "FUMIG" in c), None)
         c_coctel = next((c for c in df_vuelos.columns if "COCTEL" in c), None)
-        
-        # 💥 SOLUCIÓN TÁCTICA: Buscar estrictamente "SEM" o "SEMANA" (Ignora DÌA SEM)
         c_sem = next((c for c in df_vuelos.columns if c in ["SEM", "SEMANA"]), None)
         c_pista_raw = next((c for c in df_vuelos.columns if c == "PISTA"), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw]):
-            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw]) if v is None]
-            return pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
+            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas clave en TABLA 1."
 
-        # 🎯 REGLA TÁCTICA 1: Extracción del PRIMER DÍGITO absoluto
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
-            # Busca estrictamente el primer dígito (0-9) que aparezca en el texto
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
-        # 🎯 REGLA TÁCTICA 2: Mapeo de Pistas y Excepción Lucila Marina
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
@@ -115,7 +107,8 @@ def extraer_consumos_teoricos():
             if 'ASA' in p: return 'PDIV'
             return p
 
-        df_vuelos['DOSIS'] = df_vuelos[c_coctel].apply(extraer_dosis)
+        # 💥 Corrección: La dosis ya es en LITROS
+        df_vuelos['DOSIS_LITROS'] = df_vuelos[c_coctel].apply(extraer_dosis)
         df_vuelos['PISTA_OFICIAL'] = df_vuelos.apply(mapear_pista_oficial, axis=1)
         
         def purificar_area(x):
@@ -125,18 +118,21 @@ def extraer_consumos_teoricos():
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
         
-        # CALCULAR EL CONSUMO TEÓRICO (LITROS)
-        df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS']
+        # 💥 REGLA CORREGIDA: Área x Dosis en Litros = Litros Directos (Sin conversiones)
+        df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_LITROS']
         
-        df_teorico = df_vuelos.groupby([c_sem, 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
+        df_vuelos['SEMANA_LIMPIA'] = df_vuelos[c_sem].astype(str).str.replace('.0', '', regex=False).str.strip()
+        
+        df_teorico = df_vuelos.groupby(['SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
-        # 💥 BLINDAJE DE LA SEMANA (Elimina .0 y espacios ocultos para el match exacto)
-        df_teorico['SEMANA'] = df_teorico['SEMANA'].astype(str).str.replace('.0', '', regex=False).str.strip()
+        # Guardar dataframe detallado para auditoría
+        df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_LITROS', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'PISTA_OFICIAL']].copy()
+        df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS_L', 'AREA_HA', 'TOTAL_LITROS', 'SEMANA', 'PISTA']
         
-        return df_teorico, None
+        return df_teorico, df_auditoria, None
     except Exception as e:
-        return pd.DataFrame(), f"Error al extraer vuelos de TABLA 1: {str(e)}"
+        return pd.DataFrame(), pd.DataFrame(), f"Error al extraer vuelos de TABLA 1: {str(e)}"
 
 # =================================================================
 # ⚡ COMPILADORES DE ESTRUCTURA Y ESTILOS 
@@ -197,7 +193,7 @@ def renderizar_radar_plomadas():
     
     with st.spinner("Sincronizando Bóveda de Aforos y Tabla de Vuelos (Teórico)..."):
         df_aforo, error_aforo = extraer_tablas_aforo()
-        df_teorico, error_teorico = extraer_consumos_teoricos()
+        df_teorico, df_auditoria, error_teorico = extraer_consumos_teoricos()
         
     if error_aforo:
         st.error(f"🚨 No se pudo conectar a la Bóveda de Aforos. Detalle: {error_aforo}")
@@ -276,9 +272,8 @@ def renderizar_radar_plomadas():
                 
             st.info(f"**Semana Auditada:** {semana_calculada} | **Base:** {pista_sel}")
             st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
-            st.caption("Calculado multiplicando Áreas x 1er Dígito del Coctel.")
+            st.caption("Calculado multiplicando Áreas x 1er Dígito del Coctel (Litros Directos).")
             
-            # 💥 PANEL DE DIAGNÓSTICO ESTRICTO (Te dice la verdad si hay 0)
             if litros_teoricos_sap == 0:
                 semanas_bd = df_teorico['SEMANA'].unique().tolist()
                 st.warning("⚠️ Diagnóstico del Escáner Teórico:")
@@ -288,6 +283,12 @@ def renderizar_radar_plomadas():
                     st.caption(f"- 🚨 Pero en esa semana solo se registraron vuelos en estas pistas: **{pistas_sem}**.")
                 else:
                     st.caption(f"- 🚨 La semana **{semana_calculada}** NO tiene ningún vuelo registrado en toda la TABLA 1.")
+            else:
+                # 💥 LA TABLA DE LA VERDAD (Desglosa las filas ocultas de Excel)
+                with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
+                    vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel)]
+                    st.caption(f"El sistema sumó estos **{len(vuelos_auditoria)} vuelos** (incluso si están ocultos por filtros en Excel):")
+                    st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA']), use_container_width=True, hide_index=True)
             
             st.markdown("---")
             st.markdown("**🔍 Datos para el Consumo Físico:**")
@@ -313,7 +314,6 @@ def renderizar_radar_plomadas():
                 <p style="color: {color_merma}; font-weight: bold; margin: 0;">{icono_merma}</p>
             </div>
             """, unsafe_allow_html=True)
-
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL 
