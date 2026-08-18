@@ -114,7 +114,7 @@ def extraer_consumos_teoricos():
             if 'ASA' in p: return 'PDIV'
             return p
 
-        # 💥 NUEVO BLINDAJE: Extracción del Año de la Fecha
+        # 💥 BLINDAJE: Extracción del Año de la Fecha
         def extraer_anio(fecha_val):
             fecha_str = str(fecha_val).strip()
             match = re.search(r'(20\d{2})', fecha_str)
@@ -245,6 +245,7 @@ def renderizar_radar_plomadas():
         mm_input = c_mm.number_input("🤏 MM extra:", min_value=0, max_value=9, step=1, value=0)
         
         litros_totales_actuales = 0.0
+        galones_totales = 0.0
         
         if not df_tanque_especifico.empty:
             fila_medida = df_tanque_especifico[df_tanque_especifico['CM'] == cm_input]
@@ -252,14 +253,17 @@ def renderizar_radar_plomadas():
                 vol_gal_base = float(fila_medida['VOLUMEN_GAL'].values[0])
                 inc_mm = float(fila_medida['INCREMENTO_MM'].values[0])
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
-                # OJO: La plomada física SÍ se multiplica por 3.78541 porque el tanque de la API MPMS está calibrado en galones
+                # OJO: La medición de la plomada física sí necesita multiplicarse porque la tabla de calibración de los tanques viene en galones.
                 litros_totales_actuales = galones_totales * 3.78541
                 
                 k1, k2 = st.columns(2)
                 k1.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>GALONES FÍSICOS</p><p class='hud-arqueo-value'>{galones_totales:,.2f}</p></div></div>", unsafe_allow_html=True)
                 k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>LITROS FÍSICOS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
                 
-                btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="secondary", use_container_width=True)
+                st.markdown("---")
+                litros_teoricos_input = st.number_input("🧪 Litros Teóricos (AZ/Sistema):", min_value=0.0, value=0.0, step=10.0)
+                
+                btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="primary", use_container_width=True)
                 if btn_registrar_plomada:
                     with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
                         try:
@@ -267,11 +271,22 @@ def renderizar_radar_plomadas():
                             sh = gc.open_by_url(URL_BASE_AFOROS)
                             try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
                             except:
-                                ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="9")
-                                ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "USUARIO"])
+                                ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
+                                ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEÓRICOS", "USUARIO"])
                             
                             usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
-                            ws_reg.append_row([fecha_plomada.strftime("%d/%m/%Y"), semana_calculada, pista_sel, tanque_sel, int(cm_input), int(mm_input), f"{galones_totales:.3f}".replace('.', ','), f"{litros_totales_actuales:.3f}".replace('.', ','), usuario_actual])
+                            ws_reg.append_row([
+                                fecha_plomada.strftime("%d/%m/%Y"), 
+                                semana_calculada, 
+                                pista_sel, 
+                                tanque_sel, 
+                                int(cm_input), 
+                                int(mm_input), 
+                                f"{galones_totales:.3f}".replace('.', ','), 
+                                f"{litros_totales_actuales:.3f}".replace('.', ','),
+                                f"{litros_teoricos_input:.3f}".replace('.', ','),
+                                usuario_actual
+                            ])
                             st.success(f"✅ ¡Guardado!")
                         except Exception as e: st.error(f"🚨 Error: {e}")
             else: st.error(f"🚨 El tanque no tiene un registro para {cm_input} cm.")
@@ -304,7 +319,6 @@ def renderizar_radar_plomadas():
                 else:
                     st.caption(f"- 🚨 La semana **{semana_calculada} del {anio_calculado}** NO tiene ningún vuelo registrado en toda la TABLA 1.")
             else:
-                # 💥 LA TABLA DE LA VERDAD (Auditoría sin conversiones falsas)
                 with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
                     vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel) & (df_auditoria['AÑO'] == anio_calculado)]
                     vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
