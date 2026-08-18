@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =================================================================
-# 🔌 CONEXIÓN GOOGLE CLOUD Y MOTOR DE AFOROS
+# 🔌 CONEXIÓN GOOGLE CLOUD Y MOTORES DE EXTRACCIÓN
 # =================================================================
 
 @st.cache_resource(show_spinner=False)
@@ -36,155 +36,148 @@ def extraer_tablas_aforo():
         
         df_aforo.columns = [str(c).strip().upper() for c in df_aforo.columns]
         
-        # 💥 ESCUDO ANTI-FANTASMAS (Elimina filas vacías de Google Sheets)
         if 'PISTA' in df_aforo.columns and 'TANQUE' in df_aforo.columns:
             df_aforo['PISTA'] = df_aforo['PISTA'].astype(str).str.strip().str.upper()
             df_aforo['TANQUE'] = df_aforo['TANQUE'].astype(str).str.strip().str.upper()
             df_aforo = df_aforo[(df_aforo['PISTA'] != '') & (df_aforo['TANQUE'] != '')]
         
-        # 💥 PURIFICADOR DE NÚMEROS (Anti-espacios, Anti-comas y Anti-puntos dobles)
         def purificador_numeros(x):
             if pd.isna(x) or x is None: return 0.0
             if isinstance(x, (int, float)): return float(x)
             s = str(x).strip().replace(' ', '').replace("'", "")
             if not s or s.lower() in ['nan', 'none', '']: return 0.0
             if '.' in s and ',' in s:
-                if s.rfind(',') > s.rfind('.'): 
-                    s = s.replace('.', '').replace(',', '.')
-                else: 
-                    s = s.replace(',', '')
-            elif ',' in s: 
-                s = s.replace(',', '.')
+                if s.rfind(',') > s.rfind('.'): s = s.replace('.', '').replace(',', '.')
+                else: s = s.replace(',', '')
+            elif ',' in s: s = s.replace(',', '.')
             try: return float(s)
             except: return 0.0
 
-        if 'VOLUMEN_GAL' in df_aforo.columns:
-            df_aforo['VOLUMEN_GAL'] = df_aforo['VOLUMEN_GAL'].apply(purificador_numeros)
-            
+        if 'VOLUMEN_GAL' in df_aforo.columns: df_aforo['VOLUMEN_GAL'] = df_aforo['VOLUMEN_GAL'].apply(purificador_numeros)
         if 'INCREMENTO_MM' in df_aforo.columns:
             df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(purificador_numeros)
             df_aforo['INCREMENTO_MM'] = df_aforo['INCREMENTO_MM'].apply(lambda x: x / 1000 if x > 10 else x)
-            
-        if 'CM' in df_aforo.columns:
-            df_aforo['CM'] = pd.to_numeric(df_aforo['CM'], errors='coerce').fillna(0).astype(int)
+        if 'CM' in df_aforo.columns: df_aforo['CM'] = pd.to_numeric(df_aforo['CM'], errors='coerce').fillna(0).astype(int)
             
         return df_aforo, None
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# =================================================================
-# ⚡ COMPILADORES DE ESTRUCTURA Y ESTILOS
-# =================================================================
+# 💥 NUEVO MOTOR: EXTRACCIÓN DE CONSUMOS TEÓRICOS (TABLA 1)
+@st.cache_data(show_spinner=False, ttl=300)
+def extraer_consumos_teoricos():
+    gc = inicializar_cliente_gspread()
+    if not gc: return pd.DataFrame(), "Sin conexión a Google Cloud"
+    try:
+        sh = gc.open_by_url(URL_BASE_AFOROS)
+        hojas = [w.title for w in sh.worksheets()]
+        nombre_hoja = next((h for h in hojas if "TABLA 1" in h.upper()), None)
+        if not nombre_hoja: return pd.DataFrame(), "No se encontró la pestaña TABLA 1 en el Excel Maestro."
+        
+        ws = sh.worksheet(nombre_hoja)
+        datos = ws.get_all_values()
+        
+        idx_head = next((i for i, row in enumerate(datos[:15]) if any("COCTEL" in str(x).upper() for x in row)), 4)
+        encabezados = [str(x).strip().upper() for x in datos[idx_head]]
+        
+        df_vuelos = pd.DataFrame(datos[idx_head+1:], columns=encabezados)
+        
+        c_finca = next((c for c in df_vuelos.columns if "FINCA" in c), None)
+        c_area = next((c for c in df_vuelos.columns if "FUMIG" in c), None)
+        c_coctel = next((c for c in df_vuelos.columns if "COCTEL" in c), None)
+        c_sem = next((c for c in df_vuelos.columns if "SEM" in c and "DIA" not in c), None)
+        c_pista_raw = next((c for c in df_vuelos.columns if "PISTA" in c), None)
+        
+        if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw]):
+            return pd.DataFrame(), "Faltan columnas clave (FINCA, ÁREA FUMIG, COCTEL, SEM, PISTA) en TABLA 1."
 
+        # 🎯 REGLA TÁCTICA 1: Extracción del PRIMER DÍGITO absoluto
+        def extraer_dosis(coctel):
+            coctel_str = str(coctel).strip()
+            # Busca estrictamente el primer dígito (0-9) que aparezca en el texto
+            match = re.search(r'\d', coctel_str)
+            if match: return float(match.group())
+            return 0.0
+        
+        # 🎯 REGLA TÁCTICA 2: Mapeo de Pistas y Excepción Lucila Marina
+        def mapear_pista_oficial(row):
+            p = str(row[c_pista_raw]).strip().upper()
+            f = str(row[c_finca]).strip().upper()
+            if 'GENESYS' in p:
+                if 'LUCILA MARINA' in f: return 'LUCI'
+                return 'PLUC' # El resto de GENESYS va para PLUC
+            if 'FUMIGARAY' in p: return 'PLUC'
+            if 'AEROPENORT' in p: return 'PORI'
+            if 'ASA' in p: return 'PDIV'
+            return p
+
+        df_vuelos['DOSIS'] = df_vuelos[c_coctel].apply(extraer_dosis)
+        df_vuelos['PISTA_OFICIAL'] = df_vuelos.apply(mapear_pista_oficial, axis=1)
+        
+        def purificar_area(x):
+            s = str(x).strip().replace(' ', '').replace(',', '.')
+            try: return float(s)
+            except: return 0.0
+            
+        df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
+        
+        # CALCULAR EL CONSUMO TEÓRICO (LITROS)
+        df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS']
+        
+        df_teorico = df_vuelos.groupby([c_sem, 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
+        df_teorico.columns = ['SEMANA', 'PISTA', 'LITROS_TEORICOS']
+        df_teorico['SEMANA'] = df_teorico['SEMANA'].astype(str).str.strip()
+        
+        return df_teorico, None
+    except Exception as e:
+        return pd.DataFrame(), f"Error al extraer vuelos de TABLA 1: {str(e)}"
+
+# =================================================================
+# ⚡ COMPILADORES DE ESTRUCTURA Y ESTILOS 
+# =================================================================
 def compilar_excel_maestro(cruce_final, semana):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         f_df = cruce_final.drop(columns=['LOTE_KEY'], errors='ignore')
         f_df[f_df['ESTADO'] == "❌ DISCREPANCIA"].to_excel(writer, index=False, sheet_name='Diferencias')
         f_df.to_excel(writer, index=False, sheet_name='Total')
-        
-        borde_fino = Border(
-            left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), 
-            top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1')
-        )
+        borde_fino = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
         fondo_navy = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         texto_blanco = Font(color="FFFFFF", bold=True, name="Arial", size=11)
-        
         for sheetname in writer.sheets:
             worksheet = writer.sheets[sheetname]
             worksheet.auto_filter.ref = worksheet.dimensions 
-            
             for r_idx in range(2, worksheet.max_row + 1):
                 worksheet.cell(row=r_idx, column=7).value = f"=F{r_idx}-E{r_idx}"
                 worksheet.cell(row=r_idx, column=8).value = f'=IF(ABS(G{r_idx})<=0.05, "✅ OK", "❌ DISCREPANCIA")'
                 worksheet.cell(row=r_idx, column=5).number_format = '0.000'
                 worksheet.cell(row=r_idx, column=6).number_format = '0.000'
                 worksheet.cell(row=r_idx, column=7).number_format = '0.000'
-                
             for row_cells in worksheet.iter_rows():
                 for cell in row_cells:
                     cell.border = borde_fino
                     if cell.row == 1:
-                        cell.fill = fondo_navy
-                        cell.font = texto_blanco
-                        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                    elif cell.column in [5, 6, 7]: 
-                        cell.alignment = Alignment(horizontal='right')
-                    elif cell.column == 8: 
-                        cell.alignment = Alignment(horizontal='center')
-                        
+                        cell.fill = fondo_navy; cell.font = texto_blanco; cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    elif cell.column in [5, 6, 7]: cell.alignment = Alignment(horizontal='right')
+                    elif cell.column == 8: cell.alignment = Alignment(horizontal='center')
             for col in worksheet.columns:
                 max_len = max(len(str(c.value or '')) for c in col)
                 worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 12), 42)
-                
     return buffer.getvalue()
 
 def compilar_html_pdf(cruce_final, semana, css_vip):
     pistas = sorted(cruce_final['PISTA'].unique())
-    html_out = f"""
-    <html>
-    <head>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-        <script>
-            function imprimir() {{ window.print(); }}
-            function descargarPDF() {{
-                var element = document.getElementById('contenido-reporte');
-                var opt = {{
-                    margin:       [10, 10, 10, 10],
-                    filename:     'Reporte_Arqueo_Semana_{semana}.pdf',
-                    image:        {{ type: 'jpeg', quality: 0.98 }},
-                    html2canvas:  {{ scale: 2, useCORS: true }},
-                    jsPDF:        {{ unit: 'mm', format: 'a4', orientation: 'landscape' }},
-                    pagebreak:    {{ mode: ['css', 'legacy'] }}
-                }};
-                html2pdf().set(opt).from(element).save();
-            }}
-        </script>
-        {css_vip}
-    </head>
-    <body>
-        <div class="no-print" style="position: sticky; top: 0; background: white; padding: 10px; z-index: 100; border-bottom: 2px solid #0d1b2a; text-align: right;">
-            <button onclick="descargarPDF()" style="background:#0d1b2a; color:#d4af37; border:2px solid #d4af37; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black'; margin-right: 10px;">📥 DESCARGAR PDF DIRECTO</button>
-            <button onclick="imprimir()" style="background:#4a5568; color:white; border:2px solid #4a5568; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black';">🖨️ PANEL DE IMPRESIÓN</button>
-        </div>
-        <div id="contenido-reporte">
-    """
-    
+    html_out = f"""<html><head><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script>function imprimir() {{ window.print(); }} function descargarPDF() {{ var element = document.getElementById('contenido-reporte'); var opt = {{ margin: [10, 10, 10, 10], filename: 'Reporte_Arqueo_Semana_{semana}.pdf', image: {{ type: 'jpeg', quality: 0.98 }}, html2canvas: {{ scale: 2, useCORS: true }}, jsPDF: {{ unit: 'mm', format: 'a4', orientation: 'landscape' }}, pagebreak: {{ mode: ['css', 'legacy'] }} }}; html2pdf().set(opt).from(element).save(); }}</script>{css_vip}</head><body><div class="no-print" style="position: sticky; top: 0; background: white; padding: 10px; z-index: 100; border-bottom: 2px solid #0d1b2a; text-align: right;"><button onclick="descargarPDF()" style="background:#0d1b2a; color:#d4af37; border:2px solid #d4af37; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black'; margin-right: 10px;">📥 DESCARGAR PDF DIRECTO</button><button onclick="imprimir()" style="background:#4a5568; color:white; border:2px solid #4a5568; padding:10px 20px; cursor:pointer; border-radius:6px; font-weight:bold; font-family:'Arial Black';">🖨️ PANEL DE IMPRESIÓN</button></div><div id="contenido-reporte">"""
     for i, pista in enumerate(pistas):
         df_pista = cruce_final[cruce_final['PISTA'] == pista]
         salto = "salto-pagina" if i < len(pistas) - 1 else ""
-        
-        html_out += f"""
-        <div class="b-print {salto}">
-            <p class="title">REPORTE OFICIAL DE ARQUEO DE INVENTARIOS</p>
-            <p class="subtitle">BASE OPERATIVA: {pista} | SEMANA AUDITADA: {semana}</p>
-            <table>
-                <tr>
-                    <th style="width:10%;">CÓDIGO</th>
-                    <th style="width:30%;">PRODUCTO</th>
-                    <th style="width:15%;">LOTE</th>
-                    <th style="width:10%;">S. SAP</th>
-                    <th style="width:10%;">S. FÍSICO</th>
-                    <th style="width:10%;">DIF.</th>
-                    <th style="width:15%;">ESTADO</th>
-                </tr>
-        """
-        
+        html_out += f"""<div class="b-print {salto}"><p class="title">REPORTE OFICIAL DE ARQUEO DE INVENTARIOS</p><p class="subtitle">BASE OPERATIVA: {pista} | SEMANA AUDITADA: {semana}</p><table><tr><th style="width:10%;">CÓDIGO</th><th style="width:30%;">PRODUCTO</th><th style="width:15%;">LOTE</th><th style="width:10%;">S. SAP</th><th style="width:10%;">S. FÍSICO</th><th style="width:10%;">DIF.</th><th style="width:15%;">ESTADO</th></tr>"""
         for _, row in df_pista.iterrows():
             st_color = "#155724" if "OK" in str(row['ESTADO']) else "#721c24"
             bg_color = "#d4edda" if "OK" in str(row['ESTADO']) else "#f8d7da"
             val_dif = f"+{row['DIFERENCIA']:.3f}" if row['DIFERENCIA'] > 0 else f"{row['DIFERENCIA']:.3f}"
             html_out += f"<tr><td>{row['ITEM']}</td><td class='td-left'>{row['PRODUCTO']}</td><td>{row['LOTE']}</td><td>{row['SALDO_SAP']:.3f}</td><td>{row['SALDO_FISICO']:.3f}</td><td style='color:{st_color};'><b>{val_dif}</b></td><td style='color:{st_color}; background-color:{bg_color}; font-weight:bold;'>{row['ESTADO']}</td></tr>"
-            
-        html_out += """
-            </table>
-            <div class='firmas-container'>
-                <div class='firma-box'>FIRMA SUPERVISOR DE PISTA</div>
-                <div class='firma-box'>FIRMA AUDITOR DE INVENTARIOS</div>
-            </div>
-        </div>
-        """
-        
+        html_out += """</table><div class='firmas-container'><div class='firma-box'>FIRMA SUPERVISOR DE PISTA</div><div class='firma-box'>FIRMA AUDITOR DE INVENTARIOS</div></div></div>"""
     html_out += "</div></body></html>"
     return html_out
 
@@ -192,116 +185,116 @@ def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
 # =================================================================
-# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS
+# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN
 # =================================================================
 def renderizar_radar_plomadas():
-    st.write("Calculadora oficial de volúmenes de aceite basada en los certificados de calibración técnica (API MPMS).")
     
-    with st.spinner("Descargando y purificando tablas de aforo de la Bóveda..."):
+    with st.spinner("Sincronizando Bóveda de Aforos y Tabla de Vuelos (Teórico)..."):
         df_aforo, error_aforo = extraer_tablas_aforo()
+        df_teorico, error_teorico = extraer_consumos_teoricos()
         
     if error_aforo:
         st.error(f"🚨 No se pudo conectar a la Bóveda de Aforos. Detalle: {error_aforo}")
-    elif df_aforo.empty:
-        st.warning("⚠️ La pestaña TABLAS_AFORO existe, pero parece estar vacía o no tiene el formato correcto.")
-    else:
+        return
+        
+    col_radar, col_cruce = st.columns([1, 1], gap="large")
+    
+    with col_radar:
+        st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📍 1. Medición de Plomada (Físico)</h3>", unsafe_allow_html=True)
+        
         pistas_disponibles = sorted(df_aforo['PISTA'].dropna().unique().tolist())
         
-        st.markdown("### 1. Ubicación del Activo y Fecha")
-        col1, col2, col3 = st.columns(3)
-        fecha_plomada = col1.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
-        semana_calculada = fecha_plomada.isocalendar()[1]
-        pista_sel = col2.selectbox("📍 Base Operativa (Pista)", pistas_disponibles)
+        c_f, c_p = st.columns(2)
+        fecha_plomada = c_f.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
+        semana_calculada = str(fecha_plomada.isocalendar()[1])
+        pista_sel = c_p.selectbox("📍 Pista", pistas_disponibles)
         
         tanques_disponibles = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
-        tanque_sel = col3.selectbox("🛢️ Tanque a Medir", tanques_disponibles)
+        tanque_sel = st.selectbox("🛢️ Tanque a Medir", tanques_disponibles)
         
         st.markdown("---")
-        st.markdown("### 2. Medición Física (Plomada)")
-        
         df_tanque_especifico = df_aforo[(df_aforo['PISTA'] == pista_sel) & (df_aforo['TANQUE'] == str(tanque_sel))]
         max_cm = int(df_tanque_especifico['CM'].max()) if not df_tanque_especifico.empty else 200
         
         c_cm, c_mm = st.columns(2)
-        cm_input = c_cm.number_input("📏 Centímetros (CM) de la cinta:", min_value=0, max_value=max_cm, step=1, value=0)
-        mm_input = c_mm.number_input("🤏 Milímetros (MM) extra:", min_value=0, max_value=9, step=1, value=0)
+        cm_input = c_cm.number_input("📏 CM de la cinta:", min_value=0, max_value=max_cm, step=1, value=0)
+        mm_input = c_mm.number_input("🤏 MM extra:", min_value=0, max_value=9, step=1, value=0)
         
-        st.markdown("---")
+        litros_totales_actuales = 0.0
         
         if not df_tanque_especifico.empty:
             fila_medida = df_tanque_especifico[df_tanque_especifico['CM'] == cm_input]
-            
             if not fila_medida.empty:
                 vol_gal_base = float(fila_medida['VOLUMEN_GAL'].values[0])
                 inc_mm = float(fila_medida['INCREMENTO_MM'].values[0])
-                
-                # FÓRMULA OFICIAL
                 galones_totales = vol_gal_base + (mm_input * inc_mm)
-                litros_totales = galones_totales * 3.78541
-                
-                st.success(f"✅ Medida validada en Certificado para el **{tanque_sel}** en **{pista_sel}**.")
+                litros_totales_actuales = galones_totales * 3.78541
                 
                 k1, k2 = st.columns(2)
-                k1.markdown(f"<div class='hud-arqueo'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>💧 Volumen Total Físico (GALONES)</p><p class='hud-arqueo-value'>{galones_totales:,.2f} Gal</p></div></div>", unsafe_allow_html=True)
-                k2.markdown(f"<div class='hud-arqueo'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>🛢️ Volumen Total Físico (LITROS)</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales:,.2f} L</p></div></div>", unsafe_allow_html=True)
+                k1.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>GALONES</p><p class='hud-arqueo-value'>{galones_totales:,.2f}</p></div></div>", unsafe_allow_html=True)
+                k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>LITROS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
                 
-                # 💥 BOTÓN INYECTOR EN LA BÓVEDA
-                st.markdown("<br>", unsafe_allow_html=True)
-                btn_registrar_plomada = st.button("💾 REGISTRAR LECTURA OFICIAL EN LA BÓVEDA", type="primary", use_container_width=True)
-                
+                btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="secondary", use_container_width=True)
                 if btn_registrar_plomada:
-                    with st.spinner("Enviando registro de plomada a la matriz..."):
+                    with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
                         try:
                             gc = inicializar_cliente_gspread()
                             sh = gc.open_by_url(URL_BASE_AFOROS)
-                            try:
-                                ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
+                            try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
                             except:
                                 ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="9")
                                 ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "USUARIO"])
                             
-                            usuario_actual = st.session_state.get('usuario_nombre', 'Operador/Comandante')
-                            
-                            # Formateamos con coma para que Excel no se confunda
-                            galones_str = f"{galones_totales:.3f}".replace('.', ',')
-                            litros_str = f"{litros_totales:.3f}".replace('.', ',')
-                            
-                            nueva_fila = [
-                                fecha_plomada.strftime("%d/%m/%Y"),
-                                str(semana_calculada),
-                                str(pista_sel),
-                                str(tanque_sel),
-                                int(cm_input),
-                                int(mm_input),
-                                galones_str,
-                                litros_str,
-                                usuario_actual
-                            ]
-                            
-                            ws_reg.append_row(nueva_fila)
-                            st.success(f"✅ ¡Operación exitosa! La plomada de {litros_totales:.2f} Litros ha sido registrada en la Bóveda Oficial.")
-                        except Exception as e:
-                            st.error(f"🚨 Error al guardar el registro: {e}")
+                            usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
+                            ws_reg.append_row([fecha_plomada.strftime("%d/%m/%Y"), semana_calculada, pista_sel, tanque_sel, int(cm_input), int(mm_input), f"{galones_totales:.3f}".replace('.', ','), f"{litros_totales_actuales:.3f}".replace('.', ','), usuario_actual])
+                            st.success(f"✅ ¡Guardado!")
+                        except Exception as e: st.error(f"🚨 Error: {e}")
+            else: st.error(f"🚨 El tanque no tiene un registro para {cm_input} cm.")
 
-                with st.expander("🔬 Ver Auditoría Matemática", expanded=False):
-                    st.code(f"""
-CÁLCULO DE AFORO (API MPMS)
------------------------------------
-Volumen Base ({cm_input} cm) = {vol_gal_base:,.3f} Galones
-Incremento por MM = {inc_mm:,.3f} Galones/MM
-MM Adicionales = {mm_input} mm
-
-Fórmula: {vol_gal_base:,.3f} + ({mm_input} * {inc_mm:,.3f})
-Total Galones: {galones_totales:,.3f}
-Conversión a Litros (* 3.78541): {litros_totales:,.3f}
-                    """)
-            else:
-                st.error(f"🚨 Error: El tanque '{tanque_sel}' no tiene un registro para {cm_input} cm en la tabla de aforo.")
+    # 💥 PANEL DE CONCILIACIÓN
+    with col_cruce:
+        st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo Semanal</h3>", unsafe_allow_html=True)
+        
+        if df_teorico.empty:
+            st.warning("⚠️ No hay datos teóricos procesados. Revisa la TABLA 1.")
         else:
-            st.warning("No hay datos de aforo para el tanque seleccionado.")
+            df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel)]
+            
+            litros_teoricos_sap = 0.0
+            if not df_teorico_filtrado.empty:
+                litros_teoricos_sap = df_teorico_filtrado['LITROS_TEORICOS'].sum()
+                
+            st.info(f"**Semana Auditada:** {semana_calculada} | **Base:** {pista_sel}")
+            st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
+            st.caption("Calculado multiplicando Áreas x 1er Dígito del Coctel.")
+            
+            st.markdown("---")
+            st.markdown("**🔍 Datos para el Consumo Físico:**")
+            col_in1, col_in2 = st.columns(2)
+            litros_iniciales = col_in1.number_input("📦 Litros Iniciales (Apertura):", min_value=0.0, value=0.0, step=10.0)
+            litros_ingresos = col_in2.number_input("📥 Litros Ingresados (Nuevos):", min_value=0.0, value=0.0, step=10.0)
+            
+            litros_finales = st.number_input("🏁 Litros Finales (Plomada Actual):", min_value=0.0, value=float(litros_totales_actuales), step=10.0)
+            
+            consumo_fisico = (litros_iniciales + litros_ingresos) - litros_finales
+            merma_litros = consumo_fisico - litros_teoricos_sap
+            
+            st.markdown("---")
+            st.markdown(f"#### 📏 Consumo Físico Real: `{consumo_fisico:,.2f} L`")
+            
+            color_merma = "#00ff66" if abs(merma_litros) <= 5.0 else "#ff3333"
+            icono_merma = "✅ OK" if abs(merma_litros) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
+            
+            st.markdown(f"""
+            <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma};">
+                <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE (Físico vs SAP):</p>
+                <h2 style="color: {color_merma}; margin: 5px 0;">{merma_litros:,.2f} L</h2>
+                <p style="color: {color_merma}; font-weight: bold; margin: 0;">{icono_merma}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 # =================================================================
-# 👑 INTERFAZ GRÁFICA Y NÚCLEO DE AUDITORÍA
+# 👑 INTERFAZ PRINCIPAL 
 # =================================================================
 
 def ejecutar(quitar_tildes, purificar_lote):
@@ -309,40 +302,11 @@ def ejecutar(quitar_tildes, purificar_lote):
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stDateInput"] input,
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-        border: 2px solid #0d1b2a !important;
-        border-radius: 6px !important;
-        background-color: #ffffff !important;
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        font-size: 15px !important;
-    }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        background-color: transparent !important;
-        border: none !important;
-    }
-    div[data-testid="stSelectbox"] * {
-        color: #000000 !important;
-        font-weight: bold !important;
-    }
-    
-    div[data-testid="stFileUploader"] section {
-        background-color: #ffffff !important;
-        border: 2px dashed #0d1b2a !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
-    }
-    
-    .hud-arqueo {
-        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
-        border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex;
-        justify-content: space-between; align-items: center;
-    }
+    div[data-testid="stTextInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; color: #0d1b2a !important; font-weight: 800 !important; font-size: 15px !important; }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
+    div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
+    div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #0d1b2a !important; border-radius: 8px !important; padding: 10px !important; }
+    .hud-arqueo { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
     .hud-arqueo-item { text-align: center; flex: 1; }
     .hud-arqueo-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-arqueo-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
@@ -355,18 +319,11 @@ def ejecutar(quitar_tildes, purificar_lote):
 
     st.markdown("<h1 class='titulo-principal'>⚖️ 7. Arqueo de Inventarios y Plomadas</h1>", unsafe_allow_html=True)
     
-    # 💥 CREACIÓN DE LAS PESTAÑAS PRINCIPALES DEL MÓDULO 7
     tab_arqueo, tab_plomada = st.tabs(["📊 1. CRUCE SAP VS FÍSICO (Auditoría)", "🛢️ 2. RADAR DE PLOMADAS (Aforo)"])
     
-    # ========================================================================
-    # 🛢️ PESTAÑA 2: RADAR DE PLOMADAS (Nuevo Inyector)
-    # ========================================================================
     with tab_plomada:
         renderizar_radar_plomadas()
 
-    # ========================================================================
-    # 📊 PESTAÑA 1: ARQUEO TRADICIONAL (El código original intacto)
-    # ========================================================================
     with tab_arqueo:
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -379,14 +336,10 @@ def ejecutar(quitar_tildes, purificar_lote):
             st.markdown("### 🎯 3. Objetivo")
             semana_obj = st.text_input("Semana a Auditar (Ej: 29):", placeholder="Escriba la semana aquí...")
 
-        if "arqueo_procesado" not in st.session_state:
-            st.session_state.arqueo_procesado = False
-        if "observaciones_memoria" not in st.session_state:
-            st.session_state.observaciones_memoria = {}
-        if "historial_fusiones" not in st.session_state:
-            st.session_state.historial_fusiones = []
-        if "centro_pdf_activo" not in st.session_state:
-            st.session_state.centro_pdf_activo = False
+        if "arqueo_procesado" not in st.session_state: st.session_state.arqueo_procesado = False
+        if "observaciones_memoria" not in st.session_state: st.session_state.observaciones_memoria = {}
+        if "historial_fusiones" not in st.session_state: st.session_state.historial_fusiones = []
+        if "centro_pdf_activo" not in st.session_state: st.session_state.centro_pdf_activo = False
 
         def limpiar_numeros_generico(x):
             if pd.isna(x) or x is None: return 0.0
@@ -394,12 +347,9 @@ def ejecutar(quitar_tildes, purificar_lote):
             s = str(x).strip().replace(' ', '')
             if not s or s.lower() in ['nan', 'none', '']: return 0.0
             if '.' in s and ',' in s:
-                if s.rfind(',') > s.rfind('.'):
-                    s = s.replace('.', '').replace(',', '.')
-                else:
-                    s = s.replace(',', '')
-            elif ',' in s:
-                s = s.replace(',', '.')
+                if s.rfind(',') > s.rfind('.'): s = s.replace('.', '').replace(',', '.')
+                else: s = s.replace(',', '')
+            elif ',' in s: s = s.replace(',', '.')
             try: return float(s)
             except: return 0.0
 
@@ -419,41 +369,34 @@ def ejecutar(quitar_tildes, purificar_lote):
             if 'supabase' in st.session_state and semana_obj:
                 try:
                     resp_obs = st.session_state['supabase'].table("arqueos_observaciones").select("lote_pista_key, observacion").eq("semana", str(semana_obj).strip()).execute()
-                    if resp_obs.data:
-                        comentarios_cloud = {r["lote_pista_key"]: r["observacion"] for r in resp_obs.data}
-                except Exception:
-                    pass
+                    if resp_obs.data: comentarios_cloud = {r["lote_pista_key"]: r["observacion"] for r in resp_obs.data}
+                except Exception: pass
 
             for idx, row in cruce.iterrows():
                 key = f"{row['PISTA']}_{row['LOTE_KEY']}"
-                if key in st.session_state.observaciones_memoria: 
-                    cruce.at[idx, 'OBSERVACIONES'] = st.session_state.observaciones_memoria[key]
+                if key in st.session_state.observaciones_memoria: cruce.at[idx, 'OBSERVACIONES'] = st.session_state.observaciones_memoria[key]
                 elif key in comentarios_cloud:
                     cruce.at[idx, 'OBSERVACIONES'] = comentarios_cloud[key]
                     st.session_state.observaciones_memoria[key] = comentarios_cloud[key]
-                elif row['SALDO_SAP'] > 0 and row['SALDO_FISICO'] == 0: 
-                    cruce.at[idx, 'OBSERVACIONES'] = "SUGERIDO: Entrega / Traslado / Pendiente por Facturar"
+                elif row['SALDO_SAP'] > 0 and row['SALDO_FISICO'] == 0: cruce.at[idx, 'OBSERVACIONES'] = "SUGERIDO: Entrega / Traslado / Pendiente por Facturar"
                     
             st.session_state.cruce_final = cruce[['PISTA', 'ITEM', 'PRODUCTO', 'LOTE_KEY', 'LOTE', 'SALDO_SAP', 'SALDO_FISICO', 'DIFERENCIA', 'ESTADO', 'OBSERVACIONES']].sort_values(by=['PISTA', 'PRODUCTO']).reset_index(drop=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        
         col_act1, col_act2 = st.columns([2, 1])
         
         with col_act2:
             if st.button("🔄 RESETEAR Y PURGAR MEMORIA", use_container_width=True):
                 for k in ["arqueo_procesado", "df_sap_grouped", "df_sup_grouped", "df_sup_grouped_virgen", "cruce_final", "observaciones_memoria", "df_sap_raw", "historial_fusiones"]:
-                    if k in st.session_state:
-                        del st.session_state[k]
-                st.toast("✅ Memoria purgada. Arqueo restablecido.", icon="🔄")
+                    if k in st.session_state: del st.session_state[k]
+                st.toast("✅ Memoria purgada.", icon="🔄")
                 st.rerun()
 
         with col_act1:
             btn_iniciar = st.button("🚀 INICIAR ARQUEO ESTRATÉGICO", type="primary", use_container_width=True)
 
         if btn_iniciar:
-            if not archivo_sap or not archivos_sup or not semana_obj: 
-                st.error("❌ Suministros insuficientes para el cruce maestro.")
+            if not archivo_sap or not archivos_sup or not semana_obj: st.error("❌ Suministros insuficientes para el cruce maestro.")
             else:
                 try:
                     with st.spinner("Desplegando analista algorítmico y escáner anti-filas ocultas..."):
@@ -462,12 +405,9 @@ def ejecutar(quitar_tildes, purificar_lote):
                         
                         sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
                         sap_file.seek(0)
-                        
-                        if sap_file.name.lower().endswith('.xlsx') or sap_file.name.lower().endswith('.xls'): 
-                            df_sap = pd.read_excel(sap_file)
+                        if sap_file.name.lower().endswith('.xlsx') or sap_file.name.lower().endswith('.xls'): df_sap = pd.read_excel(sap_file)
                         else:
-                            try:
-                                df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='utf-8')
+                            try: df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='utf-8')
                             except UnicodeDecodeError: 
                                 sap_file.seek(0)
                                 df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
@@ -476,7 +416,6 @@ def ejecutar(quitar_tildes, purificar_lote):
                         headers = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
                         
                         idx_item, idx_desc, idx_pista, idx_lote, idx_saldo = -1, -1, -1, -1, -1
-                        
                         pistas_conocidas = ["TEHO", "PLUC", "PORI", "LUCI", "PDIV", "Z-1", "Z-2"]
                         for i in range(len(df_sap.columns)):
                             vals = df_sap.iloc[:, i].dropna().astype(str).str.upper().head(50).tolist()
@@ -484,8 +423,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 if v.strip() in pistas_conocidas:
                                     idx_pista = i
                                     break
-                            if idx_pista != -1: 
-                                break
+                            if idx_pista != -1: break
 
                         for i, h in enumerate(headers):
                             if idx_item == -1 and any(k in h for k in ['material', 'codigo', 'item']): idx_item = i
@@ -500,27 +438,14 @@ def ejecutar(quitar_tildes, purificar_lote):
                         if idx_lote == -1: idx_lote = 3
                         if idx_saldo == -1: idx_saldo = 4
 
-                        c_item = columnas_originales[idx_item]
-                        c_desc = columnas_originales[idx_desc]
-                        c_pista = columnas_originales[idx_pista]
-                        c_lote = columnas_originales[idx_lote]
-                        c_saldo = columnas_originales[idx_saldo]
-
-                        df_sap_clean = df_sap[[c_item, c_desc, c_pista, c_lote, c_saldo]].copy()
+                        df_sap_clean = df_sap[[columnas_originales[idx_item], columnas_originales[idx_desc], columnas_originales[idx_pista], columnas_originales[idx_lote], columnas_originales[idx_saldo]]].copy()
                         df_sap_clean.columns = ['ITEM', 'PRODUCTO', 'PISTA', 'LOTE', 'SALDO_SAP']
                         df_sap_clean['LOTE_KEY'] = df_sap_clean['LOTE'].apply(purificar_lote)
                         df_sap_clean['PISTA'] = df_sap_clean['PISTA'].astype(str).str.strip().str.upper()
                         df_sap_clean['SALDO_SAP'] = df_sap_clean['SALDO_SAP'].apply(limpiar_numeros_generico)
                         
                         st.session_state.df_sap_raw = df_sap_clean 
-                        
-                        # 💥 AGRUPACIÓN ESTRICTA SAP (Anti-clonación)
-                        st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
-                            'ITEM': 'first',
-                            'PRODUCTO': 'first',
-                            'LOTE': 'first',
-                            'SALDO_SAP': 'sum'
-                        })
+                        st.session_state.df_sap_grouped = df_sap_clean.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({'ITEM': 'first', 'PRODUCTO': 'first', 'LOTE': 'first', 'SALDO_SAP': 'sum'})
 
                         lista_sup = []
                         sem_num = str(semana_obj).strip()
@@ -528,12 +453,9 @@ def ejecutar(quitar_tildes, purificar_lote):
                         for file in archivos_sup:
                             file.seek(0)
                             dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
-                            
                             file.seek(0)
-                            try:
-                                wb = openpyxl.load_workbook(file, data_only=True)
-                            except Exception:
-                                wb = None
+                            try: wb = openpyxl.load_workbook(file, data_only=True)
+                            except: wb = None
                                 
                             target_sheet = None
                             for sheet_name in dict_dfs.keys():
@@ -544,12 +466,10 @@ def ejecutar(quitar_tildes, purificar_lote):
 
                             if target_sheet:
                                 df_raw = dict_dfs[target_sheet]
-                                
                                 if wb and target_sheet in wb.sheetnames:
                                     ws = wb[target_sheet]
                                     filas_ocultas = [r - 1 for r, dim in ws.row_dimensions.items() if dim.hidden]
-                                    if filas_ocultas:
-                                        df_raw = df_raw.drop(index=filas_ocultas, errors='ignore').reset_index(drop=True)
+                                    if filas_ocultas: df_raw = df_raw.drop(index=filas_ocultas, errors='ignore').reset_index(drop=True)
 
                                 h_idx = -1
                                 for i in range(min(30, len(df_raw))):
@@ -567,35 +487,22 @@ def ejecutar(quitar_tildes, purificar_lote):
                                     c_a = next((c for c in df_s.columns if any(k in c.upper() for k in ["ALMAC", "PISTA", "CENTRO", "UBICAC"])), None)
                                     c_l = next((c for c in df_s.columns if "LOTE" in c.upper() and "SALDO" not in c.upper()), None)
                                     
-                                    cand_saldos = []
-                                    for c in df_s.columns:
-                                        c_upper = c.upper()
-                                        if "SALDO" in c_upper:
-                                            if not any(ex in c_upper for ex in ["INIC", "INICIAL", "INGRES", "ENTRA", "SALID"]):
-                                                cand_saldos.append(c)
-                                    
+                                    cand_saldos = [c for c in df_s.columns if "SALDO" in c.upper() and not any(ex in c.upper() for ex in ["INIC", "INICIAL", "INGRES", "ENTRA", "SALID"])]
                                     c_v = cand_saldos[-1] if cand_saldos else next((c for c in df_s.columns if "SALDO" in c.upper() and "INIC" not in c.upper()), None)
                                     
                                     if all([c_p, c_a, c_l, c_v]):
                                         df_s_c = df_s[[c_p, c_a, c_l, c_v]].copy()
                                         df_s_c.columns = ['PRODUCTO_SUP', 'PISTA', 'LOTE_SUP', 'SALDO_FISICO']
-                                        
                                         df_s_c = df_s_c.dropna(subset=['PRODUCTO_SUP', 'LOTE_SUP'])
                                         df_s_c = df_s_c[df_s_c['PRODUCTO_SUP'].astype(str).str.strip() != '']
                                         df_s_c = df_s_c[~df_s_c['PRODUCTO_SUP'].astype(str).str.upper().str.contains("TOTAL|SUMA", regex=True)]
-                                        
                                         df_s_c['PISTA'] = df_s_c['PISTA'].astype(str).str.strip().str.upper().replace('NAN', None).ffill().bfill()
                                         df_s_c['LOTE_KEY'] = df_s_c['LOTE_SUP'].apply(purificar_lote)
                                         df_s_c['SALDO_FISICO'] = df_s_c['SALDO_FISICO'].apply(limpiar_numeros_generico)
                                         lista_sup.append(df_s_c)
 
                         if lista_sup:
-                            # 💥 AGRUPACIÓN ESTRICTA SUPERVISOR (Anti-clonación)
-                            st.session_state.df_sup_grouped_virgen = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
-                                'PRODUCTO_SUP': 'first',
-                                'LOTE_SUP': 'first',
-                                'SALDO_FISICO': 'sum'
-                            })
+                            st.session_state.df_sup_grouped_virgen = pd.concat(lista_sup, ignore_index=True).groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({'PRODUCTO_SUP': 'first', 'LOTE_SUP': 'first', 'SALDO_FISICO': 'sum'})
                             st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
                             st.session_state.semana_actual = semana_obj
                             generar_cruce()
@@ -603,34 +510,20 @@ def ejecutar(quitar_tildes, purificar_lote):
                             
                             if 'supabase' in st.session_state:
                                 try:
-                                    supa = st.session_state['supabase']
-                                    payload_cruce = []
-                                    for _, row_c in st.session_state.cruce_final.iterrows():
-                                        payload_cruce.append({
-                                            "semana": str(semana_obj).strip(), "pista": str(row_c["PISTA"]),
-                                            "item_codigo": str(row_c["ITEM"]), "producto": str(row_c["PRODUCTO"]),
-                                            "lote": str(row_c["LOTE"]), "saldo_sap": float(row_c["SALDO_SAP"]),
-                                            "saldo_fisico": float(row_c["SALDO_FISICO"]), "diferencia": float(row_c["DIFERENCIA"]),
-                                            "estado": str(row_c["ESTADO"])
-                                        })
+                                    payload_cruce = [{"semana": str(semana_obj).strip(), "pista": str(r["PISTA"]), "item_codigo": str(r["ITEM"]), "producto": str(r["PRODUCTO"]), "lote": str(r["LOTE"]), "saldo_sap": float(r["SALDO_SAP"]), "saldo_fisico": float(r["SALDO_FISICO"]), "diferencia": float(r["DIFERENCIA"]), "estado": str(r["ESTADO"])} for _, r in st.session_state.cruce_final.iterrows()]
                                     if payload_cruce:
-                                        supa.table("arqueos_inventario_maestro").delete().eq("semana", str(semana_obj).strip()).execute()
-                                        supa.table("arqueos_inventario_maestro").insert(payload_cruce).execute()
-                                except Exception:
-                                    pass
-                        else: 
-                            st.error("❌ No se localizaron hojas válidas en los reportes físicos.")
-                except Exception as e: 
-                    st.error(f"🚨 Error estructural: {e}")
+                                        st.session_state['supabase'].table("arqueos_inventario_maestro").delete().eq("semana", str(semana_obj).strip()).execute()
+                                        st.session_state['supabase'].table("arqueos_inventario_maestro").insert(payload_cruce).execute()
+                                except Exception: pass
+                        else: st.error("❌ No se localizaron hojas válidas en los reportes físicos.")
+                except Exception as e: st.error(f"🚨 Error estructural: {e}")
                     
         if st.session_state.arqueo_procesado:
             f_df_cruce = st.session_state.cruce_final
-            
             total_sku_arqueados = len(f_df_cruce)
             coincidencias_ok = len(f_df_cruce[f_df_cruce['ESTADO'] == "✅ OK"])
             desfases_criticos = len(f_df_cruce[f_df_cruce['ESTADO'] == "❌ DISCREPANCIA"])
             volumen_desfase_neto = f_df_cruce['DIFERENCIA'].sum()
-            
             fail_class = "hud-arqueo-fail" if desfases_criticos > 0 else "hud-arqueo-ok"
             fail_icon = "⚠️" if desfases_criticos > 0 else "✅"
             balance_color = "#ff3333" if volumen_desfase_neto < 0 else "#00ff66"
@@ -638,118 +531,53 @@ def ejecutar(quitar_tildes, purificar_lote):
             
             st.markdown(f"""
              <div class="hud-arqueo">
-                 <div class="hud-arqueo-item">
-                     <p class="hud-arqueo-title">Lotes Arqueados</p>
-                     <p class="hud-arqueo-value">⚖️ {total_sku_arqueados} Ítems</p>
-                </div>
-                 <div class="hud-arqueo-item">
-                     <p class="hud-arqueo-title">Cuadrados con SAP</p>
-                     <p class="hud-arqueo-value hud-arqueo-ok">🟢 {coincidencias_ok} OK</p>
-                </div>
-                 <div class="hud-arqueo-item">
-                     <p class="hud-arqueo-title">Desfases Críticos</p>
-                     <p class="hud-arqueo-value {fail_class}">
-                         {fail_icon} {desfases_criticos} Alarmas
-                    </p>
-                </div>
-                 <div class="hud-arqueo-item">
-                     <p class="hud-arqueo-title">Balance Neto Físico</p>
-                     <p class="hud-arqueo-value" style="color: {balance_color};">
-                         {balance_sign}{volumen_desfase_neto:,.2f} L/Kg
-                    </p>
-                </div>
+                 <div class="hud-arqueo-item"><p class="hud-arqueo-title">Lotes Arqueados</p><p class="hud-arqueo-value">⚖️ {total_sku_arqueados} Ítems</p></div>
+                 <div class="hud-arqueo-item"><p class="hud-arqueo-title">Cuadrados con SAP</p><p class="hud-arqueo-value hud-arqueo-ok">🟢 {coincidencias_ok} OK</p></div>
+                 <div class="hud-arqueo-item"><p class="hud-arqueo-title">Desfases Críticos</p><p class="hud-arqueo-value {fail_class}">{fail_icon} {desfases_criticos} Alarmas</p></div>
+                 <div class="hud-arqueo-item"><p class="hud-arqueo-title">Balance Neto Físico</p><p class="hud-arqueo-value" style="color: {balance_color};">{balance_sign}{volumen_desfase_neto:,.2f} L/Kg</p></div>
              </div>
             """, unsafe_allow_html=True)
     
             tab1, tab2, tab3 = st.tabs(["⚠️ Discrepancias", "🛠️ Conciliador", "📋 Inventario Completo"])
-            
             with tab1:
                 df_err = st.session_state.cruce_final[st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA"].copy()
-                if df_err.empty: 
-                    st.success("✅ ¡Felicidades Comandante! Todo el arsenal químico se encuentra perfectamente cuadrado con SAP.")
+                if df_err.empty: st.success("✅ ¡Felicidades Comandante! Todo el arsenal químico se encuentra perfectamente cuadrado con SAP.")
                 else:
-                    edited_df = st.data_editor(
-                        df_err.drop(columns=['LOTE_KEY'], errors='ignore'), use_container_width=True, hide_index=True, 
-                        disabled=["PISTA", "ITEM", "PRODUCTO", "LOTE", "SALDO_SAP", "SALDO_FISICO", "DIFERENCIA", "ESTADO"], 
-                        column_config={
-                            "SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"), 
-                            "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"), 
-                            "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f"),
-                            "OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES (Editable)", width="large")
-                        }
-                    )
-                    
+                    edited_df = st.data_editor(df_err.drop(columns=['LOTE_KEY'], errors='ignore'), use_container_width=True, hide_index=True, disabled=["PISTA", "ITEM", "PRODUCTO", "LOTE", "SALDO_SAP", "SALDO_FISICO", "DIFERENCIA", "ESTADO"], column_config={"SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"), "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"), "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f"), "OBSERVACIONES": st.column_config.TextColumn("📝 OBSERVACIONES (Editable)", width="large")})
                     payload_obs_cloud = []
                     for _, row in edited_df.iterrows():
                         lote_purificado = purificar_lote(row['LOTE'])
                         key = f"{row['PISTA']}_{lote_purificado}"
                         st.session_state.observaciones_memoria[key] = row['OBSERVACIONES']
                         idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == lote_purificado)].index
-                        if not idx_m.empty: 
-                            st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
-                        
-                        payload_obs_cloud.append({
-                            "semana": str(st.session_state.semana_actual).strip(),
-                            "lote_pista_key": str(key),
-                            "observacion": str(row['OBSERVACIONES']),
-                            "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
-                    
+                        if not idx_m.empty: st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
+                        payload_obs_cloud.append({"semana": str(st.session_state.semana_actual).strip(), "lote_pista_key": str(key), "observacion": str(row['OBSERVACIONES']), "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
                     if 'supabase' in st.session_state and payload_obs_cloud:
-                        try:
-                            st.session_state['supabase'].table("arqueos_observaciones").upsert(payload_obs_cloud, on_conflict="semana,lote_pista_key").execute()
-                        except Exception:
-                            pass
+                        try: st.session_state['supabase'].table("arqueos_observaciones").upsert(payload_obs_cloud, on_conflict="semana,lote_pista_key").execute()
+                        except Exception: pass
     
             with tab2:
                 st.markdown("#### 🛠️ Conciliador e Historial de Correcciones")
-                
-                # 💥 EL FILTRO MAESTRO: Solo muestra lotes "fantasmas" que NO hayan sido marcados como Físico Real/Justificado
-                mask_fantasmas = (
-                    (st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & 
-                    (st.session_state.cruce_final['SALDO_SAP'] == 0) & 
-                    (st.session_state.cruce_final['SALDO_FISICO'] > 0) &
-                    (~st.session_state.cruce_final['OBSERVACIONES'].astype(str).str.contains("FÍSICO REAL|JUSTIFICADO", case=False, na=False))
-                )
+                mask_fantasmas = ((st.session_state.cruce_final['ESTADO'] == "❌ DISCREPANCIA") & (st.session_state.cruce_final['SALDO_SAP'] == 0) & (st.session_state.cruce_final['SALDO_FISICO'] > 0) & (~st.session_state.cruce_final['OBSERVACIONES'].astype(str).str.contains("FÍSICO REAL|JUSTIFICADO", case=False, na=False)))
                 err_fantasmas = st.session_state.cruce_final[mask_fantasmas]
-                
                 if not err_fantasmas.empty:
                     opciones = err_fantasmas.apply(lambda x: f"{x['PISTA']} | Prod: {x['PRODUCTO']} | Lote Físico: {x['LOTE']} ({x['SALDO_FISICO']} L/Kg)", axis=1).tolist()
                     sel = st.selectbox("1️⃣ Seleccione el error de digitación a corregir:", opciones)
-                    
                     if sel:
                         row_s = err_fantasmas.iloc[opciones.index(sel)]
-                        
-                        # Extraer copia limpia de SAP para esa pista
                         df_sap_pista = st.session_state.df_sap_raw[st.session_state.df_sap_raw['PISTA'] == row_s['PISTA']].copy()
-                        
-                        # Función de limpieza estricta (matar espacios extra)
                         df_sap_pista['PROD_CLEAN'] = df_sap_pista['PRODUCTO'].apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper())
                         prod_fisico_clean = re.sub(r'\s+', ' ', str(row_s['PRODUCTO'])).strip().upper()
                         
-                        # 💥 FILTRADO EN CASCADA (Nivel Triple A)
-                        # 1. Búsqueda Exacta
                         df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'] == prod_fisico_clean]
-                        
-                        # 2. Búsqueda Contenida (Uno dentro del otro)
-                        if df_exact.empty:
-                            mask = df_sap_pista['PROD_CLEAN'].apply(lambda x: x in prod_fisico_clean or prod_fisico_clean in x)
-                            df_exact = df_sap_pista[mask]
-                            
-                        # 3. Búsqueda por Primera Palabra Clave
+                        if df_exact.empty: df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'].apply(lambda x: x in prod_fisico_clean or prod_fisico_clean in x)]
                         if df_exact.empty:
                             p_word = prod_fisico_clean.split()[0] if prod_fisico_clean else ""
-                            if len(p_word) >= 3:
-                                mask = df_sap_pista['PROD_CLEAN'].str.contains(p_word, regex=False)
-                                df_exact = df_sap_pista[mask]
-                                
-                        # 4. Búsqueda por Aproximación (Fuzzy)
+                            if len(p_word) >= 3: df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'].str.contains(p_word, regex=False)]
                         if df_exact.empty:
                             import difflib
-                            sap_prods = df_sap_pista['PROD_CLEAN'].unique().tolist()
-                            matches = difflib.get_close_matches(prod_fisico_clean, sap_prods, n=3, cutoff=0.4)
-                            if matches:
-                                df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'].isin(matches)]
+                            matches = difflib.get_close_matches(prod_fisico_clean, df_sap_pista['PROD_CLEAN'].unique().tolist(), n=3, cutoff=0.4)
+                            if matches: df_exact = df_sap_pista[df_sap_pista['PROD_CLEAN'].isin(matches)]
                         
                         c_tog, _ = st.columns([1, 1])
                         mostrar_todos = c_tog.toggle("🔄 Ver todo el arsenal de la pista (Ignorar filtro inteligente)", value=False)
@@ -762,38 +590,20 @@ def ejecutar(quitar_tildes, purificar_lote):
                             st.warning("⚠️ Mostrando el inventario completo de la base para selección manual.")
                             opciones_dest = sorted(df_sap_pista.apply(lambda x: f"{x['PRODUCTO']} | Lote: {x['LOTE']}", axis=1).unique().tolist())
                         
-                        # 💥 NUEVA VÁLVULA DE ESCAPE OFICIAL
                         opcion_na = "🚫 N/A - NO EXISTE EN SAP (MARCAR COMO FÍSICO REAL)"
                         opciones_dest.insert(0, opcion_na)
-                        
                         lote_ok_str = st.selectbox(f"2️⃣ Seleccione el Lote destino en SAP para unificarlos:", opciones_dest)
                         
                         if lote_ok_str == opcion_na:
                             if st.button("💾 JUSTIFICAR Y OCULTAR DEL CONCILIADOR", type="primary"):
                                 txt_obs = "FÍSICO REAL - Pendiente de ingreso/traslado en SAP"
                                 key_obs = f"{row_s['PISTA']}_{row_s['LOTE_KEY']}"
-                                
-                                # Guardamos en la memoria local
                                 st.session_state.observaciones_memoria[key_obs] = txt_obs
-                                
-                                # Actualizamos de golpe el dataframe para que no toque esperar otro ciclo
                                 idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row_s['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == row_s['LOTE_KEY'])].index
-                                if not idx_m.empty: 
-                                    st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = txt_obs
-                                    
-                                # Si hay nube, lo inyectamos de una vez
+                                if not idx_m.empty: st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = txt_obs
                                 if 'supabase' in st.session_state:
-                                    try:
-                                        obs_payload = {
-                                            "semana": str(st.session_state.semana_actual).strip(),
-                                            "lote_pista_key": str(key_obs),
-                                            "observacion": txt_obs,
-                                            "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                        }
-                                        st.session_state['supabase'].table("arqueos_observaciones").upsert([obs_payload], on_conflict="semana,lote_pista_key").execute()
-                                    except Exception:
-                                        pass
-                                        
+                                    try: st.session_state['supabase'].table("arqueos_observaciones").upsert([{"semana": str(st.session_state.semana_actual).strip(), "lote_pista_key": str(key_obs), "observacion": txt_obs, "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}], on_conflict="semana,lote_pista_key").execute()
+                                    except Exception: pass
                                 st.toast("✅ Lote justificado exitosamente.", icon="✅")
                                 generar_cruce()
                                 st.rerun()
@@ -801,51 +611,21 @@ def ejecutar(quitar_tildes, purificar_lote):
                             if st.button("⚡ FUSIONAR Y CORREGIR LOTE", type="primary"):
                                 prod_sap, lote_sap = lote_ok_str.split(" | Lote: ")[0].strip(), lote_ok_str.split(" | Lote: ")[1].strip()
                                 mask = (st.session_state.df_sup_grouped['PISTA'] == row_s['PISTA']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == row_s['LOTE_KEY'])
-                                
                                 txt_obs = f"Corrección unificada con SAP ({prod_sap} - {lote_sap})"
                                 key_obs = f"{row_s['PISTA']}_{purificar_lote(lote_sap)}"
                                 st.session_state.observaciones_memoria[key_obs] = txt_obs
-                                
-                                st.session_state.historial_fusiones.append({
-                                    "pista": row_s['PISTA'],
-                                    "lote_erroneo": row_s['LOTE'],
-                                    "lote_key_erroneo": row_s['LOTE_KEY'],
-                                    "lote_destino": lote_sap,
-                                    "producto": prod_sap,
-                                    "volumen": row_s['SALDO_FISICO']
-                                })
-                                
+                                st.session_state.historial_fusiones.append({"pista": row_s['PISTA'], "lote_erroneo": row_s['LOTE'], "lote_key_erroneo": row_s['LOTE_KEY'], "lote_destino": lote_sap, "producto": prod_sap, "volumen": row_s['SALDO_FISICO']})
                                 st.session_state.df_sup_grouped.loc[mask, 'LOTE_SUP'] = lote_sap
                                 st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
                                 st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
-                                
-                                # 💥 RE-AGRUPACIÓN ESTRICTA (Anti-clonación post-fusión)
-                                st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
-                                    'PRODUCTO_SUP': 'first',
-                                    'LOTE_SUP': 'first',
-                                    'SALDO_FISICO': 'sum'
-                                })
-                                
+                                st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({'PRODUCTO_SUP': 'first', 'LOTE_SUP': 'first', 'SALDO_FISICO': 'sum'})
                                 if 'supabase' in st.session_state:
-                                    try:
-                                        log_fusion = {
-                                            "semana": str(st.session_state.semana_actual).strip(),
-                                            "pista": str(row_s['PISTA']),
-                                            "lote_erroneo": str(row_s['LOTE']),
-                                            "lote_corregido_sap": str(lote_sap),
-                                            "insumo": str(prod_sap),
-                                            "fecha_correccion": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                        }
-                                        st.session_state['supabase'].table("arqueos_log_fusiones").insert(log_fusion).execute()
-                                    except Exception:
-                                        pass
-
+                                    try: st.session_state['supabase'].table("arqueos_log_fusiones").insert({"semana": str(st.session_state.semana_actual).strip(), "pista": str(row_s['PISTA']), "lote_erroneo": str(row_s['LOTE']), "lote_corregido_sap": str(lote_sap), "insumo": str(prod_sap), "fecha_correccion": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).execute()
+                                    except Exception: pass
                                 generar_cruce()
                                 st.rerun()
-                else:
-                    st.success("✅ No se detectan lotes pendientes por fusionar.")
+                else: st.success("✅ No se detectan lotes pendientes por fusionar.")
 
-                # --- VISTA COMPACTA Y PLEGABLE DEL HISTORIAL DE FUSIONES ---
                 if st.session_state.historial_fusiones:
                     st.markdown("---")
                     with st.expander(f"↩️ Ver / Gestionar Fusiones Realizadas ({len(st.session_state.historial_fusiones)})", expanded=False):
@@ -853,28 +633,21 @@ def ejecutar(quitar_tildes, purificar_lote):
                             st.session_state.historial_fusiones = []
                             st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
                             generar_cruce()
-                            st.toast("✅ Historial de fusiones limpiado por completo.", icon="🧹")
+                            st.toast("✅ Historial limpiado.", icon="🧹")
                             st.rerun()
-                            
                         st.markdown("<br>", unsafe_allow_html=True)
                         for idx_f, f_item in enumerate(st.session_state.historial_fusiones):
                             c_f1, c_f2 = st.columns([3, 1])
                             c_f1.info(f"📍 **{f_item['pista']}** | Lote Creado: `{f_item['lote_erroneo']}` ➔ Sumado a Lote SAP: `{f_item['lote_destino']}` (+{f_item['volumen']} L/Kg)")
                             if c_f2.button(f"↩️ DESHACER", key=f"btn_undo_{idx_f}"):
                                 st.session_state.historial_fusiones.pop(idx_f)
-                                
                                 st.session_state.df_sup_grouped = st.session_state.df_sup_grouped_virgen.copy()
                                 for f_rest in st.session_state.historial_fusiones:
                                     mask_r = (st.session_state.df_sup_grouped['PISTA'] == f_rest['pista']) & (st.session_state.df_sup_grouped['LOTE_KEY'] == f_rest['lote_key_erroneo'])
                                     st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_SUP'] = f_rest['lote_destino']
                                     st.session_state.df_sup_grouped.loc[mask_r, 'LOTE_KEY'] = purificar_lote(f_rest['lote_destino'])
                                     st.session_state.df_sup_grouped.loc[mask_r, 'PRODUCTO_SUP'] = f_rest['producto']
-                                
-                                st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({
-                                    'PRODUCTO_SUP': 'first',
-                                    'LOTE_SUP': 'first',
-                                    'SALDO_FISICO': 'sum'
-                                })
+                                st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({'PRODUCTO_SUP': 'first', 'LOTE_SUP': 'first', 'SALDO_FISICO': 'sum'})
                                 generar_cruce()
                                 st.toast("✅ Fusión deshecha con éxito.", icon="↩️")
                                 st.rerun()
@@ -883,19 +656,14 @@ def ejecutar(quitar_tildes, purificar_lote):
                 st.dataframe(st.session_state.cruce_final.drop(columns=['LOTE_KEY'], errors='ignore').style.map(lambda x: 'background-color: #d4edda; color: #155724' if x == "✅ OK" else '', subset=['ESTADO']), use_container_width=True, hide_index=True, column_config={"SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"), "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"), "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")})
     
             st.markdown("---")
-            
             col_dw1, col_dw2 = st.columns(2)
-            
             with col_dw1:
                 excel_binario = compilar_excel_maestro(st.session_state.cruce_final, st.session_state.semana_actual)
                 st.download_button("📊 DESCARGAR EXCEL VIVO", excel_binario, f"Arqueo_Excel_Semana_{st.session_state.semana_actual}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-    
             with col_dw2:
                 st.session_state.centro_pdf_activo = st.toggle("📄 ACTIVAR CENTRO DE EMISIÓN DE PDF", value=st.session_state.centro_pdf_activo)
-                
                 if st.session_state.centro_pdf_activo:
                     css_vip = """<style>body { font-family: Helvetica, sans-serif; background: white; color: black; font-size: 11px; } .b-print { padding: 20px; } table { width: 100%; border-collapse: collapse; margin-bottom: 20px; } th { background-color: #0d1b2a; color: #d4af37; border: 1px solid #000; padding: 6px; text-align: center; font-size: 12px; } td { border: 1px solid #000; padding: 4px; text-align: center; } .td-left { text-align: left; } .title { font-size: 20px; color: #0d1b2a; font-weight: bold; text-align: center; margin: 0; } .subtitle { font-size: 14px; color: #d4af37; text-align: center; margin: 0 0 20px 0; font-weight: bold; } .firmas-container { display: flex; justify-content: space-around; margin-top: 50px; page-break-inside: avoid; } .firma-box { text-align: center; width: 40%; border-top: 2px solid #0d1b2a; padding-top: 5px; font-weight: bold; color: #0d1b2a; } @media print { @page { size: A4 landscape; margin: 10mm; } body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .no-print { display: none !important; } .salto-pagina { page-break-after: always; } }</style>"""
-                    
                     html_reporte_masivo = compilar_html_pdf(st.session_state.cruce_final, st.session_state.semana_actual, css_vip)
                     st.info("💡 **Coordenada Activada:** Use el botón azul de adentro del visor inferior para descargar el PDF directo a su disco local.")
                     components.html(html_reporte_masivo, height=600, scrolling=True)
