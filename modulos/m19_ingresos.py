@@ -331,8 +331,9 @@ def ejecutar():
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        c_mat.text_input("🔢 Cód. Material", placeholder="No aplica", disabled=True, key=f"mat_ing_nuevo_{st.session_state['form_key_m19']}_{n_prod}")
-                        mat_item_ing = "S/N"
+                        # 💥 APLICADA LA MEJORA: CASILLA DESBLOQUEADA PARA EL CÓDIGO DEL MATERIAL 💥
+                        mat_item_ing = c_mat.text_input("🔢 Cód. Material", placeholder="Ej: 4591234", key=f"mat_ing_nuevo_{st.session_state['form_key_m19']}")
+                        if not mat_item_ing: mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
                         with c_tog2:
                             st.markdown("<div style='margin-top: -5px;'></div>", unsafe_allow_html=True)
@@ -436,7 +437,7 @@ def ejecutar():
                         
                         for row_lote in lotes_validos:
                             c1, c2, c3, c4, c5 = st.columns(5)
-                            with c1: st.code(mat_item_ing if not es_nuevo_producto else "S/N", language="text")
+                            c1.code(str(mat_item_ing), language="text")
                             with c2: st.code(formatear_numero_sap(row_lote['CANTIDAD']), language="text")
                             with c3: st.code(str(row_lote['LOTE']).strip(), language="text")
                             with c4: st.code(n_factura if n_factura else "...", language="text")
@@ -489,6 +490,8 @@ def ejecutar():
                                     elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
                                     elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
                                     elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
+                                    # 💥 APLICADA LA INYECCIÓN DIRECTA DEL CÓDIGO DE MATERIAL A LA HOJA 💥
+                                    elif any(k in h for k in ["ITEM", "MATERIAL", "CÓDIGO", "COD"]): nueva_fila_drive.append(str(mat_item_ing))
                                     else: nueva_fila_drive.append("") 
                                 nuevas_filas_bulk.append(nueva_fila_drive)
                             
@@ -871,7 +874,7 @@ def ejecutar():
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
 
-            # 💥 CAMBIO APLICADO AQUÍ: PANEL DINÁMICO DE 6 COLUMNAS PARA AJUSTES
+            # 💥 PANEL DINÁMICO DE 6 COLUMNAS PARA AJUSTES
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
 
