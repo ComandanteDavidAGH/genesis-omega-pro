@@ -65,7 +65,6 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA (CON BLINDAJE DE AÑO Y DOSIS EN LITROS)
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
@@ -92,17 +91,14 @@ def extraer_consumos_teoricos():
         c_fecha = next((c for c in df_vuelos.columns if "FECHA" in c), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]):
-            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA", "FECHA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]) if v is None]
-            return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
+            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas maestras en TABLA 1."
 
-        # 🎯 REGLA DE ORO 1: El primer dígito es el volumen de Aceite EN LITROS.
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
-        # 🎯 REGLA DE ORO 2: Mapeo Estricto de Pistas
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
@@ -114,7 +110,6 @@ def extraer_consumos_teoricos():
             if 'ASA' in p: return 'PDIV'
             return p
 
-        # 💥 BLINDAJE: Extracción del Año de la Fecha
         def extraer_anio(fecha_val):
             fecha_str = str(fecha_val).strip()
             match = re.search(r'(20\d{2})', fecha_str)
@@ -131,16 +126,12 @@ def extraer_consumos_teoricos():
             except: return 0.0
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
-        
-        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis(L) = Litros Totales
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_LITROS']
         df_vuelos['SEMANA_LIMPIA'] = df_vuelos[c_sem].astype(str).str.replace('.0', '', regex=False).str.strip()
         
-        # 💥 AGRUPAR TENIENDO EN CUENTA EL AÑO, LA SEMANA Y LA PISTA
         df_teorico = df_vuelos.groupby(['AÑO', 'SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['AÑO', 'SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
-        # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
         df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_LITROS', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'AÑO', 'PISTA_OFICIAL']].copy()
         df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'AÑO', 'PISTA']
         
@@ -277,70 +268,77 @@ def renderizar_radar_plomadas():
                 "Litros": vol_lit
             })
         else:
-            # 💥 ALERTA ROJA: Si el Excel de Aforos no tiene esa medida
             errores_aforo.append(f"El tanque **{t}** NO tiene registro en la tabla de aforos para la medida de **{cm} cm**.")
 
-    # Desplegar errores si los hay
     if errores_aforo:
         for err in errores_aforo:
             st.error(f"🚨 **ALERTA DE BASE DE DATOS:** {err} Revise la pestaña 'TABLAS_AFORO' en Google Sheets.")
 
+    # Declaramos la variable de Litros Teóricos para que pueda ser leída globalmente
+    litros_teoricos_input = 0.0
+
     # --- MOSTRAR RESULTADOS DETALLADOS ---
-    if resultados_tanques:
-        st.markdown("#### 📊 Información de Consumo Según Medida (Calculado)")
-        df_resultados = pd.DataFrame(resultados_tanques)
-        
-        # Formateo visual para la tabla
-        df_resultados_vista = df_resultados.copy()
-        df_resultados_vista['Galones'] = df_resultados_vista['Galones'].apply(lambda x: f"{x:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
-        df_resultados_vista['Litros'] = df_resultados_vista['Litros'].apply(lambda x: f"{x:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
-        
-        st.dataframe(df_resultados_vista, use_container_width=True, hide_index=True)
-        
-        k1, k2 = st.columns(2)
-        k1.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>TOTAL GALONES</p><p class='hud-arqueo-value'>{galones_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
-        k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>TOTAL LITROS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
-        
-        btn_registrar_plomada = st.button("💾 GUARDAR DESGLOSE EN BÓVEDA", type="secondary", use_container_width=True)
-        if btn_registrar_plomada and not errores_aforo:
-            with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
-                try:
-                    gc = inicializar_cliente_gspread()
-                    sh = gc.open_by_url(URL_BASE_AFOROS)
-                    try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
-                    except:
-                        ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
-                        ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEORICOS", "USUARIO"])
-                    
-                    usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
-                    filas_a_guardar = []
-                    for t_data in resultados_tanques:
-                        # Se envía "---" en la columna I (Litros Teóricos) para que no haya descuadre en Excel
-                        filas_a_guardar.append([
-                            fecha_plomada.strftime("%d/%m/%Y"), 
-                            semana_calculada, 
-                            pista_sel, 
-                            t_data['Tanque Utilizado'], 
-                            int(t_data['Cm']), 
-                            int(t_data['Mm']), 
-                            f"{t_data['Galones']:.3f}".replace('.', ','), 
-                            f"{t_data['Litros']:.3f}".replace('.', ','), 
-                            "---", 
-                            usuario_actual
-                        ])
-                    
-                    ws_reg.append_rows(filas_a_guardar)
-                    st.success(f"✅ ¡Desglose por tanque guardado exitosamente!")
-                except Exception as e: st.error(f"🚨 Error: {e}")
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-
-    # 💥 PANEL DE CONCILIACIÓN DERECHO (LA NAVAJA SUIZA)
-    st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo y Saldos</h3>", unsafe_allow_html=True)
-    
     col_izq, col_der = st.columns([1, 1], gap="large")
     
     with col_izq:
+        if resultados_tanques:
+            st.markdown("#### 📊 Información de Consumo Según Medida")
+            df_resultados = pd.DataFrame(resultados_tanques)
+            
+            df_resultados_vista = df_resultados.copy()
+            df_resultados_vista['Galones'] = df_resultados_vista['Galones'].apply(lambda x: f"{x:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+            df_resultados_vista['Litros'] = df_resultados_vista['Litros'].apply(lambda x: f"{x:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+            
+            st.dataframe(df_resultados_vista, use_container_width=True, hide_index=True)
+            
+            k1, k2 = st.columns(2)
+            k1.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>TOTAL GALONES</p><p class='hud-arqueo-value'>{galones_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
+            k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>TOTAL LITROS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
+            
+            st.markdown("---")
+            # 💥 AQUÍ ESTÁ TU CASILLA EXACTAMENTE COMO LA PEDISTE 💥
+            litros_teoricos_input = st.number_input("💻 Litros Teóricos (Saldo en AZ/Sistema):", min_value=0.0, value=0.0, step=10.0, key="az_izq")
+            
+            btn_registrar_plomada = st.button("💾 GUARDAR DESGLOSE EN BÓVEDA", type="secondary", use_container_width=True)
+            if btn_registrar_plomada and not errores_aforo:
+                with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
+                    try:
+                        gc = inicializar_cliente_gspread()
+                        sh = gc.open_by_url(URL_BASE_AFOROS)
+                        try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
+                        except:
+                            ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
+                            ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEORICOS", "USUARIO"])
+                        
+                        usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
+                        filas_a_guardar = []
+                        
+                        for i, t_data in enumerate(resultados_tanques):
+                            # 🎯 LA REGLA DE ORO DE LA BASE DE DATOS: 
+                            # El Saldo AZ se guarda SÓLO en la primera fila (Tanque 1). El resto lleva "---"
+                            val_az_guardar = f"{litros_teoricos_input:.3f}".replace('.', ',') if i == 0 else "---"
+                            
+                            filas_a_guardar.append([
+                                fecha_plomada.strftime("%d/%m/%Y"), 
+                                semana_calculada, 
+                                pista_sel, 
+                                t_data['Tanque Utilizado'], 
+                                int(t_data['Cm']), 
+                                int(t_data['Mm']), 
+                                f"{t_data['Galones']:.3f}".replace('.', ','), 
+                                f"{t_data['Litros']:.3f}".replace('.', ','), 
+                                val_az_guardar, 
+                                usuario_actual
+                            ])
+                        
+                        ws_reg.append_rows(filas_a_guardar)
+                        st.success(f"✅ ¡Desglose por tanque guardado exitosamente!")
+                    except Exception as e: st.error(f"🚨 Error: {e}")
+
+    # 💥 PANEL DE CONCILIACIÓN DERECHO (LA NAVAJA SUIZA)
+    with col_der:
+        st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo y Saldos</h3>", unsafe_allow_html=True)
+        
         if df_teorico.empty:
             st.warning("⚠️ No hay datos teóricos procesados. Revisa la TABLA 1.")
             litros_teoricos_sap = 0.0
@@ -350,7 +348,7 @@ def renderizar_radar_plomadas():
             
             st.info(f"**Semana Auditada:** {semana_calculada} | **Año:** {anio_calculado} | **Base:** {pista_sel}")
             st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
-            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Exactos de Aceite. (Filtrado estricto por Año, Semana y Pista)")
+            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Exactos de Aceite.")
             
             if litros_teoricos_sap == 0:
                 semanas_bd = df_teorico[df_teorico['AÑO'] == anio_calculado]['SEMANA'].unique().tolist()
@@ -365,16 +363,15 @@ def renderizar_radar_plomadas():
                 with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
                     vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel) & (df_auditoria['AÑO'] == anio_calculado)]
                     vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
-                    st.caption(f"El sistema multiplicó (Área x Dosis en Litros) de estos **{len(vuelos_auditoria)} vuelos** en el año {anio_calculado}:")
                     st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA', 'AÑO']), use_container_width=True, hide_index=True)
 
-    with col_der:
         st.markdown("#### 🛠️ Herramientas de Conciliación")
         tab_directo, tab_kardex = st.tabs(["📊 Método Directo (Físico vs AZ)", "🧮 Método Kárdex (Por Consumo)"])
         
         with tab_directo:
             st.caption("💡 Útil cuando el supervisor cruza la regla física contra el sistema AZ sin reportar tanqueos (Ej: Divas, Lucha).")
-            litros_teoricos_input = st.number_input("💻 Litros Teóricos (Saldo en AZ/Sistema):", min_value=0.0, value=0.0, step=10.0, key="az_directo")
+            
+            # 💥 AQUÍ CRUZA CON LO QUE DIGITASTE EN EL LADO IZQUIERDO
             diferencia_inventario = litros_totales_actuales - litros_teoricos_input
             
             c_res1, c_res2 = st.columns(2)
@@ -417,7 +414,6 @@ def renderizar_radar_plomadas():
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 💥 BOTÓN DE GUARDADO EN NUEVA PESTAÑA (Para el global de la base)
         if st.button("💾 GUARDAR ARQUEO GLOBAL", type="primary", use_container_width=True):
             with st.spinner("Guardando Arqueo Completo de la Base..."):
                 try:
@@ -430,7 +426,6 @@ def renderizar_radar_plomadas():
                         ws_reg.append_row(["FECHA", "SEMANA", "AÑO", "PISTA", "SALDO INICIAL", "INGRESOS", "SALDO FISICO ACTUAL", "CONSUMO FISICO", "CONSUMO TEORICO T1", "SALDO AZ", "DESCUADRE AZ", "USUARIO"])
                     
                     usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
-                    # Usamos los valores calculados en la pestaña Kárdex si los llenaron, si no, se van en 0.
                     ws_reg.append_row([
                         fecha_plomada.strftime("%d/%m/%Y"), 
                         semana_calculada,
