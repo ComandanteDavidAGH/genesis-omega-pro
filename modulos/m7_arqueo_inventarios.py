@@ -92,7 +92,8 @@ def extraer_consumos_teoricos():
         c_fecha = next((c for c in df_vuelos.columns if "FECHA" in c), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]):
-            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas maestras en TABLA 1."
+            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA", "FECHA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]) if v is None]
+            return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
 
         # 🎯 REGLA DE ORO 1: El primer dígito es el volumen de Aceite EN LITROS.
         def extraer_dosis(coctel):
@@ -139,6 +140,7 @@ def extraer_consumos_teoricos():
         df_teorico = df_vuelos.groupby(['AÑO', 'SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['AÑO', 'SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
+        # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
         df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_LITROS', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'AÑO', 'PISTA_OFICIAL']].copy()
         df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'AÑO', 'PISTA']
         
@@ -298,12 +300,13 @@ def renderizar_radar_plomadas():
                     sh = gc.open_by_url(URL_BASE_AFOROS)
                     try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
                     except:
-                        ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="9")
-                        ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "USUARIO"])
+                        ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
+                        ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEORICOS", "USUARIO"])
                     
                     usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
                     filas_a_guardar = []
                     for t_data in resultados_tanques:
+                        # Se envía "---" en la columna I (Litros Teóricos) para que no haya descuadre en Excel
                         filas_a_guardar.append([
                             fecha_plomada.strftime("%d/%m/%Y"), 
                             semana_calculada, 
@@ -313,6 +316,7 @@ def renderizar_radar_plomadas():
                             int(t_data['Mm']), 
                             f"{t_data['Galones']:.3f}".replace('.', ','), 
                             f"{t_data['Litros']:.3f}".replace('.', ','), 
+                            "---", 
                             usuario_actual
                         ])
                     
@@ -401,6 +405,39 @@ def renderizar_radar_plomadas():
                 <p style="color: {color_merma_k}; font-weight: bold; margin: 0;">{icono_merma_k}</p>
             </div>
             """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 💥 BOTÓN DE GUARDADO EN NUEVA PESTAÑA (Para el global de la base)
+        if st.button("💾 GUARDAR ARQUEO GLOBAL", type="primary", use_container_width=True):
+            with st.spinner("Guardando Arqueo Completo de la Base..."):
+                try:
+                    gc = inicializar_cliente_gspread()
+                    sh = gc.open_by_url(URL_BASE_AFOROS)
+                    try: 
+                        ws_reg = sh.worksheet("ARQUEOS_GLOBALES")
+                    except:
+                        ws_reg = sh.add_worksheet(title="ARQUEOS_GLOBALES", rows="100", cols="12")
+                        ws_reg.append_row(["FECHA", "SEMANA", "AÑO", "PISTA", "SALDO INICIAL", "INGRESOS", "SALDO FISICO ACTUAL", "CONSUMO FISICO", "CONSUMO TEORICO T1", "SALDO AZ", "DESCUADRE AZ", "USUARIO"])
+                    
+                    usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
+                    # Usamos los valores calculados en la pestaña Kárdex si los llenaron, si no, se van en 0.
+                    ws_reg.append_row([
+                        fecha_plomada.strftime("%d/%m/%Y"), 
+                        semana_calculada,
+                        anio_calculado,
+                        pista_sel, 
+                        f"{litros_iniciales:.3f}".replace('.', ','), 
+                        f"{litros_ingresos:.3f}".replace('.', ','), 
+                        f"{litros_totales_actuales:.3f}".replace('.', ','), 
+                        f"{consumo_fisico:.3f}".replace('.', ','),
+                        f"{litros_teoricos_sap:.3f}".replace('.', ','),
+                        f"{litros_teoricos_input:.3f}".replace('.', ','),
+                        f"{diferencia_inventario:.3f}".replace('.', ','),
+                        usuario_actual
+                    ])
+                    st.success(f"✅ ¡Arqueo Global Guardado con Éxito!")
+                except Exception as e: st.error(f"🚨 Error al guardar: {e}")
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL 
