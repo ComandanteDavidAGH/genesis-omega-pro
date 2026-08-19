@@ -140,7 +140,6 @@ def cargar_fuentes_maestras_duelo():
     
     df_vivos = pd.DataFrame()
     if len(datos_brutos_act) > 5:
-        # Col T(19) = COSTO_HA, Col W(22) = VALOR_FACTURAR, Col AC(28) = COSTO_TOTAL
         columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
         filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
@@ -191,9 +190,9 @@ def cargar_fuentes_maestras_duelo():
         super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_area)
         
         # 💥 EXTRACCIÓN FINANCIERA EXACTA (W, T y AC) 💥
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero) # Columna W (~277k)
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero) # Columna T (< 70k)
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero) # Columna AC
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero)
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero)
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero)
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
         super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
@@ -259,21 +258,28 @@ def ejecutar():
         st.warning("⚠️ No hay pistas registradas para esta finca.")
         return
 
-    col_filt1, col_filt2, col_filt3 = st.columns([1, 1, 1.5])
+    # 💥 MODIFICACIÓN: 4 Columnas para fechas separadas 💥
+    col_filt1, col_filt2, col_filt3, col_filt4 = st.columns([1.2, 1.2, 1, 1])
     
     with col_filt1:
         pista_A = st.selectbox("🔴 PISTA RETADORA A", lista_pistas, index=0)
     with col_filt2:
         pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
+    
+    min_date = df_finca_global['FECHA_DT'].min().date()
+    max_date = df_finca_global['FECHA_DT'].max().date()
+    
     with col_filt3:
-        min_date = df_finca_global['FECHA_DT'].min().date()
-        max_date = df_finca_global['FECHA_DT'].max().date()
-        rango_fechas = st.date_input("📅 Rango de Fechas (Para evaluar días específicos)", value=[min_date, max_date], min_value=min_date, max_value=max_date)
+        start_date = st.date_input("📅 Fecha Inicial", value=min_date, min_value=min_date, max_value=max_date)
+    with col_filt4:
+        end_date = st.date_input("📅 Fecha Final", value=max_date, min_value=min_date, max_value=max_date)
 
     # --- FILTRADO DE DATOS (Por Tiempo y Pista) ---
     df_finca = df_finca_global.copy()
-    if len(rango_fechas) == 2:
-        start_date, end_date = rango_fechas
+    if start_date and end_date:
+        if start_date > end_date:
+            st.error("🚨 La Fecha Inicial no puede ser mayor que la Fecha Final.")
+            return
         df_finca = df_finca[(df_finca['FECHA_DT'].dt.date >= start_date) & (df_finca['FECHA_DT'].dt.date <= end_date)]
 
     df_A = df_finca[df_finca['PISTA_MAESTRA'] == pista_A]
