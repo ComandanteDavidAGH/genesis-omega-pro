@@ -92,8 +92,7 @@ def extraer_consumos_teoricos():
         c_fecha = next((c for c in df_vuelos.columns if "FECHA" in c), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]):
-            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA", "FECHA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]) if v is None]
-            return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
+            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas maestras en la TABLA 1."
 
         # 🎯 REGLA DE ORO 1: El primer dígito es el volumen de Aceite EN LITROS.
         def extraer_dosis(coctel):
@@ -134,14 +133,12 @@ def extraer_consumos_teoricos():
         
         # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis(L) = Litros Totales
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_LITROS']
-        
         df_vuelos['SEMANA_LIMPIA'] = df_vuelos[c_sem].astype(str).str.replace('.0', '', regex=False).str.strip()
         
         # 💥 AGRUPAR TENIENDO EN CUENTA EL AÑO, LA SEMANA Y LA PISTA
         df_teorico = df_vuelos.groupby(['AÑO', 'SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['AÑO', 'SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
-        # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
         df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_LITROS', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'AÑO', 'PISTA_OFICIAL']].copy()
         df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'AÑO', 'PISTA']
         
@@ -202,7 +199,7 @@ def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
 # =================================================================
-# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN (NUEVA UI)
+# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN (MÉTODO SIMPLE)
 # =================================================================
 def renderizar_radar_plomadas():
     
@@ -216,29 +213,26 @@ def renderizar_radar_plomadas():
     if error_teorico:
         st.error(f"🚨 Error en la lectura de TABLA 1: {error_teorico}")
         
-    st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📋 1. Formulario Maestro de Supervisor (Físico vs AZ)</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📋 1. Formulario de Plomada (Inventario Físico)</h3>", unsafe_allow_html=True)
     
-    # --- CABECERA DE CONFIGURACIÓN ---
+    # --- CABECERA ---
     c_f, c_p = st.columns(2)
-    fecha_plomada = c_f.date_input("🗓️ Fecha del Reporte", value=obtener_hora_colombia().date())
+    fecha_plomada = c_f.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
     semana_calculada = str(fecha_plomada.isocalendar()[1]).strip()
     anio_calculado = str(fecha_plomada.year)
     
     pistas_disponibles = sorted(df_aforo['PISTA'].dropna().unique().tolist())
     pista_sel = c_p.selectbox("📍 Base / Pista", pistas_disponibles)
     
-    # --- FORMULARIO GRID DINÁMICO ---
-    st.info("💡 **INSTRUCCIONES:** Digite los datos de todos los tanques enviados por el supervisor. El sistema tabulará automáticamente los volúmenes, los ingresos y cruzará contra el Sistema AZ / TABLA 1.")
+    st.info("💡 **INSTRUCCIONES:** Digite la lectura actual de la cinta (Plomada de Hoy). El sistema sumará todos los tanques automáticamente.")
     
+    # --- CUADRÍCULA SIMPLE ---
     tanques_pista = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
     
     df_template = pd.DataFrame({
         "TANQUE": tanques_pista,
-        "CM INICIO": [0] * len(tanques_pista),
-        "MM INICIO": [0] * len(tanques_pista),
-        "CM FINAL": [0] * len(tanques_pista),
-        "MM FINAL": [0] * len(tanques_pista),
-        "GALONES RECIBIDOS": [0.0] * len(tanques_pista)
+        "CM (Cinta)": [0] * len(tanques_pista),
+        "MM (Extra)": [0] * len(tanques_pista)
     })
     
     edited_form = st.data_editor(
@@ -246,110 +240,104 @@ def renderizar_radar_plomadas():
         use_container_width=True,
         hide_index=True,
         disabled=["TANQUE"],
-        key=f"form_aforo_grid_{pista_sel}"
+        key=f"form_aforo_grid_simple_{pista_sel}"
     )
     
-    # --- MOTOR DE CÁLCULO FÍSICO ---
-    litros_iniciales_tot = 0.0
-    litros_finales_tot = 0.0
-    galones_recibidos_tot = 0.0
+    # --- MOTOR DE CÁLCULO FÍSICO ACTUAL ---
+    litros_totales_actuales = 0.0
+    galones_totales_actuales = 0.0
     
     for _, row in edited_form.iterrows():
         t = row['TANQUE']
-        cm_i, mm_i = row['CM INICIO'], row['MM INICIO']
-        cm_f, mm_f = row['CM FINAL'], row['MM FINAL']
-        gal_r = row['GALONES RECIBIDOS']
+        cm, mm = row['CM (Cinta)'], row['MM (Extra)']
         
         df_t = df_aforo[(df_aforo['PISTA'] == pista_sel) & (df_aforo['TANQUE'] == t)]
+        match = df_t[df_t['CM'] == cm]
         
-        # Calcular Inicial
-        match_i = df_t[df_t['CM'] == cm_i]
-        if not match_i.empty:
-            v_i = match_i['VOLUMEN_GAL'].values[0] + (mm_i * match_i['INCREMENTO_MM'].values[0])
-            litros_iniciales_tot += v_i * 3.78541
+        if not match.empty:
+            vol_gal = match['VOLUMEN_GAL'].values[0] + (mm * match['INCREMENTO_MM'].values[0])
+            galones_totales_actuales += vol_gal
+            litros_totales_actuales += vol_gal * 3.78541
             
-        # Calcular Final
-        match_f = df_t[df_t['CM'] == cm_f]
-        if not match_f.empty:
-            v_f = match_f['VOLUMEN_GAL'].values[0] + (mm_f * match_f['INCREMENTO_MM'].values[0])
-            litros_finales_tot += v_f * 3.78541
-            
-        galones_recibidos_tot += gal_r
-        
-    litros_recibidos_tot = galones_recibidos_tot * 3.78541
-    consumo_fisico_real = (litros_iniciales_tot + litros_recibidos_tot) - litros_finales_tot
+    st.markdown(f"**Total Físico Actual (Suma de Tanques):** `{litros_totales_actuales:,.2f} Litros`")
 
     st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>⚖️ 2. Análisis de Consumo y Cruce (AZ)</h3>", unsafe_allow_html=True)
 
-    # --- PANELES DE RESULTADOS DIVIDIDOS ---
-    col_fisico, col_teorico = st.columns([1, 1], gap="large")
+    # --- PANELES DE CONCILIACIÓN ---
+    col_consumo, col_saldos = st.columns([1, 1], gap="large")
     
-    with col_fisico:
-        st.markdown("<h4 style='color: #0d1b2a;'>📏 Resultado Físico (Plomadas)</h4>", unsafe_allow_html=True)
-        st.markdown(f"""
-        - **Total Apertura (L):** {litros_iniciales_tot:,.2f}
-        - **Total Ingresos (L):** {litros_recibidos_tot:,.2f}
-        - **Total Cierre (L):** <span style="color:#27AE60; font-weight:bold;">{litros_finales_tot:,.2f}</span>
-        - **Consumo Físico Semana (L):** <span style="color:#d4af37; font-weight:bold;">{consumo_fisico_real:,.2f}</span>
-        """, unsafe_allow_html=True)
-
-    with col_teorico:
-        st.markdown("<h4 style='color: #0d1b2a;'>💻 Resultado Teórico (TABLA 1 y AZ)</h4>", unsafe_allow_html=True)
+    with col_consumo:
+        st.markdown("#### 🔄 Dinámica de Consumo")
+        litros_iniciales = st.number_input("📦 Inventario Inicial (Apertura Semanal):", min_value=0.0, value=0.0, step=10.0)
+        litros_ingresos = st.number_input("📥 Ingresos (Tanqueos en la semana):", min_value=0.0, value=0.0, step=10.0)
+        
+        consumo_fisico_real = (litros_iniciales + litros_ingresos) - litros_totales_actuales
         
         df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel) & (df_teorico['AÑO'] == anio_calculado)]
         litros_teoricos_sap = df_teorico_filtrado['LITROS_TEORICOS'].sum() if not df_teorico_filtrado.empty else 0.0
         
-        st.markdown(f"**Consumo TABLA 1 (Área x Dosis):** `{litros_teoricos_sap:,.2f} L`")
+        merma_consumo = consumo_fisico_real - litros_teoricos_sap
         
-        with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
+        st.markdown(f"- **Consumo Físico:** `{consumo_fisico_real:,.2f} L`")
+        st.markdown(f"- **Consumo Teórico (TABLA 1):** `{litros_teoricos_sap:,.2f} L`")
+        
+        color_con = "#00ff66" if abs(merma_consumo) <= 5.0 else "#ff3333"
+        st.markdown(f"- **Diferencia Operativa:** <span style='color:{color_con}; font-weight:bold;'>{merma_consumo:,.2f} L</span>", unsafe_allow_html=True)
+        
+        with st.expander("🔬 Ver vuelos sumados por el sistema"):
             vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel) & (df_auditoria['AÑO'] == anio_calculado)]
             vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
             st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA', 'AÑO']), use_container_width=True, hide_index=True)
 
-        litros_teoricos_input = st.number_input("📥 Saldo Actual (Libro AZ / Sistema):", min_value=0.0, value=0.0, step=10.0)
-
-    # --- DESCUADRE Y GUARDADO ---
-    st.markdown("---")
-    diferencia_inventario = litros_finales_tot - litros_teoricos_input
-    
-    color_merma_dir = "#00ff66" if abs(diferencia_inventario) <= 5.0 else "#ff3333"
-    icono_merma_dir = "✅ OK (Dentro del margen)" if abs(diferencia_inventario) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
-    
-    st.markdown(f"""
-    <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma_dir}; margin-top: 10px;">
-        <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE FINAL (Plomada de Cierre vs Libro AZ):</p>
-        <h2 style="color: {color_merma_dir}; margin: 5px 0;">{diferencia_inventario:,.2f} L</h2>
-        <p style="color: {color_merma_dir}; font-weight: bold; margin: 0;">{icono_merma_dir}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="primary", use_container_width=True)
-    if btn_registrar_plomada:
-        with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
-            try:
-                gc = inicializar_cliente_gspread()
-                sh = gc.open_by_url(URL_BASE_AFOROS)
-                try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
-                except:
-                    ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
-                    ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "LITROS INICIALES", "LITROS INGRESOS", "LITROS CIERRE", "CONSUMO FISICO", "SALDO AZ", "DESCUADRE", "USUARIO"])
-                
-                usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
-                ws_reg.append_row([
-                    fecha_plomada.strftime("%d/%m/%Y"), 
-                    semana_calculada, 
-                    pista_sel, 
-                    f"{litros_iniciales_tot:.3f}".replace('.', ','), 
-                    f"{litros_recibidos_tot:.3f}".replace('.', ','), 
-                    f"{litros_finales_tot:.3f}".replace('.', ','), 
-                    f"{consumo_fisico_real:.3f}".replace('.', ','),
-                    f"{litros_teoricos_input:.3f}".replace('.', ','),
-                    f"{diferencia_inventario:.3f}".replace('.', ','),
-                    usuario_actual
-                ])
-                st.success(f"✅ ¡Guardado con Éxito!")
-            except Exception as e: st.error(f"🚨 Error al guardar: {e}")
+    with col_saldos:
+        st.markdown("#### 💻 Cruce de Saldos (Sistema AZ)")
+        litros_az = st.number_input("💻 Saldo Teórico en Sistema (AZ):", min_value=0.0, value=0.0, step=10.0)
+        
+        descuadre_az = litros_totales_actuales - litros_az
+        
+        color_az = "#00ff66" if abs(descuadre_az) <= 5.0 else "#ff3333"
+        icono_az = "✅ OK" if abs(descuadre_az) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
+        
+        st.markdown(f"""
+        <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_az}; margin-top: 10px;">
+            <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE (Físico Actual vs AZ):</p>
+            <h2 style="color: {color_az}; margin: 5px 0;">{descuadre_az:,.2f} L</h2>
+            <p style="color: {color_az}; font-weight: bold; margin: 0;">{icono_az}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 💥 BOTÓN DE GUARDADO EN NUEVA PESTAÑA (Para no dañar el Excel viejo)
+        if st.button("💾 GUARDAR ARQUEO GLOBAL", type="primary", use_container_width=True):
+            with st.spinner("Guardando en la Bóveda..."):
+                try:
+                    gc = inicializar_cliente_gspread()
+                    sh = gc.open_by_url(URL_BASE_AFOROS)
+                    try: 
+                        ws_reg = sh.worksheet("ARQUEOS_GLOBALES")
+                    except:
+                        ws_reg = sh.add_worksheet(title="ARQUEOS_GLOBALES", rows="100", cols="12")
+                        ws_reg.append_row(["FECHA", "SEMANA", "AÑO", "PISTA", "SALDO INICIAL", "INGRESOS", "SALDO FISICO ACTUAL", "CONSUMO FISICO", "CONSUMO TEORICO T1", "SALDO AZ", "DESCUADRE AZ", "USUARIO"])
+                    
+                    usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
+                    ws_reg.append_row([
+                        fecha_plomada.strftime("%d/%m/%Y"), 
+                        semana_calculada,
+                        anio_calculado,
+                        pista_sel, 
+                        f"{litros_iniciales:.3f}".replace('.', ','), 
+                        f"{litros_ingresos:.3f}".replace('.', ','), 
+                        f"{litros_totales_actuales:.3f}".replace('.', ','), 
+                        f"{consumo_fisico_real:.3f}".replace('.', ','),
+                        f"{litros_teoricos_sap:.3f}".replace('.', ','),
+                        f"{litros_az:.3f}".replace('.', ','),
+                        f"{descuadre_az:.3f}".replace('.', ','),
+                        usuario_actual
+                    ])
+                    st.success(f"✅ ¡Arqueo Global Guardado con Éxito!")
+                except Exception as e: st.error(f"🚨 Error al guardar: {e}")
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL 
@@ -360,7 +348,7 @@ def ejecutar(quitar_tildes, purificar_lote):
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    div[data-testid="stTextInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; color: #0d1b2a !important; font-weight: 800 !important; font-size: 15px !important; }
+    div[data-testid="stTextInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; color: #0d1b2a !important; font-weight: 800 !important; font-size: 15px !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
     div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #0d1b2a !important; border-radius: 8px !important; padding: 10px !important; }
