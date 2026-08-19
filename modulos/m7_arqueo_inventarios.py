@@ -245,13 +245,14 @@ def renderizar_radar_plomadas():
         key=f"form_aforo_grid_{pista_sel}"
     )
     
-    # --- MOTOR DE CÁLCULO FÍSICO POR TANQUE ---
+    # --- MOTOR DE CÁLCULO FÍSICO POR TANQUE CON ESCUDO ANTI-FALLOS ---
     resultados_tanques = []
     galones_totales_actuales = 0.0
     litros_totales_actuales = 0.0
+    errores_aforo = []
     
     for _, row in edited_form.iterrows():
-        t = row['TANQUE']
+        t = str(row['TANQUE']).strip().upper()
         cm = int(row['CM'])
         mm = int(row['MM'])
         
@@ -275,6 +276,14 @@ def renderizar_radar_plomadas():
                 "Galones": vol_gal,
                 "Litros": vol_lit
             })
+        else:
+            # 💥 ALERTA ROJA: Si el Excel de Aforos no tiene esa medida
+            errores_aforo.append(f"El tanque **{t}** NO tiene registro en la tabla de aforos para la medida de **{cm} cm**.")
+
+    # Desplegar errores si los hay
+    if errores_aforo:
+        for err in errores_aforo:
+            st.error(f"🚨 **ALERTA DE BASE DE DATOS:** {err} Revise la pestaña 'TABLAS_AFORO' en Google Sheets.")
 
     # --- MOSTRAR RESULTADOS DETALLADOS ---
     if resultados_tanques:
@@ -293,7 +302,7 @@ def renderizar_radar_plomadas():
         k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>TOTAL LITROS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
         
         btn_registrar_plomada = st.button("💾 GUARDAR DESGLOSE EN BÓVEDA", type="secondary", use_container_width=True)
-        if btn_registrar_plomada:
+        if btn_registrar_plomada and not errores_aforo:
             with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
                 try:
                     gc = inicializar_cliente_gspread()
