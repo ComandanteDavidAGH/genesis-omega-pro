@@ -219,10 +219,14 @@ def ejecutar():
     .kpi-vs-title { font-size: 13px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
-    div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
-    div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     
-    /* 🛡️ NUEVO ESTILO ELEGANTE PARA LA LISTA DE AVIONES */
+    /* FIX: Bordes para selectores de dropdowns */
+    div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
+    
+    /* 💥 FIX: Bordes completos para las casillas de fechas 💥 */
+    div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
+    div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
+    
     .lista-hk { 
         text-align: left; 
         background-color: #ffffff; 
@@ -303,7 +307,6 @@ def ejecutar():
         costo_integral_ha = df_pista['VALOR_FACTURAR_NUM'].mean()
         costo_tarifa_avion = df_pista['COSTO_HA_NUM'].mean()
         
-        # 💥 3. DESGLOSE QUIRÚRGICO (Ahora en Ha/Hora)
         html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#0d1b2a;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
         df_mod = df_pista.groupby('MODELO_FINAL').agg(
             VUELOS=('OS_MAESTRA', 'nunique'),
@@ -317,15 +320,12 @@ def ejecutar():
             horas = row['HORAS']
             area = row['AREA']
             
-            # Promedio real agrícola: Ha/Hora
             rend_ha_hr = area / horas if horas > 0 else 0
-            
             html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({vuelos} Ciclos realizados)</i></li>"
         html_mod += "</ul></div>"
         
-        # 💥 4. NUEVAS CASILLAS DE CICLOS REALIZADOS
         html_ciclos = f"""
-        <div class='kpi-vs' style='padding: 10px; margin-top: 15px; border: 2px dashed #d4af37;'>
+        <div class='kpi-vs' style='padding: 10px; margin-top: 5px; border: 2px dashed #d4af37;'>
             <p class='kpi-vs-title'>TOTAL CICLOS EN PISTA (OS)</p>
             <p class='kpi-vs-value' style='font-size:26px;'>{total_vuelos} Vuelos</p>
         </div>
@@ -354,7 +354,6 @@ def ejecutar():
             st.info("Sin operaciones registradas.")
         else: 
             st.markdown(html_mod_A, unsafe_allow_html=True)
-            st.markdown(html_ciclos_A, unsafe_allow_html=True)
 
     with col_vs:
         st.markdown("<br><br><h1 style='text-align:center; color:#d4af37; font-size: 50px; font-family:Arial Black;'>VS</h1>", unsafe_allow_html=True)
@@ -371,7 +370,13 @@ def ejecutar():
             st.info("Sin operaciones registradas.")
         else: 
             st.markdown(html_mod_B, unsafe_allow_html=True)
-            st.markdown(html_ciclos_B, unsafe_allow_html=True)
+
+    # 💥 NUEVA FILA SEPARADA PARA ALINEAR PERFECTAMENTE LAS CAJAS DE CICLOS 💥
+    col_ciclos_A, col_ciclos_vs, col_ciclos_B = st.columns([4, 1, 4])
+    with col_ciclos_A:
+        if not df_A.empty: st.markdown(html_ciclos_A, unsafe_allow_html=True)
+    with col_ciclos_B:
+        if not df_B.empty: st.markdown(html_ciclos_B, unsafe_allow_html=True)
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -417,7 +422,6 @@ def ejecutar():
             fig_os.update_layout(yaxis_title="$ / OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
             st.plotly_chart(fig_os, use_container_width=True)
 
-        # 💥 GRÁFICA 3: RENDIMIENTO HECTÁREAS X HORA POR AVIÓN 💥
         st.markdown("#### ✈️ Rendimiento Operativo (Ha/Hora) por Modelo de Aeronave")
         df_mod_graf = df_ambos.groupby(['PISTA_MAESTRA', 'MODELO_FINAL']).agg(
             HORAS=('H_TOTAL_NUM', 'sum'),
