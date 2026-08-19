@@ -331,7 +331,7 @@ def ejecutar():
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        # 💥 APLICADA LA MEJORA: CASILLA DESBLOQUEADA PARA EL CÓDIGO DEL MATERIAL 💥
+                        # 💥 CASILLA DESBLOQUEADA PARA EL CÓDIGO DEL MATERIAL 💥
                         mat_item_ing = c_mat.text_input("🔢 Cód. Material", placeholder="Ej: 4591234", key=f"mat_ing_nuevo_{st.session_state['form_key_m19']}")
                         if not mat_item_ing: mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
@@ -723,7 +723,8 @@ def ejecutar():
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
         # 💥 NUEVO: PUERTO DE CARGA INDEPENDIENTE (BYPASS DEL MÓDULO 2)
-        if 'mem_sabana' not in st.session_state or st.session_state['mem_sabana'].empty:
+        sabana_guardada = st.session_state.get('mem_sabana')
+        if sabana_guardada is None or not isinstance(sabana_guardada, pd.DataFrame) or sabana_guardada.empty:
             st.info("💡 **Conexión Directa:** No necesitas ir al Módulo 2. Sube tu Sábana SAP aquí mismo para habilitar la lectura automática de lotes.")
             archivo_bypass = st.file_uploader("📥 Cargar Sábana SAP (MB52)", type=["xlsx", "xls", "csv"], key="uploader_bypass_m19")
             if archivo_bypass:
@@ -791,7 +792,9 @@ def ejecutar():
 
             # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CERO HISTÓRICOS)
             lotes_disp = []
-            df_sabana_memoria = st.session_state.get('mem_sabana', pd.DataFrame())
+            df_sabana_memoria = st.session_state.get('mem_sabana')
+            if not isinstance(df_sabana_memoria, pd.DataFrame):
+                df_sabana_memoria = pd.DataFrame()
             
             prod_keywords = str(t_producto).strip().upper().split()
             prod_clave = prod_keywords[0] if prod_keywords else ""
