@@ -158,7 +158,7 @@ def cargar_fuentes_maestras_duelo():
         return pd.DataFrame()
 
 # =================================================================
-# 👑 INTERFAZ PRINCIPAL (EL COLISEO)
+# 👑 INTERFAZ PRINCIPAL (EL COLISEO LOGÍSTICO)
 # =================================================================
 
 def ejecutar():
@@ -168,15 +168,13 @@ def ejecutar():
     .kpi-vs { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); color: white; padding: 20px; border-radius: 12px; border-left: 6px solid #d4af37; box-shadow: 0 8px 16px rgba(0,0,0,0.3); text-align: center; margin-bottom: 15px; }
     .kpi-vs-title { font-size: 13px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
-    .kpi-vs-sub { font-size: 14px; font-weight: bold; color: #a0aec0; margin-top: 5px; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
-    .derrota { border: 3px solid #dc3545 !important; }
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-mod'>⚔️ 20. Duelo de Titanes (Finca vs Finca)</h1>", unsafe_allow_html=True)
-    st.write("Bienvenido al Coliseo Operativo. Compara el rendimiento financiero y operativo de dos fincas cara a cara para descubrir los verdaderos márgenes.")
+    st.markdown("<h1 class='titulo-mod'>⚔️ 20. Duelo Logístico (Pista vs Pista)</h1>", unsafe_allow_html=True)
+    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Descubre qué pista ofrece el mejor costo por Orden de Servicio y Hectárea para tu cliente.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
         df_base = cargar_fuentes_maestras_duelo()
@@ -185,55 +183,62 @@ def ejecutar():
         st.error("🚨 No se encontró información en la base de datos o hubo un error de conexión.")
         return
 
-    # --- FILTROS DEL COLISEO ---
+    # --- SELECCIÓN DE LA FINCA ---
     st.markdown("### 🎯 Configuración del Duelo")
     
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
-    
+    finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
+
+    # Filtramos la base solo para esa finca
+    df_finca_global = df_base[df_base['FINCA_MAESTRA'] == finca_sel]
+    lista_pistas = sorted(df_finca_global['PISTA_MAESTRA'].unique().tolist())
+
+    if not lista_pistas:
+        st.warning("⚠️ No hay pistas registradas para esta finca.")
+        return
+
     col_filt1, col_filt2, col_filt3 = st.columns([1, 1, 1])
     
     with col_filt1:
-        finca_A = st.selectbox("🔴 RETADOR A (Finca 1)", lista_fincas, index=0)
+        pista_A = st.selectbox("🔴 PISTA RETADORA A", lista_pistas, index=0)
     with col_filt2:
-        finca_B = st.selectbox("🔵 RETADOR B (Finca 2)", lista_fincas, index=1 if len(lista_fincas) > 1 else 0)
+        pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
     with col_filt3:
-        fechas_unicas = df_base['FECHA_DT'].dt.year.unique()
+        fechas_unicas = df_finca_global['FECHA_DT'].dt.year.unique()
         opciones_tiempo = ["TODO EL HISTÓRICO"] + sorted([str(x) for x in fechas_unicas], reverse=True)
         tiempo_sel = st.selectbox("📅 Ventana de Tiempo", opciones_tiempo)
 
-    # --- FILTRADO DE DATOS ---
-    df_A = df_base[df_base['FINCA_MAESTRA'] == finca_A]
-    df_B = df_base[df_base['FINCA_MAESTRA'] == finca_B]
-    
+    # --- FILTRADO DE DATOS (Por Tiempo y Pista) ---
+    df_finca = df_finca_global.copy()
     if tiempo_sel != "TODO EL HISTÓRICO":
-        df_A = df_A[df_A['FECHA_DT'].dt.year == int(tiempo_sel)]
-        df_B = df_B[df_B['FECHA_DT'].dt.year == int(tiempo_sel)]
+        df_finca = df_finca[df_finca['FECHA_DT'].dt.year == int(tiempo_sel)]
+
+    df_A = df_finca[df_finca['PISTA_MAESTRA'] == pista_A]
+    df_B = df_finca[df_finca['PISTA_MAESTRA'] == pista_B]
 
     st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
 
     if df_A.empty and df_B.empty:
-        st.warning("⚠️ Ninguna de las fincas tiene vuelos registrados en el periodo seleccionado.")
+        st.warning("⚠️ La finca no operó desde ninguna de estas pistas en el periodo seleccionado.")
         return
 
     # --- CÁLCULO DE KPIs ---
-    def calcular_metricas(df_finca):
-        if df_finca.empty: return 0, 0, 0, 0, "N/A"
+    def calcular_metricas(df_pista):
+        if df_pista.empty: return 0, 0, 0, 0, 0
         
-        total_ha = df_finca['AREA_NUM'].sum()
-        total_inversion = df_finca['COSTO_TOTAL_OS'].sum()
-        costo_promedio_ha = df_finca['COSTO_HA_NUM'].mean()
-        total_vuelos = df_finca['OS_MAESTRA'].nunique()
+        total_ha = df_pista['AREA_NUM'].sum()
+        total_inversion = df_pista['COSTO_TOTAL_OS'].sum()
+        costo_promedio_ha = df_pista['COSTO_HA_NUM'].mean()
+        total_vuelos = df_pista['OS_MAESTRA'].nunique()
+        # Nuevo cálculo solicitado: Costo Promedio por Orden de Servicio
+        costo_promedio_os = total_inversion / total_vuelos if total_vuelos > 0 else 0
         
-        # Pista Favorita (Donde más se voló)
-        try: pista_fav = df_finca.groupby('PISTA_MAESTRA')['AREA_NUM'].sum().idxmax()
-        except: pista_fav = "N/A"
-        
-        return total_ha, total_inversion, costo_promedio_ha, total_vuelos, pista_fav
+        return total_ha, total_inversion, costo_promedio_ha, total_vuelos, costo_promedio_os
 
-    ha_A, inv_A, costo_ha_A, vuelos_A, pista_A = calcular_metricas(df_A)
-    ha_B, inv_B, costo_ha_B, vuelos_B, pista_B = calcular_metricas(df_B)
+    ha_A, inv_A, costo_ha_A, vuelos_A, costo_os_A = calcular_metricas(df_A)
+    ha_B, inv_B, costo_ha_B, vuelos_B, costo_os_B = calcular_metricas(df_B)
 
-    # Lógica de Victoria (El más barato gana)
+    # Lógica de Victoria (El Costo Promedio por Ha más barato gana)
     clase_win_A = "victoria" if (costo_ha_A < costo_ha_B and costo_ha_A > 0) or costo_ha_B == 0 else ""
     clase_win_B = "victoria" if (costo_ha_B < costo_ha_A and costo_ha_B > 0) or costo_ha_A == 0 else ""
 
@@ -241,91 +246,95 @@ def ejecutar():
     col_A, col_vs, col_B = st.columns([4, 1, 4])
 
     with col_A:
-        st.markdown(f"<h3 style='text-align:center; color:#dc3545;'>🔴 {finca_A}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align:center; color:#dc3545;'>🔴 SALIENDO DESDE: {pista_A}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div class='kpi-vs {clase_win_A}'><p class='kpi-vs-title'>Costo Promedio x Hectárea</p><p class='kpi-vs-value'>$ {formato_latino(costo_ha_A, 0)}</p></div>", unsafe_allow_html=True)
         
         m_a1, m_a2 = st.columns(2)
-        m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Total Facturado (OS)</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
-        m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Área Fumigada</p><p class='kpi-vs-value' style='font-size:20px;'>{formato_latino(ha_A, 1)} Ha</p></div>", unsafe_allow_html=True)
+        m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Promedio x OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_A, 0)}</p></div>", unsafe_allow_html=True)
+        m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Total Facturado</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
         
-        st.info(f"**🛫 Pista Dominante:** {pista_A} ({vuelos_A} Vuelos Registrados)")
+        st.info(f"**📊 Rendimiento:** {formato_latino(ha_A, 1)} Ha en {vuelos_A} Órdenes de Servicio.")
 
     with col_vs:
         st.markdown("<br><br><h1 style='text-align:center; color:#d4af37; font-size: 50px; font-family:Arial Black;'>VS</h1>", unsafe_allow_html=True)
 
     with col_B:
-        st.markdown(f"<h3 style='text-align:center; color:#2F75B5;'>🔵 {finca_B}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align:center; color:#2F75B5;'>🔵 SALIENDO DESDE: {pista_B}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div class='kpi-vs {clase_win_B}'><p class='kpi-vs-title'>Costo Promedio x Hectárea</p><p class='kpi-vs-value'>$ {formato_latino(costo_ha_B, 0)}</p></div>", unsafe_allow_html=True)
         
         m_b1, m_b2 = st.columns(2)
-        m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Total Facturado (OS)</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
-        m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Área Fumigada</p><p class='kpi-vs-value' style='font-size:20px;'>{formato_latino(ha_B, 1)} Ha</p></div>", unsafe_allow_html=True)
+        m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Promedio x OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_B, 0)}</p></div>", unsafe_allow_html=True)
+        m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Total Facturado</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
 
-        st.info(f"**🛫 Pista Dominante:** {pista_B} ({vuelos_B} Vuelos Registrados)")
+        st.info(f"**📊 Rendimiento:** {formato_latino(ha_B, 1)} Ha en {vuelos_B} Órdenes de Servicio.")
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    # --- ANÁLISIS DE PISTAS (RENDIMIENTO LOGÍSTICO) ---
-    st.markdown("### 🛫 Rendimiento Logístico por Pista")
-    st.caption("Descubre si el costo varía dependiendo de la pista de donde despega el avión para cada finca.")
+    # --- GRÁFICAS DE COMPARACIÓN ---
+    st.markdown("### 🛫 Rendimiento Logístico y Financiero")
+    st.caption("Comparación visual de los costos según la pista de despegue.")
 
     df_ambos = pd.concat([df_A, df_B])
     
     if not df_ambos.empty:
-        # Agrupar por Finca y Pista
-        df_pistas = df_ambos.groupby(['FINCA_MAESTRA', 'PISTA_MAESTRA']).agg(
-            COSTO_PROMEDIO=('COSTO_HA_NUM', 'mean'),
+        df_pistas = df_ambos.groupby('PISTA_MAESTRA').agg(
+            COSTO_PROMEDIO_HA=('COSTO_HA_NUM', 'mean'),
+            COSTO_TOTAL=('COSTO_TOTAL_OS', 'sum'),
             VUELOS=('OS_MAESTRA', 'nunique')
         ).reset_index()
+        
+        # Calcular el Costo Promedio por OS para la gráfica
+        df_pistas['COSTO_PROMEDIO_OS'] = df_pistas['COSTO_TOTAL'] / df_pistas['VUELOS']
 
-        df_pistas = df_pistas[df_pistas['PISTA_MAESTRA'] != ""]
+        c_graf1, c_graf2 = st.columns(2)
 
-        fig_pistas = px.bar(
-            df_pistas, 
-            x='PISTA_MAESTRA', 
-            y='COSTO_PROMEDIO', 
-            color='FINCA_MAESTRA', 
-            barmode='group',
-            text='COSTO_PROMEDIO',
-            color_discrete_map={finca_A: '#dc3545', finca_B: '#2F75B5'},
-            title="Comparativo de Costo / Hectárea según Base de Despegue"
-        )
-        fig_pistas.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
-        fig_pistas.update_layout(
-            yaxis_title="Costo Promedio ($ / Ha)", 
-            xaxis_title="Pista de Operación",
-            plot_bgcolor='rgba(0,0,0,0)', 
-            paper_bgcolor='#ffffff',
-            legend_title_text='Finca'
-        )
-        st.plotly_chart(fig_pistas, use_container_width=True)
+        with c_graf1:
+            fig_ha = px.bar(
+                df_pistas, 
+                x='PISTA_MAESTRA', 
+                y='COSTO_PROMEDIO_HA', 
+                color='PISTA_MAESTRA', 
+                text='COSTO_PROMEDIO_HA',
+                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
+                title="Costo Promedio por Hectárea"
+            )
+            fig_ha.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
+            fig_ha.update_layout(yaxis_title="$ / Ha", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
+            st.plotly_chart(fig_ha, use_container_width=True)
 
-    # --- CARRERA EN EL TIEMPO (TENDENCIA) ---
-    st.markdown("### 📈 Carrera Operativa: Evolución del Costo")
-    st.caption("Observa cómo se ha comportado el precio a lo largo de los meses para ambas fincas.")
+        with c_graf2:
+            fig_os = px.bar(
+                df_pistas, 
+                x='PISTA_MAESTRA', 
+                y='COSTO_PROMEDIO_OS', 
+                color='PISTA_MAESTRA', 
+                text='COSTO_PROMEDIO_OS',
+                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
+                title="Costo Promedio por Orden de Servicio (OS)"
+            )
+            fig_os.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
+            fig_os.update_layout(yaxis_title="$ / OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
+            st.plotly_chart(fig_os, use_container_width=True)
 
+    # --- CARRERA EN EL TIEMPO ---
+    st.markdown("### 📈 Tendencia: Costo por Hectárea a lo largo del tiempo")
+    
     if not df_ambos.empty:
         df_ambos['MES_AÑO'] = df_ambos['FECHA_DT'].dt.to_period('M').astype(str)
-        df_tendencia = df_ambos.groupby(['MES_AÑO', 'FINCA_MAESTRA'])['COSTO_HA_NUM'].mean().reset_index()
+        df_tendencia = df_ambos.groupby(['MES_AÑO', 'PISTA_MAESTRA'])['COSTO_HA_NUM'].mean().reset_index()
         df_tendencia = df_tendencia.sort_values(by='MES_AÑO')
 
         fig_line = px.line(
             df_tendencia, 
             x='MES_AÑO', 
             y='COSTO_HA_NUM', 
-            color='FINCA_MAESTRA',
+            color='PISTA_MAESTRA',
             markers=True,
-            color_discrete_map={finca_A: '#dc3545', finca_B: '#2F75B5'},
-            title="Línea de Tiempo: Costo por Hectárea"
+            color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
+            title=f"Evolución del Costo para {finca_sel}"
         )
         fig_line.update_traces(line=dict(width=4), marker=dict(size=10))
-        fig_line.update_layout(
-            yaxis_title="Costo ($ / Ha)", 
-            xaxis_title="Mes de Operación",
-            plot_bgcolor='rgba(0,0,0,0)', 
-            paper_bgcolor='#ffffff',
-            hovermode="x unified"
-        )
+        fig_line.update_layout(yaxis_title="Costo ($ / Ha)", xaxis_title="Mes de Operación", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', hovermode="x unified")
         st.plotly_chart(fig_line, use_container_width=True)
 
 if __name__ == "__main__":
