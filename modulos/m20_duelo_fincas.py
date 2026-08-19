@@ -56,7 +56,6 @@ def limpiar_dinero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        # Multiplicador anti-decimales para miles
         if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
@@ -100,7 +99,6 @@ def procesar_fecha_estricta(val):
     except: return pd.NaT 
 
 def extraer_diccionario_flota(gc):
-    """Escáner silencioso para buscar la tabla maestra de aviones y modelos."""
     try:
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         for ws in sh.worksheets():
@@ -128,10 +126,8 @@ def cargar_fuentes_maestras_duelo():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame()
     
-    # Mapeo de la flota
     flota_dict = extraer_diccionario_flota(gc)
 
-    # --- TABLA 1 (VIVA) ---
     try:
         boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
@@ -147,7 +143,6 @@ def cargar_fuentes_maestras_duelo():
         df_vivos['ORIGEN'] = 'ACTUAL'
         df_vivos = df_vivos.loc[:, ~df_vivos.columns.duplicated()]
 
-    # --- HISTÓRICO ---
     datos_brutos_hist = []
     try:
         boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
@@ -189,15 +184,13 @@ def cargar_fuentes_maestras_duelo():
         
         super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_area)
         
-        # 💥 EXTRACCIÓN FINANCIERA EXACTA (W, T y AC) 💥
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero)
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero)
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
         super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
         
-        # 💥 ASIGNACIÓN DE MODELO DE AVIÓN CRUZA MATRÍCULA 💥
         def mapear_modelo(row):
             mod = str(row.get('MODELO', '')).strip().upper()
             hk = str(row.get('HK', '')).strip().upper()
@@ -228,14 +221,25 @@ def ejecutar():
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
-    .lista-hk { text-align: left; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #0d1b2a; }
+    
+    /* 🛡️ NUEVO ESTILO ELEGANTE PARA LA LISTA DE AVIONES */
+    .lista-hk { 
+        text-align: left; 
+        background-color: #ffffff; 
+        padding: 15px; 
+        border-radius: 8px; 
+        border: 2px solid #0d1b2a; 
+        border-left: 6px solid #d4af37;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+        margin-bottom: 15px;
+    }
     .lista-hk ul { list-style-type: none; padding-left: 0; margin: 0; }
     .lista-hk li { font-size: 14px; margin-bottom: 8px; color: #0d1b2a; }
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mod'>⚔️ 20. Duelo Logístico (Pista vs Pista)</h1>", unsafe_allow_html=True)
-    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, el Costo de Tarifa de Avión, y audita el tiempo de vuelo discriminado por Modelo de Aeronave.")
+    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, el Costo de Tarifa de Avión, y audita el rendimiento en Hectáreas por Hora de cada Modelo de Aeronave.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
         df_base = cargar_fuentes_maestras_duelo()
@@ -250,7 +254,6 @@ def ejecutar():
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
 
-    # Filtramos la base solo para esa finca
     df_finca_global = df_base[df_base['FINCA_MAESTRA'] == finca_sel]
     lista_pistas = sorted(df_finca_global['PISTA_MAESTRA'].unique().tolist())
 
@@ -258,7 +261,6 @@ def ejecutar():
         st.warning("⚠️ No hay pistas registradas para esta finca.")
         return
 
-    # 💥 MODIFICACIÓN: 4 Columnas para fechas separadas 💥
     col_filt1, col_filt2, col_filt3, col_filt4 = st.columns([1.2, 1.2, 1, 1])
     
     with col_filt1:
@@ -274,7 +276,6 @@ def ejecutar():
     with col_filt4:
         end_date = st.date_input("📅 Fecha Final", value=max_date, min_value=min_date, max_value=max_date)
 
-    # --- FILTRADO DE DATOS (Por Tiempo y Pista) ---
     df_finca = df_finca_global.copy()
     if start_date and end_date:
         if start_date > end_date:
@@ -293,38 +294,48 @@ def ejecutar():
 
     # --- CÁLCULO DE KPIs Y DESGLOSE POR MODELO ---
     def calcular_metricas(df_pista):
-        if df_pista.empty: return 0, 0, 0, 0, ""
+        if df_pista.empty: return 0, 0, 0, 0, "", ""
         
         total_ha = df_pista['AREA_NUM'].sum()
         total_facturado = df_pista['COSTO_TOTAL_NUM'].sum()
+        total_vuelos = df_pista['OS_MAESTRA'].nunique()
         
-        # 💥 1. COSTO INTEGRAL X HECTÁREA (Caja Grande) -> Sale de la Columna W (Valor a Facturar)
         costo_integral_ha = df_pista['VALOR_FACTURAR_NUM'].mean()
-        
-        # 💥 2. COSTO PROMEDIO X OS (Caja Chica, Tarifa tope <70k) -> Sale de la Columna T (Costo Avión/Ha)
         costo_tarifa_avion = df_pista['COSTO_HA_NUM'].mean()
         
-        # 💥 3. DESGLOSE QUIRÚRGICO DE RENDIMIENTO POR MODELO DE AVIÓN
-        html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#d4af37;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
+        # 💥 3. DESGLOSE QUIRÚRGICO (Ahora en Ha/Hora)
+        html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#0d1b2a;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
         df_mod = df_pista.groupby('MODELO_FINAL').agg(
             VUELOS=('OS_MAESTRA', 'nunique'),
-            HORAS=('H_TOTAL_NUM', 'sum')
+            HORAS=('H_TOTAL_NUM', 'sum'),
+            AREA=('AREA_NUM', 'sum')
         ).reset_index()
         
         for _, row in df_mod.iterrows():
             mod_nombre = str(row['MODELO_FINAL'])
             vuelos = row['VUELOS']
             horas = row['HORAS']
-            tiempo_promedio = horas / vuelos if vuelos > 0 else 0
-            html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(tiempo_promedio, 2)} Horas promedio x OS <i>({vuelos} Vuelos realizados)</i></li>"
+            area = row['AREA']
+            
+            # Promedio real agrícola: Ha/Hora
+            rend_ha_hr = area / horas if horas > 0 else 0
+            
+            html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({vuelos} Ciclos realizados)</i></li>"
         html_mod += "</ul></div>"
         
-        return total_ha, total_facturado, costo_integral_ha, costo_tarifa_avion, html_mod
+        # 💥 4. NUEVAS CASILLAS DE CICLOS REALIZADOS
+        html_ciclos = f"""
+        <div class='kpi-vs' style='padding: 10px; margin-top: 15px; border: 2px dashed #d4af37;'>
+            <p class='kpi-vs-title'>TOTAL CICLOS EN PISTA (OS)</p>
+            <p class='kpi-vs-value' style='font-size:26px;'>{total_vuelos} Vuelos</p>
+        </div>
+        """
+        
+        return total_ha, total_facturado, costo_integral_ha, costo_tarifa_avion, html_mod, html_ciclos
 
-    ha_A, inv_A, costo_integral_A, costo_os_A, html_mod_A = calcular_metricas(df_A)
-    ha_B, inv_B, costo_integral_B, costo_os_B, html_mod_B = calcular_metricas(df_B)
+    ha_A, inv_A, costo_integral_A, costo_os_A, html_mod_A, html_ciclos_A = calcular_metricas(df_A)
+    ha_B, inv_B, costo_integral_B, costo_os_B, html_mod_B, html_ciclos_B = calcular_metricas(df_B)
 
-    # Lógica de Victoria (El Costo Integral x Hectárea más barato gana)
     clase_win_A = "victoria" if (costo_integral_A < costo_integral_B and costo_integral_A > 0) or costo_integral_B == 0 else ""
     clase_win_B = "victoria" if (costo_integral_B < costo_integral_A and costo_integral_B > 0) or costo_integral_A == 0 else ""
 
@@ -333,36 +344,34 @@ def ejecutar():
 
     with col_A:
         st.markdown(f"<h3 style='text-align:center; color:#dc3545;'>🔴 SALIENDO DESDE: {pista_A}</h3>", unsafe_allow_html=True)
-        # 💥 CAJA GIGANTE: COSTO PROMEDIO X HECTÁREA (Valor ~277k)
         st.markdown(f"<div class='kpi-vs {clase_win_A}'><p class='kpi-vs-title'>COSTO PROMEDIO X HECTÁREA</p><p class='kpi-vs-value'>$ {formato_latino(costo_integral_A, 0)}</p></div>", unsafe_allow_html=True)
         
         m_a1, m_a2 = st.columns(2)
-        # 💥 CAJA CHICA 1: COSTO PROMEDIO X OS (Valor ~40k)
         m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_A, 0)}</p></div>", unsafe_allow_html=True)
-        # 💥 CAJA CHICA 2: COSTO TOTAL FACTURADO
         m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
         
-        # Rendimiento Discriminado
-        if df_A.empty: st.info("Sin operaciones registradas.")
-        else: st.markdown(html_mod_A, unsafe_allow_html=True)
+        if df_A.empty: 
+            st.info("Sin operaciones registradas.")
+        else: 
+            st.markdown(html_mod_A, unsafe_allow_html=True)
+            st.markdown(html_ciclos_A, unsafe_allow_html=True)
 
     with col_vs:
         st.markdown("<br><br><h1 style='text-align:center; color:#d4af37; font-size: 50px; font-family:Arial Black;'>VS</h1>", unsafe_allow_html=True)
 
     with col_B:
         st.markdown(f"<h3 style='text-align:center; color:#2F75B5;'>🔵 SALIENDO DESDE: {pista_B}</h3>", unsafe_allow_html=True)
-        # 💥 CAJA GIGANTE: COSTO PROMEDIO X HECTÁREA (Valor ~277k)
         st.markdown(f"<div class='kpi-vs {clase_win_B}'><p class='kpi-vs-title'>COSTO PROMEDIO X HECTÁREA</p><p class='kpi-vs-value'>$ {formato_latino(costo_integral_B, 0)}</p></div>", unsafe_allow_html=True)
         
         m_b1, m_b2 = st.columns(2)
-        # 💥 CAJA CHICA 1: COSTO PROMEDIO X OS (Valor ~40k)
         m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_B, 0)}</p></div>", unsafe_allow_html=True)
-        # 💥 CAJA CHICA 2: COSTO TOTAL FACTURADO
         m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
 
-        # Rendimiento Discriminado
-        if df_B.empty: st.info("Sin operaciones registradas.")
-        else: st.markdown(html_mod_B, unsafe_allow_html=True)
+        if df_B.empty: 
+            st.info("Sin operaciones registradas.")
+        else: 
+            st.markdown(html_mod_B, unsafe_allow_html=True)
+            st.markdown(html_ciclos_B, unsafe_allow_html=True)
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -373,7 +382,6 @@ def ejecutar():
     df_ambos = pd.concat([df_A, df_B])
     
     if not df_ambos.empty:
-        # Gráficas 1 y 2 (Costos Generales por Pista)
         df_pistas = df_ambos.groupby('PISTA_MAESTRA').agg(
             COSTO_PROMEDIO_HECTAREA=('VALOR_FACTURAR_NUM', 'mean'),
             COSTO_PROMEDIO_OS=('COSTO_HA_NUM', 'mean')
@@ -409,27 +417,27 @@ def ejecutar():
             fig_os.update_layout(yaxis_title="$ / OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
             st.plotly_chart(fig_os, use_container_width=True)
 
-        # 💥 GRÁFICA 3: RENDIMIENTO DISCRIMINADO POR MODELO DE AVIÓN 💥
-        st.markdown("#### ✈️ Rendimiento de Tiempo por Modelo de Aeronave")
+        # 💥 GRÁFICA 3: RENDIMIENTO HECTÁREAS X HORA POR AVIÓN 💥
+        st.markdown("#### ✈️ Rendimiento Operativo (Ha/Hora) por Modelo de Aeronave")
         df_mod_graf = df_ambos.groupby(['PISTA_MAESTRA', 'MODELO_FINAL']).agg(
-            VUELOS=('OS_MAESTRA', 'nunique'),
-            HORAS=('H_TOTAL_NUM', 'sum')
+            HORAS=('H_TOTAL_NUM', 'sum'),
+            AREA=('AREA_NUM', 'sum')
         ).reset_index()
         
-        df_mod_graf['TIEMPO_PROMEDIO'] = np.where(df_mod_graf['VUELOS'] > 0, df_mod_graf['HORAS'] / df_mod_graf['VUELOS'], 0)
+        df_mod_graf['RENDIMIENTO_HA_HR'] = np.where(df_mod_graf['HORAS'] > 0, df_mod_graf['AREA'] / df_mod_graf['HORAS'], 0)
 
         fig_rend = px.bar(
             df_mod_graf, 
             x='MODELO_FINAL', 
-            y='TIEMPO_PROMEDIO', 
+            y='RENDIMIENTO_HA_HR', 
             color='PISTA_MAESTRA', 
             barmode='group',
-            text='TIEMPO_PROMEDIO',
+            text='RENDIMIENTO_HA_HR',
             color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-            title="Horas Promedio por Vuelo (Comparación de Modelos)"
+            title="Rendimiento (Ha / Hora) por Aeronave"
         )
-        fig_rend.update_traces(texttemplate='%{text:,.2f} Hrs', textposition='outside', textfont=dict(family="Arial Black"))
-        fig_rend.update_layout(yaxis_title="Horas Promedio x OS", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
+        fig_rend.update_traces(texttemplate='%{text:,.1f} Ha/Hr', textposition='outside', textfont=dict(family="Arial Black"))
+        fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
         st.plotly_chart(fig_rend, use_container_width=True)
 
 if __name__ == "__main__":
