@@ -202,7 +202,7 @@ def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
 # =================================================================
-# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN
+# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN (NUEVA UI)
 # =================================================================
 def renderizar_radar_plomadas():
     
@@ -213,169 +213,143 @@ def renderizar_radar_plomadas():
     if error_aforo:
         st.error(f"🚨 No se pudo conectar a la Bóveda de Aforos. Detalle: {error_aforo}")
         return
-        
     if error_teorico:
         st.error(f"🚨 Error en la lectura de TABLA 1: {error_teorico}")
         
-    col_radar, col_cruce = st.columns([1, 1], gap="large")
+    st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📋 1. Formulario Maestro de Supervisor (Físico vs AZ)</h3>", unsafe_allow_html=True)
     
-    # Declaración de variables a nivel de scope superior
-    litros_totales_actuales = 0.0
-    galones_totales = 0.0
-    litros_teoricos_input = 0.0
+    # --- CABECERA DE CONFIGURACIÓN ---
+    c_f, c_p = st.columns(2)
+    fecha_plomada = c_f.date_input("🗓️ Fecha del Reporte", value=obtener_hora_colombia().date())
+    semana_calculada = str(fecha_plomada.isocalendar()[1]).strip()
+    anio_calculado = str(fecha_plomada.year)
     
-    with col_radar:
-        st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📍 1. Medición de Plomada (Físico)</h3>", unsafe_allow_html=True)
+    pistas_disponibles = sorted(df_aforo['PISTA'].dropna().unique().tolist())
+    pista_sel = c_p.selectbox("📍 Base / Pista", pistas_disponibles)
+    
+    # --- FORMULARIO GRID DINÁMICO ---
+    st.info("💡 **INSTRUCCIONES:** Digite los datos de todos los tanques enviados por el supervisor. El sistema tabulará automáticamente los volúmenes, los ingresos y cruzará contra el Sistema AZ / TABLA 1.")
+    
+    tanques_pista = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
+    
+    df_template = pd.DataFrame({
+        "TANQUE": tanques_pista,
+        "CM INICIO": [0] * len(tanques_pista),
+        "MM INICIO": [0] * len(tanques_pista),
+        "CM FINAL": [0] * len(tanques_pista),
+        "MM FINAL": [0] * len(tanques_pista),
+        "GALONES RECIBIDOS": [0.0] * len(tanques_pista)
+    })
+    
+    edited_form = st.data_editor(
+        df_template,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["TANQUE"],
+        key=f"form_aforo_grid_{pista_sel}"
+    )
+    
+    # --- MOTOR DE CÁLCULO FÍSICO ---
+    litros_iniciales_tot = 0.0
+    litros_finales_tot = 0.0
+    galones_recibidos_tot = 0.0
+    
+    for _, row in edited_form.iterrows():
+        t = row['TANQUE']
+        cm_i, mm_i = row['CM INICIO'], row['MM INICIO']
+        cm_f, mm_f = row['CM FINAL'], row['MM FINAL']
+        gal_r = row['GALONES RECIBIDOS']
         
-        pistas_disponibles = sorted(df_aforo['PISTA'].dropna().unique().tolist())
+        df_t = df_aforo[(df_aforo['PISTA'] == pista_sel) & (df_aforo['TANQUE'] == t)]
         
-        c_f, c_p = st.columns(2)
-        fecha_plomada = c_f.date_input("🗓️ Fecha de Medición", value=obtener_hora_colombia().date())
+        # Calcular Inicial
+        match_i = df_t[df_t['CM'] == cm_i]
+        if not match_i.empty:
+            v_i = match_i['VOLUMEN_GAL'].values[0] + (mm_i * match_i['INCREMENTO_MM'].values[0])
+            litros_iniciales_tot += v_i * 3.78541
+            
+        # Calcular Final
+        match_f = df_t[df_t['CM'] == cm_f]
+        if not match_f.empty:
+            v_f = match_f['VOLUMEN_GAL'].values[0] + (mm_f * match_f['INCREMENTO_MM'].values[0])
+            litros_finales_tot += v_f * 3.78541
+            
+        galones_recibidos_tot += gal_r
         
-        # 💥 OBTENER SEMANA Y AÑO CALENDARIO SELECCIONADOS
-        semana_calculada = str(fecha_plomada.isocalendar()[1]).strip()
-        anio_calculado = str(fecha_plomada.year)
-        
-        pista_sel = c_p.selectbox("📍 Pista", pistas_disponibles)
-        
-        tanques_disponibles = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
-        tanque_sel = st.selectbox("🛢️ Tanque a Medir", tanques_disponibles)
-        
-        st.markdown("---")
-        df_tanque_especifico = df_aforo[(df_aforo['PISTA'] == pista_sel) & (df_aforo['TANQUE'] == str(tanque_sel))]
-        max_cm = int(df_tanque_especifico['CM'].max()) if not df_tanque_especifico.empty else 200
-        
-        c_cm, c_mm = st.columns(2)
-        cm_input = c_cm.number_input("📏 CM de la cinta:", min_value=0, max_value=max_cm, step=1, value=0)
-        mm_input = c_mm.number_input("🤏 MM extra:", min_value=0, max_value=9, step=1, value=0)
-        
-        if not df_tanque_especifico.empty:
-            fila_medida = df_tanque_especifico[df_tanque_especifico['CM'] == cm_input]
-            if not fila_medida.empty:
-                vol_gal_base = float(fila_medida['VOLUMEN_GAL'].values[0])
-                inc_mm = float(fila_medida['INCREMENTO_MM'].values[0])
-                galones_totales = vol_gal_base + (mm_input * inc_mm)
-                # OJO: La medición física SÍ usa 3.78 porque los tanques vienen calibrados en galones
-                litros_totales_actuales = galones_totales * 3.78541
-                
-                k1, k2 = st.columns(2)
-                k1.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>GALONES FÍSICOS</p><p class='hud-arqueo-value'>{galones_totales:,.2f}</p></div></div>", unsafe_allow_html=True)
-                k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>LITROS FÍSICOS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
-                
-                st.markdown("---")
-                # 💥 LA NUEVA CASILLA (Se vincula al Panel Derecho)
-                litros_teoricos_input = st.number_input("💻 Litros Teóricos (Saldo en AZ/Sistema):", min_value=0.0, value=0.0, step=10.0)
-                
-                btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="primary", use_container_width=True)
-                if btn_registrar_plomada:
-                    with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
-                        try:
-                            gc = inicializar_cliente_gspread()
-                            sh = gc.open_by_url(URL_BASE_AFOROS)
-                            try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
-                            except:
-                                ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
-                                ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "TANQUE", "CM", "MM", "GALONES", "LITROS", "LITROS TEORICOS", "USUARIO"])
-                            
-                            usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
-                            ws_reg.append_row([
-                                fecha_plomada.strftime("%d/%m/%Y"), 
-                                semana_calculada, 
-                                pista_sel, 
-                                tanque_sel, 
-                                int(cm_input), 
-                                int(mm_input), 
-                                f"{galones_totales:.3f}".replace('.', ','), 
-                                f"{litros_totales_actuales:.3f}".replace('.', ','),
-                                f"{litros_teoricos_input:.3f}".replace('.', ','),
-                                usuario_actual
-                            ])
-                            st.success(f"✅ ¡Guardado!")
-                        except Exception as e: st.error(f"🚨 Error: {e}")
-            else: st.error(f"🚨 El tanque no tiene un registro para {cm_input} cm.")
+    litros_recibidos_tot = galones_recibidos_tot * 3.78541
+    consumo_fisico_real = (litros_iniciales_tot + litros_recibidos_tot) - litros_finales_tot
 
-    # 💥 PANEL DE CONCILIACIÓN DERECHO (LA NAVAJA SUIZA)
-    with col_cruce:
-        st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo y Saldos</h3>", unsafe_allow_html=True)
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    # --- PANELES DE RESULTADOS DIVIDIDOS ---
+    col_fisico, col_teorico = st.columns([1, 1], gap="large")
+    
+    with col_fisico:
+        st.markdown("<h4 style='color: #0d1b2a;'>📏 Resultado Físico (Plomadas)</h4>", unsafe_allow_html=True)
+        st.markdown(f"""
+        - **Total Apertura (L):** {litros_iniciales_tot:,.2f}
+        - **Total Ingresos (L):** {litros_recibidos_tot:,.2f}
+        - **Total Cierre (L):** <span style="color:#27AE60; font-weight:bold;">{litros_finales_tot:,.2f}</span>
+        - **Consumo Físico Semana (L):** <span style="color:#d4af37; font-weight:bold;">{consumo_fisico_real:,.2f}</span>
+        """, unsafe_allow_html=True)
+
+    with col_teorico:
+        st.markdown("<h4 style='color: #0d1b2a;'>💻 Resultado Teórico (TABLA 1 y AZ)</h4>", unsafe_allow_html=True)
         
-        if df_teorico.empty:
-            st.warning("⚠️ No hay datos teóricos procesados. Revisa la TABLA 1.")
-        else:
-            df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel) & (df_teorico['AÑO'] == anio_calculado)]
-            
-            litros_teoricos_sap = 0.0
-            if not df_teorico_filtrado.empty:
-                litros_teoricos_sap = df_teorico_filtrado['LITROS_TEORICOS'].sum()
+        df_teorico_filtrado = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['PISTA'] == pista_sel) & (df_teorico['AÑO'] == anio_calculado)]
+        litros_teoricos_sap = df_teorico_filtrado['LITROS_TEORICOS'].sum() if not df_teorico_filtrado.empty else 0.0
+        
+        st.markdown(f"**Consumo TABLA 1 (Área x Dosis):** `{litros_teoricos_sap:,.2f} L`")
+        
+        with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
+            vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel) & (df_auditoria['AÑO'] == anio_calculado)]
+            vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
+            st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA', 'AÑO']), use_container_width=True, hide_index=True)
+
+        litros_teoricos_input = st.number_input("📥 Saldo Actual (Libro AZ / Sistema):", min_value=0.0, value=0.0, step=10.0)
+
+    # --- DESCUADRE Y GUARDADO ---
+    st.markdown("---")
+    diferencia_inventario = litros_finales_tot - litros_teoricos_input
+    
+    color_merma_dir = "#00ff66" if abs(diferencia_inventario) <= 5.0 else "#ff3333"
+    icono_merma_dir = "✅ OK (Dentro del margen)" if abs(diferencia_inventario) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
+    
+    st.markdown(f"""
+    <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma_dir}; margin-top: 10px;">
+        <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE FINAL (Plomada de Cierre vs Libro AZ):</p>
+        <h2 style="color: {color_merma_dir}; margin: 5px 0;">{diferencia_inventario:,.2f} L</h2>
+        <p style="color: {color_merma_dir}; font-weight: bold; margin: 0;">{icono_merma_dir}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    btn_registrar_plomada = st.button("💾 GUARDAR LECTURA FÍSICA EN BÓVEDA", type="primary", use_container_width=True)
+    if btn_registrar_plomada:
+        with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
+            try:
+                gc = inicializar_cliente_gspread()
+                sh = gc.open_by_url(URL_BASE_AFOROS)
+                try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
+                except:
+                    ws_reg = sh.add_worksheet(title="REGISTRO_PLOMADAS", rows="100", cols="10")
+                    ws_reg.append_row(["FECHA", "SEMANA", "PISTA", "LITROS INICIALES", "LITROS INGRESOS", "LITROS CIERRE", "CONSUMO FISICO", "SALDO AZ", "DESCUADRE", "USUARIO"])
                 
-            st.info(f"**Semana Auditada:** {semana_calculada} | **Año:** {anio_calculado} | **Base:** {pista_sel}")
-            st.markdown(f"#### ✈️ Consumo Teórico (TABLA 1): `{litros_teoricos_sap:,.2f} L`")
-            st.caption("Fórmula: ÁREA FUMIGADA x 1er Dígito del Cóctel = Litros Exactos de Aceite. (Filtrado estricto por Año, Semana y Pista)")
-            
-            if litros_teoricos_sap == 0:
-                semanas_bd = df_teorico[df_teorico['AÑO'] == anio_calculado]['SEMANA'].unique().tolist()
-                st.warning("⚠️ Diagnóstico del Escáner Teórico:")
-                if semana_calculada in semanas_bd:
-                    pistas_sem = df_teorico[(df_teorico['SEMANA'] == semana_calculada) & (df_teorico['AÑO'] == anio_calculado)]['PISTA'].unique().tolist()
-                    st.caption(f"- ✅ La semana **{semana_calculada} del {anio_calculado}** sí existe en la TABLA 1.")
-                    st.caption(f"- 🚨 Pero en esa semana solo se registraron vuelos en estas pistas: **{pistas_sem}**.")
-                else:
-                    st.caption(f"- 🚨 La semana **{semana_calculada} del {anio_calculado}** NO tiene ningún vuelo registrado en toda la TABLA 1.")
-            else:
-                with st.expander("🔬 Ver vuelos sumados por el sistema (Auditoría)"):
-                    vuelos_auditoria = df_auditoria[(df_auditoria['SEMANA'] == semana_calculada) & (df_auditoria['PISTA'] == pista_sel) & (df_auditoria['AÑO'] == anio_calculado)]
-                    vuelos_auditoria = vuelos_auditoria[vuelos_auditoria['TOTAL ACEITE (L)'] > 0]
-                    st.caption(f"El sistema multiplicó (Área x Dosis en Litros) de estos **{len(vuelos_auditoria)} vuelos** en el año {anio_calculado}:")
-                    st.dataframe(vuelos_auditoria.drop(columns=['SEMANA', 'PISTA', 'AÑO']), use_container_width=True, hide_index=True)
-            
-            st.markdown("---")
-            st.markdown("#### 🛠️ Herramientas de Conciliación (Elige tu método)")
-            
-            # 💥 PESTAÑAS PARA LOS DOS MÉTODOS DE TRABAJO EN PISTA
-            tab_directo, tab_kardex = st.tabs(["📊 Método Directo (Físico vs AZ)", "🧮 Método Kárdex (Por Consumo)"])
-            
-            with tab_directo:
-                st.caption("💡 Útil cuando el supervisor cruza la regla física contra el sistema AZ sin reportar tanqueos (Ej: Divas, Lucha).")
-                
-                # Cruce Directo: Plomada Física vs Lo que el Comandante anotó de AZ
-                diferencia_inventario = litros_totales_actuales - litros_teoricos_input
-                
-                c_res1, c_res2 = st.columns(2)
-                c_res1.metric("🏁 Saldo Físico (Plomada)", f"{litros_totales_actuales:,.2f} L")
-                c_res2.metric("💻 Saldo Teórico (AZ)", f"{litros_teoricos_input:,.2f} L")
-                
-                color_merma_dir = "#00ff66" if abs(diferencia_inventario) <= 5.0 else "#ff3333"
-                icono_merma_dir = "✅ OK" if abs(diferencia_inventario) <= 5.0 else "🚨 DESCUADRE CRÍTICO"
-                
-                st.markdown(f"""
-                <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma_dir}; margin-top: 10px;">
-                    <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE GLOBAL (Físico vs AZ):</p>
-                    <h2 style="color: {color_merma_dir}; margin: 5px 0;">{diferencia_inventario:,.2f} L</h2>
-                    <p style="color: {color_merma_dir}; font-weight: bold; margin: 0;">{icono_merma_dir}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-            with tab_kardex:
-                st.caption("💡 Útil para auditar el consumo exacto cuando llegan camiones a descargar (Ej: Tanqueo en Orihueca).")
-                
-                col_k1, col_k2 = st.columns(2)
-                litros_iniciales = col_k1.number_input("📦 Litros Iniciales (Apertura):", min_value=0.0, value=0.0, step=10.0, key="kardex_ini")
-                litros_ingresos = col_k2.number_input("📥 Litros Recibidos (Tanqueo):", min_value=0.0, value=0.0, step=10.0, key="kardex_in")
-                
-                consumo_fisico = (litros_iniciales + litros_ingresos) - litros_totales_actuales
-                merma_litros = consumo_fisico - litros_teoricos_sap
-                
-                st.markdown(f"**Consumo Físico Calculado:** `{consumo_fisico:,.2f} L`")
-                
-                color_merma_k = "#00ff66" if abs(merma_litros) <= 5.0 else "#ff3333"
-                icono_merma_k = "✅ OK" if abs(merma_litros) <= 5.0 else "🚨 MERMA O EXCESO"
-                
-                st.markdown(f"""
-                <div style="background-color: #0d1b2a; padding: 15px; border-radius: 8px; text-align: center; border: 2px solid {color_merma_k}; margin-top: 10px;">
-                    <p style="color: white; font-weight: bold; margin: 0;">DESCUADRE DE CONSUMO (Físico vs Tabla 1):</p>
-                    <h2 style="color: {color_merma_k}; margin: 5px 0;">{merma_litros:,.2f} L</h2>
-                    <p style="color: {color_merma_k}; font-weight: bold; margin: 0;">{icono_merma_k}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
+                ws_reg.append_row([
+                    fecha_plomada.strftime("%d/%m/%Y"), 
+                    semana_calculada, 
+                    pista_sel, 
+                    f"{litros_iniciales_tot:.3f}".replace('.', ','), 
+                    f"{litros_recibidos_tot:.3f}".replace('.', ','), 
+                    f"{litros_finales_tot:.3f}".replace('.', ','), 
+                    f"{consumo_fisico_real:.3f}".replace('.', ','),
+                    f"{litros_teoricos_input:.3f}".replace('.', ','),
+                    f"{diferencia_inventario:.3f}".replace('.', ','),
+                    usuario_actual
+                ])
+                st.success(f"✅ ¡Guardado con Éxito!")
+            except Exception as e: st.error(f"🚨 Error al guardar: {e}")
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL 
@@ -386,7 +360,7 @@ def ejecutar(quitar_tildes, purificar_lote):
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    div[data-testid="stTextInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"] { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; color: #0d1b2a !important; font-weight: 800 !important; font-size: 15px !important; }
+    div[data-testid="stTextInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; color: #0d1b2a !important; font-weight: 800 !important; font-size: 15px !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
     div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #0d1b2a !important; border-radius: 8px !important; padding: 10px !important; }
