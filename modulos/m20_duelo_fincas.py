@@ -104,7 +104,6 @@ def cargar_fuentes_maestras_duelo():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame()
     
-    # --- TABLA 1 (VIVA) ---
     try:
         boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
@@ -120,7 +119,6 @@ def cargar_fuentes_maestras_duelo():
         df_vivos['ORIGEN'] = 'ACTUAL'
         df_vivos = df_vivos.loc[:, ~df_vivos.columns.duplicated()]
 
-    # --- HISTÓRICO ---
     datos_brutos_hist = []
     try:
         boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
@@ -146,6 +144,7 @@ def cargar_fuentes_maestras_duelo():
             elif "ORDEN" in col or "OS" == col: renombres[col] = 'OS_MAESTRA'
             elif "REND" in col and "HR" in col: renombres[col] = 'REND_HR'
             elif ("H" in col or "HORA" in col) and "TOTAL" in col: renombres[col] = 'H_TOTAL'
+            elif col in ['AERONAVE', 'AVION', 'MATRICULA']: renombres[col] = 'HK'
         df_historico.rename(columns=renombres, inplace=True)
         df_historico['ORIGEN'] = 'HISTORICO'
 
@@ -155,6 +154,8 @@ def cargar_fuentes_maestras_duelo():
         super_base['FINCA_MAESTRA'] = super_base['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base['PISTA_MAESTRA'] = super_base['PISTA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
+        super_base['HK'] = super_base.get('HK', 'SIN MATRICULA').fillna('SIN MATRICULA').astype(str).str.strip().str.upper()
+        super_base.loc[super_base['HK'] == "", 'HK'] = "SIN MATRICULA"
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
         super_base['AREA_NUM'] = super_base['AREA_MAESTRA'].apply(limpiar_area)
@@ -180,16 +181,19 @@ def ejecutar():
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
     .kpi-vs { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); color: white; padding: 20px; border-radius: 12px; border-left: 6px solid #d4af37; box-shadow: 0 8px 16px rgba(0,0,0,0.3); text-align: center; margin-bottom: 15px; }
-    .kpi-vs-title { font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
+    .kpi-vs-title { font-size: 13px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
+    .lista-hk { text-align: left; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 5px solid #0d1b2a; }
+    .lista-hk ul { list-style-type: none; padding-left: 0; margin: 0; }
+    .lista-hk li { font-size: 14px; margin-bottom: 8px; color: #0d1b2a; }
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mod'>⚔️ 20. Duelo Logístico (Pista vs Pista)</h1>", unsafe_allow_html=True)
-    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Descubre qué pista ofrece el mejor Costo Integral por Hectárea (Avión + Insumos) y el mejor Rendimiento en Tiempo de Vuelo.")
+    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, el Costo de Tarifa de Avión, y audita el tiempo de vuelo discriminado por cada aeronave.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
         df_base = cargar_fuentes_maestras_duelo()
@@ -238,153 +242,149 @@ def ejecutar():
         st.warning("⚠️ La finca no operó desde ninguna de estas pistas en el rango de fechas seleccionado.")
         return
 
-    # --- CÁLCULO DE KPIs ---
+    # --- CÁLCULO DE KPIs Y DESGLOSE POR HK ---
     def calcular_metricas(df_pista):
-        if df_pista.empty: return 0, 0, 0, 0, 0, 0
+        if df_pista.empty: return 0, 0, 0, 0, 0, ""
         
         total_ha = df_pista['AREA_NUM'].sum()
         total_inversion = df_pista['COSTO_TOTAL_OS'].sum()
-        total_vuelos = df_pista['OS_MAESTRA'].nunique()
-        total_horas = df_pista['H_TOTAL_NUM'].sum()
         
-        # 💥 1. COSTO AVIÓN X HECTÁREA (La tarifa pura de la aeronave, tope <70k)
-        costo_avion_ha = df_pista['COSTO_HA_NUM'].mean()
+        # 💥 1. COSTO INTEGRAL X HECTÁREA (Avión + Insumos + Servicio) -> CAJA GRANDE
+        costo_promedio_hectarea = total_inversion / total_ha if total_ha > 0 else 0
         
-        # 💥 2. COSTO INTEGRAL X HECTÁREA (Avión + Insumos + Servicio = Inversión Total / Hectáreas)
-        costo_integral_ha = total_inversion / total_ha if total_ha > 0 else 0
+        # 💥 2. COSTO PROMEDIO X OS (Tarifa de Avión, tope < 70k) -> CAJA CHICA
+        costo_promedio_os = df_pista['COSTO_HA_NUM'].mean()
         
-        # 3. TIEMPO PROMEDIO POR VUELO
-        tiempo_promedio_os = total_horas / total_vuelos if total_vuelos > 0 else 0
+        # 💥 3. DESGLOSE QUIRÚRGICO DE RENDIMIENTO POR AERONAVE (HK)
+        html_hk = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#d4af37;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
+        df_hk = df_pista.groupby('HK').agg(
+            VUELOS=('OS_MAESTRA', 'nunique'),
+            HORAS=('H_TOTAL_NUM', 'sum')
+        ).reset_index()
         
-        return total_ha, total_inversion, costo_avion_ha, total_vuelos, costo_integral_ha, tiempo_promedio_os
+        for _, row in df_hk.iterrows():
+            hk_nombre = str(row['HK'])
+            vuelos = row['VUELOS']
+            horas = row['HORAS']
+            tiempo_promedio = horas / vuelos if vuelos > 0 else 0
+            html_hk += f"<li><b>{hk_nombre}:</b> {formato_latino(tiempo_promedio, 2)} Horas promedio x OS <i>({vuelos} Vuelos realizados)</i></li>"
+        html_hk += "</ul></div>"
+        
+        return total_ha, total_inversion, costo_promedio_hectarea, costo_promedio_os, html_hk
 
-    ha_A, inv_A, costo_avion_ha_A, vuelos_A, costo_integral_ha_A, tiempo_os_A = calcular_metricas(df_A)
-    ha_B, inv_B, costo_avion_ha_B, vuelos_B, costo_integral_ha_B, tiempo_os_B = calcular_metricas(df_B)
+    ha_A, inv_A, costo_hectarea_A, costo_os_A, html_hk_A = calcular_metricas(df_A)
+    ha_B, inv_B, costo_hectarea_B, costo_os_B, html_hk_B = calcular_metricas(df_B)
 
-    # Lógica de Victoria (El Costo Integral más barato gana la caja grande)
-    clase_win_A = "victoria" if (costo_integral_ha_A < costo_integral_ha_B and costo_integral_ha_A > 0) or costo_integral_ha_B == 0 else ""
-    clase_win_B = "victoria" if (costo_integral_ha_B < costo_integral_ha_A and costo_integral_ha_B > 0) or costo_integral_ha_A == 0 else ""
+    # Lógica de Victoria (El Costo Integral x Hectárea más barato gana)
+    clase_win_A = "victoria" if (costo_hectarea_A < costo_hectarea_B and costo_hectarea_A > 0) or costo_hectarea_B == 0 else ""
+    clase_win_B = "victoria" if (costo_hectarea_B < costo_hectarea_A and costo_hectarea_B > 0) or costo_hectarea_A == 0 else ""
 
     # --- RENDERIZADO DEL CUADRILÁTERO ---
     col_A, col_vs, col_B = st.columns([4, 1, 4])
 
     with col_A:
         st.markdown(f"<h3 style='text-align:center; color:#dc3545;'>🔴 SALIENDO DESDE: {pista_A}</h3>", unsafe_allow_html=True)
-        # CAJA GIGANTE: Costo Integral
-        st.markdown(f"<div class='kpi-vs {clase_win_A}'><p class='kpi-vs-title'>Costo Integral x Hectárea (Avión + Insumos)</p><p class='kpi-vs-value'>$ {formato_latino(costo_integral_ha_A, 0)}</p></div>", unsafe_allow_html=True)
+        # 💥 CAJA GIGANTE: COSTO PROMEDIO X HECTÁREA (Valor ~277k)
+        st.markdown(f"<div class='kpi-vs {clase_win_A}'><p class='kpi-vs-title'>COSTO PROMEDIO X HECTÁREA</p><p class='kpi-vs-value'>$ {formato_latino(costo_hectarea_A, 0)}</p></div>", unsafe_allow_html=True)
         
         m_a1, m_a2 = st.columns(2)
-        # CAJA CHICA: Costo de Avión
-        m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Avión x Hectárea</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_avion_ha_A, 0)}</p></div>", unsafe_allow_html=True)
-        m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Total Facturado</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
+        # 💥 CAJA CHICA 1: COSTO PROMEDIO X OS (Valor ~39k)
+        m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_A, 0)}</p></div>", unsafe_allow_html=True)
+        # 💥 CAJA CHICA 2: COSTO TOTAL FACTURADO
+        m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
         
-        st.info(f"**⏱️ Rendimiento Operativo:** Promedio de {formato_latino(tiempo_os_A, 2)} Horas por Vuelo.")
+        # Rendimiento Discriminado
+        if df_A.empty: st.info("Sin operaciones registradas.")
+        else: st.markdown(html_hk_A, unsafe_allow_html=True)
 
     with col_vs:
         st.markdown("<br><br><h1 style='text-align:center; color:#d4af37; font-size: 50px; font-family:Arial Black;'>VS</h1>", unsafe_allow_html=True)
 
     with col_B:
         st.markdown(f"<h3 style='text-align:center; color:#2F75B5;'>🔵 SALIENDO DESDE: {pista_B}</h3>", unsafe_allow_html=True)
-        # CAJA GIGANTE: Costo Integral
-        st.markdown(f"<div class='kpi-vs {clase_win_B}'><p class='kpi-vs-title'>Costo Integral x Hectárea (Avión + Insumos)</p><p class='kpi-vs-value'>$ {formato_latino(costo_integral_ha_B, 0)}</p></div>", unsafe_allow_html=True)
+        # 💥 CAJA GIGANTE: COSTO PROMEDIO X HECTÁREA (Valor ~277k)
+        st.markdown(f"<div class='kpi-vs {clase_win_B}'><p class='kpi-vs-title'>COSTO PROMEDIO X HECTÁREA</p><p class='kpi-vs-value'>$ {formato_latino(costo_hectarea_B, 0)}</p></div>", unsafe_allow_html=True)
         
         m_b1, m_b2 = st.columns(2)
-        # CAJA CHICA: Costo de Avión
-        m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Avión x Hectárea</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_avion_ha_B, 0)}</p></div>", unsafe_allow_html=True)
-        m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>Costo Total Facturado</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
+        # 💥 CAJA CHICA 1: COSTO PROMEDIO X OS (Valor ~39k)
+        m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_B, 0)}</p></div>", unsafe_allow_html=True)
+        # 💥 CAJA CHICA 2: COSTO TOTAL FACTURADO
+        m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
 
-        st.info(f"**⏱️ Rendimiento Operativo:** Promedio de {formato_latino(tiempo_os_B, 2)} Horas por Vuelo.")
+        # Rendimiento Discriminado
+        if df_B.empty: st.info("Sin operaciones registradas.")
+        else: st.markdown(html_hk_B, unsafe_allow_html=True)
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # --- GRÁFICAS DE COMPARACIÓN ---
-    st.markdown("### 🛫 Desglose Logístico, Financiero y de Tiempos")
-    st.caption("Comparación visual de la inversión real y la eficiencia de vuelo según la pista.")
+    st.markdown("### 🛫 Desglose Logístico, Financiero y de Aeronaves")
+    st.caption("Comparación visual directa de costos y rendimientos.")
 
     df_ambos = pd.concat([df_A, df_B])
     
     if not df_ambos.empty:
+        # Gráficas 1 y 2 (Costos Generales por Pista)
         df_pistas = df_ambos.groupby('PISTA_MAESTRA').agg(
-            COSTO_AVION_HA=('COSTO_HA_NUM', 'mean'),
-            COSTO_TOTAL=('COSTO_TOTAL_OS', 'sum'),
-            AREA_TOTAL=('AREA_NUM', 'sum'),
-            VUELOS=('OS_MAESTRA', 'nunique'),
-            HORAS_TOTALES=('H_TOTAL_NUM', 'sum')
-        ).reset_index()
-        
-        # Calculamos la matemática integral para los gráficos
-        df_pistas['COSTO_INTEGRAL_HA'] = np.where(df_pistas['AREA_TOTAL'] > 0, df_pistas['COSTO_TOTAL'] / df_pistas['AREA_TOTAL'], 0)
-        df_pistas['TIEMPO_PROMEDIO_OS'] = np.where(df_pistas['VUELOS'] > 0, df_pistas['HORAS_TOTALES'] / df_pistas['VUELOS'], 0)
-
-        c_graf1, c_graf2, c_graf3 = st.columns(3)
-
-        with c_graf1:
-            fig_integral = px.bar(
-                df_pistas, 
-                x='PISTA_MAESTRA', 
-                y='COSTO_INTEGRAL_HA', 
-                color='PISTA_MAESTRA', 
-                text='COSTO_INTEGRAL_HA',
-                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-                title="Costo Integral x Hectárea"
-            )
-            fig_integral.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
-            fig_integral.update_layout(yaxis_title="$ / Ha", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
-            st.plotly_chart(fig_integral, use_container_width=True)
-
-        with c_graf2:
-            fig_avion = px.bar(
-                df_pistas, 
-                x='PISTA_MAESTRA', 
-                y='COSTO_AVION_HA', 
-                color='PISTA_MAESTRA', 
-                text='COSTO_AVION_HA',
-                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-                title="Costo Avión x Hectárea (Tarifa)"
-            )
-            fig_avion.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
-            fig_avion.update_layout(yaxis_title="$ / Ha", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
-            st.plotly_chart(fig_avion, use_container_width=True)
-
-        with c_graf3:
-            fig_rend = px.bar(
-                df_pistas, 
-                x='PISTA_MAESTRA', 
-                y='TIEMPO_PROMEDIO_OS', 
-                color='PISTA_MAESTRA', 
-                text='TIEMPO_PROMEDIO_OS',
-                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-                title="Tiempo Promedio por Vuelo"
-            )
-            fig_rend.update_traces(texttemplate='%{text:,.2f} Hrs', textposition='outside', textfont=dict(family="Arial Black"))
-            fig_rend.update_layout(yaxis_title="Horas por OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
-            st.plotly_chart(fig_rend, use_container_width=True)
-
-    # --- CARRERA EN EL TIEMPO ---
-    st.markdown("### 📈 Tendencia: Costo Integral por Hectárea a lo largo del tiempo")
-    
-    if not df_ambos.empty:
-        df_ambos['MES_AÑO'] = df_ambos['FECHA_DT'].dt.to_period('M').astype(str)
-        
-        df_tendencia = df_ambos.groupby(['MES_AÑO', 'PISTA_MAESTRA']).agg(
+            COSTO_PROMEDIO_OS=('COSTO_HA_NUM', 'mean'),
             COSTO_TOTAL=('COSTO_TOTAL_OS', 'sum'),
             AREA_TOTAL=('AREA_NUM', 'sum')
         ).reset_index()
-        df_tendencia['COSTO_INTEGRAL_HA'] = np.where(df_tendencia['AREA_TOTAL'] > 0, df_tendencia['COSTO_TOTAL'] / df_tendencia['AREA_TOTAL'], 0)
-        df_tendencia = df_tendencia.sort_values(by='MES_AÑO')
+        
+        df_pistas['COSTO_PROMEDIO_HECTAREA'] = np.where(df_pistas['AREA_TOTAL'] > 0, df_pistas['COSTO_TOTAL'] / df_pistas['AREA_TOTAL'], 0)
 
-        fig_line = px.line(
-            df_tendencia, 
-            x='MES_AÑO', 
-            y='COSTO_INTEGRAL_HA', 
-            color='PISTA_MAESTRA',
-            markers=True,
+        c_graf1, c_graf2 = st.columns(2)
+
+        with c_graf1:
+            fig_ha = px.bar(
+                df_pistas, 
+                x='PISTA_MAESTRA', 
+                y='COSTO_PROMEDIO_HECTAREA', 
+                color='PISTA_MAESTRA', 
+                text='COSTO_PROMEDIO_HECTAREA',
+                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
+                title="Costo Promedio X Hectárea (Avión + Insumos)"
+            )
+            fig_ha.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
+            fig_ha.update_layout(yaxis_title="$ / Ha", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
+            st.plotly_chart(fig_ha, use_container_width=True)
+
+        with c_graf2:
+            fig_os = px.bar(
+                df_pistas, 
+                x='PISTA_MAESTRA', 
+                y='COSTO_PROMEDIO_OS', 
+                color='PISTA_MAESTRA', 
+                text='COSTO_PROMEDIO_OS',
+                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
+                title="Costo Promedio X OS (Tarifa Avión)"
+            )
+            fig_os.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
+            fig_os.update_layout(yaxis_title="$ / OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
+            st.plotly_chart(fig_os, use_container_width=True)
+
+        # 💥 GRÁFICA 3: RENDIMIENTO DISCRIMINADO POR AVIÓN 💥
+        st.markdown("#### ✈️ Rendimiento de Tiempo por Aeronave (Pista vs Pista)")
+        df_hk_graf = df_ambos.groupby(['PISTA_MAESTRA', 'HK']).agg(
+            VUELOS=('OS_MAESTRA', 'nunique'),
+            HORAS=('H_TOTAL_NUM', 'sum')
+        ).reset_index()
+        
+        df_hk_graf['TIEMPO_PROMEDIO'] = np.where(df_hk_graf['VUELOS'] > 0, df_hk_graf['HORAS'] / df_hk_graf['VUELOS'], 0)
+
+        fig_rend = px.bar(
+            df_hk_graf, 
+            x='HK', 
+            y='TIEMPO_PROMEDIO', 
+            color='PISTA_MAESTRA', 
+            barmode='group',
+            text='TIEMPO_PROMEDIO',
             color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-            title=f"Evolución del Costo Integral para {finca_sel}"
+            title="Horas Promedio por Vuelo (Comparación de Aeronaves)"
         )
-        fig_line.update_traces(line=dict(width=4), marker=dict(size=10))
-        fig_line.update_layout(yaxis_title="Costo Integral ($ / Ha)", xaxis_title="Mes de Operación", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', hovermode="x unified")
-        st.plotly_chart(fig_line, use_container_width=True)
+        fig_rend.update_traces(texttemplate='%{text:,.2f} Hrs', textposition='outside', textfont=dict(family="Arial Black"))
+        fig_rend.update_layout(yaxis_title="Horas Promedio x OS", xaxis_title="Matrícula (HK)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
+        st.plotly_chart(fig_rend, use_container_width=True)
 
 if __name__ == "__main__":
     pass
