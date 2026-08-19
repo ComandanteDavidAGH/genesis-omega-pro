@@ -65,7 +65,6 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
-# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA (CON BLINDAJE DE AÑO Y DOSIS EN LITROS)
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
@@ -92,17 +91,14 @@ def extraer_consumos_teoricos():
         c_fecha = next((c for c in df_vuelos.columns if "FECHA" in c), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]):
-            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA", "FECHA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]) if v is None]
-            return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
+            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas maestras en TABLA 1."
 
-        # 🎯 REGLA DE ORO 1: El primer dígito es el volumen de Aceite EN LITROS.
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
-        # 🎯 REGLA DE ORO 2: Mapeo Estricto de Pistas
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
@@ -114,7 +110,6 @@ def extraer_consumos_teoricos():
             if 'ASA' in p: return 'PDIV'
             return p
 
-        # 💥 BLINDAJE: Extracción del Año de la Fecha
         def extraer_anio(fecha_val):
             fecha_str = str(fecha_val).strip()
             match = re.search(r'(20\d{2})', fecha_str)
@@ -131,16 +126,12 @@ def extraer_consumos_teoricos():
             except: return 0.0
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
-        
-        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis(L) = Litros Totales
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_LITROS']
         df_vuelos['SEMANA_LIMPIA'] = df_vuelos[c_sem].astype(str).str.replace('.0', '', regex=False).str.strip()
         
-        # 💥 AGRUPAR TENIENDO EN CUENTA EL AÑO, LA SEMANA Y LA PISTA
         df_teorico = df_vuelos.groupby(['AÑO', 'SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['AÑO', 'SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
-        # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
         df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_LITROS', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'AÑO', 'PISTA_OFICIAL']].copy()
         df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'AÑO', 'PISTA']
         
@@ -201,7 +192,7 @@ def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
 # =================================================================
-# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN (NUEVA UI)
+# 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN
 # =================================================================
 def renderizar_radar_plomadas():
     
@@ -226,7 +217,6 @@ def renderizar_radar_plomadas():
     pistas_disponibles = sorted(df_aforo['PISTA'].dropna().unique().tolist())
     pista_sel = c_p.selectbox("📍 Base / Pista", pistas_disponibles)
     
-    # --- FORMULARIO GRID DINÁMICO ---
     st.info("💡 **DIGITACIÓN RÁPIDA:** Ingrese la lectura de la cinta (CM y MM). Génesis calculará automáticamente los Galones y Litros por cada tanque.")
     
     tanques_pista = sorted(df_aforo[df_aforo['PISTA'] == pista_sel]['TANQUE'].dropna().unique().tolist())
@@ -245,7 +235,6 @@ def renderizar_radar_plomadas():
         key=f"form_aforo_grid_{pista_sel}"
     )
     
-    # --- MOTOR DE CÁLCULO FÍSICO POR TANQUE CON ESCUDO ANTI-FALLOS ---
     resultados_tanques = []
     galones_totales_actuales = 0.0
     litros_totales_actuales = 0.0
@@ -283,10 +272,8 @@ def renderizar_radar_plomadas():
         for err in errores_aforo:
             st.error(f"🚨 **ALERTA DE BASE DE DATOS:** {err} Revise la pestaña 'TABLAS_AFORO' en Google Sheets.")
 
-    # Declaramos la variable de Litros Teóricos para que pueda ser leída globalmente
     litros_teoricos_input = 0.0
 
-    # --- MOSTRAR RESULTADOS DETALLADOS ---
     col_izq, col_der = st.columns([1, 1], gap="large")
     
     with col_izq:
@@ -305,12 +292,11 @@ def renderizar_radar_plomadas():
             k2.markdown(f"<div class='hud-arqueo' style='padding: 10px;'><div class='hud-arqueo-item'><p class='hud-arqueo-title'>TOTAL LITROS</p><p class='hud-arqueo-value hud-arqueo-ok'>{litros_totales_actuales:,.2f}</p></div></div>", unsafe_allow_html=True)
             
             st.markdown("---")
-            # 💥 AQUÍ ESTÁ TU CASILLA EXACTAMENTE COMO LA PEDISTE 💥
             litros_teoricos_input = st.number_input("💻 Litros Teóricos (Saldo en AZ/Sistema):", min_value=0.0, value=0.0, step=10.0, key="az_izq")
             
             btn_registrar_plomada = st.button("💾 GUARDAR DESGLOSE EN BÓVEDA", type="secondary", use_container_width=True)
             if btn_registrar_plomada and not errores_aforo:
-                with st.spinner("Inyectando desglose en REGISTRO_PLOMADAS..."):
+                with st.spinner("Inyectando desglose de manera táctica..."):
                     try:
                         gc = inicializar_cliente_gspread()
                         sh = gc.open_by_url(URL_BASE_AFOROS)
@@ -323,8 +309,6 @@ def renderizar_radar_plomadas():
                         filas_a_guardar = []
                         
                         for i, t_data in enumerate(resultados_tanques):
-                            # 🎯 LA REGLA DE ORO DE LA BASE DE DATOS: 
-                            # El Saldo AZ se guarda SÓLO en la primera fila (Tanque 1). El resto lleva "---"
                             val_az_guardar = f"{litros_teoricos_input:.3f}".replace('.', ',') if i == 0 else "---"
                             
                             filas_a_guardar.append([
@@ -340,7 +324,7 @@ def renderizar_radar_plomadas():
                                 usuario_actual
                             ])
                         
-                        # 💥 INYECCIÓN DE FRANCOTIRADOR (Evita el "Fantasma de la Tabla")
+                        # 💥 INYECCIÓN TÁCTICA (Clona el formato exacto de la tabla)
                         col_a = ws_reg.col_values(1)
                         ultima_fila = 1
                         for idx in range(len(col_a)-1, -1, -1):
@@ -349,14 +333,10 @@ def renderizar_radar_plomadas():
                                 break
                         siguiente_fila = ultima_fila + 1
                         
-                        if siguiente_fila + len(filas_a_guardar) > ws_reg.row_count:
-                            ws_reg.add_rows(15)
-                            
-                        ws_reg.update(range_name=f"A{siguiente_fila}", values=filas_a_guardar, value_input_option="USER_ENTERED")
+                        ws_reg.insert_rows(filas_a_guardar, row=siguiente_fila, value_input_option="USER_ENTERED")
                         st.success(f"✅ ¡Desglose por tanque guardado exitosamente!")
                     except Exception as e: st.error(f"🚨 Error: {e}")
 
-    # 💥 PANEL DE CONCILIACIÓN DERECHO (LA NAVAJA SUIZA)
     with col_der:
         st.markdown("<h3 style='color: #d4af37; border-bottom: 2px solid #0d1b2a;'>⚖️ 2. Cruce de Consumo y Saldos</h3>", unsafe_allow_html=True)
         
@@ -392,7 +372,6 @@ def renderizar_radar_plomadas():
         with tab_directo:
             st.caption("💡 Útil cuando el supervisor cruza la regla física contra el sistema AZ sin reportar tanqueos (Ej: Divas, Lucha).")
             
-            # 💥 AQUÍ CRUZA CON LO QUE DIGITASTE EN EL LADO IZQUIERDO
             diferencia_inventario = litros_totales_actuales - litros_teoricos_input
             
             c_res1, c_res2 = st.columns(2)
@@ -462,7 +441,7 @@ def renderizar_radar_plomadas():
                         usuario_actual
                     ]
                     
-                    # 💥 INYECCIÓN DE FRANCOTIRADOR (Evita el "Fantasma de la Tabla")
+                    # 💥 INYECCIÓN TÁCTICA 
                     col_a = ws_reg.col_values(1)
                     ultima_fila = 1
                     for idx in range(len(col_a)-1, -1, -1):
@@ -471,10 +450,7 @@ def renderizar_radar_plomadas():
                             break
                     siguiente_fila = ultima_fila + 1
                     
-                    if siguiente_fila > ws_reg.row_count:
-                        ws_reg.add_rows(10)
-                        
-                    ws_reg.update(range_name=f"A{siguiente_fila}", values=[fila_global], value_input_option="USER_ENTERED")
+                    ws_reg.insert_rows([fila_global], row=siguiente_fila, value_input_option="USER_ENTERED")
                     st.success(f"✅ ¡Arqueo Global Guardado con Éxito!")
                 except Exception as e: st.error(f"🚨 Error al guardar: {e}")
 
