@@ -246,8 +246,14 @@ with st.sidebar:
         if st.button("🔄 Sincronizar Nube", use_container_width=True):
             st.cache_data.clear()
             st.cache_resource.clear()
-            m0.ordenar_base_datos_global()
-            
+            # 🛡️ Escudo protector inyectado:
+            try:
+                m0.ordenar_base_datos_global()
+                st.success("✅ Nube sincronizada con éxito.")
+            except Exception as e:
+                st.error(f"🚨 Error en sincronización: {e}")
+                
+        # 💥 AQUÍ ESTABA EL ERROR: Le faltaba el key="modulo_actual" al final
         st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
             "🛠️ 1. Mantenimiento Plantilla SAP", 
@@ -268,12 +274,9 @@ with st.sidebar:
             "💼 16. Comparativo Gerencial (Dron vs Avión)",
             "🚀 17. Mega-Proyección Operativa",  
             "🔍 18. Auditoría y Desglose Financiero",
-            # 💥 AQUÍ INYECTAMOS EL BOTÓN DEL MÓDULO 19:
             "📦 19. Control y Auditoría de Ingresos",
-            # 👇 INYECTA ESTA LÍNEA AQUÍ 👇
             "⚔️ 20. Duelo de Titanes (Finca vs Finca)"
-        ]
-   )
+        ], key="modulo_actual") # 👈 ¡ESTA ES LA LLAVE MAESTRA!
     else: 
         st.info("🛰️ Modo Consulta Gerencial Activado.")
         st.radio("📊 SELECCIONE EL REPORTE:", [
