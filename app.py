@@ -37,7 +37,7 @@ import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
-import modulos.m18_auditoria_desglose as m18
+import modulos.m18_desglose_facturacion as m18
 import modulos.m19_ingresos as m19
 # 👇 INYECTA ESTA LÍNEA AQUÍ 👇
 import modulos.m20_duelo_fincas as m20
