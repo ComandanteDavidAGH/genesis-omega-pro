@@ -104,6 +104,9 @@ def cargar_fuentes_maestras_duelo():
         df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
         df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'COSTO_HA_BASE', 'VALOR_FACTURAR': 'COSTO_OS_TOTAL', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'PISTA': 'PISTA_MAESTRA', 'OS': 'OS_MAESTRA'}, inplace=True)
         df_vivos['ORIGEN'] = 'ACTUAL'
+        
+        # 🛡️ ESCUDO ANTI-DUPLICADOS T1
+        df_vivos = df_vivos.loc[:, ~df_vivos.columns.duplicated()]
 
     # --- HISTÓRICO ---
     datos_brutos_hist = []
@@ -117,6 +120,11 @@ def cargar_fuentes_maestras_duelo():
         df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
         # Limpieza de encabezados históricos
         df_historico.columns = [str(c).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for c in df_historico.columns]
+        
+        # 🛡️ ESCUDO ANTI-DUPLICADOS HISTÓRICO (Elimina columnas sin nombre o repetidas)
+        df_historico = df_historico.loc[:, ~df_historico.columns.duplicated()]
+        df_historico = df_historico.loc[:, [c for c in df_historico.columns if c != ""]]
+
         renombres = {}
         for col in df_historico.columns:
             if 'FUMIG' in col and 'AREA' in col: renombres[col] = 'AREA_MAESTRA'
