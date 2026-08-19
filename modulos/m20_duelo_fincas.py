@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, date
 import gspread
 import re
@@ -184,6 +183,7 @@ def cargar_fuentes_maestras_duelo():
         
         super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_area)
         
+        # Extracción Financiera Matemática
         super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero) 
         super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero) 
         super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero) 
@@ -220,10 +220,9 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* FIX: Bordes para selectores de dropdowns */
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     
-    /* 💥 FIX: Bordes completos para las casillas de fechas 💥 */
+    /* FIX: Bordes completos para las casillas de fechas */
     div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
     div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
     
@@ -243,7 +242,7 @@ def ejecutar():
     """, unsafe_allow_html=True)
 
     st.markdown("<h1 class='titulo-mod'>⚔️ 20. Duelo Logístico (Pista vs Pista)</h1>", unsafe_allow_html=True)
-    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, el Costo de Tarifa de Avión, y audita el rendimiento en Hectáreas por Hora de cada Modelo de Aeronave.")
+    st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, la Tarifa de Avión y los Ciclos Reales agrupados por operación.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
         df_base = cargar_fuentes_maestras_duelo()
@@ -296,38 +295,50 @@ def ejecutar():
         st.warning("⚠️ La finca no operó desde ninguna de estas pistas en el rango de fechas seleccionado.")
         return
 
-    # --- CÁLCULO DE KPIs Y DESGLOSE POR MODELO ---
+    # --- CÁLCULO DE KPIs, DESGLOSE Y ALGORITMO DE CICLOS ---
     def calcular_metricas(df_pista):
         if df_pista.empty: return 0, 0, 0, 0, "", ""
         
         total_ha = df_pista['AREA_NUM'].sum()
         total_facturado = df_pista['COSTO_TOTAL_NUM'].sum()
-        total_vuelos = df_pista['OS_MAESTRA'].nunique()
         
         costo_integral_ha = df_pista['VALOR_FACTURAR_NUM'].mean()
         costo_tarifa_avion = df_pista['COSTO_HA_NUM'].mean()
         
+        # ✈️ RENDIMIENTO POR MODELO DE AVIÓN
         html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#0d1b2a;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
         df_mod = df_pista.groupby('MODELO_FINAL').agg(
-            VUELOS=('OS_MAESTRA', 'nunique'),
+            REGISTROS=('OS_MAESTRA', 'count'), # Cuenta los registros, no lo llamaremos ciclos aquí
             HORAS=('H_TOTAL_NUM', 'sum'),
             AREA=('AREA_NUM', 'sum')
         ).reset_index()
         
         for _, row in df_mod.iterrows():
             mod_nombre = str(row['MODELO_FINAL'])
-            vuelos = row['VUELOS']
+            registros = row['REGISTROS']
             horas = row['HORAS']
             area = row['AREA']
             
             rend_ha_hr = area / horas if horas > 0 else 0
-            html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({vuelos} Ciclos realizados)</i></li>"
+            html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({registros} líneas voladas)</i></li>"
         html_mod += "</ul></div>"
+        
+        # 💥 ALGORITMO DE CICLOS (Ventana de 5 días) 💥
+        fechas_unicas = sorted(df_pista['FECHA_DT'].dropna().unique())
+        total_ciclos_reales = 0
+        
+        if len(fechas_unicas) > 0:
+            total_ciclos_reales = 1
+            inicio_ciclo = fechas_unicas[0]
+            for f in fechas_unicas[1:]:
+                if (f - inicio_ciclo).days > 5:
+                    total_ciclos_reales += 1
+                    inicio_ciclo = f
         
         html_ciclos = f"""
         <div class='kpi-vs' style='padding: 10px; margin-top: 5px; border: 2px dashed #d4af37;'>
-            <p class='kpi-vs-title'>TOTAL CICLOS EN PISTA (OS)</p>
-            <p class='kpi-vs-value' style='font-size:26px;'>{total_vuelos} Vuelos</p>
+            <p class='kpi-vs-title'>TOTAL CICLOS REALES (Agrupados a 5 días)</p>
+            <p class='kpi-vs-value' style='font-size:26px;'>{total_ciclos_reales} Ciclos</p>
         </div>
         """
         
@@ -371,7 +382,7 @@ def ejecutar():
         else: 
             st.markdown(html_mod_B, unsafe_allow_html=True)
 
-    # 💥 NUEVA FILA SEPARADA PARA ALINEAR PERFECTAMENTE LAS CAJAS DE CICLOS 💥
+    # 💥 FILA SEPARADA PARA ALINEAR PERFECTAMENTE LAS CAJAS DE CICLOS 💥
     col_ciclos_A, col_ciclos_vs, col_ciclos_B = st.columns([4, 1, 4])
     with col_ciclos_A:
         if not df_A.empty: st.markdown(html_ciclos_A, unsafe_allow_html=True)
