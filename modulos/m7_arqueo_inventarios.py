@@ -65,6 +65,7 @@ def extraer_tablas_aforo():
     except Exception as e:
         return pd.DataFrame(), f"Error al extraer aforos: {str(e)}"
 
+# 💥 MOTOR TÁCTICO: EXTRACCIÓN DIRECTA (CON BLINDAJE DE AÑO Y DOSIS EN LITROS)
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
     gc = inicializar_cliente_gspread()
@@ -91,14 +92,17 @@ def extraer_consumos_teoricos():
         c_fecha = next((c for c in df_vuelos.columns if "FECHA" in c), None)
         
         if not all([c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]):
-            return pd.DataFrame(), pd.DataFrame(), "Faltan columnas maestras en TABLA 1."
+            faltantes = [n for n, v in zip(["FINCA", "ÁREA FUMIG", "COCTEL", "SEM", "PISTA", "FECHA"], [c_finca, c_area, c_coctel, c_sem, c_pista_raw, c_fecha]) if v is None]
+            return pd.DataFrame(), pd.DataFrame(), f"Faltan estas columnas exactas en la fila de encabezados de TABLA 1: {faltantes}"
 
+        # 🎯 REGLA DE ORO 1: El primer dígito es el volumen de Aceite EN LITROS.
         def extraer_dosis(coctel):
             coctel_str = str(coctel).strip()
             match = re.search(r'\d', coctel_str)
             if match: return float(match.group())
             return 0.0
         
+        # 🎯 REGLA DE ORO 2: Mapeo Estricto de Pistas
         def mapear_pista_oficial(row):
             p = str(row[c_pista_raw]).strip().upper()
             f = str(row[c_finca]).strip().upper()
@@ -110,6 +114,7 @@ def extraer_consumos_teoricos():
             if 'ASA' in p: return 'PDIV'
             return p
 
+        # 💥 BLINDAJE: Extracción del Año de la Fecha
         def extraer_anio(fecha_val):
             fecha_str = str(fecha_val).strip()
             match = re.search(r'(20\d{2})', fecha_str)
@@ -126,12 +131,16 @@ def extraer_consumos_teoricos():
             except: return 0.0
             
         df_vuelos['AREA_LIMPIA'] = df_vuelos[c_area].apply(purificar_area)
+        
+        # 💥 LA MATEMÁTICA PURA: Hectáreas x Dosis(L) = Litros Totales
         df_vuelos['CONSUMO_TEORICO_L'] = df_vuelos['AREA_LIMPIA'] * df_vuelos['DOSIS_LITROS']
         df_vuelos['SEMANA_LIMPIA'] = df_vuelos[c_sem].astype(str).str.replace('.0', '', regex=False).str.strip()
         
+        # 💥 AGRUPAR TENIENDO EN CUENTA EL AÑO, LA SEMANA Y LA PISTA
         df_teorico = df_vuelos.groupby(['AÑO', 'SEMANA_LIMPIA', 'PISTA_OFICIAL'], as_index=False)['CONSUMO_TEORICO_L'].sum()
         df_teorico.columns = ['AÑO', 'SEMANA', 'PISTA', 'LITROS_TEORICOS']
         
+        # TABLA DE AUDITORÍA DETALLADA PARA EL COMANDANTE
         df_auditoria = df_vuelos[[c_finca, c_coctel, 'DOSIS_LITROS', 'AREA_LIMPIA', 'CONSUMO_TEORICO_L', 'SEMANA_LIMPIA', 'AÑO', 'PISTA_OFICIAL']].copy()
         df_auditoria.columns = ['FINCA', 'COCTEL', 'DOSIS (L/Ha)', 'ÁREA (Ha)', 'TOTAL ACEITE (L)', 'SEMANA', 'AÑO', 'PISTA']
         
@@ -301,7 +310,7 @@ def renderizar_radar_plomadas():
             
             btn_registrar_plomada = st.button("💾 GUARDAR DESGLOSE EN BÓVEDA", type="secondary", use_container_width=True)
             if btn_registrar_plomada and not errores_aforo:
-                with st.spinner("Guardando en REGISTRO_PLOMADAS..."):
+                with st.spinner("Inyectando desglose en REGISTRO_PLOMADAS..."):
                     try:
                         gc = inicializar_cliente_gspread()
                         sh = gc.open_by_url(URL_BASE_AFOROS)
@@ -331,7 +340,19 @@ def renderizar_radar_plomadas():
                                 usuario_actual
                             ])
                         
-                        ws_reg.append_rows(filas_a_guardar)
+                        # 💥 INYECCIÓN DE FRANCOTIRADOR (Evita el "Fantasma de la Tabla")
+                        col_a = ws_reg.col_values(1)
+                        ultima_fila = 1
+                        for idx in range(len(col_a)-1, -1, -1):
+                            if str(col_a[idx]).strip() != "":
+                                ultima_fila = idx + 1
+                                break
+                        siguiente_fila = ultima_fila + 1
+                        
+                        if siguiente_fila + len(filas_a_guardar) > ws_reg.row_count:
+                            ws_reg.add_rows(15)
+                            
+                        ws_reg.update(range_name=f"A{siguiente_fila}", values=filas_a_guardar, value_input_option="USER_ENTERED")
                         st.success(f"✅ ¡Desglose por tanque guardado exitosamente!")
                     except Exception as e: st.error(f"🚨 Error: {e}")
 
@@ -415,7 +436,7 @@ def renderizar_radar_plomadas():
         st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("💾 GUARDAR ARQUEO GLOBAL", type="primary", use_container_width=True):
-            with st.spinner("Guardando Arqueo Completo de la Base..."):
+            with st.spinner("Inyectando Arqueo Global..."):
                 try:
                     gc = inicializar_cliente_gspread()
                     sh = gc.open_by_url(URL_BASE_AFOROS)
@@ -426,7 +447,7 @@ def renderizar_radar_plomadas():
                         ws_reg.append_row(["FECHA", "SEMANA", "AÑO", "PISTA", "SALDO INICIAL", "INGRESOS", "SALDO FISICO ACTUAL", "CONSUMO FISICO", "CONSUMO TEORICO T1", "SALDO AZ", "DESCUADRE AZ", "USUARIO"])
                     
                     usuario_actual = st.session_state.get('usuario_nombre', 'Comandante')
-                    ws_reg.append_row([
+                    fila_global = [
                         fecha_plomada.strftime("%d/%m/%Y"), 
                         semana_calculada,
                         anio_calculado,
@@ -439,7 +460,21 @@ def renderizar_radar_plomadas():
                         f"{litros_teoricos_input:.3f}".replace('.', ','),
                         f"{diferencia_inventario:.3f}".replace('.', ','),
                         usuario_actual
-                    ])
+                    ]
+                    
+                    # 💥 INYECCIÓN DE FRANCOTIRADOR (Evita el "Fantasma de la Tabla")
+                    col_a = ws_reg.col_values(1)
+                    ultima_fila = 1
+                    for idx in range(len(col_a)-1, -1, -1):
+                        if str(col_a[idx]).strip() != "":
+                            ultima_fila = idx + 1
+                            break
+                    siguiente_fila = ultima_fila + 1
+                    
+                    if siguiente_fila > ws_reg.row_count:
+                        ws_reg.add_rows(10)
+                        
+                    ws_reg.update(range_name=f"A{siguiente_fila}", values=[fila_global], value_input_option="USER_ENTERED")
                     st.success(f"✅ ¡Arqueo Global Guardado con Éxito!")
                 except Exception as e: st.error(f"🚨 Error al guardar: {e}")
 
