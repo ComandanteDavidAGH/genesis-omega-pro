@@ -37,9 +37,10 @@ import modulos.m14_presupuesto as m14
 import modulos.m15_mapa_calor as m15
 import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
-import modulos.m18_desglose_facturacion as m18
-# 💥 AQUÍ INYECTAMOS EL NUEVO MÓDULO 19:
+import modulos.m18_auditoria_desglose as m18
 import modulos.m19_ingresos as m19
+# 👇 INYECTA ESTA LÍNEA AQUÍ 👇
+import modulos.m20_duelo_fincas as m20
 
 # --- 🔐 CREDENCIALES ---
 pass_cmd = st.secrets.get("passwords", {}).get("comandante", "123") if "passwords" in st.secrets else "123"
@@ -268,8 +269,11 @@ with st.sidebar:
             "🚀 17. Mega-Proyección Operativa",  
             "🔍 18. Auditoría y Desglose Financiero",
             # 💥 AQUÍ INYECTAMOS EL BOTÓN DEL MÓDULO 19:
-            "📦 19. Control y Auditoría de Ingresos"
-        ], key="modulo_actual")
+            "📦 19. Control y Auditoría de Ingresos",
+            # 👇 INYECTA ESTA LÍNEA AQUÍ 👇
+            "⚔️ 20. Duelo de Titanes (Finca vs Finca)"
+        ]
+   )
     else: 
         st.info("🛰️ Modo Consulta Gerencial Activado.")
         st.radio("📊 SELECCIONE EL REPORTE:", [
@@ -312,3 +316,6 @@ elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar(supabase_client
 elif menu == "🔍 18. Auditoría y Desglose Financiero": m18.ejecutar()
 # 💥 AQUÍ INYECTAMOS LA LÓGICA DE DIRECCIONAMIENTO DEL MÓDULO 19:
 elif menu == "📦 19. Control y Auditoría de Ingresos": m19.ejecutar()
+# 👇 INYECTA ESTAS LÍNEAS AL FINAL 👇
+elif menu == "⚔️ 20. Duelo de Titanes (Finca vs Finca)": 
+    m20.ejecutar()    
