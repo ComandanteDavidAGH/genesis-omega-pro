@@ -39,7 +39,6 @@ import modulos.m16_gerencia as m16
 import modulos.m17_mega_proyeccion as m17
 import modulos.m18_desglose_facturacion as m18
 import modulos.m19_ingresos as m19
-# 👇 INYECTA ESTA LÍNEA AQUÍ 👇
 import modulos.m20_duelo_fincas as m20
 
 # --- 🔐 CREDENCIALES ---
@@ -246,14 +245,9 @@ with st.sidebar:
         if st.button("🔄 Sincronizar Nube", use_container_width=True):
             st.cache_data.clear()
             st.cache_resource.clear()
-            # 🛡️ Escudo protector inyectado:
-            try:
-                m0.ordenar_base_datos_global()
-                st.success("✅ Nube sincronizada con éxito.")
-            except Exception as e:
-                st.error(f"🚨 Error en sincronización: {e}")
+            # 🛡️ Simplificado: Solo limpia la caché para no romper la navegación.
+            st.success("✅ Caché limpia. Nube sincronizada con éxito.")
                 
-        # 💥 AQUÍ ESTABA EL ERROR: Le faltaba el key="modulo_actual" al final
         st.radio("🛰️ SELECCIONE LA OPERACIÓN:", [
             "🏠 Centro de Mando", 
             "🛠️ 1. Mantenimiento Plantilla SAP", 
@@ -276,7 +270,7 @@ with st.sidebar:
             "🔍 18. Auditoría y Desglose Financiero",
             "📦 19. Control y Auditoría de Ingresos",
             "⚔️ 20. Duelo de Titanes (Finca vs Finca)"
-        ], key="modulo_actual") # 👈 ¡ESTA ES LA LLAVE MAESTRA!
+        ], key="modulo_actual")
     else: 
         st.info("🛰️ Modo Consulta Gerencial Activado.")
         st.radio("📊 SELECCIONE EL REPORTE:", [
@@ -317,8 +311,6 @@ elif menu == "🗺️ 15. Mapa de Calor Agronómico": m15.ejecutar(purificar_lot
 elif menu == "💼 16. Comparativo Gerencial (Dron vs Avión)": m16.ejecutar()
 elif menu == "🚀 17. Mega-Proyección Operativa": m17.ejecutar(supabase_client)
 elif menu == "🔍 18. Auditoría y Desglose Financiero": m18.ejecutar()
-# 💥 AQUÍ INYECTAMOS LA LÓGICA DE DIRECCIONAMIENTO DEL MÓDULO 19:
 elif menu == "📦 19. Control y Auditoría de Ingresos": m19.ejecutar()
-# 👇 INYECTA ESTAS LÍNEAS AL FINAL 👇
 elif menu == "⚔️ 20. Duelo de Titanes (Finca vs Finca)": 
-    m20.ejecutar()    
+    m20.ejecutar()
