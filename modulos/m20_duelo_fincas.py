@@ -193,45 +193,13 @@ def cargar_fuentes_maestras_duelo_v4():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        def clean_num_global(val):
-            try:
-                v = str(val).strip().replace('$', '').replace(' ', '').replace('COP', '')
-                if not v or v in ['-', 'N/A']: return 0.0
-                has_dot = '.' in v
-                has_comma = ',' in v
-                if has_dot and has_comma:
-                    if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-                    else: v = v.replace(',', '')
-                elif has_comma:
-                    parts = v.split(',')
-                    v = v.replace(',', '.') if len(parts) == 2 and len(parts[1]) != 3 else v.replace(',', '')
-                elif has_dot:
-                    parts = v.split('.')
-                    if len(parts) == 2 and len(parts[1]) != 3: pass 
-                    else: v = v.replace('.', '')
-                return float(re.sub(r'[^\d\.\-]', '', v))
-            except: return 0.0
-
-        def clean_time_global(val):
-            try:
-                if isinstance(val, (int, float)): return float(val)
-                v = str(val).strip()
-                if not v: return 0.0
-                if ':' in v:
-                    partes = v.split(':')
-                    return float(partes[0]) + (float(partes[1]) / 60.0)
-                v = v.replace(',', '.')
-                v = re.sub(r'[^\d\.]', '', v)
-                return float(v) if v else 0.0
-            except: return 0.0
-
-        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(clean_num_global)
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(clean_num_global) 
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(clean_num_global) 
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(clean_num_global) 
+        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_numeros_universales) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
-        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(clean_time_global)
+        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
         
         def mapear_modelo(row):
             mod = str(row.get('MODELO', '')).strip().upper()
@@ -262,58 +230,18 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 ATAQUE DEFINITIVO: SOBRESCRIBIR STREAMLIT NATIVO 💥 */
-    
-    /* 1. SELECTBOX (Desplegables) */
-    div.stSelectbox div[data-baseweb="select"] > div:first-of-type {
-        background-color: #0d1b2a !important;
+    /* 🎯 ESTILO ESTABLE CORPORATIVO PARA INPUTS 🎯 */
+    .stSelectbox > div > div, .stDateInput > div > div, .stMultiSelect > div > div {
         border: 2px solid #d4af37 !important;
-        border-radius: 6px !important;
-    }
-    div.stSelectbox div[data-baseweb="select"] > div:first-of-type * {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
-    }
-
-    /* 2. DATEINPUT (Fechas) */
-    div.stDateInput div[data-baseweb="baseInput"] {
-        background-color: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
-        border-radius: 6px !important;
-    }
-    div.stDateInput div[data-baseweb="baseInput"] input {
-        background-color: #0d1b2a !important;
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
-    }
-
-    /* 3. MULTISELECT (Panel de Descarga) */
-    div.stMultiSelect div[data-baseweb="select"] > div:first-of-type {
-        background-color: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
-        border-radius: 6px !important;
-    }
-    div.stMultiSelect div[data-baseweb="select"] > div:first-of-type * {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
-    }
-
-    /* 4. ÍCONOS DORADOS */
-    div.stSelectbox svg, div.stDateInput svg, div.stMultiSelect svg {
-        fill: #d4af37 !important;
-        color: #d4af37 !important;
-    }
-
-    /* 5. PROTECCIÓN DEL MENÚ DESPLEGABLE (Evitar que se dañe al abrir) */
-    div[data-baseweb="popover"] * {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        -webkit-text-fill-color: #000000 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }
     
+    .stSelectbox label, .stDateInput label, .stMultiSelect label {
+        color: #0d1b2a !important;
+        font-weight: bold !important;
+    }
+
     .lista-hk { 
         text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; 
         border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;
@@ -336,7 +264,7 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
-    # Selector a la mitad
+    # --- CONTENEDOR TÁCTICO AL 50% ---
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
@@ -649,7 +577,7 @@ def ejecutar():
                 )
             except Exception as e:
                 st.warning(f"⚠️ Servidor sin openpyxl nativo. Generando CSV: {e}")
-                csv = df_resumen.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
+                csv = df_resumen.to_csv(index=False, sep= me, decimal=',').encode('utf-8-sig')
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EN CSV",
                     data=csv,
