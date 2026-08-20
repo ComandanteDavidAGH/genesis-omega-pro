@@ -31,31 +31,42 @@ def inicializar_cliente_gspread():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-# 💥 PARSER INTELIGENTE: Diferencia perfectamente miles de decimales 💥
+# 💥 PARSER INTELIGENTE DEFINITIVO 💥
 def limpiar_numeros_universales(val):
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
-        if not v or v in ['-', 'N/A']: return 0.0
+        if not v or v in ['-', 'N/A', '']: return 0.0
         
-        v = v.replace('$', '').replace(' ', '').replace('COP', '')
-        v = re.sub(r'[^\d\.,\-]', '', v) # Deja solo números, puntos y comas
+        # Limpiar moneda y texto
+        v = v.replace('$', '').replace('COP', '').replace(' ', '')
         
-        if ',' in v and '.' in v:
-            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-            else: v = v.replace(',', '')
-        elif '.' in v:
-            if v.count('.') > 1: v = v.replace('.', '')
+        # Contar comas y puntos
+        has_dot = '.' in v
+        has_comma = ',' in v
+        
+        if has_dot and has_comma:
+            if v.rfind(',') > v.rfind('.'):
+                v = v.replace('.', '').replace(',', '.')
             else:
-                if len(v.split('.')[1]) == 3: v = v.replace('.', '') # Es un mil (ej. 24.500)
-        elif ',' in v:
-            if v.count(',') > 1: v = v.replace(',', '')
+                v = v.replace(',', '')
+        elif has_comma:
+            partes = v.split(',')
+            if len(partes) == 2 and len(partes[1]) != 3:
+                v = v.replace(',', '.') # Es decimal
             else:
-                if len(v.split(',')[1]) == 3: v = v.replace(',', '') # Es un mil (ej. 24,500)
-                else: v = v.replace(',', '.') # Es un decimal (ej. 7,76)
-                
-        return float(v)
-    except: return 0.0
+                v = v.replace(',', '') # Es miles
+        elif has_dot:
+            partes = v.split('.')
+            if len(partes) == 2 and len(partes[1]) != 3:
+                pass # Ya es decimal válido
+            else:
+                v = v.replace('.', '') # Es miles
+        
+        v = re.sub(r'[^\d\.\-]', '', v)
+        return float(v) if v else 0.0
+    except:
+        return 0.0
 
 def limpiar_tiempo(val):
     try:
@@ -115,9 +126,9 @@ def extraer_diccionario_flota(gc):
     except: pass
     return {}
 
-# 💥 EXTRACCIÓN MAESTRA DEL HISTÓRICO Y TABLA 1 VIVA
+# 💥 CAMBIO DE NOMBRE: Fuerza a Streamlit a borrar la caché corrupta 💥
 @st.cache_data(show_spinner=False, ttl=600)
-def cargar_fuentes_maestras_duelo():
+def cargar_fuentes_maestras_duelo_v3():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame()
     
@@ -177,7 +188,7 @@ def cargar_fuentes_maestras_duelo():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        # Uso del nuevo escáner inteligente para todos los números
+        # Limpieza Quirúrgica Universal
         super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
         super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
         super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
@@ -239,7 +250,8 @@ def ejecutar():
     st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, la Tarifa de Avión y los Ciclos Reales agrupados por operación.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
-        df_base = cargar_fuentes_maestras_duelo()
+        # Llamamos a la versión 3 de la función para evadir la caché antigua
+        df_base = cargar_fuentes_maestras_duelo_v3()
 
     if df_base.empty:
         st.error("🚨 No se encontró información en la base de datos o hubo un error de conexión.")
@@ -265,18 +277,14 @@ def ejecutar():
     with col_filt2:
         pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
     
-    # 💥 CALENDARIO LIBERADO: Desde 2020 hasta fin de 2026 💥
+    # 💥 CALENDARIO FIJADO EN 2026 (Navegable hasta 2020) 💥
     min_date_allowed = date(2020, 1, 1)
     max_date_allowed = date(2026, 12, 31)
     
-    # Toma las fechas de la finca para pre-llenar, pero no restringe la búsqueda general
-    default_start = df_finca_global['FECHA_DT'].min().date() if not df_finca_global.empty else date(2026, 1, 1)
-    default_end = df_finca_global['FECHA_DT'].max().date() if not df_finca_global.empty else date(2026, 8, 19)
-    
     with col_filt3:
-        start_date = st.date_input("📅 Fecha Inicial", value=default_start, min_value=min_date_allowed, max_value=max_date_allowed)
+        start_date = st.date_input("📅 Fecha Inicial", value=date(2026, 1, 1), min_value=min_date_allowed, max_value=max_date_allowed)
     with col_filt4:
-        end_date = st.date_input("📅 Fecha Final", value=default_end, min_value=min_date_allowed, max_value=max_date_allowed)
+        end_date = st.date_input("📅 Fecha Final", value=date(2026, 12, 31), min_value=min_date_allowed, max_value=max_date_allowed)
 
     df_finca = df_finca_global.copy()
     if start_date and end_date:
