@@ -262,10 +262,31 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
-    div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
-    div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
-    div[data-testid="stMultiSelect"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; }
+    /* 💥 PINTURA TÁCTICA PARA CONTENEDORES DE INPUTS 💥 */
+    div[data-testid="stSelectbox"] > div:last-child,
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stMultiSelect"] > div:last-child { 
+        background-color: #0d1b2a !important; 
+        border: 2px solid #d4af37 !important; 
+        border-radius: 8px !important; 
+        overflow: hidden !important;
+    }
+    
+    /* TEXTO BLANCO DENTRO DE LOS INPUTS AZULES */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stMultiSelect"] * { 
+        color: #ffffff !important; 
+        font-weight: bold !important;
+    }
+
+    /* ICONOS DORADOS (Calendario y flechas) */
+    div[data-testid="stSelectbox"] svg,
+    div[data-testid="stDateInput"] svg,
+    div[data-testid="stMultiSelect"] svg {
+        fill: #d4af37 !important; 
+        color: #d4af37 !important;
+    }
     
     .lista-hk { 
         text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; 
@@ -288,7 +309,11 @@ def ejecutar():
 
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
-    finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
+    
+    # 💥 REDUCCIÓN AL 50%: ENVOLVIENDO EN UNA COLUMNA 💥
+    c_finca_mitad, _ = st.columns([1, 1])
+    with c_finca_mitad:
+        finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
 
     df_finca_global = df_base[df_base['FINCA_MAESTRA'] == finca_sel]
     lista_pistas = sorted(df_finca_global['PISTA_MAESTRA'].unique().tolist())
@@ -419,14 +444,13 @@ def ejecutar():
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
-        st.info("💡 Seleccione las fincas a exportar. El sistema generará el comparativo Gerencial y la Auditoría de vuelos con formato corporativo.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará los números, eliminará errores visuales y aplicará un formato corporativo profesional en el Excel.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
             df_filtrado_fecha = df_base[(df_base['FECHA_DT'].dt.date >= start_date) & (df_base['FECHA_DT'].dt.date <= end_date)]
             df_export = df_filtrado_fecha[df_filtrado_fecha['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
             
-            # --- CONSTRUCCIÓN PESTAÑA 1: RESUMEN GERENCIAL ---
             resumen_data = []
             rendimiento_data = []
             
@@ -477,7 +501,7 @@ def ejecutar():
             df_resumen = pd.DataFrame(resumen_data)
             df_rendimiento = pd.DataFrame(rendimiento_data)
             
-            # 💥 LIMPIEZA DE AUDITORÍA: MATANDO COLUMNAS BASURA 💥
+            # LIMPIEZA DE AUDITORÍA: MATANDO COLUMNAS BASURA
             cols_sistema = [c for c in df_export.columns if c.endswith('_NUM') or c.endswith('_DT') or c == 'MODELO_FINAL']
             cols_inutiles = ['BLOQUE', 'SECTOR', 'AREA_BRUTA', 'LIMITE', 'ALERTA', 'VAR_PCT', 'INC_2026', 'PAGO_AVION']
             
@@ -546,7 +570,6 @@ def ejecutar():
                         max_col = ws.max_column
                         max_row = ws.max_row
                         
-                        # Títulos (Fila 1 y 2)
                         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_col)
                         c_tit = ws.cell(row=1, column=1, value=titulos_hojas.get(sheet_name, 'REPORTE'))
                         c_tit.fill = fill_titulo
@@ -559,7 +582,6 @@ def ejecutar():
                         c_sub.font = font_sub
                         c_sub.alignment = align_left
                         
-                        # Cabeceras Doradas (Fila 3)
                         for col_idx in range(1, max_col + 1):
                             h_cell = ws.cell(row=3, column=col_idx)
                             h_cell.fill = fill_header
@@ -567,11 +589,9 @@ def ejecutar():
                             h_cell.alignment = align_center
                             h_cell.border = thin_border
                         
-                        # Activar Filtros
                         if max_row >= 3:
                             ws.auto_filter.ref = f"A3:{get_column_letter(max_col)}{max_row}"
                         
-                        # Datos con Zebra y Alineación (Fila 4+)
                         for r_idx in range(4, max_row + 1):
                             fill_c = fill_zebra1 if r_idx % 2 == 0 else fill_zebra2
                             for c_idx in range(1, max_col + 1):
@@ -589,7 +609,6 @@ def ejecutar():
                                         cell.number_format = '#,##0.00'
                                     cell.alignment = align_right
                                     
-                        # Ancho de Columnas Inteligente
                         for c_idx in range(1, max_col + 1):
                             max_len = 0
                             for r_idx in range(3, max_row + 1):
