@@ -262,46 +262,48 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 MISIL CSS UNIVERSAL (ATACA CLASES OFICIALES DE STREAMLIT) 💥 */
+    /* 💥 MISIL CSS UNIVERSAL (ATAQUE A LA CAPA EXTERNA E INTERNA) 💥 */
     
-    /* PINTAR FONDOS */
-    .stSelectbox [data-baseweb="select"] > div,
-    .stMultiSelect [data-baseweb="select"] > div,
-    .stDateInput [data-baseweb="baseInput"] {
+    /* 1. Atacar al contenedor principal del Widget (Fondo Azul + Borde) */
+    div[data-testid="stSelectbox"] > div:nth-child(2) > div,
+    div[data-testid="stMultiSelect"] > div:nth-child(2) > div,
+    div[data-testid="stDateInput"] > div:nth-child(2) > div {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
     }
 
-    /* PINTAR TEXTOS (Selector y Fechas) AL BLANCO MÁS PURO */
-    .stSelectbox [data-baseweb="select"] *,
-    .stMultiSelect [data-baseweb="select"] *,
-    .stDateInput input {
+    /* 2. Destruir fondos blancos internos haciendolos transparentes */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="baseInput"], 
+    div[data-baseweb="baseInput"] input {
+        background-color: transparent !important;
+        border: none !important;
+    }
+
+    /* 3. Forzar el texto interno a Blanco Puro en TODAS las capas */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] *,
+    div[data-testid="stDateInput"] input {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        background-color: transparent !important;
-        font-weight: 800 !important;
     }
-
-    /* PINTAR ICONOS DE DORADO */
-    .stSelectbox svg,
-    .stMultiSelect svg,
-    .stDateInput svg {
+    
+    /* 4. Iconos dorados */
+    div[data-testid="stSelectbox"] svg,
+    div[data-testid="stMultiSelect"] svg,
+    div[data-testid="stDateInput"] svg {
         fill: #d4af37 !important;
-        color: #d4af37 !important;
     }
 
-    /* BLINDAR LA LISTA DESPLEGABLE (Evitar fondo negro al abrir el menú) */
-    ul[role="listbox"],
-    div[data-baseweb="popover"] ul {
+    /* 5. Blindaje del menú desplegable: Que no se contagie de Azul */
+    div[data-testid="stSelectbox"] ul,
+    div[data-testid="stMultiSelect"] ul,
+    div[role="listbox"],
+    div[data-baseweb="popover"] * {
         background-color: #ffffff !important;
-    }
-    ul[role="listbox"] li,
-    div[data-baseweb="popover"] ul li,
-    div[data-baseweb="popover"] ul li span {
         color: #0d1b2a !important;
         -webkit-text-fill-color: #0d1b2a !important;
-        font-weight: bold !important;
     }
     
     .lista-hk { 
