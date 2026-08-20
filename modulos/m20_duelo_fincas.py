@@ -262,47 +262,39 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 LA ORDEN CSS DEFINITIVA E INQUEBRANTABLE 💥 */
+    /* 💥 FUEGO A DISCRECIÓN (CERO CÓDIGO COMPLEJO) 💥 */
     
-    /* 1. Atacar al contenedor principal de todos los inputs */
+    /* PINTAR CAJAS GENERALES (SELECTORES Y FECHAS) */
     div[data-baseweb="select"] > div,
     div[data-baseweb="baseInput"] {
         background-color: #0d1b2a !important;
-        border-color: #d4af37 !important;
-        border-width: 2px !important;
-        border-style: solid !important;
+        border: 2px solid #d4af37 !important;
         border-radius: 6px !important;
     }
 
-    /* 2. Forzar TODO el texto interno a blanco brillante */
-    div[data-baseweb="select"] * ,
-    div[data-baseweb="baseInput"] * ,
+    /* PINTAR TODAS LAS LETRAS ADENTRO DE BLANCO */
+    div[data-baseweb="select"] span,
     div[data-baseweb="baseInput"] input {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
+        background-color: transparent !important;
     }
 
-    /* 3. Pintar todos los íconos dorados (flechas y calendarios) */
-    [data-baseweb="select"] svg,
-    [data-baseweb="baseInput"] svg {
+    /* PINTAR FLECHAS Y CALENDARIO DE DORADO */
+    div[data-baseweb="select"] svg,
+    div[data-baseweb="baseInput"] svg {
         fill: #d4af37 !important;
-        color: #d4af37 !important;
     }
 
-    /* 4. Proteger estrictamente los popovers (Menú desplegable de la lista) para que queden blancos y legibles */
-    [data-baseweb="popover"] > div,
-    ul[role="listbox"],
-    ul[role="listbox"] li {
+    /* EL MENÚ DESPLEGABLE (FONDO BLANCO Y LETRAS NEGRAS PARA QUE SE VEA) */
+    ul[role="listbox"] {
         background-color: #ffffff !important;
-        color: #0d1b2a !important;
-        -webkit-text-fill-color: #0d1b2a !important;
     }
-    ul[role="listbox"] * {
-        color: #0d1b2a !important;
-        -webkit-text-fill-color: #0d1b2a !important;
+    ul[role="listbox"] li {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
     }
-
+    
     .lista-hk { 
         text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; 
         border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;
