@@ -193,45 +193,13 @@ def cargar_fuentes_maestras_duelo_v4():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        def clean_num_global(val):
-            try:
-                v = str(val).strip().replace('$', '').replace(' ', '').replace('COP', '')
-                if not v or v in ['-', 'N/A']: return 0.0
-                has_dot = '.' in v
-                has_comma = ',' in v
-                if has_dot and has_comma:
-                    if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-                    else: v = v.replace(',', '')
-                elif has_comma:
-                    parts = v.split(',')
-                    v = v.replace(',', '.') if len(parts) == 2 and len(parts[1]) != 3 else v.replace(',', '')
-                elif has_dot:
-                    parts = v.split('.')
-                    if len(parts) == 2 and len(parts[1]) != 3: pass 
-                    else: v = v.replace('.', '')
-                return float(re.sub(r'[^\d\.\-]', '', v))
-            except: return 0.0
-
-        def clean_time_global(val):
-            try:
-                if isinstance(val, (int, float)): return float(val)
-                v = str(val).strip()
-                if not v: return 0.0
-                if ':' in v:
-                    partes = v.split(':')
-                    return float(partes[0]) + (float(partes[1]) / 60.0)
-                v = v.replace(',', '.')
-                v = re.sub(r'[^\d\.]', '', v)
-                return float(v) if v else 0.0
-            except: return 0.0
-
-        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(clean_num_global)
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(clean_num_global) 
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(clean_num_global) 
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(clean_num_global) 
+        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_numeros_universales) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
-        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(clean_time_global)
+        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
         
         def mapear_modelo(row):
             mod = str(row.get('MODELO', '')).strip().upper()
@@ -262,49 +230,38 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA TÁCTICA PARA SELECTORES 💥 */
-    /* Selectboxes */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { 
+    /* 💥 PINTURA TÁCTICA NIVEL DIOS PARA SELECTORES Y FECHAS 💥 */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {
         background-color: #0d1b2a !important; 
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%) !important;
         border: 2px solid #d4af37 !important; 
-        border-radius: 8px !important; 
-    }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div * { 
-        color: #ffffff !important; 
-        font-weight: bold !important; 
-    }
-    div[data-testid="stSelectbox"] svg { 
-        fill: #d4af37 !important; 
+        border-radius: 8px !important;
+        box-shadow: 0px 4px 6px rgba(0,0,0,0.3) !important;
     }
 
-    /* DateInputs */
-    div[data-testid="stDateInput"] > div { 
-        background-color: #0d1b2a !important; 
-        border: 2px solid #d4af37 !important; 
-        border-radius: 8px !important; 
+    /* MATAR FONDO BLANCO RESIDUAL EN EL DATEINPUT */
+    div[data-testid="stDateInput"] > div {
+        background-color: transparent !important;
+        border: none !important;
     }
-    div[data-testid="stDateInput"] input { 
+
+    /* COLOR DE LETRA BLANCA Y NEGRITA */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] span,
+    div[data-testid="stDateInput"] input {
         color: #ffffff !important; 
         -webkit-text-fill-color: #ffffff !important;
-        background-color: #0d1b2a !important;
-        font-weight: bold !important; 
-    }
-    div[data-testid="stDateInput"] svg { 
-        fill: #d4af37 !important; 
-        color: #d4af37 !important; 
+        font-weight: 800 !important;
     }
 
-    /* MultiSelect (Descarga) */
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
-        background-color: #0d1b2a !important; 
-        border: 2px solid #d4af37 !important; 
-        border-radius: 8px !important; 
-    }
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div * {
-        color: #ffffff !important; 
-    }
-    div[data-testid="stMultiSelect"] svg { 
+    /* COLOR DORADO PARA LOS ÍCONOS (FLECHAS Y CALENDARIO) */
+    div[data-testid="stSelectbox"] svg,
+    div[data-testid="stMultiSelect"] svg,
+    div[data-testid="stDateInput"] svg {
         fill: #d4af37 !important; 
+        color: #d4af37 !important;
     }
     
     .lista-hk { 
