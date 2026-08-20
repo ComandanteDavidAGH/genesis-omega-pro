@@ -262,42 +262,47 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 MISIL CSS DEFINITIVO (FRANCOTIRADOR) 💥 */
+    /* 💥 LA ORDEN CSS DEFINITIVA E INQUEBRANTABLE 💥 */
     
-    /* 1. Fondo Azul Marino y Borde Dorado a la caja base */
-    div[data-baseweb="select"] > div:first-child,
+    /* 1. Atacar al contenedor principal de todos los inputs */
+    div[data-baseweb="select"] > div,
     div[data-baseweb="baseInput"] {
         background-color: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
-        border-radius: 8px !important;
+        border-color: #d4af37 !important;
+        border-width: 2px !important;
+        border-style: solid !important;
+        border-radius: 6px !important;
     }
 
-    /* 2. Forzar todo el contenido interno de las cajas a fondo transparente y texto blanco */
-    div[data-baseweb="select"] > div:first-child *,
-    div[data-baseweb="baseInput"] * {
-        background-color: transparent !important;
+    /* 2. Forzar TODO el texto interno a blanco brillante */
+    div[data-baseweb="select"] * ,
+    div[data-baseweb="baseInput"] * ,
+    div[data-baseweb="baseInput"] input {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        font-weight: 800 !important;
+        font-weight: bold !important;
     }
 
-    /* 3. Colorear Iconos (Flechitas y Calendario) de Dorado */
-    div[data-baseweb="select"] > div:first-child svg,
-    div[data-baseweb="baseInput"] svg {
+    /* 3. Pintar todos los íconos dorados (flechas y calendarios) */
+    [data-baseweb="select"] svg,
+    [data-baseweb="baseInput"] svg {
         fill: #d4af37 !important;
         color: #d4af37 !important;
     }
 
-    /* 4. Blindar el Menú Desplegable (Evitar que se ponga azul) */
-    div[role="listbox"] {
+    /* 4. Proteger estrictamente los popovers (Menú desplegable de la lista) para que queden blancos y legibles */
+    [data-baseweb="popover"] > div,
+    ul[role="listbox"],
+    ul[role="listbox"] li {
         background-color: #ffffff !important;
-    }
-    div[role="listbox"] * {
         color: #0d1b2a !important;
         -webkit-text-fill-color: #0d1b2a !important;
-        background-color: transparent !important;
     }
-    
+    ul[role="listbox"] * {
+        color: #0d1b2a !important;
+        -webkit-text-fill-color: #0d1b2a !important;
+    }
+
     .lista-hk { 
         text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; 
         border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;
@@ -320,6 +325,7 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
+    # Selector a la mitad
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
