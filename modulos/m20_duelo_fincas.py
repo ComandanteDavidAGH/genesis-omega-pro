@@ -2,20 +2,18 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from datetime import datetime, date
 import gspread
-import requests
-import io
 import re
-import math
-import json
-from datetime import datetime, timedelta, date
+import io
+
+# Importaciones para el diseño ejecutivo de Excel
+from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.utils import get_column_letter
 
 # =================================================================
-# 🔌 CONEXIÓN Y FORMATO
+# 🔌 MOTORES DE CONEXIÓN Y FORMATO
 # =================================================================
-
-def obtener_hora_colombia():
-    return datetime.utcnow() + timedelta(hours=-5)
 
 def formato_latino(numero, decimales=0):
     if pd.isna(numero) or numero is None: return "0"
@@ -38,29 +36,51 @@ def inicializar_cliente_gspread():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-@st.cache_data(show_spinner=False, ttl=1800)
-def obtener_historial_completo_ciclos_v4():
-    df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
-    gc = inicializar_cliente_gspread()
-    if not gc: return pd.DataFrame(), pd.DataFrame()
+def limpiar_numeros_universales(val):
     try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        t1 = boveda.worksheet("TABLA 1").get_all_values()
-        idx_t1 = 4
-        for i in range(min(6, len(t1))):
-            if "FINCA" in [str(x).upper() for x in t1[i]]:
-                idx_t1 = i; break
-        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v or v in ['-', 'N/A', '']: return 0.0
         
-        apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
-        idx_ap = 0
-        for i in range(min(20, len(apoyo))):
-            if any('FINCA' in str(c).upper() for c in apoyo[i]): 
-                idx_ap = i; break
-        df_apoyo = pd.DataFrame(apoyo[idx_ap+1:], columns=apoyo[idx_ap]) if len(apoyo) > idx_ap else pd.DataFrame()
+        v = v.replace('$', '').replace('COP', '').replace(' ', '')
+        has_dot = '.' in v
+        has_comma = ',' in v
         
-        return df_t1, df_apoyo
-    except Exception: return pd.DataFrame(), pd.DataFrame()
+        if has_dot and has_comma:
+            if v.rfind(',') > v.rfind('.'):
+                v = v.replace('.', '').replace(',', '.')
+            else:
+                v = v.replace(',', '')
+        elif has_comma:
+            partes = v.split(',')
+            if len(partes) == 2 and len(partes[1]) != 3:
+                v = v.replace(',', '.') 
+            else:
+                v = v.replace(',', '') 
+        elif has_dot:
+            partes = v.split('.')
+            if len(partes) == 2 and len(partes[1]) != 3:
+                pass 
+            else:
+                v = v.replace('.', '') 
+        
+        v = re.sub(r'[^\d\.\-]', '', v)
+        return float(v) if v else 0.0
+    except:
+        return 0.0
+
+def limpiar_tiempo(val):
+    try:
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).strip()
+        if not v: return 0.0
+        if ':' in v:
+            partes = v.split(':')
+            return float(partes[0]) + (float(partes[1]) / 60.0)
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.]', '', v)
+        return float(v) if v else 0.0
+    except: return 0.0
 
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
@@ -107,6 +127,7 @@ def extraer_diccionario_flota(gc):
     except: pass
     return {}
 
+# 💥 EXTRACCIÓN MAESTRA DEL HISTÓRICO Y TABLA 1 VIVA
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_duelo_v3():
     gc = inicializar_cliente_gspread()
@@ -168,45 +189,14 @@ def cargar_fuentes_maestras_duelo_v3():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        def clean_num_global(val):
-            try:
-                v = str(val).strip().replace('$', '').replace(' ', '').replace('COP', '')
-                if not v or v in ['-', 'N/A']: return 0.0
-                has_dot = '.' in v
-                has_comma = ',' in v
-                if has_dot and has_comma:
-                    if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-                    else: v = v.replace(',', '')
-                elif has_comma:
-                    parts = v.split(',')
-                    v = v.replace(',', '.') if len(parts) == 2 and len(parts[1]) != 3 else v.replace(',', '')
-                elif has_dot:
-                    parts = v.split('.')
-                    if len(parts) == 2 and len(parts[1]) != 3: pass 
-                    else: v = v.replace('.', '')
-                return float(re.sub(r'[^\d\.\-]', '', v))
-            except: return 0.0
-
-        def clean_time_global(val):
-            try:
-                if isinstance(val, (int, float)): return float(val)
-                v = str(val).strip()
-                if not v: return 0.0
-                if ':' in v:
-                    partes = v.split(':')
-                    return float(partes[0]) + (float(partes[1]) / 60.0)
-                v = v.replace(',', '.')
-                v = re.sub(r'[^\d\.]', '', v)
-                return float(v) if v else 0.0
-            except: return 0.0
-
-        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(clean_num_global)
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(clean_num_global) 
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(clean_num_global) 
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(clean_num_global) 
+        # Limpieza básica para operaciones del sistema
+        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_numeros_universales) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
-        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(clean_time_global)
+        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
         
         def mapear_modelo(row):
             mod = str(row.get('MODELO', '')).strip().upper()
@@ -224,6 +214,10 @@ def cargar_fuentes_maestras_duelo_v3():
     else:
         return pd.DataFrame()
 
+# =================================================================
+# 👑 INTERFAZ PRINCIPAL (EL COLISEO LOGÍSTICO)
+# =================================================================
+
 def ejecutar():
     st.markdown("""
     <style>
@@ -232,11 +226,16 @@ def ejecutar():
     .kpi-vs-title { font-size: 13px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
+    
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
     div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
     div[data-testid="stMultiSelect"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; }
-    .lista-hk { text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    
+    .lista-hk { 
+        text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; 
+        border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;
+    }
     .lista-hk ul { list-style-type: none; padding-left: 0; margin: 0; }
     .lista-hk li { font-size: 14px; margin-bottom: 8px; color: #0d1b2a; }
     </style>
@@ -252,7 +251,9 @@ def ejecutar():
         st.error("🚨 No se encontró información en la base de datos o hubo un error de conexión.")
         return
 
+    # --- SELECCIÓN DE LA FINCA ---
     st.markdown("### 🎯 Configuración del Duelo")
+    
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
 
@@ -289,6 +290,7 @@ def ejecutar():
         st.warning("⚠️ La finca no operó desde ninguna de estas pistas en el rango de fechas seleccionado.")
         return
 
+    # --- CÁLCULO DE KPIs ---
     def calcular_metricas(df_pista):
         if df_pista.empty: return 0, 0, 0, 0, "", ""
         total_ha = df_pista['AREA_NUM'].sum()
@@ -370,29 +372,44 @@ def ejecutar():
             fig_os.update_layout(yaxis_title="$ / OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
             st.plotly_chart(fig_os, use_container_width=True)
 
-    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL Y LIMPIEZA DE FORMATOS 💥
+        st.markdown("#### ✈️ Rendimiento Operativo (Ha/Hora) por Modelo de Aeronave")
+        df_mod_graf = df_ambos.groupby(['PISTA_MAESTRA', 'MODELO_FINAL']).agg(HORAS=('H_TOTAL_NUM', 'sum'), AREA=('AREA_NUM', 'sum')).reset_index()
+        df_mod_graf['RENDIMIENTO_HA_HR'] = np.where(df_mod_graf['HORAS'] > 0, df_mod_graf['AREA'] / df_mod_graf['HORAS'], 0)
+
+        fig_rend = px.bar(df_mod_graf, x='MODELO_FINAL', y='RENDIMIENTO_HA_HR', color='PISTA_MAESTRA', barmode='group', text='RENDIMIENTO_HA_HR', color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'}, title="Rendimiento (Ha / Hora) por Aeronave")
+        fig_rend.update_traces(texttemplate='%{text:,.1f} Ha/Hr', textposition='outside', textfont=dict(family="Arial Black"))
+        fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
+        st.plotly_chart(fig_rend, use_container_width=True)
+
+    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL (ESTILOS EXCEL) 💥
     st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
-    st.markdown("### 📥 Centro de Extracción de Datos (Excel Profesional)")
+    st.markdown("### 📥 Centro de Extracción de Datos (Reporte Ejecutivo)")
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
-        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará textos y formateará los números para evitar alertas en Excel.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará los números, eliminará errores visuales y aplicará un formato corporativo profesional en el Excel.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
             df_crudos = df_base[df_base['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
             df_tratados = df_ambos.copy() if not df_ambos.empty else pd.DataFrame()
             
-            # Limpiar nombres de columnas
+            # 1. PLANCHADO DE CABECERAS
             df_crudos.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_crudos.columns]
             if not df_tratados.empty:
                 df_tratados.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_tratados.columns]
             
-            # Convertir columnas numéricas de texto a flotantes reales para evitar triángulos verdes
-            cols_numericas = ['AREA_NUM', 'VALOR_FACTURAR_NUM', 'COSTO_HA_NUM', 'COSTO_TOTAL_NUM', 'H_TOTAL_NUM']
-            for c in cols_numericas:
-                if c in df_crudos.columns:
-                    df_crudos[c] = pd.to_numeric(df_crudos[c], errors='coerce').fillna(0)
+            # 2. CONVERSIÓN MASIVA A NÚMEROS REALES (Mata los triángulos verdes)
+            palabras_numericas = ['AREA', 'VOLUMEN', 'TIEMPO', 'ODOM', 'SEM', 'GLN', 'REND', 'COSTO', 'VALOR', 'PAGO', 'INC_', 'LIMITE', 'VAR_', 'DOMINIC']
+            
+            for c in df_crudos.columns:
+                if any(p in str(c).upper() for p in palabras_numericas):
+                    df_crudos[c] = df_crudos[c].apply(limpiar_numeros_universales)
+                    
+            if not df_tratados.empty:
+                for c in df_tratados.columns:
+                    if any(p in str(c).upper() for p in palabras_numericas):
+                        df_tratados[c] = df_tratados[c].apply(limpiar_numeros_universales)
 
             c_preview1, c_preview2 = st.columns(2)
             with c_preview1:
@@ -404,23 +421,56 @@ def ejecutar():
                 
             try:
                 buffer = io.BytesIO()
+                # Usar openpyxl para poder inyectar diseño visual
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_crudos.to_excel(writer, sheet_name='Datos Crudos', index=False)
+                    df_crudos.to_excel(writer, sheet_name='Base_Historica', index=False)
                     if not df_tratados.empty:
-                        df_tratados.to_excel(writer, sheet_name='Datos Tratados', index=False)
+                        df_tratados.to_excel(writer, sheet_name='Duelo_Actual', index=False)
                     
-                    # Auto-ajustar anchos de columna automáticamente
+                    # --- ESTILOS PROFESIONALES DE EXCEL ---
+                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    header_font = Font(color="FFFFFF", bold=True)
+                    align_center = Alignment(horizontal="center", vertical="center")
+                    
                     for sheet_name in writer.sheets:
-                        worksheet = writer.sheets[sheet_name]
-                        for col in worksheet.columns:
-                            max_length = max(len(str(cell.value or '')) for cell in col)
+                        ws = writer.sheets[sheet_name]
+                        
+                        # Aplicar Color a los Títulos
+                        for cell in ws[1]:
+                            cell.fill = header_fill
+                            cell.font = header_font
+                            cell.alignment = align_center
+                        
+                        # Activar Filtros Automáticos
+                        ws.auto_filter.ref = ws.dimensions
+                        
+                        # Ajustar Anchos de Columna y Formatos Numéricos
+                        for col in ws.columns:
+                            max_length = 0
                             col_letter = col[0].column_letter
-                            worksheet.column_dimensions[col_letter].width = max(max_length + 4, 12)
+                            header_name = str(ws[f"{col_letter}1"].value).upper()
+                            
+                            for cell in col:
+                                # Ancho automático
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(str(cell.value))
+                                except: pass
+                                
+                                # Formato de celda (saltando la cabecera)
+                                if cell.row > 1 and isinstance(cell.value, (int, float)):
+                                    if any(p in header_name for p in ['COSTO', 'VALOR', 'PAGO', 'LIMITE', '$']):
+                                        cell.number_format = '"$"#,##0' # Formato Moneda sin decimales
+                                    else:
+                                        cell.number_format = '#,##0.00' # Formato número estándar
+                            
+                            # Aplicar ancho final a la columna (mínimo 12, máximo 40)
+                            ws.column_dimensions[col_letter].width = min(max(max_length + 2, 12), 40)
                 
                 st.download_button(
-                    label="💾 DESCARGAR REPORTE EN EXCEL PROFESIONAL (.xlsx)",
+                    label="💾 DESCARGAR REPORTE EJECUTIVO (.xlsx)",
                     data=buffer.getvalue(),
-                    file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    file_name=f"Auditoria_Ejecutiva_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
                     type="primary"
