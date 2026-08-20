@@ -262,39 +262,43 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 BOMBA NUCLEAR CSS: FONDO Y TEXTO OBLIGATORIO 💥 */
+    /* 💥 MISIL CSS UNIVERSAL (ATACA CLASES OFICIALES DE STREAMLIT) 💥 */
     
     /* PINTAR FONDOS */
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="baseInput"] {
+    .stSelectbox [data-baseweb="select"] > div,
+    .stMultiSelect [data-baseweb="select"] > div,
+    .stDateInput [data-baseweb="baseInput"] {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
     }
 
-    /* PINTAR TEXTOS (Selector y Fechas) AL BLANCO MÁS PURO POSIBLE */
-    div[data-baseweb="select"] span[class],
-    div[data-baseweb="select"] div[class],
-    div[data-baseweb="baseInput"] input[type="text"],
-    div[data-baseweb="baseInput"] input[type="date"] {
+    /* PINTAR TEXTOS (Selector y Fechas) AL BLANCO MÁS PURO */
+    .stSelectbox [data-baseweb="select"] *,
+    .stMultiSelect [data-baseweb="select"] *,
+    .stDateInput input {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
         background-color: transparent !important;
+        font-weight: 800 !important;
     }
 
     /* PINTAR ICONOS DE DORADO */
-    div[data-baseweb="select"] svg,
-    div[data-baseweb="baseInput"] svg {
+    .stSelectbox svg,
+    .stMultiSelect svg,
+    .stDateInput svg {
         fill: #d4af37 !important;
         color: #d4af37 !important;
     }
 
-    /* BLINDAR LA LISTA DESPLEGABLE (Evitar que se dañe) */
-    div[role="listbox"] {
+    /* BLINDAR LA LISTA DESPLEGABLE (Evitar fondo negro al abrir el menú) */
+    ul[role="listbox"],
+    div[data-baseweb="popover"] ul {
         background-color: #ffffff !important;
     }
-    div[role="listbox"] * {
+    ul[role="listbox"] li,
+    div[data-baseweb="popover"] ul li,
+    div[data-baseweb="popover"] ul li span {
         color: #0d1b2a !important;
         -webkit-text-fill-color: #0d1b2a !important;
         font-weight: bold !important;
