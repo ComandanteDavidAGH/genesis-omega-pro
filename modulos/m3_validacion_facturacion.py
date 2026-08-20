@@ -45,8 +45,9 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
+# 💥 CAMBIO DE NOMBRE PARA FORZAR LIMPIEZA DE CACHÉ Y CÁLCULO REAL 💥
 @st.cache_data(show_spinner=False, ttl=1800)
-def obtener_historial_completo_ciclos_cached():
+def obtener_historial_completo_ciclos_v3():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame()
@@ -307,9 +308,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
-    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
+    
+    /* 💥 REPARACIÓN DE BORDES: Aplicando a contenedores principales */
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; overflow: hidden !important; }
+    
+    /* 💥 BORDES EXPLÍCITOS PARA FECHAS */
+    div[data-testid="stDateInput"] > div { border: 3px solid #143521 !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
+    
+    /* Limpieza interna para que no haya doble borde */
+    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: none !important; box-shadow: none !important; font-weight: bold !important; color: #000000 !important; background-color: transparent !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
-    div[data-testid="stSelectbox"] *, div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stDateInput"] * { color: #000000 !important; font-weight: bold !important; }
+    div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
+    
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
     div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; overflow: hidden !important; padding: 2px 5px !important; }
     div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
@@ -427,32 +437,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 
             tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod_sim)
             
-            c_f4_sim, _ = st.columns([1, 3])
+            # 💥 TRUCO UX TÁCTICO: Movido el calendario a la columna derecha
+            _, c_f4_sim = st.columns([2, 1.2])
             fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
             
-            # 💥 INTELIGENCIA DE CICLOS INYECTADA EN EL SIMULADOR
             if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
                 dias_ciclo_calc_sim = 14
                 try:
                     f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
-                    df_viva, df_hist = obtener_historial_completo_ciclos_cached()
+                    df_viva, df_hist = obtener_historial_completo_ciclos_v3()
                     fechas_encontradas = []
-
-                    def parsear_fecha_robusta_sim(val):
-                        if pd.isna(val) or str(val).strip() == "": return pd.NaT
-                        s = str(val).strip().lower()
-                        if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
-                        meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
-                        match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
-                        if match1:
-                            dia_str, mes_str, anio_str = match1.groups()
-                            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                        match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
-                        if match2:
-                            mes_str, dia_str, anio_str = match2.groups()
-                            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                        try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
-                        except Exception: return pd.NaT
 
                     def extraer_fechas_sim(df_temp):
                         if df_temp.empty: return
@@ -468,7 +462,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                 mask = fincas_alpha.str.contains(clave, regex=False, na=False)
                             df_fil = df_temp[mask]
                             for d_raw in df_fil[col_d]:
-                                fecha_valida = parsear_fecha_robusta_sim(d_raw)
+                                # 💥 SOLUCIÓN DE FECHA INVISIBLE: Utilizando parseo estricto global
+                                fecha_valida = procesar_fecha_estricta(d_raw)
                                 if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
 
                     extraer_fechas_sim(df_viva)
@@ -518,7 +513,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
             c_f1, c_f2, c_f3 = st.columns(3)
             
-            # 💥 EXTRACCIÓN DINÁMICA DE TARIFAS POR AÑO
             anio_vuelo_sim = str(fecha_eval_sim.year)
             dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
 
@@ -541,7 +535,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                # Rescatar tope dinámico del año seleccionado
                 val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
                 if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
                 if val_tope == 999999: val_tope = 0.0
@@ -737,7 +730,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
         st.cache_data.clear()
         
-        # 💥 ESCUDO: RESETEO AL SINCRONIZAR
         st.session_state.fecha_sim_mem = hoy_colombia_date
         if 'fecha_vuelo_master' in st.session_state:
             del st.session_state['fecha_vuelo_master']
@@ -781,11 +773,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
                 except Exception: pass
 
-        c0, c1, c2 = st.columns([1, 2, 2])
+        # 💥 SOLUCIÓN TRUCO UX TAB: Moviendo el selector de Fecha a la derecha para que TAB salte a Finca 💥
+        c_finca, c_pedido, c_fecha = st.columns([2, 2, 1.3])
+        
         if 'fecha_sim_mem' not in st.session_state:
             st.session_state.fecha_sim_mem = hoy_colombia_date
 
-        fecha_operacion = c0.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
+        # Aunque en el código está definido primero para la lógica, en el DOM se rendirizará al final de la fila
+        fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
         anio_vuelo = str(fecha_operacion.year)
         
         dict_aviones, dict_drones, dict_topes, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
@@ -819,10 +814,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     idx_finca = i
                     break
 
-        finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
+        finca_sel = c_finca.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
         vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
         lista_origenes = vuegos_informe['ORIGEN'].unique().tolist() if not vuegos_informe.empty else []
-        vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
+        vuelo_ref = c_pedido.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
         # 💥 ESCUDO FINANCIERO: Reseteo automático de Fecha al cambiar informe
         if 'vuelo_ref_anterior' not in st.session_state:
@@ -880,24 +875,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         if (finca_sel != st.session_state.finca_anterior) or (fecha_operacion != st.session_state.fecha_sim_mem):
             try:
                 f_obj_alpha = re.sub(r'[^A-Z0-9]', '', finca_limpia)
-                df_viva, df_hist = obtener_historial_completo_ciclos_cached()
+                df_viva, df_hist = obtener_historial_completo_ciclos_v3()
                 fechas_encontradas = []
-
-                def parsear_fecha_robusta(val):
-                    if pd.isna(val) or str(val).strip() == "": return pd.NaT
-                    s = str(val).strip().lower()
-                    if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
-                    meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
-                    match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
-                    if match1:
-                        dia_str, mes_str, anio_str = match1.groups()
-                        if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                    match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
-                    if match2:
-                        mes_str, dia_str, anio_str = match2.groups()
-                        if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
-                    try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
-                    except Exception: return pd.NaT
 
                 def extraer_fechas(df_temp):
                     if df_temp.empty: return
@@ -913,7 +892,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             mask = fincas_alpha.str.contains(clave, regex=False, na=False)
                         df_fil = df_temp[mask]
                         for d_raw in df_fil[col_d]:
-                            fecha_valida = parsear_fecha_robusta(d_raw)
+                            # 💥 SOLUCIÓN DEL CÁLCULO DE DÍAS: Utilizando parseo estricto global
+                            fecha_valida = procesar_fecha_estricta(d_raw)
                             if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
 
                 extraer_fechas(df_viva)
