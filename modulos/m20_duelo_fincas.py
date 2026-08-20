@@ -2,81 +2,274 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime, date
 import gspread
-import re
+import requests
 import io
+import re
+import math
+import json
+from datetime import datetime, timedelta, date
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y FORMATO
+# 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
 # =================================================================
 
-def formato_latino(numero, decimales=0):
-    if pd.isna(numero) or numero is None: return "0"
+def obtener_hora_colombia():
+    return datetime.utcnow() + timedelta(hours=-5)
+
+def extraer_numero(val):
+    if pd.isna(val) or val is None: return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
+    if not v or v == '-': return 0.0
     try:
-        num = float(numero)
-        if num == 0: return "0"
-        if decimales == 0: texto_us = f"{num:,.0f}"
-        else: texto_us = f"{num:,.{decimales}f}"
-        return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
-        return "0"
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+            else: v = v.replace(',', '')
+        elif ',' in v:
+            if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
+            else: v = v.replace(',', '.')
+        elif '.' in v:
+            if v.count('.') > 1 or len(v.split('.')[-1]) == 3: v = v.replace('.', '')
+        return float(v)
+    except: return 0.0
 
-@st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread():
+def obtener_cliente_gspread_unificado():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
-        elif "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-def limpiar_numeros_universales(val):
+# 💥 CAMBIO DE NOMBRE PARA DESTRUIR LA CACHÉ Y FORZAR CÁLCULO REAL 💥
+@st.cache_data(show_spinner=False, ttl=1800)
+def obtener_historial_completo_ciclos_v4():
+    df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame(), pd.DataFrame()
     try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip()
-        if not v or v in ['-', 'N/A', '']: return 0.0
+        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        t1 = boveda.worksheet("TABLA 1").get_all_values()
+        idx_t1 = 4
+        for i in range(min(6, len(t1))):
+            if "FINCA" in [str(x).upper() for x in t1[i]]:
+                idx_t1 = i; break
+        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
         
-        v = v.replace('$', '').replace('COP', '').replace(' ', '')
-        has_dot = '.' in v
-        has_comma = ',' in v
+        apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
+        idx_ap = 0
+        for i in range(min(20, len(apoyo))):
+            if any('FINCA' in str(c).upper() for c in apoyo[i]): 
+                idx_ap = i; break
+        df_apoyo = pd.DataFrame(apoyo[idx_ap+1:], columns=apoyo[idx_ap]) if len(apoyo) > idx_ap else pd.DataFrame()
         
-        if has_dot and has_comma:
-            if v.rfind(',') > v.rfind('.'):
-                v = v.replace('.', '').replace(',', '.')
-            else:
-                v = v.replace(',', '')
-        elif has_comma:
-            partes = v.split(',')
-            if len(partes) == 2 and len(partes[1]) != 3:
-                v = v.replace(',', '.') 
-            else:
-                v = v.replace(',', '') 
-        elif has_dot:
-            partes = v.split('.')
-            if len(partes) == 2 and len(partes[1]) != 3:
-                pass 
-            else:
-                v = v.replace('.', '') 
-        
-        v = re.sub(r'[^\d\.\-]', '', v)
-        return float(v) if v else 0.0
-    except:
-        return 0.0
+        return df_t1, df_apoyo
+    except Exception: return pd.DataFrame(), pd.DataFrame()
 
-def limpiar_tiempo(val):
+# =================================================================
+# 🧠 MÁQUINA DEL TIEMPO: LECTOR DE TARIFAS MAESTRO (MASTER DATA)
+# =================================================================
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_matriz_tarifas_mod3():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
     try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip()
-        if not v: return 0.0
-        if ':' in v:
-            partes = v.split(':')
-            return float(partes[0]) + (float(partes[1]) / 60.0)
-        v = v.replace(',', '.')
-        v = re.sub(r'[^\d\.]', '', v)
-        return float(v) if v else 0.0
-    except: return 0.0
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        ws = sh.worksheet("MATRIZ_TARIFAS")
+        datos = ws.get_all_values()
+        if len(datos) > 1:
+            df = pd.DataFrame(datos[1:], columns=datos[0])
+            df = df.loc[:, df.columns.astype(str).str.strip() != '']
+            df = df[df['PISTA'].str.strip() != '']
+            return df
+    except: pass
+    return pd.DataFrame()
+
+def extraer_tarifas_dinamicas(df_tarifas, anio_str):
+    dict_av = {}
+    dict_dr = {}
+    dict_topes = {
+        "TOPE MAX GENERAL": {},
+        "TOPE SUR": {},
+        "TOPE PARCELA INTER < 20HA": {}
+    }
+    
+    if df_tarifas.empty:
+        return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes, None
+        
+    anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
+    col_anio = anio_str if anio_str in anios_disp else None
+    
+    if not col_anio:
+        valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
+        col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
+        
+    if col_anio:
+        for _, r in df_tarifas.iterrows():
+            pista = str(r.get('PISTA', '')).strip().upper()
+            equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
+            tarifa_val = extraer_numero(r[col_anio])
+            
+            if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
+            elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
+            elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
+            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
+                 nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
+                 dict_dr[nombre_dron] = tarifa_val
+            elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
+                 dict_av[equipo] = tarifa_val
+                 
+    if not dict_av: dict_av = {"AIR TRACTOR": 4665109}
+    if not dict_dr: dict_dr = {"DRONE DATAROT": 84428}
+    
+    return dict_av, dict_dr, dict_topes, col_anio
+
+def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
+    try:
+        for col_idx in range(len(df_hoja.columns) - 1):
+            mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
+            if mask.any():
+                val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
+                if pd.notna(val) and val > 0: return float(val)
+    except Exception: pass
+    return 0.5 
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def obtener_matriz_fija_cruda_v2():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return []
+    try:
+        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        return boveda.worksheet("DD_Mesclas").get_all_values()
+    except Exception: return []
+
+def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
+    nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
+    if not nombre_clean: return 0.0
+    datos_crudos = obtener_matriz_fija_cruda_v2()
+    if not datos_crudos: return 0.0
+    for fila in datos_crudos:
+        for c_idx in range(len(fila) - 1):
+            try:
+                val_celda = str(fila[c_idx]).upper()
+                val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
+                if val_clean and len(val_clean) >= 4:
+                    if nombre_clean in val_clean or val_clean in nombre_clean:
+                        val_str = str(fila[c_idx + 1]).replace(",", ".")
+                        val_num = re.sub(r'[^\d.]', '', val_str)
+                        if val_num and val_num != ".":
+                            dosis = float(val_num)
+                            if 0 < dosis < 100: return dosis
+            except Exception: continue 
+    return 0.0
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def cargar_diccionarios_crudos():
+    datos = obtener_matriz_fija_cruda_v2()
+    dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
+    if not datos: return dict_recetas, dict_lideres, dict_fertilizantes
+    f_col = -1
+    for r in range(min(20, len(datos))):
+        for c in range(len(datos[r])):
+            if 'FERTILIZANTE' in str(datos[r][c]).upper():
+                f_col = c; break
+        if f_col != -1: break
+    if f_col != -1 and f_col + 1 < len(datos[0]):
+        for r in range(1, len(datos)):
+            if len(datos[r]) > f_col + 1:
+                nf, sf = str(datos[r][f_col]).strip().upper(), str(datos[r][f_col+1]).strip().upper()
+                if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf:
+                    dict_fertilizantes[nf.replace(" ", "")] = sf
+    for r in range(1, len(datos)):
+        fila = datos[r]
+        if len(fila) >= 3:
+            cid, p_tabla, d_str = str(fila[0]).strip().upper(), str(fila[1]).strip().upper(), str(fila[2]).replace(",", ".")
+            if cid and p_tabla and cid != "FINCA":
+                p_clean = p_tabla.replace(" ", "")
+                num_str = re.sub(r'[^\d.]', '', d_str)
+                d_tabla = float(num_str) if num_str and num_str != "." else 0.0
+                es_lider = True if len(fila) >= 4 and str(fila[3]).strip().upper() == "X" else False
+                if cid not in dict_recetas: dict_recetas[cid] = {}
+                dict_recetas[cid][p_clean] = d_tabla
+                if es_lider: dict_lideres[cid] = p_clean
+    return dict_recetas, dict_lideres, dict_fertilizantes
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
+    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
+    coctel_base, dosis_oficiales_coctel, max_p = "SIN COINCIDENCIA", {}, -9999
+    tiene_acond_06 = False
+    for k_sap in sap_dict_pista.keys():
+        if "ZINTRAC" in k_sap.upper() or "ZITRON" in k_sap.upper() or "BANATREL" in k_sap.upper():
+            tiene_acond_06 = True; break
+
+    for iter_id, receta in dict_recetas.items():
+        puntaje = 0
+        lider_db = dict_lideres.get(iter_id, "")
+        if lider_db:
+            match_lider = False
+            for k_sap in sap_dict_pista.keys():
+                if lider_db == k_sap or (len(k_sap) >= 4 and lider_db in k_sap) or (len(lider_db) >= 4 and k_sap in lider_db):
+                    match_lider = True; break
+            if not match_lider: puntaje -= 1000 
+        
+        for p_receta, d_esperada in receta.items():
+            match_receta, dose_matched, match_perfecto = False, False, False
+            d_receta_esperada = d_esperada
+            if "ACONDICIONADOR" in p_receta: d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
+            elif "ACEITE" in p_receta:
+                for char in iter_id:
+                    if char.isdigit():
+                        d_receta_esperada = float(char); break
+            elif "IMBIOSIL" in p_receta:
+                d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
+                
+            for k_sap, d_sap in sap_dict_pista.items():
+                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
+                    match_receta = True
+                    error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15) 
+                    if error <= 0.05: match_perfecto = True; dose_matched = True
+                    elif error <= tolerancia: dose_matched = True 
+                    break
+            
+            if match_receta:
+                puntaje += 100
+                if match_perfecto: puntaje += 100 
+                elif dose_matched: puntaje += 40  
+                else: puntaje -= 100 
+            else: puntaje -= 100 
+
+        for k_sap in sap_dict_pista.keys():
+            sap_en_receta = False
+            for p_receta in receta.keys():
+                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
+                    sap_en_receta = True; break
+            if not sap_en_receta:
+                is_fert = False
+                for f_name in dict_fertilizantes.keys():
+                    if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
+                        is_fert = True; break
+                if not is_fert: puntaje -= 100 
+
+        if coctel_piloto_base and iter_id == coctel_piloto_base: puntaje += 50
+        if puntaje > max_p:
+            max_p = puntaje
+            coctel_base = iter_id
+            dosis_oficiales_coctel = receta.copy()
+
+    sigla_fertilizante = ""
+    for k_sap in sap_dict_pista.keys():
+        for f_name, f_sigla in dict_fertilizantes.items():
+            if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
+                if not ("IMBIOSIL" in f_name and str(coctel_base).startswith("IN")):
+                    sigla_fertilizante = f" {f_sigla}"; break
+        if sigla_fertilizante: break
+
+    return coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA", dosis_oficiales_coctel
 
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
@@ -185,11 +378,30 @@ def cargar_fuentes_maestras_duelo_v3():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        # Limpieza Quirúrgica Universal
-        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_numeros_universales) 
+        # Función auxiliar para limpieza segura de números desde la importación
+        def clean_num_global(val):
+            try:
+                v = str(val).strip().replace('$', '').replace(' ', '')
+                if not v or v in ['-', 'N/A']: return 0.0
+                has_dot = '.' in v
+                has_comma = ',' in v
+                if has_dot and has_comma:
+                    if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+                    else: v = v.replace(',', '')
+                elif has_comma:
+                    parts = v.split(',')
+                    v = v.replace(',', '.') if len(parts) == 2 and len(parts[1]) != 3 else v.replace(',', '')
+                elif has_dot:
+                    parts = v.split('.')
+                    if len(parts) == 2 and len(parts[1]) != 3: pass 
+                    else: v = v.replace('.', '')
+                return float(re.sub(r'[^\d\.\-]', '', v))
+            except: return 0.0
+
+        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(clean_num_global)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(clean_num_global) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(clean_num_global) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(clean_num_global) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
         super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
@@ -452,19 +664,24 @@ def ejecutar():
         fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
         st.plotly_chart(fig_rend, use_container_width=True)
 
-    # 💥 NUEVO: SECCIÓN DE EXTRACCIÓN Y DESCARGA DE EXCEL 💥
+    # 💥 NUEVO: SECCIÓN DE EXTRACCIÓN Y DESCARGA DE EXCEL MEJORADA 💥
     st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
     st.markdown("### 📥 Centro de Extracción de Datos (Excel)")
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     
     if activar_descargas:
-        st.info("💡 Seleccione las fincas que desea auditar. El sistema generará un archivo Excel con la Base Cruda (Historia Completa) y los Datos Tratados.")
+        st.info("💡 Seleccione las fincas que desea auditar. El sistema generará un archivo formateado para su lectura en Excel Latinoamericano.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
             df_crudos = df_base[df_base['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
             df_tratados = df_ambos.copy() if not df_ambos.empty else pd.DataFrame()
+            
+            # 💥 PLANCHADO DE CABECERAS: Eliminar los "Enter" o saltos de línea molestos
+            df_crudos.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_crudos.columns]
+            if not df_tratados.empty:
+                df_tratados.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_tratados.columns]
             
             c_preview1, c_preview2 = st.columns(2)
             with c_preview1:
@@ -476,10 +693,11 @@ def ejecutar():
                 
             try:
                 buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_crudos.to_excel(writer, sheet_name='Datos Crudos (Base)', index=False)
+                # 💥 INTENTO NATIO: Usar openpyxl que es estándar y nativo en la mayoría de nubes
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_crudos.to_excel(writer, sheet_name='Datos Crudos', index=False)
                     if not df_tratados.empty:
-                        df_tratados.to_excel(writer, sheet_name='Datos Tratados (Duelo)', index=False)
+                        df_tratados.to_excel(writer, sheet_name='Datos Tratados', index=False)
                 
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EN EXCEL (.xlsx)",
@@ -490,10 +708,11 @@ def ejecutar():
                     type="primary"
                 )
             except Exception as e:
-                st.warning(f"⚠️ Generando CSV de respaldo automático. (El servidor no tiene el motor xlsxwriter: {e})")
-                csv = df_crudos.to_csv(index=False).encode('utf-8-sig')
+                # 💥 TRADUCTOR LATINO PARA CSV: Fuerza el uso de ; y ,
+                st.warning(f"⚠️ El servidor generó un CSV (Separado por punto y coma) compatible con Excel Latino.")
+                csv = df_crudos.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
                 st.download_button(
-                    label="💾 DESCARGAR REPORTE EN CSV",
+                    label="💾 DESCARGAR REPORTE EN CSV (TABLA ORDENADA)",
                     data=csv,
                     file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv",
