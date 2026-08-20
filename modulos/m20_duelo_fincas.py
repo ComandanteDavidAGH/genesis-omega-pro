@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timedelta, date
 
 # =================================================================
-# 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
+# 🔌 CONEXIÓN Y FORMATO
 # =================================================================
 
 def obtener_hora_colombia():
@@ -28,7 +28,6 @@ def formato_latino(numero, decimales=0):
     except:
         return "0"
 
-# 💥 CONEXIÓN ROBUSTA RESTAURADA (Sin el error de 'scope') 💥
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     try:
@@ -39,7 +38,6 @@ def inicializar_cliente_gspread():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-# 💥 CAMBIO DE NOMBRE PARA DESTRUIR LA CACHÉ Y FORZAR CÁLCULO REAL 💥
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_historial_completo_ciclos_v4():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
@@ -63,81 +61,6 @@ def obtener_historial_completo_ciclos_v4():
         
         return df_t1, df_apoyo
     except Exception: return pd.DataFrame(), pd.DataFrame()
-
-# =================================================================
-# 🧠 MÁQUINA DEL TIEMPO: LECTOR DE TARIFAS MAESTRO (MASTER DATA)
-# =================================================================
-@st.cache_data(show_spinner=False, ttl=600)
-def cargar_matriz_tarifas_mod3():
-    gc = inicializar_cliente_gspread()
-    if not gc: return pd.DataFrame()
-    try:
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        ws = sh.worksheet("MATRIZ_TARIFAS")
-        datos = ws.get_all_values()
-        if len(datos) > 1:
-            df = pd.DataFrame(datos[1:], columns=datos[0])
-            df = df.loc[:, df.columns.astype(str).str.strip() != '']
-            df = df[df['PISTA'].str.strip() != '']
-            return df
-    except: pass
-    return pd.DataFrame()
-
-def extraer_numero(val):
-    if pd.isna(val) or val is None: return 0.0
-    if isinstance(val, (int, float)): return float(val)
-    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
-    if not v or v == '-': return 0.0
-    try:
-        if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-            else: v = v.replace(',', '')
-        elif ',' in v:
-            if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
-            else: v = v.replace(',', '.')
-        elif '.' in v:
-            if v.count('.') > 1 or len(v.split('.')[-1]) == 3: v = v.replace('.', '')
-        return float(v)
-    except: return 0.0
-
-def extraer_tarifas_dinamicas(df_tarifas, anio_str):
-    dict_av = {}
-    dict_dr = {}
-    dict_topes = {
-        "TOPE MAX GENERAL": {},
-        "TOPE SUR": {},
-        "TOPE PARCELA INTER < 20HA": {}
-    }
-    
-    if df_tarifas.empty:
-        return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes, None
-        
-    anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
-    col_anio = anio_str if anio_str in anios_disp else None
-    
-    if not col_anio:
-        valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
-        col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
-        
-    if col_anio:
-        for _, r in df_tarifas.iterrows():
-            pista = str(r.get('PISTA', '')).strip().upper()
-            equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
-            tarifa_val = extraer_numero(r[col_anio])
-            
-            if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
-            elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
-            elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
-            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
-                 nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
-                 dict_dr[nombre_dron] = tarifa_val
-            elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
-                 dict_av[equipo] = tarifa_val
-                 
-    if not dict_av: dict_av = {"AIR TRACTOR": 4665109}
-    if not dict_dr: dict_dr = {"DRONE DATAROT": 84428}
-    
-    return dict_av, dict_dr, dict_topes, col_anio
 
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
@@ -184,7 +107,6 @@ def extraer_diccionario_flota(gc):
     except: pass
     return {}
 
-# 💥 EXTRACCIÓN MAESTRA DEL HISTÓRICO Y TABLA 1 VIVA
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_duelo_v3():
     gc = inicializar_cliente_gspread()
@@ -246,7 +168,6 @@ def cargar_fuentes_maestras_duelo_v3():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        # Función auxiliar para limpieza segura de números
         def clean_num_global(val):
             try:
                 v = str(val).strip().replace('$', '').replace(' ', '').replace('COP', '')
@@ -303,10 +224,6 @@ def cargar_fuentes_maestras_duelo_v3():
     else:
         return pd.DataFrame()
 
-# =================================================================
-# 👑 INTERFAZ PRINCIPAL (EL COLISEO LOGÍSTICO)
-# =================================================================
-
 def ejecutar():
     st.markdown("""
     <style>
@@ -315,25 +232,11 @@ def ejecutar():
     .kpi-vs-title { font-size: 13px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
-    
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
-    
     div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
     div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
-    
-    /* Multiselectores del Panel de Descarga */
     div[data-testid="stMultiSelect"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; }
-    
-    .lista-hk { 
-        text-align: left; 
-        background-color: #ffffff; 
-        padding: 15px; 
-        border-radius: 8px; 
-        border: 2px solid #0d1b2a; 
-        border-left: 6px solid #d4af37;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
-        margin-bottom: 15px;
-    }
+    .lista-hk { text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
     .lista-hk ul { list-style-type: none; padding-left: 0; margin: 0; }
     .lista-hk li { font-size: 14px; margin-bottom: 8px; color: #0d1b2a; }
     </style>
@@ -349,9 +252,7 @@ def ejecutar():
         st.error("🚨 No se encontró información en la base de datos o hubo un error de conexión.")
         return
 
-    # --- SELECCIÓN DE LA FINCA ---
     st.markdown("### 🎯 Configuración del Duelo")
-    
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
 
@@ -363,19 +264,14 @@ def ejecutar():
         return
 
     col_filt1, col_filt2, col_filt3, col_filt4 = st.columns([1.2, 1.2, 1, 1])
-    
-    with col_filt1:
-        pista_A = st.selectbox("🔴 PISTA RETADORA A", lista_pistas, index=0)
-    with col_filt2:
-        pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
+    with col_filt1: pista_A = st.selectbox("🔴 PISTA RETADORA A", lista_pistas, index=0)
+    with col_filt2: pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
     
     min_date_allowed = date(2020, 1, 1)
     max_date_allowed = date(2026, 12, 31)
     
-    with col_filt3:
-        start_date = st.date_input("📅 Fecha Inicial", value=date(2026, 1, 1), min_value=min_date_allowed, max_value=max_date_allowed)
-    with col_filt4:
-        end_date = st.date_input("📅 Fecha Final", value=date(2026, 12, 31), min_value=min_date_allowed, max_value=max_date_allowed)
+    with col_filt3: start_date = st.date_input("📅 Fecha Inicial", value=date(2026, 1, 1), min_value=min_date_allowed, max_value=max_date_allowed)
+    with col_filt4: end_date = st.date_input("📅 Fecha Final", value=date(2026, 12, 31), min_value=min_date_allowed, max_value=max_date_allowed)
 
     df_finca = df_finca_global.copy()
     if start_date and end_date:
@@ -393,36 +289,24 @@ def ejecutar():
         st.warning("⚠️ La finca no operó desde ninguna de estas pistas en el rango de fechas seleccionado.")
         return
 
-    # --- CÁLCULO DE KPIs, DESGLOSE Y ALGORITMO DE CICLOS ---
     def calcular_metricas(df_pista):
         if df_pista.empty: return 0, 0, 0, 0, "", ""
-        
         total_ha = df_pista['AREA_NUM'].sum()
         total_facturado = df_pista['COSTO_TOTAL_NUM'].sum()
-        
         costo_integral_ha = df_pista['VALOR_FACTURAR_NUM'].mean()
         costo_tarifa_avion = df_pista['COSTO_HA_NUM'].mean()
         
         html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#0d1b2a;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
-        df_mod = df_pista.groupby('MODELO_FINAL').agg(
-            REGISTROS=('OS_MAESTRA', 'count'),
-            HORAS=('H_TOTAL_NUM', 'sum'),
-            AREA=('AREA_NUM', 'sum')
-        ).reset_index()
-        
+        df_mod = df_pista.groupby('MODELO_FINAL').agg(REGISTROS=('OS_MAESTRA', 'count'), HORAS=('H_TOTAL_NUM', 'sum'), AREA=('AREA_NUM', 'sum')).reset_index()
         for _, row in df_mod.iterrows():
             mod_nombre = str(row['MODELO_FINAL'])
-            registros = row['REGISTROS']
-            horas = row['HORAS']
-            area = row['AREA']
-            
+            registros, horas, area = row['REGISTROS'], row['HORAS'], row['AREA']
             rend_ha_hr = area / horas if horas > 0 else 0
             html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({registros} líneas voladas)</i></li>"
         html_mod += "</ul></div>"
         
         fechas_unicas = sorted(df_pista['FECHA_DT'].dropna().unique())
         total_ciclos_reales = 0
-        
         if len(fechas_unicas) > 0:
             total_ciclos_reales = 1
             inicio_ciclo = fechas_unicas[0]
@@ -431,13 +315,7 @@ def ejecutar():
                     total_ciclos_reales += 1
                     inicio_ciclo = f
         
-        html_ciclos = f"""
-        <div class='kpi-vs' style='padding: 10px; margin-top: 5px; border: 2px dashed #d4af37;'>
-            <p class='kpi-vs-title'>TOTAL CICLOS REALES (Agrupados a 5 días)</p>
-            <p class='kpi-vs-value' style='font-size:26px;'>{total_ciclos_reales} Ciclos</p>
-        </div>
-        """
-        
+        html_ciclos = f"<div class='kpi-vs' style='padding: 10px; margin-top: 5px; border: 2px dashed #d4af37;'><p class='kpi-vs-title'>TOTAL CICLOS REALES (Agrupados a 5 días)</p><p class='kpi-vs-value' style='font-size:26px;'>{total_ciclos_reales} Ciclos</p></div>"
         return total_ha, total_facturado, costo_integral_ha, costo_tarifa_avion, html_mod, html_ciclos
 
     ha_A, inv_A, costo_integral_A, costo_os_A, html_mod_A, html_ciclos_A = calcular_metricas(df_A)
@@ -447,15 +325,12 @@ def ejecutar():
     clase_win_B = "victoria" if (costo_integral_B < costo_integral_A and costo_integral_B > 0) or costo_integral_A == 0 else ""
 
     col_A, col_vs, col_B = st.columns([4, 1, 4])
-
     with col_A:
         st.markdown(f"<h3 style='text-align:center; color:#dc3545;'>🔴 SALIENDO DESDE: {pista_A}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div class='kpi-vs {clase_win_A}'><p class='kpi-vs-title'>COSTO PROMEDIO X HECTÁREA</p><p class='kpi-vs-value'>$ {formato_latino(costo_integral_A, 0)}</p></div>", unsafe_allow_html=True)
-        
         m_a1, m_a2 = st.columns(2)
         m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_A, 0)}</p></div>", unsafe_allow_html=True)
         m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
-        
         if df_A.empty: st.info("Sin operaciones registradas.")
         else: st.markdown(html_mod_A, unsafe_allow_html=True)
 
@@ -465,11 +340,9 @@ def ejecutar():
     with col_B:
         st.markdown(f"<h3 style='text-align:center; color:#2F75B5;'>🔵 SALIENDO DESDE: {pista_B}</h3>", unsafe_allow_html=True)
         st.markdown(f"<div class='kpi-vs {clase_win_B}'><p class='kpi-vs-title'>COSTO PROMEDIO X HECTÁREA</p><p class='kpi-vs-value'>$ {formato_latino(costo_integral_B, 0)}</p></div>", unsafe_allow_html=True)
-        
         m_b1, m_b2 = st.columns(2)
         m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_B, 0)}</p></div>", unsafe_allow_html=True)
         m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
-
         if df_B.empty: st.info("Sin operaciones registradas.")
         else: st.markdown(html_mod_B, unsafe_allow_html=True)
 
@@ -480,108 +353,72 @@ def ejecutar():
         if not df_B.empty: st.markdown(html_ciclos_B, unsafe_allow_html=True)
 
     st.markdown("<hr>", unsafe_allow_html=True)
-
-    # --- GRÁFICAS DE COMPARACIÓN ---
     st.markdown("### 🛫 Desglose Logístico, Financiero y de Aeronaves")
-    st.caption("Comparación visual directa de costos y rendimientos.")
-
     df_ambos = pd.concat([df_A, df_B])
     
     if not df_ambos.empty:
-        df_pistas = df_ambos.groupby('PISTA_MAESTRA').agg(
-            COSTO_PROMEDIO_HECTAREA=('VALOR_FACTURAR_NUM', 'mean'),
-            COSTO_PROMEDIO_OS=('COSTO_HA_NUM', 'mean')
-        ).reset_index()
-
+        df_pistas = df_ambos.groupby('PISTA_MAESTRA').agg(COSTO_PROMEDIO_HECTAREA=('VALOR_FACTURAR_NUM', 'mean'), COSTO_PROMEDIO_OS=('COSTO_HA_NUM', 'mean')).reset_index()
         c_graf1, c_graf2 = st.columns(2)
-
         with c_graf1:
-            fig_ha = px.bar(
-                df_pistas, 
-                x='PISTA_MAESTRA', 
-                y='COSTO_PROMEDIO_HECTAREA', 
-                color='PISTA_MAESTRA', 
-                text='COSTO_PROMEDIO_HECTAREA',
-                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-                title="Costo Promedio X Hectárea (Integral)"
-            )
+            fig_ha = px.bar(df_pistas, x='PISTA_MAESTRA', y='COSTO_PROMEDIO_HECTAREA', color='PISTA_MAESTRA', text='COSTO_PROMEDIO_HECTAREA', color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'}, title="Costo Promedio X Hectárea (Integral)")
             fig_ha.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
             fig_ha.update_layout(yaxis_title="$ / Ha", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
             st.plotly_chart(fig_ha, use_container_width=True)
-
         with c_graf2:
-            fig_os = px.bar(
-                df_pistas, 
-                x='PISTA_MAESTRA', 
-                y='COSTO_PROMEDIO_OS', 
-                color='PISTA_MAESTRA', 
-                text='COSTO_PROMEDIO_OS',
-                color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-                title="Costo Promedio X OS (Tarifa Avión)"
-            )
+            fig_os = px.bar(df_pistas, x='PISTA_MAESTRA', y='COSTO_PROMEDIO_OS', color='PISTA_MAESTRA', text='COSTO_PROMEDIO_OS', color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'}, title="Costo Promedio X OS (Tarifa Avión)")
             fig_os.update_traces(texttemplate='$ %{text:,.0f}', textposition='outside', textfont=dict(family="Arial Black"))
             fig_os.update_layout(yaxis_title="$ / OS", xaxis_title="Pista", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', showlegend=False)
             st.plotly_chart(fig_os, use_container_width=True)
 
-        st.markdown("#### ✈️ Rendimiento Operativo (Ha/Hora) por Modelo de Aeronave")
-        df_mod_graf = df_ambos.groupby(['PISTA_MAESTRA', 'MODELO_FINAL']).agg(
-            HORAS=('H_TOTAL_NUM', 'sum'),
-            AREA=('AREA_NUM', 'sum')
-        ).reset_index()
-        
-        df_mod_graf['RENDIMIENTO_HA_HR'] = np.where(df_mod_graf['HORAS'] > 0, df_mod_graf['AREA'] / df_mod_graf['HORAS'], 0)
-
-        fig_rend = px.bar(
-            df_mod_graf, 
-            x='MODELO_FINAL', 
-            y='RENDIMIENTO_HA_HR', 
-            color='PISTA_MAESTRA', 
-            barmode='group',
-            text='RENDIMIENTO_HA_HR',
-            color_discrete_map={pista_A: '#dc3545', pista_B: '#2F75B5'},
-            title="Rendimiento (Ha / Hora) por Aeronave"
-        )
-        fig_rend.update_traces(texttemplate='%{text:,.1f} Ha/Hr', textposition='outside', textfont=dict(family="Arial Black"))
-        fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
-        st.plotly_chart(fig_rend, use_container_width=True)
-
-    # 💥 NUEVO: SECCIÓN DE EXTRACCIÓN Y DESCARGA DE EXCEL MEJORADA 💥
+    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL Y LIMPIEZA DE FORMATOS 💥
     st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
-    st.markdown("### 📥 Centro de Extracción de Datos (Excel)")
+    st.markdown("### 📥 Centro de Extracción de Datos (Excel Profesional)")
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
-    
     if activar_descargas:
-        st.info("💡 Seleccione las fincas que desea auditar. El sistema generará un archivo formateado para su lectura en Excel Latinoamericano.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará textos y formateará los números para evitar alertas en Excel.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
             df_crudos = df_base[df_base['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
             df_tratados = df_ambos.copy() if not df_ambos.empty else pd.DataFrame()
             
-            # 💥 PLANCHADO DE CABECERAS: Eliminar los "Enter" o saltos de línea molestos
+            # Limpiar nombres de columnas
             df_crudos.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_crudos.columns]
             if not df_tratados.empty:
                 df_tratados.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_tratados.columns]
             
+            # Convertir columnas numéricas de texto a flotantes reales para evitar triángulos verdes
+            cols_numericas = ['AREA_NUM', 'VALOR_FACTURAR_NUM', 'COSTO_HA_NUM', 'COSTO_TOTAL_NUM', 'H_TOTAL_NUM']
+            for c in cols_numericas:
+                if c in df_crudos.columns:
+                    df_crudos[c] = pd.to_numeric(df_crudos[c], errors='coerce').fillna(0)
+
             c_preview1, c_preview2 = st.columns(2)
             with c_preview1:
-                st.markdown("**🔍 Vista Previa: Datos Crudos (Base Completa)**")
-                st.dataframe(df_crudos.head(50), use_container_width=True)
+                st.markdown("**🔍 Vista Previa: Datos Crudos**")
+                st.dataframe(df_crudos.head(20), use_container_width=True)
             with c_preview2:
-                st.markdown("**📊 Vista Previa: Datos Tratados (Duelo Actual)**")
-                st.dataframe(df_tratados, use_container_width=True)
+                st.markdown("**📊 Vista Previa: Datos Tratados**")
+                st.dataframe(df_tratados.head(20), use_container_width=True)
                 
             try:
                 buffer = io.BytesIO()
-                # 💥 INTENTO NATIO: Usar openpyxl que es estándar y nativo en la mayoría de nubes
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_crudos.to_excel(writer, sheet_name='Datos Crudos', index=False)
                     if not df_tratados.empty:
                         df_tratados.to_excel(writer, sheet_name='Datos Tratados', index=False)
+                    
+                    # Auto-ajustar anchos de columna automáticamente
+                    for sheet_name in writer.sheets:
+                        worksheet = writer.sheets[sheet_name]
+                        for col in worksheet.columns:
+                            max_length = max(len(str(cell.value or '')) for cell in col)
+                            col_letter = col[0].column_letter
+                            worksheet.column_dimensions[col_letter].width = max(max_length + 4, 12)
                 
                 st.download_button(
-                    label="💾 DESCARGAR REPORTE EN EXCEL (.xlsx)",
+                    label="💾 DESCARGAR REPORTE EN EXCEL PROFESIONAL (.xlsx)",
                     data=buffer.getvalue(),
                     file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -589,11 +426,10 @@ def ejecutar():
                     type="primary"
                 )
             except Exception as e:
-                # 💥 TRADUCTOR LATINO PARA CSV: Fuerza el uso de ; y ,
-                st.warning(f"⚠️ El servidor generó un CSV (Separado por punto y coma) compatible con Excel Latino.")
+                st.warning(f"⚠️ Usando formato CSV Latino debido a restricciones del servidor: {e}")
                 csv = df_crudos.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
                 st.download_button(
-                    label="💾 DESCARGAR REPORTE EN CSV (TABLA ORDENADA)",
+                    label="💾 DESCARGAR REPORTE EN CSV",
                     data=csv,
                     file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv",
