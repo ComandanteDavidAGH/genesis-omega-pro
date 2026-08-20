@@ -10,7 +10,7 @@ import math
 import json
 from datetime import datetime, timedelta, date
 
-from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
@@ -133,7 +133,7 @@ def extraer_diccionario_flota(gc):
     return {}
 
 @st.cache_data(show_spinner=False, ttl=600)
-def cargar_fuentes_maestras_duelo_v3():
+def cargar_fuentes_maestras_duelo_v4():
     gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame()
     
@@ -280,7 +280,7 @@ def ejecutar():
     st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, la Tarifa de Avión y los Ciclos Reales agrupados por operación.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
-        df_base = cargar_fuentes_maestras_duelo_v3()
+        df_base = cargar_fuentes_maestras_duelo_v4()
 
     if df_base.empty:
         st.error("🚨 No se encontró información en la base de datos o hubo un error de conexión.")
@@ -419,14 +419,13 @@ def ejecutar():
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
-        st.info("💡 Seleccione las fincas a exportar. El sistema generará el comparativo Gerencial y la Auditoría de vuelos.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará los números, eliminará errores visuales y aplicará un formato corporativo profesional en el Excel.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
             df_filtrado_fecha = df_base[(df_base['FECHA_DT'].dt.date >= start_date) & (df_base['FECHA_DT'].dt.date <= end_date)]
             df_export = df_filtrado_fecha[df_filtrado_fecha['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
             
-            # --- CONSTRUCCIÓN PESTAÑA 1: RESUMEN GERENCIAL ---
             resumen_data = []
             rendimiento_data = []
             
@@ -437,7 +436,6 @@ def ejecutar():
                     df_p = df_f[df_f['PISTA_MAESTRA'] == pista]
                     if df_p.empty: continue
                     
-                    # Cálculo de ciclos agrupados (5 días)
                     fechas_unicas = sorted(df_p['FECHA_DT'].dropna().unique())
                     ciclos = 0
                     if len(fechas_unicas) > 0:
@@ -448,7 +446,6 @@ def ejecutar():
                                 ciclos += 1
                                 inicio = f
                     
-                    # KPIs
                     total_ha = df_p['AREA_NUM'].sum()
                     avg_ha = df_p['VALOR_FACTURAR_NUM'].mean()
                     avg_os = df_p['COSTO_HA_NUM'].mean()
@@ -464,7 +461,6 @@ def ejecutar():
                         "TOTAL FACTURADO": float(tot_fac)
                     })
                     
-                    # Rendimiento Aeronaves
                     df_mod = df_p.groupby('MODELO_FINAL').agg(VUELOS=('OS_MAESTRA', 'count'), AREA=('AREA_NUM', 'sum'), HORAS=('H_TOTAL_NUM', 'sum')).reset_index()
                     for _, r_mod in df_mod.iterrows():
                         rend = r_mod['AREA'] / r_mod['HORAS'] if r_mod['HORAS'] > 0 else 0
@@ -480,12 +476,17 @@ def ejecutar():
             df_resumen = pd.DataFrame(resumen_data)
             df_rendimiento = pd.DataFrame(rendimiento_data)
             
-            # --- CONSTRUCCIÓN PESTAÑA 3: AUDITORÍA (DATOS LIMPIOS) ---
+            # 💥 LIMPIEZA DE AUDITORÍA: MATANDO COLUMNAS FANTASMAS Y BASURA 💥
             cols_basura = [c for c in df_export.columns if c.endswith('_NUM') or c.endswith('_DT') or c == 'MODELO_FINAL']
             df_auditoria = df_export.drop(columns=cols_basura).copy()
             df_auditoria.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_auditoria.columns]
             
-            # Convertir las columnas numéricas puras
+            # Remplazar espacios en blanco por NaN y matar columnas completamente vacías
+            df_auditoria.replace(r'^\s*$', np.nan, regex=True, inplace=True)
+            df_auditoria.dropna(axis=1, how='all', inplace=True)
+            df_auditoria = df_auditoria.fillna("")
+            
+            # Forzar las numéricas a Float real para Excel
             num_cols_auditoria = ['AREA_MAESTRA', 'VALOR_FACTURAR', 'COSTO_HA_BASE', 'COSTO_TOTAL', 'H_TOTAL', 'GLN_HA', 'VOL_TOTAL', 'REND_HR', 'REND_MIN', 'COSTO_AVION', 'DOMINICAL_HA', 'COSTO_FINCA', 'PAGO_AVION']
             for c in num_cols_auditoria:
                 if c in df_auditoria.columns:
@@ -509,37 +510,73 @@ def ejecutar():
                     if not df_auditoria.empty:
                         df_auditoria.to_excel(writer, sheet_name='Auditoría Vuelos', index=False)
                     
+                    # --- ESTILOS DE PINTURA (CORPORATIVO) ---
                     header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    header_font = Font(color="FFFFFF", bold=True)
-                    align_center = Alignment(horizontal="center", vertical="center")
+                    header_font = Font(color="FFFFFF", bold=True, size=11)
+                    
+                    zebra_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+                    
+                    thin_border = Border(
+                        left=Side(style='thin', color='D9D9D9'),
+                        right=Side(style='thin', color='D9D9D9'),
+                        top=Side(style='thin', color='D9D9D9'),
+                        bottom=Side(style='thin', color='D9D9D9')
+                    )
+                    
+                    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    align_left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                    align_right = Alignment(horizontal="right", vertical="center", wrap_text=True)
                     
                     for sheet_name in writer.sheets:
                         ws = writer.sheets[sheet_name]
                         
-                        for cell in ws[1]:
-                            cell.fill = header_fill
-                            cell.font = header_font
-                            cell.alignment = align_center
-                        
+                        # Filtros Automáticos
                         ws.auto_filter.ref = ws.dimensions
                         
+                        # Iterar sobre las celdas para pintar y formatear
+                        for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column)):
+                            for cell in row:
+                                cell.border = thin_border
+                                
+                                # Si es cabecera
+                                if row_idx == 0:
+                                    cell.fill = header_fill
+                                    cell.font = header_font
+                                    cell.alignment = align_center
+                                else:
+                                    # Si es fila de datos (Zebra)
+                                    cell.fill = zebra_fill if row_idx % 2 == 0 else white_fill
+                                    cell.alignment = align_center
+                                    
+                                    # Formatos Numéricos (Matar triángulos verdes)
+                                    if isinstance(cell.value, (int, float)):
+                                        col_letter = cell.column_letter
+                                        header_name = str(ws[f"{col_letter}1"].value).upper()
+                                        if any(p in header_name for p in ['COSTO', 'VALOR', 'FACTURADO', 'PAGO', 'LIMITE', '$']):
+                                            cell.number_format = '"$"#,##0'
+                                            cell.alignment = align_right
+                                        elif any(p in header_name for p in ['HECTÁREAS', 'RENDIMIENTO', 'AREA']):
+                                            cell.number_format = '#,##0.00'
+                                            cell.alignment = align_right
+                                    elif isinstance(cell.value, str):
+                                        if len(cell.value) > 20:
+                                            cell.alignment = align_left
+                        
+                        # Ajustar Ancho de Columnas (con un respiro del 20%)
                         for col in ws.columns:
                             max_length = 0
                             col_letter = col[0].column_letter
-                            header_name = str(ws[f"{col_letter}1"].value).upper()
-                            
                             for cell in col:
                                 try:
-                                    if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                                    if cell.value:
+                                        lines = str(cell.value).split('\n')
+                                        longest_line = max(len(line) for line in lines)
+                                        if longest_line > max_length: max_length = longest_line
                                 except: pass
-                                
-                                if cell.row > 1 and isinstance(cell.value, (int, float)):
-                                    if any(p in header_name for p in ['COSTO', 'VALOR', 'FACTURADO', 'PAGO', 'LIMITE']):
-                                        cell.number_format = '"$"#,##0' 
-                                    elif any(p in header_name for p in ['HECTÁREAS', 'RENDIMIENTO', 'AREA']):
-                                        cell.number_format = '#,##0.00' 
                             
-                            ws.column_dimensions[col_letter].width = min(max(max_length + 2, 12), 40)
+                            adjusted_width = (max_length * 1.2) + 4
+                            ws.column_dimensions[col_letter].width = min(max(adjusted_width, 15), 45)
                 
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EJECUTIVO (.xlsx)",
