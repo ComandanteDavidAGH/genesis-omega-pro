@@ -262,40 +262,52 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA TÁCTICA: BOMBARDEO DE SATURACIÓN PARA LETRAS FANTASMAS 💥 */
+    /* 💥 PINTURA TÁCTICA AL NÚCLEO (BASEWEB) 💥 */
     
-    /* 1. FONDO GENERAL DE LAS CAJAS */
-    div[data-testid="stSelectbox"] > div > div,
-    div[data-testid="stMultiSelect"] > div > div,
-    div[data-testid="stDateInput"] > div > div {
+    /* Fondo Azul Marino para Selectboxes y MultiSelects */
+    div[data-baseweb="select"] > div {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
-        box-shadow: 0px 4px 6px rgba(0,0,0,0.2) !important;
     }
-
-    /* 2. DESTRUIR LAS CAPAS BLANCAS INTERNAS DE STREAMLIT */
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="baseInput"],
-    div[data-testid="stDateInput"] input {
-        background-color: transparent !important;
-    }
-
-    /* 3. FORZAR LETRA BLANCA Y NEGRITA (LA CURA PARA LAS LETRAS FANTASMAS) */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] *,
-    div[data-testid="stDateInput"] input {
+    
+    /* Forzar letras BLANCAS dentro del selectbox (El valor seleccionado) */
+    div[data-baseweb="select"] > div > div > div {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
         font-weight: 800 !important;
     }
 
-    /* 4. ICONOS DORADOS (Flechas y Calendario) */
-    div[data-testid="stSelectbox"] svg,
-    div[data-testid="stMultiSelect"] svg,
-    div[data-testid="stDateInput"] svg {
+    /* Fondo Azul Marino para los DateInput (Calendario) */
+    div[data-baseweb="baseInput"] {
+        background-color: #0d1b2a !important;
+        border: 2px solid #d4af37 !important;
+        border-radius: 8px !important;
+    }
+
+    /* Forzar letras BLANCAS dentro del input de texto de la fecha */
+    div[data-baseweb="baseInput"] input {
+        background-color: transparent !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 800 !important;
+    }
+
+    /* Íconos dorados (Flechas y Calendario) */
+    div[data-baseweb="select"] svg,
+    div[data-baseweb="baseInput"] svg {
         fill: #d4af37 !important;
         color: #d4af37 !important;
+    }
+
+    /* 🛡️ PROTEGER EL MENÚ DESPLEGABLE (Evitar blanco sobre blanco) 🛡️ */
+    ul[data-baseweb="menu"] {
+        background-color: #ffffff !important;
+    }
+    ul[data-baseweb="menu"] li {
+        color: #0d1b2a !important;
+        -webkit-text-fill-color: #0d1b2a !important;
+        font-weight: bold !important;
     }
     
     .lista-hk { 
