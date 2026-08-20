@@ -262,52 +262,41 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA TÁCTICA AL NÚCLEO (BASEWEB) 💥 */
+    /* 💥 PINTURA TÁCTICA CORREGIDA (Sin invisibilidad) 💥 */
     
-    /* Fondo Azul Marino para Selectboxes y MultiSelects */
-    div[data-baseweb="select"] > div {
-        background-color: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
-        border-radius: 8px !important;
-    }
-    
-    /* Forzar letras BLANCAS dentro del selectbox (El valor seleccionado) */
-    div[data-baseweb="select"] > div > div > div {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: 800 !important;
-    }
-
-    /* Fondo Azul Marino para los DateInput (Calendario) */
+    /* 1. FONDOS DE CAJAS: Azul Marino y Borde Dorado */
+    div[data-baseweb="select"] > div,
     div[data-baseweb="baseInput"] {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
     }
 
-    /* Forzar letras BLANCAS dentro del input de texto de la fecha */
+    /* 2. TEXTO ADENTRO: Blanco brillante */
+    div[data-baseweb="select"] > div span,
+    div[data-baseweb="select"] > div div,
     div[data-baseweb="baseInput"] input {
-        background-color: transparent !important;
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        font-weight: 800 !important;
+        font-weight: bold !important;
     }
 
-    /* Íconos dorados (Flechas y Calendario) */
+    /* 3. ICONOS: Dorados */
     div[data-baseweb="select"] svg,
-    div[data-baseweb="baseInput"] svg {
+    div[data-testid="stDateInput"] svg,
+    div[data-testid="stMultiSelect"] svg {
         fill: #d4af37 !important;
         color: #d4af37 !important;
     }
 
-    /* 🛡️ PROTEGER EL MENÚ DESPLEGABLE (Evitar blanco sobre blanco) 🛡️ */
-    ul[data-baseweb="menu"] {
+    /* 4. PROTECCIÓN DEL MENÚ DESPLEGABLE (Evitar que se dañe al abrir) */
+    ul[data-baseweb="menu"], ul[role="listbox"] {
         background-color: #ffffff !important;
     }
-    ul[data-baseweb="menu"] li {
+    ul[data-baseweb="menu"] li, ul[role="listbox"] li, 
+    ul[data-baseweb="menu"] span, ul[role="listbox"] span {
         color: #0d1b2a !important;
         -webkit-text-fill-color: #0d1b2a !important;
-        font-weight: bold !important;
     }
     
     .lista-hk { 
