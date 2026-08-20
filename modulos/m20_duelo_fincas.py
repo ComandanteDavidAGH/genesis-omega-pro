@@ -36,26 +36,23 @@ def limpiar_area(val):
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
         if not v: return 0.0
-        v = v.replace(',', '.')
+        v = v.replace('.', '') # Quita puntos de miles
+        v = v.replace(',', '.') # Cambia coma decimal a punto de Python
         v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1:
-            partes = v.rsplit('.', 1)
-            v = partes[0].replace('.', '') + '.' + partes[1]
         return float(v) if v else 0.0
     except: return 0.0
 
 def limpiar_dinero(val):
+    # 💥 LA REPARACIÓN TÁCTICA DE LOS MILLONES COLOMBIANOS 💥
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
         if not v: return 0.0
-        v = v.replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1:
-            partes = v.rsplit('.', 1)
-            v = partes[0].replace('.', '') + '.' + partes[1]
+        v = v.replace('$', '').replace(' ', '') # Quita el signo peso y espacios
+        v = v.replace('.', '') # Elimina todos los puntos (separadores de miles)
+        v = v.replace(',', '.') # Convierte la coma de centavos en el punto que entiende Python
+        v = re.sub(r'[^\d\.\-]', '', v) # Limpia cualquier otra basura
         num = float(v) if v else 0.0
-        if 5 < num < 2000: num = num * 1000
         return num
     except: return 0.0
 
@@ -69,6 +66,7 @@ def limpiar_tiempo(val):
             horas = float(partes[0])
             minutos = float(partes[1])
             return horas + (minutos / 60.0)
+        v = v.replace('.', '')
         v = v.replace(',', '.')
         v = re.sub(r'[^\d\.]', '', v)
         return float(v) if v else 0.0
@@ -183,7 +181,7 @@ def cargar_fuentes_maestras_duelo():
         
         super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_area)
         
-        # Extracción Financiera Matemática
+        # Extracción Financiera Matemática Reparada
         super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero) 
         super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero) 
         super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero) 
@@ -308,7 +306,7 @@ def ejecutar():
         # ✈️ RENDIMIENTO POR MODELO DE AVIÓN
         html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#0d1b2a;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
         df_mod = df_pista.groupby('MODELO_FINAL').agg(
-            REGISTROS=('OS_MAESTRA', 'count'), # Cuenta los registros, no lo llamaremos ciclos aquí
+            REGISTROS=('OS_MAESTRA', 'count'),
             HORAS=('H_TOTAL_NUM', 'sum'),
             AREA=('AREA_NUM', 'sum')
         ).reset_index()
