@@ -262,35 +262,54 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 FUEGO A DISCRECIÓN (CERO CÓDIGO COMPLEJO) 💥 */
+    /* 💥 ATAQUE DEFINITIVO: SOBRESCRIBIR STREAMLIT NATIVO 💥 */
     
-    /* PINTAR CAJAS GENERALES (SELECTORES Y FECHAS) */
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="baseInput"] {
+    /* 1. SELECTBOX (Desplegables) */
+    div.stSelectbox div[data-baseweb="select"] > div:first-of-type {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 6px !important;
     }
-
-    /* PINTAR TODAS LAS LETRAS ADENTRO DE BLANCO */
-    div[data-baseweb="select"] span,
-    div[data-baseweb="baseInput"] input {
+    div.stSelectbox div[data-baseweb="select"] > div:first-of-type * {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        background-color: transparent !important;
+        font-weight: bold !important;
     }
 
-    /* PINTAR FLECHAS Y CALENDARIO DE DORADO */
-    div[data-baseweb="select"] svg,
-    div[data-baseweb="baseInput"] svg {
+    /* 2. DATEINPUT (Fechas) */
+    div.stDateInput div[data-baseweb="baseInput"] {
+        background-color: #0d1b2a !important;
+        border: 2px solid #d4af37 !important;
+        border-radius: 6px !important;
+    }
+    div.stDateInput div[data-baseweb="baseInput"] input {
+        background-color: #0d1b2a !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: bold !important;
+    }
+
+    /* 3. MULTISELECT (Panel de Descarga) */
+    div.stMultiSelect div[data-baseweb="select"] > div:first-of-type {
+        background-color: #0d1b2a !important;
+        border: 2px solid #d4af37 !important;
+        border-radius: 6px !important;
+    }
+    div.stMultiSelect div[data-baseweb="select"] > div:first-of-type * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: bold !important;
+    }
+
+    /* 4. ÍCONOS DORADOS */
+    div.stSelectbox svg, div.stDateInput svg, div.stMultiSelect svg {
         fill: #d4af37 !important;
+        color: #d4af37 !important;
     }
 
-    /* EL MENÚ DESPLEGABLE (FONDO BLANCO Y LETRAS NEGRAS PARA QUE SE VEA) */
-    ul[role="listbox"] {
+    /* 5. PROTECCIÓN DEL MENÚ DESPLEGABLE (Evitar que se dañe al abrir) */
+    div[data-baseweb="popover"] * {
         background-color: #ffffff !important;
-    }
-    ul[role="listbox"] li {
         color: #000000 !important;
         -webkit-text-fill-color: #000000 !important;
     }
