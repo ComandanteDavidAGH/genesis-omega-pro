@@ -2,18 +2,23 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime, date
 import gspread
-import re
+import requests
 import io
+import re
+import math
+import json
+from datetime import datetime, timedelta, date
 
-# Importaciones para el diseño ejecutivo de Excel
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# 🔌 MOTORES DE CONEXIÓN Y FORMATO
+# 🔌 CONEXIÓN Y FORMATO
 # =================================================================
+
+def obtener_hora_colombia():
+    return datetime.utcnow() + timedelta(hours=-5)
 
 def formato_latino(numero, decimales=0):
     if pd.isna(numero) or numero is None: return "0"
@@ -127,7 +132,6 @@ def extraer_diccionario_flota(gc):
     except: pass
     return {}
 
-# 💥 EXTRACCIÓN MAESTRA DEL HISTÓRICO Y TABLA 1 VIVA
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_duelo_v3():
     gc = inicializar_cliente_gspread()
@@ -189,14 +193,45 @@ def cargar_fuentes_maestras_duelo_v3():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        # Limpieza básica para operaciones del sistema
-        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_numeros_universales) 
+        def clean_num_global(val):
+            try:
+                v = str(val).strip().replace('$', '').replace(' ', '').replace('COP', '')
+                if not v or v in ['-', 'N/A']: return 0.0
+                has_dot = '.' in v
+                has_comma = ',' in v
+                if has_dot and has_comma:
+                    if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+                    else: v = v.replace(',', '')
+                elif has_comma:
+                    parts = v.split(',')
+                    v = v.replace(',', '.') if len(parts) == 2 and len(parts[1]) != 3 else v.replace(',', '')
+                elif has_dot:
+                    parts = v.split('.')
+                    if len(parts) == 2 and len(parts[1]) != 3: pass 
+                    else: v = v.replace('.', '')
+                return float(re.sub(r'[^\d\.\-]', '', v))
+            except: return 0.0
+
+        def clean_time_global(val):
+            try:
+                if isinstance(val, (int, float)): return float(val)
+                v = str(val).strip()
+                if not v: return 0.0
+                if ':' in v:
+                    partes = v.split(':')
+                    return float(partes[0]) + (float(partes[1]) / 60.0)
+                v = v.replace(',', '.')
+                v = re.sub(r'[^\d\.]', '', v)
+                return float(v) if v else 0.0
+            except: return 0.0
+
+        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(clean_num_global)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(clean_num_global) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(clean_num_global) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(clean_num_global) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
-        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
+        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(clean_time_global)
         
         def mapear_modelo(row):
             mod = str(row.get('MODELO', '')).strip().upper()
@@ -251,9 +286,7 @@ def ejecutar():
         st.error("🚨 No se encontró información en la base de datos o hubo un error de conexión.")
         return
 
-    # --- SELECCIÓN DE LA FINCA ---
     st.markdown("### 🎯 Configuración del Duelo")
-    
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
 
@@ -290,7 +323,6 @@ def ejecutar():
         st.warning("⚠️ La finca no operó desde ninguna de estas pistas en el rango de fechas seleccionado.")
         return
 
-    # --- CÁLCULO DE KPIs ---
     def calcular_metricas(df_pista):
         if df_pista.empty: return 0, 0, 0, 0, "", ""
         total_ha = df_pista['AREA_NUM'].sum()
@@ -387,47 +419,96 @@ def ejecutar():
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
-        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará los números, eliminará errores visuales y aplicará un formato corporativo profesional en el Excel.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema generará el comparativo Gerencial y la Auditoría de vuelos.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
-            df_crudos = df_base[df_base['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
-            df_tratados = df_ambos.copy() if not df_ambos.empty else pd.DataFrame()
+            df_filtrado_fecha = df_base[(df_base['FECHA_DT'].dt.date >= start_date) & (df_base['FECHA_DT'].dt.date <= end_date)]
+            df_export = df_filtrado_fecha[df_filtrado_fecha['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
             
-            # 1. PLANCHADO DE CABECERAS
-            df_crudos.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_crudos.columns]
-            if not df_tratados.empty:
-                df_tratados.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_tratados.columns]
+            # --- CONSTRUCCIÓN PESTAÑA 1: RESUMEN GERENCIAL ---
+            resumen_data = []
+            rendimiento_data = []
             
-            # 2. CONVERSIÓN MASIVA A NÚMEROS REALES (Mata los triángulos verdes)
-            palabras_numericas = ['AREA', 'VOLUMEN', 'TIEMPO', 'ODOM', 'SEM', 'GLN', 'REND', 'COSTO', 'VALOR', 'PAGO', 'INC_', 'LIMITE', 'VAR_', 'DOMINIC']
-            
-            for c in df_crudos.columns:
-                if any(p in str(c).upper() for p in palabras_numericas):
-                    df_crudos[c] = df_crudos[c].apply(limpiar_numeros_universales)
+            for finca in fincas_a_descargar:
+                df_f = df_export[df_export['FINCA_MAESTRA'] == finca]
+                pistas = df_f['PISTA_MAESTRA'].unique()
+                for pista in pistas:
+                    df_p = df_f[df_f['PISTA_MAESTRA'] == pista]
+                    if df_p.empty: continue
                     
-            if not df_tratados.empty:
-                for c in df_tratados.columns:
-                    if any(p in str(c).upper() for p in palabras_numericas):
-                        df_tratados[c] = df_tratados[c].apply(limpiar_numeros_universales)
+                    # Cálculo de ciclos agrupados (5 días)
+                    fechas_unicas = sorted(df_p['FECHA_DT'].dropna().unique())
+                    ciclos = 0
+                    if len(fechas_unicas) > 0:
+                        ciclos = 1
+                        inicio = fechas_unicas[0]
+                        for f in fechas_unicas[1:]:
+                            if (f - inicio).days > 5:
+                                ciclos += 1
+                                inicio = f
+                    
+                    # KPIs
+                    total_ha = df_p['AREA_NUM'].sum()
+                    avg_ha = df_p['VALOR_FACTURAR_NUM'].mean()
+                    avg_os = df_p['COSTO_HA_NUM'].mean()
+                    tot_fac = df_p['COSTO_TOTAL_NUM'].sum()
+                    
+                    resumen_data.append({
+                        "FINCA": finca,
+                        "PISTA BASE": pista,
+                        "TOTAL HECTÁREAS": float(total_ha),
+                        "CICLOS REALES (5 Días)": int(ciclos),
+                        "COSTO PROMEDIO X HA (Integral)": float(avg_ha),
+                        "COSTO PROMEDIO X OS (Avión)": float(avg_os),
+                        "TOTAL FACTURADO": float(tot_fac)
+                    })
+                    
+                    # Rendimiento Aeronaves
+                    df_mod = df_p.groupby('MODELO_FINAL').agg(VUELOS=('OS_MAESTRA', 'count'), AREA=('AREA_NUM', 'sum'), HORAS=('H_TOTAL_NUM', 'sum')).reset_index()
+                    for _, r_mod in df_mod.iterrows():
+                        rend = r_mod['AREA'] / r_mod['HORAS'] if r_mod['HORAS'] > 0 else 0
+                        rendimiento_data.append({
+                            "FINCA": finca,
+                            "PISTA": pista,
+                            "MODELO AERONAVE": r_mod['MODELO_FINAL'],
+                            "VUELOS REALIZADOS": int(r_mod['VUELOS']),
+                            "HECTÁREAS APLICADAS": float(r_mod['AREA']),
+                            "RENDIMIENTO (Ha / Hora)": float(rend)
+                        })
+
+            df_resumen = pd.DataFrame(resumen_data)
+            df_rendimiento = pd.DataFrame(rendimiento_data)
+            
+            # --- CONSTRUCCIÓN PESTAÑA 3: AUDITORÍA (DATOS LIMPIOS) ---
+            cols_basura = [c for c in df_export.columns if c.endswith('_NUM') or c.endswith('_DT') or c == 'MODELO_FINAL']
+            df_auditoria = df_export.drop(columns=cols_basura).copy()
+            df_auditoria.columns = [str(c).replace('\n', ' ').replace('\r', '').strip() for c in df_auditoria.columns]
+            
+            # Convertir las columnas numéricas puras
+            num_cols_auditoria = ['AREA_MAESTRA', 'VALOR_FACTURAR', 'COSTO_HA_BASE', 'COSTO_TOTAL', 'H_TOTAL', 'GLN_HA', 'VOL_TOTAL', 'REND_HR', 'REND_MIN', 'COSTO_AVION', 'DOMINICAL_HA', 'COSTO_FINCA', 'PAGO_AVION']
+            for c in num_cols_auditoria:
+                if c in df_auditoria.columns:
+                    df_auditoria[c] = df_auditoria[c].apply(limpiar_numeros_universales)
 
             c_preview1, c_preview2 = st.columns(2)
             with c_preview1:
-                st.markdown("**🔍 Vista Previa: Datos Crudos**")
-                st.dataframe(df_crudos.head(20), use_container_width=True)
+                st.markdown("**📊 Vista Previa: Resumen Gerencial**")
+                st.dataframe(df_resumen, use_container_width=True)
             with c_preview2:
-                st.markdown("**📊 Vista Previa: Datos Tratados**")
-                st.dataframe(df_tratados.head(20), use_container_width=True)
+                st.markdown("**✈️ Vista Previa: Rendimiento Máquinas**")
+                st.dataframe(df_rendimiento, use_container_width=True)
                 
             try:
                 buffer = io.BytesIO()
-                # Usar openpyxl para poder inyectar diseño visual
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_crudos.to_excel(writer, sheet_name='Base_Historica', index=False)
-                    if not df_tratados.empty:
-                        df_tratados.to_excel(writer, sheet_name='Duelo_Actual', index=False)
+                    if not df_resumen.empty:
+                        df_resumen.to_excel(writer, sheet_name='Resumen Gerencial', index=False)
+                    if not df_rendimiento.empty:
+                        df_rendimiento.to_excel(writer, sheet_name='Rendimiento Aeronaves', index=False)
+                    if not df_auditoria.empty:
+                        df_auditoria.to_excel(writer, sheet_name='Auditoría Vuelos', index=False)
                     
-                    # --- ESTILOS PROFESIONALES DE EXCEL ---
                     header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                     header_font = Font(color="FFFFFF", bold=True)
                     align_center = Alignment(horizontal="center", vertical="center")
@@ -435,36 +516,29 @@ def ejecutar():
                     for sheet_name in writer.sheets:
                         ws = writer.sheets[sheet_name]
                         
-                        # Aplicar Color a los Títulos
                         for cell in ws[1]:
                             cell.fill = header_fill
                             cell.font = header_font
                             cell.alignment = align_center
                         
-                        # Activar Filtros Automáticos
                         ws.auto_filter.ref = ws.dimensions
                         
-                        # Ajustar Anchos de Columna y Formatos Numéricos
                         for col in ws.columns:
                             max_length = 0
                             col_letter = col[0].column_letter
                             header_name = str(ws[f"{col_letter}1"].value).upper()
                             
                             for cell in col:
-                                # Ancho automático
                                 try:
-                                    if len(str(cell.value)) > max_length:
-                                        max_length = len(str(cell.value))
+                                    if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
                                 except: pass
                                 
-                                # Formato de celda (saltando la cabecera)
                                 if cell.row > 1 and isinstance(cell.value, (int, float)):
-                                    if any(p in header_name for p in ['COSTO', 'VALOR', 'PAGO', 'LIMITE', '$']):
-                                        cell.number_format = '"$"#,##0' # Formato Moneda sin decimales
-                                    else:
-                                        cell.number_format = '#,##0.00' # Formato número estándar
+                                    if any(p in header_name for p in ['COSTO', 'VALOR', 'FACTURADO', 'PAGO', 'LIMITE']):
+                                        cell.number_format = '"$"#,##0' 
+                                    elif any(p in header_name for p in ['HECTÁREAS', 'RENDIMIENTO', 'AREA']):
+                                        cell.number_format = '#,##0.00' 
                             
-                            # Aplicar ancho final a la columna (mínimo 12, máximo 40)
                             ws.column_dimensions[col_letter].width = min(max(max_length + 2, 12), 40)
                 
                 st.download_button(
@@ -476,12 +550,12 @@ def ejecutar():
                     type="primary"
                 )
             except Exception as e:
-                st.warning(f"⚠️ Usando formato CSV Latino debido a restricciones del servidor: {e}")
-                csv = df_crudos.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
+                st.warning(f"⚠️ Servidor sin openpyxl nativo. Generando CSV: {e}")
+                csv = df_resumen.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EN CSV",
                     data=csv,
-                    file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    file_name=f"Auditoria_Resumen_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv",
                     use_container_width=True,
                     type="primary"
