@@ -262,7 +262,7 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA TÁCTICA: BOMBARDEO DE SATURACIÓN 💥 */
+    /* 💥 PINTURA TÁCTICA: BOMBARDEO DE SATURACIÓN PARA LETRAS FANTASMAS 💥 */
     
     /* 1. FONDO GENERAL DE LAS CAJAS */
     div[data-testid="stSelectbox"] > div > div,
@@ -281,9 +281,9 @@ def ejecutar():
         background-color: transparent !important;
     }
 
-    /* 3. FORZAR LETRA BLANCA Y NEGRITA */
-    div[data-testid="stSelectbox"] span,
-    div[data-testid="stMultiSelect"] span,
+    /* 3. FORZAR LETRA BLANCA Y NEGRITA (LA CURA PARA LAS LETRAS FANTASMAS) */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] *,
     div[data-testid="stDateInput"] input {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
