@@ -262,40 +262,38 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 EL CEBO Y BOMBARDEO TÁCTICO DE COLORES 💥 */
+    /* 💥 PINTURA TÁCTICA: BOMBARDEO DE SATURACIÓN 💥 */
     
-    /* 1. Atacar todos los contenedores de Selectbox y MultiSelect */
-    div[data-testid="stSelectbox"] > div > div, 
-    div[data-testid="stMultiSelect"] > div > div {
+    /* 1. FONDO GENERAL DE LAS CAJAS */
+    div[data-testid="stSelectbox"] > div > div,
+    div[data-testid="stMultiSelect"] > div > div,
+    div[data-testid="stDateInput"] > div > div {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
+        box-shadow: 0px 4px 6px rgba(0,0,0,0.2) !important;
     }
 
-    /* 2. Forzar letra blanca en las cajas de selección */
-    div[data-testid="stSelectbox"] span, 
-    div[data-testid="stMultiSelect"] span,
-    div[data-testid="stSelectbox"] div,
-    div[data-testid="stMultiSelect"] div {
-        color: #ffffff !important;
-    }
-
-    /* 3. Atacar el DateInput (Calendario) */
-    div[data-testid="stDateInput"] > div {
-        background-color: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
-        border-radius: 8px !important;
-    }
-    
+    /* 2. DESTRUIR LAS CAPAS BLANCAS INTERNAS DE STREAMLIT */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="baseInput"],
     div[data-testid="stDateInput"] input {
         background-color: transparent !important;
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
     }
 
-    /* 4. Íconos dorados */
-    svg {
+    /* 3. FORZAR LETRA BLANCA Y NEGRITA */
+    div[data-testid="stSelectbox"] span,
+    div[data-testid="stMultiSelect"] span,
+    div[data-testid="stDateInput"] input {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 800 !important;
+    }
+
+    /* 4. ICONOS DORADOS (Flechas y Calendario) */
+    div[data-testid="stSelectbox"] svg,
+    div[data-testid="stMultiSelect"] svg,
+    div[data-testid="stDateInput"] svg {
         fill: #d4af37 !important;
         color: #d4af37 !important;
     }
