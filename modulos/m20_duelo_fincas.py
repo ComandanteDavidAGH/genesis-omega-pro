@@ -262,30 +262,49 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA TÁCTICA PARA CONTENEDORES DE INPUTS 💥 */
-    div[data-testid="stSelectbox"] > div:last-child,
-    div[data-testid="stDateInput"] > div,
-    div[data-testid="stMultiSelect"] > div:last-child { 
+    /* 💥 PINTURA TÁCTICA PARA SELECTORES 💥 */
+    /* Selectboxes */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { 
         background-color: #0d1b2a !important; 
         border: 2px solid #d4af37 !important; 
         border-radius: 8px !important; 
-        overflow: hidden !important;
     }
-    
-    /* TEXTO BLANCO DENTRO DE LOS INPUTS AZULES */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
-    div[data-testid="stDateInput"] input,
-    div[data-testid="stMultiSelect"] * { 
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div * { 
         color: #ffffff !important; 
-        font-weight: bold !important;
+        font-weight: bold !important; 
+    }
+    div[data-testid="stSelectbox"] svg { 
+        fill: #d4af37 !important; 
     }
 
-    /* ICONOS DORADOS (Calendario y flechas) */
-    div[data-testid="stSelectbox"] svg,
-    div[data-testid="stDateInput"] svg,
-    div[data-testid="stMultiSelect"] svg {
+    /* DateInputs */
+    div[data-testid="stDateInput"] > div { 
+        background-color: #0d1b2a !important; 
+        border: 2px solid #d4af37 !important; 
+        border-radius: 8px !important; 
+    }
+    div[data-testid="stDateInput"] input { 
+        color: #ffffff !important; 
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #0d1b2a !important;
+        font-weight: bold !important; 
+    }
+    div[data-testid="stDateInput"] svg { 
         fill: #d4af37 !important; 
-        color: #d4af37 !important;
+        color: #d4af37 !important; 
+    }
+
+    /* MultiSelect (Descarga) */
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        background-color: #0d1b2a !important; 
+        border: 2px solid #d4af37 !important; 
+        border-radius: 8px !important; 
+    }
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div * {
+        color: #ffffff !important; 
+    }
+    div[data-testid="stMultiSelect"] svg { 
+        fill: #d4af37 !important; 
     }
     
     .lista-hk { 
@@ -444,7 +463,7 @@ def ejecutar():
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
-        st.info("💡 Seleccione las fincas a exportar. El sistema limpiará los números, eliminará errores visuales y aplicará un formato corporativo profesional en el Excel.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema generará el comparativo Gerencial y la Auditoría de vuelos con formato corporativo.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
@@ -501,10 +520,8 @@ def ejecutar():
             df_resumen = pd.DataFrame(resumen_data)
             df_rendimiento = pd.DataFrame(rendimiento_data)
             
-            # LIMPIEZA DE AUDITORÍA: MATANDO COLUMNAS BASURA
             cols_sistema = [c for c in df_export.columns if c.endswith('_NUM') or c.endswith('_DT') or c == 'MODELO_FINAL']
             cols_inutiles = ['BLOQUE', 'SECTOR', 'AREA_BRUTA', 'LIMITE', 'ALERTA', 'VAR_PCT', 'INC_2026', 'PAGO_AVION']
-            
             cols_a_matar = cols_sistema + [c for c in cols_inutiles if c in df_export.columns]
             
             df_auditoria = df_export.drop(columns=cols_a_matar).copy()
@@ -537,7 +554,6 @@ def ejecutar():
                     if not df_auditoria.empty:
                         df_auditoria.to_excel(writer, sheet_name='Auditoría Vuelos', index=False, startrow=2)
                     
-                    # --- ESTILOS DE PINTURA (CORPORATIVO VIP) ---
                     titulos_hojas = {
                         'Resumen Gerencial': 'REPORTE GERENCIAL - COMPARATIVO DE FINCAS',
                         'Rendimiento Aeronaves': 'REPORTE GERENCIAL - RENDIMIENTO DE AERONAVES',
