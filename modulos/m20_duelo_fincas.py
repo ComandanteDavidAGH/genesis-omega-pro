@@ -9,7 +9,6 @@ import re
 import math
 import json
 from datetime import datetime, timedelta, date
-from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
 # 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
@@ -18,30 +17,25 @@ from oauth2client.service_account import ServiceAccountCredentials
 def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
-def extraer_numero(val):
-    if pd.isna(val) or val is None: return 0.0
-    if isinstance(val, (int, float)): return float(val)
-    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
-    if not v or v == '-': return 0.0
+def formato_latino(numero, decimales=0):
+    if pd.isna(numero) or numero is None: return "0"
     try:
-        if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-            else: v = v.replace(',', '')
-        elif ',' in v:
-            if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
-            else: v = v.replace(',', '.')
-        elif '.' in v:
-            if v.count('.') > 1 or len(v.split('.')[-1]) == 3: v = v.replace('.', '')
-        return float(v)
-    except: return 0.0
+        num = float(numero)
+        if num == 0: return "0"
+        if decimales == 0: texto_us = f"{num:,.0f}"
+        else: texto_us = f"{num:,.{decimales}f}"
+        return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0"
 
-def obtener_cliente_gspread_unificado():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+# 💥 CONEXIÓN ROBUSTA RESTAURADA (Sin el error de 'scope') 💥
+@st.cache_resource(show_spinner=False)
+def inicializar_cliente_gspread():
     try:
         if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        elif "gcp_credentials" in st.secrets:
+            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
@@ -49,7 +43,7 @@ def obtener_cliente_gspread_unificado():
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_historial_completo_ciclos_v4():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
-    gc = obtener_cliente_gspread_unificado()
+    gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame(), pd.DataFrame()
     try:
         boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -75,7 +69,7 @@ def obtener_historial_completo_ciclos_v4():
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas_mod3():
-    gc = obtener_cliente_gspread_unificado()
+    gc = inicializar_cliente_gspread()
     if not gc: return pd.DataFrame()
     try:
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -88,6 +82,23 @@ def cargar_matriz_tarifas_mod3():
             return df
     except: pass
     return pd.DataFrame()
+
+def extraer_numero(val):
+    if pd.isna(val) or val is None: return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
+    if not v or v == '-': return 0.0
+    try:
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+            else: v = v.replace(',', '')
+        elif ',' in v:
+            if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
+            else: v = v.replace(',', '.')
+        elif '.' in v:
+            if v.count('.') > 1 or len(v.split('.')[-1]) == 3: v = v.replace('.', '')
+        return float(v)
+    except: return 0.0
 
 def extraer_tarifas_dinamicas(df_tarifas, anio_str):
     dict_av = {}
@@ -127,149 +138,6 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
     if not dict_dr: dict_dr = {"DRONE DATAROT": 84428}
     
     return dict_av, dict_dr, dict_topes, col_anio
-
-def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
-    try:
-        for col_idx in range(len(df_hoja.columns) - 1):
-            mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
-            if mask.any():
-                val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
-                if pd.notna(val) and val > 0: return float(val)
-    except Exception: pass
-    return 0.5 
-
-@st.cache_data(show_spinner=False, ttl=1800)
-def obtener_matriz_fija_cruda_v2():
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return []
-    try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        return boveda.worksheet("DD_Mesclas").get_all_values()
-    except Exception: return []
-
-def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
-    nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
-    if not nombre_clean: return 0.0
-    datos_crudos = obtener_matriz_fija_cruda_v2()
-    if not datos_crudos: return 0.0
-    for fila in datos_crudos:
-        for c_idx in range(len(fila) - 1):
-            try:
-                val_celda = str(fila[c_idx]).upper()
-                val_clean = re.sub(r'[^A-Z0-9]', '', val_celda)
-                if val_clean and len(val_clean) >= 4:
-                    if nombre_clean in val_clean or val_clean in nombre_clean:
-                        val_str = str(fila[c_idx + 1]).replace(",", ".")
-                        val_num = re.sub(r'[^\d.]', '', val_str)
-                        if val_num and val_num != ".":
-                            dosis = float(val_num)
-                            if 0 < dosis < 100: return dosis
-            except Exception: continue 
-    return 0.0
-
-@st.cache_data(show_spinner=False, ttl=1800)
-def cargar_diccionarios_crudos():
-    datos = obtener_matriz_fija_cruda_v2()
-    dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
-    if not datos: return dict_recetas, dict_lideres, dict_fertilizantes
-    f_col = -1
-    for r in range(min(20, len(datos))):
-        for c in range(len(datos[r])):
-            if 'FERTILIZANTE' in str(datos[r][c]).upper():
-                f_col = c; break
-        if f_col != -1: break
-    if f_col != -1 and f_col + 1 < len(datos[0]):
-        for r in range(1, len(datos)):
-            if len(datos[r]) > f_col + 1:
-                nf, sf = str(datos[r][f_col]).strip().upper(), str(datos[r][f_col+1]).strip().upper()
-                if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf:
-                    dict_fertilizantes[nf.replace(" ", "")] = sf
-    for r in range(1, len(datos)):
-        fila = datos[r]
-        if len(fila) >= 3:
-            cid, p_tabla, d_str = str(fila[0]).strip().upper(), str(fila[1]).strip().upper(), str(fila[2]).replace(",", ".")
-            if cid and p_tabla and cid != "FINCA":
-                p_clean = p_tabla.replace(" ", "")
-                num_str = re.sub(r'[^\d.]', '', d_str)
-                d_tabla = float(num_str) if num_str and num_str != "." else 0.0
-                es_lider = True if len(fila) >= 4 and str(fila[3]).strip().upper() == "X" else False
-                if cid not in dict_recetas: dict_recetas[cid] = {}
-                dict_recetas[cid][p_clean] = d_tabla
-                if es_lider: dict_lideres[cid] = p_clean
-    return dict_recetas, dict_lideres, dict_fertilizantes
-
-@st.cache_data(show_spinner=False, ttl=1800)
-def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
-    dict_recetas, dict_lideres, dict_fertilizantes = cargar_diccionarios_crudos()
-    coctel_base, dosis_oficiales_coctel, max_p = "SIN COINCIDENCIA", {}, -9999
-    tiene_acond_06 = False
-    for k_sap in sap_dict_pista.keys():
-        if "ZINTRAC" in k_sap.upper() or "ZITRON" in k_sap.upper() or "BANATREL" in k_sap.upper():
-            tiene_acond_06 = True; break
-
-    for iter_id, receta in dict_recetas.items():
-        puntaje = 0
-        lider_db = dict_lideres.get(iter_id, "")
-        if lider_db:
-            match_lider = False
-            for k_sap in sap_dict_pista.keys():
-                if lider_db == k_sap or (len(k_sap) >= 4 and lider_db in k_sap) or (len(lider_db) >= 4 and k_sap in lider_db):
-                    match_lider = True; break
-            if not match_lider: puntaje -= 1000 
-        
-        for p_receta, d_esperada in receta.items():
-            match_receta, dose_matched, match_perfecto = False, False, False
-            d_receta_esperada = d_esperada
-            if "ACONDICIONADOR" in p_receta: d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
-            elif "ACEITE" in p_receta:
-                for char in iter_id:
-                    if char.isdigit():
-                        d_receta_esperada = float(char); break
-            elif "IMBIOSIL" in p_receta:
-                d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
-                
-            for k_sap, d_sap in sap_dict_pista.items():
-                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
-                    match_receta = True
-                    error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15) 
-                    if error <= 0.05: match_perfecto = True; dose_matched = True
-                    elif error <= tolerancia: dose_matched = True 
-                    break
-            
-            if match_receta:
-                puntaje += 100
-                if match_perfecto: puntaje += 100 
-                elif dose_matched: puntaje += 40  
-                else: puntaje -= 100 
-            else: puntaje -= 100 
-
-        for k_sap in sap_dict_pista.keys():
-            sap_en_receta = False
-            for p_receta in receta.keys():
-                if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
-                    sap_en_receta = True; break
-            if not sap_en_receta:
-                is_fert = False
-                for f_name in dict_fertilizantes.keys():
-                    if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
-                        is_fert = True; break
-                if not is_fert: puntaje -= 100 
-
-        if coctel_piloto_base and iter_id == coctel_piloto_base: puntaje += 50
-        if puntaje > max_p:
-            max_p = puntaje
-            coctel_base = iter_id
-            dosis_oficiales_coctel = receta.copy()
-
-    sigla_fertilizante = ""
-    for k_sap in sap_dict_pista.keys():
-        for f_name, f_sigla in dict_fertilizantes.items():
-            if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
-                if not ("IMBIOSIL" in f_name and str(coctel_base).startswith("IN")):
-                    sigla_fertilizante = f" {f_sigla}"; break
-        if sigla_fertilizante: break
-
-    return coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA", dosis_oficiales_coctel
 
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
@@ -378,10 +246,10 @@ def cargar_fuentes_maestras_duelo_v3():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        # Función auxiliar para limpieza segura de números desde la importación
+        # Función auxiliar para limpieza segura de números
         def clean_num_global(val):
             try:
-                v = str(val).strip().replace('$', '').replace(' ', '')
+                v = str(val).strip().replace('$', '').replace(' ', '').replace('COP', '')
                 if not v or v in ['-', 'N/A']: return 0.0
                 has_dot = '.' in v
                 has_comma = ',' in v
@@ -398,13 +266,26 @@ def cargar_fuentes_maestras_duelo_v3():
                 return float(re.sub(r'[^\d\.\-]', '', v))
             except: return 0.0
 
+        def clean_time_global(val):
+            try:
+                if isinstance(val, (int, float)): return float(val)
+                v = str(val).strip()
+                if not v: return 0.0
+                if ':' in v:
+                    partes = v.split(':')
+                    return float(partes[0]) + (float(partes[1]) / 60.0)
+                v = v.replace(',', '.')
+                v = re.sub(r'[^\d\.]', '', v)
+                return float(v) if v else 0.0
+            except: return 0.0
+
         super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(clean_num_global)
         super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(clean_num_global) 
         super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(clean_num_global) 
         super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(clean_num_global) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
-        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
+        super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(clean_time_global)
         
         def mapear_modelo(row):
             mod = str(row.get('MODELO', '')).strip().upper()
