@@ -5,6 +5,7 @@ import plotly.express as px
 from datetime import datetime, date
 import gspread
 import re
+import io
 
 # =================================================================
 # 🔌 MOTORES DE CONEXIÓN Y FORMATO
@@ -31,17 +32,13 @@ def inicializar_cliente_gspread():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-# 💥 PARSER INTELIGENTE DEFINITIVO 💥
 def limpiar_numeros_universales(val):
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
         if not v or v in ['-', 'N/A', '']: return 0.0
         
-        # Limpiar moneda y texto
         v = v.replace('$', '').replace('COP', '').replace(' ', '')
-        
-        # Contar comas y puntos
         has_dot = '.' in v
         has_comma = ',' in v
         
@@ -53,15 +50,15 @@ def limpiar_numeros_universales(val):
         elif has_comma:
             partes = v.split(',')
             if len(partes) == 2 and len(partes[1]) != 3:
-                v = v.replace(',', '.') # Es decimal
+                v = v.replace(',', '.') 
             else:
-                v = v.replace(',', '') # Es miles
+                v = v.replace(',', '') 
         elif has_dot:
             partes = v.split('.')
             if len(partes) == 2 and len(partes[1]) != 3:
-                pass # Ya es decimal válido
+                pass 
             else:
-                v = v.replace('.', '') # Es miles
+                v = v.replace('.', '') 
         
         v = re.sub(r'[^\d\.\-]', '', v)
         return float(v) if v else 0.0
@@ -126,7 +123,7 @@ def extraer_diccionario_flota(gc):
     except: pass
     return {}
 
-# 💥 CAMBIO DE NOMBRE: Fuerza a Streamlit a borrar la caché corrupta 💥
+# 💥 EXTRACCIÓN MAESTRA DEL HISTÓRICO Y TABLA 1 VIVA
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_duelo_v3():
     gc = inicializar_cliente_gspread()
@@ -231,6 +228,9 @@ def ejecutar():
     div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
     div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
     
+    /* Multiselectores del Panel de Descarga */
+    div[data-testid="stMultiSelect"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; }
+    
     .lista-hk { 
         text-align: left; 
         background-color: #ffffff; 
@@ -250,7 +250,6 @@ def ejecutar():
     st.write("Analiza el rendimiento de una misma finca operando desde dos bases distintas. Compara el Costo Integral, la Tarifa de Avión y los Ciclos Reales agrupados por operación.")
 
     with st.spinner("Desplegando el radar sobre la Bóveda Maestra de Vuelos..."):
-        # Llamamos a la versión 3 de la función para evadir la caché antigua
         df_base = cargar_fuentes_maestras_duelo_v3()
 
     if df_base.empty:
@@ -277,7 +276,6 @@ def ejecutar():
     with col_filt2:
         pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
     
-    # 💥 CALENDARIO FIJADO EN 2026 (Navegable hasta 2020) 💥
     min_date_allowed = date(2020, 1, 1)
     max_date_allowed = date(2026, 12, 31)
     
@@ -453,6 +451,55 @@ def ejecutar():
         fig_rend.update_traces(texttemplate='%{text:,.1f} Ha/Hr', textposition='outside', textfont=dict(family="Arial Black"))
         fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
         st.plotly_chart(fig_rend, use_container_width=True)
+
+    # 💥 NUEVO: SECCIÓN DE EXTRACCIÓN Y DESCARGA DE EXCEL 💥
+    st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
+    st.markdown("### 📥 Centro de Extracción de Datos (Excel)")
+    
+    activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
+    
+    if activar_descargas:
+        st.info("💡 Seleccione las fincas que desea auditar. El sistema generará un archivo Excel con la Base Cruda (Historia Completa) y los Datos Tratados.")
+        fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
+        
+        if fincas_a_descargar:
+            df_crudos = df_base[df_base['FINCA_MAESTRA'].isin(fincas_a_descargar)].copy()
+            df_tratados = df_ambos.copy() if not df_ambos.empty else pd.DataFrame()
+            
+            c_preview1, c_preview2 = st.columns(2)
+            with c_preview1:
+                st.markdown("**🔍 Vista Previa: Datos Crudos (Base Completa)**")
+                st.dataframe(df_crudos.head(50), use_container_width=True)
+            with c_preview2:
+                st.markdown("**📊 Vista Previa: Datos Tratados (Duelo Actual)**")
+                st.dataframe(df_tratados, use_container_width=True)
+                
+            try:
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_crudos.to_excel(writer, sheet_name='Datos Crudos (Base)', index=False)
+                    if not df_tratados.empty:
+                        df_tratados.to_excel(writer, sheet_name='Datos Tratados (Duelo)', index=False)
+                
+                st.download_button(
+                    label="💾 DESCARGAR REPORTE EN EXCEL (.xlsx)",
+                    data=buffer.getvalue(),
+                    file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="primary"
+                )
+            except Exception as e:
+                st.warning(f"⚠️ Generando CSV de respaldo automático. (El servidor no tiene el motor xlsxwriter: {e})")
+                csv = df_crudos.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label="💾 DESCARGAR REPORTE EN CSV",
+                    data=csv,
+                    file_name=f"Auditoria_Fincas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    type="primary"
+                )
 
 if __name__ == "__main__":
     pass
