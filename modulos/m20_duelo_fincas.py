@@ -31,29 +31,30 @@ def inicializar_cliente_gspread():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-def limpiar_area(val):
+# 💥 PARSER INTELIGENTE: Diferencia perfectamente miles de decimales 💥
+def limpiar_numeros_universales(val):
     try:
         if isinstance(val, (int, float)): return float(val)
         v = str(val).strip()
-        if not v: return 0.0
-        v = v.replace('.', '') # Quita puntos de miles
-        v = v.replace(',', '.') # Cambia coma decimal a punto de Python
-        v = re.sub(r'[^\d\.\-]', '', v)
-        return float(v) if v else 0.0
-    except: return 0.0
-
-def limpiar_dinero(val):
-    # 💥 LA REPARACIÓN TÁCTICA DE LOS MILLONES COLOMBIANOS 💥
-    try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip()
-        if not v: return 0.0
-        v = v.replace('$', '').replace(' ', '') # Quita el signo peso y espacios
-        v = v.replace('.', '') # Elimina todos los puntos (separadores de miles)
-        v = v.replace(',', '.') # Convierte la coma de centavos en el punto que entiende Python
-        v = re.sub(r'[^\d\.\-]', '', v) # Limpia cualquier otra basura
-        num = float(v) if v else 0.0
-        return num
+        if not v or v in ['-', 'N/A']: return 0.0
+        
+        v = v.replace('$', '').replace(' ', '').replace('COP', '')
+        v = re.sub(r'[^\d\.,\-]', '', v) # Deja solo números, puntos y comas
+        
+        if ',' in v and '.' in v:
+            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+            else: v = v.replace(',', '')
+        elif '.' in v:
+            if v.count('.') > 1: v = v.replace('.', '')
+            else:
+                if len(v.split('.')[1]) == 3: v = v.replace('.', '') # Es un mil (ej. 24.500)
+        elif ',' in v:
+            if v.count(',') > 1: v = v.replace(',', '')
+            else:
+                if len(v.split(',')[1]) == 3: v = v.replace(',', '') # Es un mil (ej. 24,500)
+                else: v = v.replace(',', '.') # Es un decimal (ej. 7,76)
+                
+        return float(v)
     except: return 0.0
 
 def limpiar_tiempo(val):
@@ -63,10 +64,7 @@ def limpiar_tiempo(val):
         if not v: return 0.0
         if ':' in v:
             partes = v.split(':')
-            horas = float(partes[0])
-            minutos = float(partes[1])
-            return horas + (minutos / 60.0)
-        v = v.replace('.', '')
+            return float(partes[0]) + (float(partes[1]) / 60.0)
         v = v.replace(',', '.')
         v = re.sub(r'[^\d\.]', '', v)
         return float(v) if v else 0.0
@@ -179,12 +177,11 @@ def cargar_fuentes_maestras_duelo():
         super_base['FECHA_DT'] = super_base['FECHA_MAESTRA'].apply(procesar_fecha_estricta)
         super_base = super_base.dropna(subset=['FECHA_DT'])
         
-        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_area)
-        
-        # Extracción Financiera Matemática Reparada
-        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_dinero) 
-        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_dinero) 
-        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_dinero) 
+        # Uso del nuevo escáner inteligente para todos los números
+        super_base['AREA_NUM'] = super_base.get('AREA_MAESTRA', 0).apply(limpiar_numeros_universales)
+        super_base['VALOR_FACTURAR_NUM'] = super_base.get('VALOR_FACTURAR', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_HA_NUM'] = super_base.get('COSTO_HA_BASE', 0).apply(limpiar_numeros_universales) 
+        super_base['COSTO_TOTAL_NUM'] = super_base.get('COSTO_TOTAL', 0).apply(limpiar_numeros_universales) 
         
         if 'H_TOTAL' not in super_base.columns: super_base['H_TOTAL'] = 0
         super_base['H_TOTAL_NUM'] = super_base['H_TOTAL'].apply(limpiar_tiempo)
@@ -220,7 +217,6 @@ def ejecutar():
     
     div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; font-weight:bold !important;}
     
-    /* FIX: Bordes completos para las casillas de fechas */
     div[data-testid="stDateInput"] > div { border: 2px solid #0d1b2a !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
     div[data-testid="stDateInput"] input { font-weight:bold !important; color: #0d1b2a !important; }
     
@@ -269,13 +265,18 @@ def ejecutar():
     with col_filt2:
         pista_B = st.selectbox("🔵 PISTA RETADORA B", lista_pistas, index=1 if len(lista_pistas) > 1 else 0)
     
-    min_date = df_finca_global['FECHA_DT'].min().date()
-    max_date = df_finca_global['FECHA_DT'].max().date()
+    # 💥 CALENDARIO LIBERADO: Desde 2020 hasta fin de 2026 💥
+    min_date_allowed = date(2020, 1, 1)
+    max_date_allowed = date(2026, 12, 31)
+    
+    # Toma las fechas de la finca para pre-llenar, pero no restringe la búsqueda general
+    default_start = df_finca_global['FECHA_DT'].min().date() if not df_finca_global.empty else date(2026, 1, 1)
+    default_end = df_finca_global['FECHA_DT'].max().date() if not df_finca_global.empty else date(2026, 8, 19)
     
     with col_filt3:
-        start_date = st.date_input("📅 Fecha Inicial", value=min_date, min_value=min_date, max_value=max_date)
+        start_date = st.date_input("📅 Fecha Inicial", value=default_start, min_value=min_date_allowed, max_value=max_date_allowed)
     with col_filt4:
-        end_date = st.date_input("📅 Fecha Final", value=max_date, min_value=min_date, max_value=max_date)
+        end_date = st.date_input("📅 Fecha Final", value=default_end, min_value=min_date_allowed, max_value=max_date_allowed)
 
     df_finca = df_finca_global.copy()
     if start_date and end_date:
@@ -303,7 +304,6 @@ def ejecutar():
         costo_integral_ha = df_pista['VALOR_FACTURAR_NUM'].mean()
         costo_tarifa_avion = df_pista['COSTO_HA_NUM'].mean()
         
-        # ✈️ RENDIMIENTO POR MODELO DE AVIÓN
         html_mod = "<div class='lista-hk'><p style='font-weight:900; margin-bottom:5px; color:#0d1b2a;'>✈️ RENDIMIENTO DISCRIMINADO POR AERONAVE:</p><ul>"
         df_mod = df_pista.groupby('MODELO_FINAL').agg(
             REGISTROS=('OS_MAESTRA', 'count'),
@@ -321,7 +321,6 @@ def ejecutar():
             html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({registros} líneas voladas)</i></li>"
         html_mod += "</ul></div>"
         
-        # 💥 ALGORITMO DE CICLOS (Ventana de 5 días) 💥
         fechas_unicas = sorted(df_pista['FECHA_DT'].dropna().unique())
         total_ciclos_reales = 0
         
@@ -348,7 +347,6 @@ def ejecutar():
     clase_win_A = "victoria" if (costo_integral_A < costo_integral_B and costo_integral_A > 0) or costo_integral_B == 0 else ""
     clase_win_B = "victoria" if (costo_integral_B < costo_integral_A and costo_integral_B > 0) or costo_integral_A == 0 else ""
 
-    # --- RENDERIZADO DEL CUADRILÁTERO ---
     col_A, col_vs, col_B = st.columns([4, 1, 4])
 
     with col_A:
@@ -359,10 +357,8 @@ def ejecutar():
         m_a1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_A, 0)}</p></div>", unsafe_allow_html=True)
         m_a2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_A, 0)}</p></div>", unsafe_allow_html=True)
         
-        if df_A.empty: 
-            st.info("Sin operaciones registradas.")
-        else: 
-            st.markdown(html_mod_A, unsafe_allow_html=True)
+        if df_A.empty: st.info("Sin operaciones registradas.")
+        else: st.markdown(html_mod_A, unsafe_allow_html=True)
 
     with col_vs:
         st.markdown("<br><br><h1 style='text-align:center; color:#d4af37; font-size: 50px; font-family:Arial Black;'>VS</h1>", unsafe_allow_html=True)
@@ -375,12 +371,9 @@ def ejecutar():
         m_b1.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO PROMEDIO X OS</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(costo_os_B, 0)}</p></div>", unsafe_allow_html=True)
         m_b2.markdown(f"<div class='kpi-vs' style='padding: 10px;'><p class='kpi-vs-title'>COSTO TOTAL FACTURADO</p><p class='kpi-vs-value' style='font-size:20px;'>$ {formato_latino(inv_B, 0)}</p></div>", unsafe_allow_html=True)
 
-        if df_B.empty: 
-            st.info("Sin operaciones registradas.")
-        else: 
-            st.markdown(html_mod_B, unsafe_allow_html=True)
+        if df_B.empty: st.info("Sin operaciones registradas.")
+        else: st.markdown(html_mod_B, unsafe_allow_html=True)
 
-    # 💥 FILA SEPARADA PARA ALINEAR PERFECTAMENTE LAS CAJAS DE CICLOS 💥
     col_ciclos_A, col_ciclos_vs, col_ciclos_B = st.columns([4, 1, 4])
     with col_ciclos_A:
         if not df_A.empty: st.markdown(html_ciclos_A, unsafe_allow_html=True)
