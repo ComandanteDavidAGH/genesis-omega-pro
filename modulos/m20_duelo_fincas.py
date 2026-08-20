@@ -262,60 +262,44 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA TÁCTICA BLINDADA 💥 */
+    /* 💥 BOMBA NUCLEAR CSS: FONDO Y TEXTO OBLIGATORIO 💥 */
     
-    /* Fondo Azul y Borde Dorado para Selectores */
-    div[data-baseweb="select"] > div {
-        background-color: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
-        border-radius: 8px !important;
-    }
-    
-    /* Letras Blancas en Selectores */
-    div[data-baseweb="select"] > div * {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: 800 !important;
-    }
-    
-    /* Fondo Azul y Borde Dorado para Fechas */
+    /* PINTAR FONDOS */
+    div[data-baseweb="select"] > div,
     div[data-baseweb="baseInput"] {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
     }
-    
-    /* Letras Blancas en Fechas */
-    div[data-baseweb="baseInput"] input {
-        background-color: transparent !important;
+
+    /* PINTAR TEXTOS (Selector y Fechas) AL BLANCO MÁS PURO POSIBLE */
+    div[data-baseweb="select"] span[class],
+    div[data-baseweb="select"] div[class],
+    div[data-baseweb="baseInput"] input[type="text"],
+    div[data-baseweb="baseInput"] input[type="date"] {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
         font-weight: bold !important;
+        background-color: transparent !important;
     }
 
-    /* Iconos Dorados */
+    /* PINTAR ICONOS DE DORADO */
     div[data-baseweb="select"] svg,
     div[data-baseweb="baseInput"] svg {
         fill: #d4af37 !important;
         color: #d4af37 !important;
     }
 
-    /* 🛡️ PROTEGER EL MENÚ DESPLEGABLE (Evita fondo oscuro) */
+    /* BLINDAR LA LISTA DESPLEGABLE (Evitar que se dañe) */
     div[role="listbox"] {
         background-color: #ffffff !important;
     }
     div[role="listbox"] * {
         color: #0d1b2a !important;
         -webkit-text-fill-color: #0d1b2a !important;
+        font-weight: bold !important;
     }
-    ul[data-baseweb="menu"] {
-        background-color: #ffffff !important;
-    }
-    ul[data-baseweb="menu"] * {
-        color: #0d1b2a !important;
-        -webkit-text-fill-color: #0d1b2a !important;
-    }
-
+    
     .lista-hk { 
         text-align: left; background-color: #ffffff; padding: 15px; border-radius: 8px; 
         border: 2px solid #0d1b2a; border-left: 6px solid #d4af37; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;
@@ -338,7 +322,7 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
-    # 💥 SELECTOR A LA MITAD 💥
+    # Selector a la mitad
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
