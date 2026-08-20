@@ -262,48 +262,40 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 MISIL CSS UNIVERSAL (ATAQUE A LA CAPA EXTERNA E INTERNA) 💥 */
+    /* 💥 MISIL CSS DEFINITIVO (FRANCOTIRADOR) 💥 */
     
-    /* 1. Atacar al contenedor principal del Widget (Fondo Azul + Borde) */
-    div[data-testid="stSelectbox"] > div:nth-child(2) > div,
-    div[data-testid="stMultiSelect"] > div:nth-child(2) > div,
-    div[data-testid="stDateInput"] > div:nth-child(2) > div {
+    /* 1. Fondo Azul Marino y Borde Dorado a la caja base */
+    div[data-baseweb="select"] > div:first-child,
+    div[data-baseweb="baseInput"] {
         background-color: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
     }
 
-    /* 2. Destruir fondos blancos internos haciendolos transparentes */
-    div[data-baseweb="select"] > div, 
-    div[data-baseweb="baseInput"], 
-    div[data-baseweb="baseInput"] input {
+    /* 2. Forzar todo el contenido interno de las cajas a fondo transparente y texto blanco */
+    div[data-baseweb="select"] > div:first-child *,
+    div[data-baseweb="baseInput"] * {
         background-color: transparent !important;
-        border: none !important;
-    }
-
-    /* 3. Forzar el texto interno a Blanco Puro en TODAS las capas */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] *,
-    div[data-testid="stDateInput"] input {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-    }
-    
-    /* 4. Iconos dorados */
-    div[data-testid="stSelectbox"] svg,
-    div[data-testid="stMultiSelect"] svg,
-    div[data-testid="stDateInput"] svg {
-        fill: #d4af37 !important;
+        font-weight: 800 !important;
     }
 
-    /* 5. Blindaje del menú desplegable: Que no se contagie de Azul */
-    div[data-testid="stSelectbox"] ul,
-    div[data-testid="stMultiSelect"] ul,
-    div[role="listbox"],
-    div[data-baseweb="popover"] * {
+    /* 3. Colorear Iconos (Flechitas y Calendario) de Dorado */
+    div[data-baseweb="select"] > div:first-child svg,
+    div[data-baseweb="baseInput"] svg {
+        fill: #d4af37 !important;
+        color: #d4af37 !important;
+    }
+
+    /* 4. Blindar el Menú Desplegable (Evitar que se ponga azul) */
+    div[role="listbox"] {
         background-color: #ffffff !important;
+    }
+    div[role="listbox"] * {
         color: #0d1b2a !important;
         -webkit-text-fill-color: #0d1b2a !important;
+        background-color: transparent !important;
     }
     
     .lista-hk { 
@@ -328,7 +320,6 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
-    # Selector a la mitad
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
