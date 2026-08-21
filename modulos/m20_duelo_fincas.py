@@ -230,42 +230,16 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 💥 PINTURA INTEGRAL Y FORZADO DE AZUL MARINO (#0D1B2A) EN INPUTS 💥 */
-    
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stDateInput div[data-baseweb="baseInput"],
-    .stMultiSelect div[data-baseweb="select"] > div {
-        background-color: #0d1b2a !important;
-        background: #0d1b2a !important;
-        border: 2px solid #d4af37 !important;
+    /* ESTILOS LIMPIOS Y SEGUROS PARA INPUTS */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="baseInput"] {
+        border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
     }
-
-    /* FORZAR TODO EL TEXTO A BLANCO BRILLANTE DENTRO DE LOS INPUTS */
-    .stSelectbox div[data-baseweb="select"] *,
-    .stDateInput div[data-baseweb="baseInput"] *,
-    .stMultiSelect div[data-baseweb="select"] *,
-    .stDateInput input,
-    .stSelectbox input {
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: bold !important;
-    }
-
-    /* ÍCONOS Y CALENDARIOS DORADOS */
-    .stSelectbox svg, .stDateInput svg, .stMultiSelect svg {
-        fill: #d4af37 !important;
-        color: #d4af37 !important;
-    }
-
-    /* MENÚ DESPLEGABLE LEYENDA CLARA */
-    div[data-baseweb="popover"] ul, ul[role="listbox"] {
-        background-color: #ffffff !important;
-    }
-    div[data-baseweb="popover"] ul li, ul[role="listbox"] li {
-        color: #0d1b2a !important;
-        -webkit-text-fill-color: #0d1b2a !important;
-        font-weight: bold !important;
+    
+    div[data-baseweb="select"] > div:hover,
+    div[data-baseweb="baseInput"]:hover {
+        border-color: #d4af37 !important;
     }
 
     .lista-hk { 
@@ -290,7 +264,7 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
-    # Selector de finca a la mitad
+    # Selector de finca al 50%
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
@@ -418,7 +392,7 @@ def ejecutar():
         fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
         st.plotly_chart(fig_rend, use_container_width=True)
 
-    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL (ESTILOS EXCEL) 💥
+    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL (ESTILOS EXCEL GERENCIAL) 💥
     st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
     st.markdown("### 📥 Centro de Extracción de Datos (Reporte Ejecutivo)")
     
