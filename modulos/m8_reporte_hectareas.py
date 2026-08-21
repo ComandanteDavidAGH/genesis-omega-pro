@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# ⚡ MOTORES DE CONEXIÓN Y FORMATO (Blindados contra NameErrors)
+# 🛡️ BLOQUE 1: UTILIDADES Y FORMATO
 # =================================================================
 
 def formato_latino(numero, decimales=0):
@@ -28,7 +28,7 @@ def formato_latino(numero, decimales=0):
         if decimales == 0: texto_us = f"{num:,.0f}"
         else: texto_us = f"{num:,.{decimales}f}"
         return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
+    except Exception:
         return "0"
 
 def formato_gerencial_latino(numero):
@@ -37,143 +37,12 @@ def formato_gerencial_latino(numero):
     elif numero >= 1_000: return f"$ {numero / 1_000:,.0f} K".replace(",", ".")
     else: return f"$ {formato_latino(numero, 0)}"
 
-def obtener_cliente_gspread_unificado():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return gspread.service_account(filename='credenciales.json')
-    except:
-        return None
-
-def obtener_cliente_gspread_viejo():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_credentials" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_credentials"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return gspread.service_account(filename='credenciales.json')
-    except:
-        return None
-
-def parsear_precio_colombia(val):
-    v = str(val).strip()
-    if not v or v == '-': return None
-    v = re.sub(r'[^\d\.,\-]', '', v)
-    if not v: return None
-    try:
-        if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): 
-                v = v.replace('.', '').replace(',', '.')
-            else:
-                v = v.replace(',', '')
-        elif ',' in v: 
-            v = v.replace(',', '.')
-        return float(v)
-    except:
-        return None
-
-@st.cache_data(show_spinner=False, ttl=600)
-def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
-    gc_nuevo = obtener_cliente_gspread_unificado()
-    
-    boveda_act = None
-    try:
-        boveda_act = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
-    except:
-        datos_brutos_act = []
-    
-    if len(datos_brutos_act) > 5:
-        columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
-        filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
-        df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
-        df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
-        df_vivos['ORIGEN_BI'] = 'ACTUAL'
-    else:
-        df_vivos = pd.DataFrame()
-
-    boveda_hist = None
-    datos_brutos_hist = []
-    try:
-        boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
-    except:
-        try:
-            gc_viejo = obtener_cliente_gspread_viejo()
-            boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-            datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
-        except: pass
-    
-    if len(datos_brutos_hist) > 0:
-        df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
-        df_historico = estandarizar_base(limpiar_encabezados(df_historico))
-        df_historico['ORIGEN_BI'] = 'HISTORICO'
-    else:
-        df_historico = pd.DataFrame()
-
-    ws_historico = None
-    for bv in [boveda_act, boveda_hist]:
-        if bv:
-            try:
-                for ws in bv.worksheets():
-                    if "HISTORICO" in ws.title.upper() and "PISTA" in ws.title.upper():
-                        ws_historico = ws
-                        break
-            except: pass
-        if ws_historico: break
-
-    if ws_historico:
-        try:
-            datos_pistas_antiguas = ws_historico.get_all_values()
-            if len(datos_pistas_antiguas) > 1:
-                df_hist_pistas = pd.DataFrame(datos_pistas_antiguas[1:], columns=datos_pistas_antiguas[0])
-                df_hist_pistas = limpiar_encabezados(df_hist_pistas)
-                
-                col_anio = next((c for c in df_hist_pistas.columns if 'AÑO' in c or 'ANO' in c or 'YEAR' in c), None)
-                col_mes = next((c for c in df_hist_pistas.columns if 'MES' in c or 'FECHA' in c), None)
-                col_pista = next((c for c in df_hist_pistas.columns if 'PISTA' in c or 'ALM' in c or 'BASE' in c), None)
-                col_ha = next((c for c in df_hist_pistas.columns if 'HECTA' in c or 'AREA' in c or 'SUMA' in c or 'CANT' in c), None)
-                
-                if col_anio and col_mes and col_pista and col_ha:
-                    df_hp_clean = pd.DataFrame()
-                    
-                    def parse_mes(m):
-                        try:
-                            m_str = str(m).upper().strip()[:3]
-                            meses = {'ENE':1,'FEB':2,'MAR':3,'ABR':4,'MAY':5,'JUN':6,'JUL':7,'AGO':8,'SEP':9,'OCT':10,'NOV':11,'DIC':12}
-                            if m_str in meses: return meses[m_str]
-                            return int(float(m))
-                        except: return 12
-
-                    df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas[col_anio], errors='coerce').fillna(2017).astype(int)
-                    df_hp_clean['MES_NUM'] = df_hist_pistas[col_mes].apply(parse_mes).astype(int)
-                    df_hp_clean['AREA_MAESTRA'] = df_hist_pistas[col_ha].apply(limpiar_area)
-                    df_hp_clean['PISTA'] = df_hist_pistas[col_pista].astype(str).str.upper().str.strip()
-                    df_hp_clean['FINCA_MAESTRA'] = 'HISTORICO_SAP'
-                    df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean.index.astype(str)
-                    df_hp_clean['COCTEL_MAESTRO'] = 'COCTEL_HISTORICO'
-                    df_hp_clean['HK'] = 'HK-HIST'
-                    df_hp_clean['MODELO'] = 'AVION_HISTORICO'
-                    df_hp_clean['ORIGEN_BI'] = 'HISTORICO_ANTIGUO'
-                    
-                    df_hp_clean['FECHA_MAESTRA'] = df_hp_clean.apply(lambda r: f"28/{int(r['MES_NUM']):02d}/{int(r['AÑO'])}", axis=1)
-                    
-                    df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
-        except Exception as e:
-            pass
-
-    return df_vivos, df_historico
-
 def limpiar_encabezados(df):
     df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
     df = df.loc[:, ~df.columns.duplicated(keep='first')]
     if "" in df.columns: df = df.drop(columns=[""])
     return df
-    
+
 def estandarizar_base(df):
     renombres = {}
     for col in df.columns:
@@ -201,7 +70,7 @@ def limpiar_area(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         return float(v) if v else 0.0
-    except: return 0.0
+    except Exception: return 0.0
 
 def limpiar_dinero(val):
     if pd.isna(val) or val is None: return 0.0
@@ -223,12 +92,122 @@ def limpiar_dinero(val):
             if v.count('.') > 1 or len(v.split('.')[-1]) == 3:
                 v = v.replace('.', '')
         return float(v)
-    except:
+    except Exception:
         return 0.0
+
+def fecha_fallback(val):
+    """Respaldo en caso de que app.py no inyecte procesar_fecha_pesada_app"""
+    return pd.to_datetime(val, errors='coerce', dayfirst=True)
+
+# =================================================================
+# ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS
+# =================================================================
+def obtener_cliente_gspread():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception as e: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception as e: pass
+    try:
+        return gspread.service_account(filename='credenciales.json')
+    except Exception:
+        return None
+
+# =================================================================
+# 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
+# =================================================================
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
+    gc = obtener_cliente_gspread()
+    if not gc: return pd.DataFrame(), pd.DataFrame()
+    
+    df_vivos = pd.DataFrame()
+    try:
+        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
+        if len(datos_brutos_act) > 5:
+            columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
+            df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+            df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
+            df_vivos['ORIGEN_BI'] = 'ACTUAL'
+    except Exception as e:
+        pass
+
+    df_historico = pd.DataFrame()
+    boveda_hist = None
+    try:
+        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        if len(datos_brutos_hist) > 0:
+            df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
+            df_historico = estandarizar_base(limpiar_encabezados(df_historico))
+            df_historico['ORIGEN_BI'] = 'HISTORICO'
+    except Exception as e:
+        pass
+
+    ws_historico = None
+    for bv in [boveda_act, boveda_hist]:
+        if bv:
+            try:
+                for ws in bv.worksheets():
+                    if "HISTORICO" in ws.title.upper() and "PISTA" in ws.title.upper():
+                        ws_historico = ws
+                        break
+            except Exception: pass
+        if ws_historico: break
+
+    if ws_historico:
+        try:
+            datos_pistas_antiguas = ws_historico.get_all_values()
+            if len(datos_pistas_antiguas) > 1:
+                df_hist_pistas = pd.DataFrame(datos_pistas_antiguas[1:], columns=datos_pistas_antiguas[0])
+                df_hist_pistas = limpiar_encabezados(df_hist_pistas)
+                
+                col_anio = next((c for c in df_hist_pistas.columns if 'AÑO' in c or 'ANO' in c or 'YEAR' in c), None)
+                col_mes = next((c for c in df_hist_pistas.columns if 'MES' in c or 'FECHA' in c), None)
+                col_pista = next((c for c in df_hist_pistas.columns if 'PISTA' in c or 'ALM' in c or 'BASE' in c), None)
+                col_ha = next((c for c in df_hist_pistas.columns if 'HECTA' in c or 'AREA' in c or 'SUMA' in c or 'CANT' in c), None)
+                
+                if col_anio and col_mes and col_pista and col_ha:
+                    df_hp_clean = pd.DataFrame()
+                    
+                    def parse_mes(m):
+                        try:
+                            m_str = str(m).upper().strip()[:3]
+                            meses = {'ENE':1,'FEB':2,'MAR':3,'ABR':4,'MAY':5,'JUN':6,'JUL':7,'AGO':8,'SEP':9,'OCT':10,'NOV':11,'DIC':12}
+                            if m_str in meses: return meses[m_str]
+                            return int(float(m))
+                        except Exception: return 12
+
+                    df_hp_clean['AÑO'] = pd.to_numeric(df_hist_pistas[col_anio], errors='coerce').fillna(2017).astype(int)
+                    df_hp_clean['MES_NUM'] = df_hist_pistas[col_mes].apply(parse_mes).astype(int)
+                    df_hp_clean['AREA_MAESTRA'] = df_hist_pistas[col_ha].apply(limpiar_area)
+                    df_hp_clean['PISTA'] = df_hist_pistas[col_pista].astype(str).str.upper().str.strip()
+                    df_hp_clean['FINCA_MAESTRA'] = 'HISTORICO_SAP'
+                    df_hp_clean['OS_MAESTRA'] = 'HIST-' + df_hp_clean.index.astype(str)
+                    df_hp_clean['COCTEL_MAESTRO'] = 'COCTEL_HISTORICO'
+                    df_hp_clean['HK'] = 'HK-HIST'
+                    df_hp_clean['MODELO'] = 'AVION_HISTORICO'
+                    df_hp_clean['ORIGEN_BI'] = 'HISTORICO_ANTIGUO'
+                    
+                    df_hp_clean['FECHA_MAESTRA'] = df_hp_clean.apply(lambda r: f"28/{int(r['MES_NUM']):02d}/{int(r['AÑO'])}", axis=1)
+                    
+                    df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
+        except Exception as e:
+            pass
+
+    return df_vivos, df_historico
 
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas():
-    gc = obtener_cliente_gspread_unificado()
+    gc = obtener_cliente_gspread()
     if not gc: return pd.DataFrame()
     try:
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
@@ -239,21 +218,21 @@ def cargar_matriz_tarifas():
             df = df.loc[:, df.columns.astype(str).str.strip() != '']
             df = df[df['PISTA'].str.strip() != '']
             return df
-    except: pass
+    except Exception: pass
     return pd.DataFrame()
 
 # =================================================================
-# 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
+# 🚀 BLOQUE 4: NÚCLEO OPERATIVO Y VISUAL DEL DASHBOARD
 # =================================================================
 def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_app=None, procesar_fecha_pesada_app=None, **kwargs):
     
     def fmt_latino(val, decimales=2):
         try: return f"{float(val):,.{decimales}f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except: return str(val) if val is not None else ""
+        except Exception: return str(val) if val is not None else ""
 
     def fmt_dinero(val):
         try: return f"$ {float(val):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        except: return f"$ {val}"
+        except Exception: return f"$ {val}"
 
     st.header("", anchor="inicio_modulo")
 
@@ -266,8 +245,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
     /* 💥 REPARACIÓN EXCLUSIVA DE BORDES EN MULTISELECT, FECHAS Y RADIO BUTTONS 💥 */
-    
-    /* CAJAS PRINCIPALES: Selectbox, MultiSelect, DateInput */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
     div[data-testid="stMultiSelect"] > div,
@@ -279,7 +256,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }
     
-    /* FONDOS INTERNOS TRANSPARENTES Y SIN BORDES DOBLES */
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
     div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
     div[data-testid="stDateInput"] div[data-baseweb="baseInput"] {
@@ -287,7 +263,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         border: none !important;
     }
     
-    /* INPUTS Y TEXTOS (Letra negra, fuerte) */
     div[data-testid="stSelectbox"] *,
     div[data-testid="stMultiSelect"] *,
     div[data-testid="stDateInput"] input,
@@ -297,16 +272,14 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         font-weight: bold !important;
     }
     
-    /* CHIPS (Etiquetas) DENTRO DEL MULTISELECT PARA QUE SEAN LEGIBLES */
     span[data-baseweb="tag"] {
-        background-color: #d4af37 !important; /* Dorado Corporativo */
+        background-color: #d4af37 !important;
         color: #000000 !important;
     }
     span[data-baseweb="tag"] span {
         color: #000000 !important;
     }
 
-    /* RADIO BUTTONS (Vista Operativa) - APLICADO SÓLO AL CUERPO PRINCIPAL PARA NO DAÑAR EL MENÚ LATERAL */
     section[data-testid="stMain"] div[role="radiogroup"] {
         border: 3px solid #143521 !important;
         border-radius: 8px !important;
@@ -357,7 +330,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v40.0 - VISOR DE PROYECCIÓN)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v41.0 - VISOR DE PROYECCIÓN)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
@@ -365,7 +338,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             st.rerun()
 
     try:
-        if procesar_fecha_pesada_app is None: procesar_fecha_pesada_app = procesar_fecha_pesada
+        if procesar_fecha_pesada_app is None: procesar_fecha_pesada_app = fecha_fallback
             
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
         if df_vivos.empty and df_historico.empty:
@@ -396,7 +369,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 return pd.to_datetime(row.get('FECHA_MAESTRA'), format='%d/%m/%Y', errors='coerce')
             else:
                 try: return procesar_fecha_pesada_app(row.get('FECHA_MAESTRA'))
-                except: return pd.NaT
+                except Exception: return pd.NaT
 
         super_base_bi['FECHA_DT'] = super_base_bi.apply(aplicar_fecha_robusta, axis=1)
         super_base_bi = super_base_bi.dropna(subset=['FECHA_DT'])
@@ -523,7 +496,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             else:
                 st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía. (Asegúrate de presionar el botón amarillo 'Sincronizar Nube').")
 
-        
         modo_historico_global = st.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO (Hectáreas 2017 - 2026 por Pista y Mes)", value=False)
 
         if modo_historico_global:
@@ -1191,6 +1163,3 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     except Exception as e:
         st.error(f"🚨 Fallo procesando el reporte: {e}")
-
-if __name__ == "__main__":
-    pass
