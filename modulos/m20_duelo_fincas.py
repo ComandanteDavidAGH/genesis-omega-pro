@@ -230,15 +230,41 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* 🎯 ESTILO ESTABLE CORPORATIVO PARA INPUTS 🎯 */
-    .stSelectbox > div > div, .stDateInput > div > div, .stMultiSelect > div > div {
+    /* 💥 PINTURA INTEGRAL Y FORZADO DE AZUL MARINO (#0D1B2A) EN INPUTS 💥 */
+    
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stDateInput div[data-baseweb="baseInput"],
+    .stMultiSelect div[data-baseweb="select"] > div {
+        background-color: #0d1b2a !important;
+        background: #0d1b2a !important;
         border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }
-    
-    .stSelectbox label, .stDateInput label, .stMultiSelect label {
+
+    /* FORZAR TODO EL TEXTO A BLANCO BRILLANTE DENTRO DE LOS INPUTS */
+    .stSelectbox div[data-baseweb="select"] *,
+    .stDateInput div[data-baseweb="baseInput"] *,
+    .stMultiSelect div[data-baseweb="select"] *,
+    .stDateInput input,
+    .stSelectbox input {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: bold !important;
+    }
+
+    /* ÍCONOS Y CALENDARIOS DORADOS */
+    .stSelectbox svg, .stDateInput svg, .stMultiSelect svg {
+        fill: #d4af37 !important;
+        color: #d4af37 !important;
+    }
+
+    /* MENÚ DESPLEGABLE LEYENDA CLARA */
+    div[data-baseweb="popover"] ul, ul[role="listbox"] {
+        background-color: #ffffff !important;
+    }
+    div[data-baseweb="popover"] ul li, ul[role="listbox"] li {
         color: #0d1b2a !important;
+        -webkit-text-fill-color: #0d1b2a !important;
         font-weight: bold !important;
     }
 
@@ -264,7 +290,7 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
-    # --- CONTENEDOR TÁCTICO AL 50% ---
+    # Selector de finca a la mitad
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
@@ -577,7 +603,7 @@ def ejecutar():
                 )
             except Exception as e:
                 st.warning(f"⚠️ Servidor sin openpyxl nativo. Generando CSV: {e}")
-                csv = df_resumen.to_csv(index=False, sep= me, decimal=',').encode('utf-8-sig')
+                csv = df_resumen.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EN CSV",
                     data=csv,
