@@ -15,18 +15,24 @@ def inicializar_cliente_gspread():
     except Exception:
         return None
 
+# =========================================================
+# 🛡️ MEJORA 3: MANEJO DE FECHAS SIN EXCEPCIONES SILENCIOSAS
+# =========================================================
 def normalizar_fecha_texto(val):
     """ Convierte seriales numéricos de Excel (ej: 46101) o texto a DD/MM/YYYY """
     if pd.isna(val) or val is None or str(val).strip() == "":
         return ""
+        
     val_str = str(val).strip().replace("'", "")
-    try:
+    
+    # Verificamos lógicamente si es un número (evita el colapso del try/except)
+    if val_str.replace('.', '', 1).isdigit():
         num = float(val_str)
+        # Rango válido para fechas de Excel
         if 30000 < num < 60000:
             dt = pd.Timestamp('1899-12-30') + pd.Timedelta(days=num)
             return dt.strftime('%d/%m/%Y')
-    except Exception:
-        pass
+            
     return val_str
 
 @st.cache_data(show_spinner=False, ttl=600)
@@ -70,8 +76,6 @@ def procesar_radar_logistico_cached(df_sabana):
     # =========================================================
     # 🛡️ MEJORA 2: MOTOR DE REGLAS LOGÍSTICAS (Fácilmente Editable)
     # =========================================================
-    
-    # 1. Diccionario Central de Parámetros (Modifica los límites aquí arriba, sin tocar la lógica)
     CONFIG_RADAR = {
         "PISTAS_MENORES": "LUCI|TEHO",
         "FAMILIAS": {
@@ -82,7 +86,6 @@ def procesar_radar_logistico_cached(df_sabana):
         "LIMITE_ESTANDAR": 100
     }
     
-    # 2. Evaluación Lógica
     es_pista_menor = pistas_series.str.contains(CONFIG_RADAR["PISTAS_MENORES"], na=False)
     es_aceite = productos_series.str.contains(CONFIG_RADAR["FAMILIAS"]["ACEITE"]["filtro"], na=False)
     es_mancol = productos_series.str.contains(CONFIG_RADAR["FAMILIAS"]["MANCOL"]["filtro"], na=False)
@@ -214,25 +217,22 @@ def ordenar_base_datos_global():
             if registros:
                 st.info("📤 Actualizando Supabase (Upsert Seguro)...")
                 # =========================================================
-                # 🛡️ MEJORA 1: UPSERT (NO BORRAMOS LA TABLA)
+                # 🛡️ MEJORA 1: UPSERT (NO BORRAMOS LA TABLA EN SUPABASE)
                 # =========================================================
                 tamano_bloque = 250
                 for i in range(0, len(registros), tamano_bloque):
-                    # Upsert inserta los nuevos y actualiza los existentes sin vaciar la base de datos
                     supabase.table("TABLA_1").upsert(registros[i:i + tamano_bloque]).execute()
 
             # Reescribir Drive (Antiguas arriba -> Nuevas abajo)
             valores_drive = df_form_sorted[db_cols].fillna("").values.tolist()
             if valores_drive:
                 # =========================================================
-                # 🛡️ MEJORA 2: SOBRESCRITURA DIRECTA EN DRIVE
+                # 🛡️ MEJORA 1.1: SOBRESCRITURA DIRECTA EN DRIVE
                 # =========================================================
                 rango_inicio = f"A{idx_header + 2}"
-                
-                # 1. Escribimos DIRECTAMENTE sobre los datos sin borrarlos primero
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-                # 2. Limpieza quirúrgica: Solo borramos las filas sobrantes al final (si el nuevo archivo es más corto)
+                # Limpieza quirúrgica: Solo borramos filas sobrantes si el archivo nuevo es más corto
                 filas_nuevas = len(valores_drive)
                 fila_final_datos = idx_header + 2 + filas_nuevas
                 
@@ -242,6 +242,7 @@ def ordenar_base_datos_global():
                 
             st.success(f"🎉 ¡MUNICIÓN RESTAURADA Y ORDENADA! {len(registros)} registros alineados de forma segura sin riesgo de pérdida de datos.")
             st.balloons()
+
     except Exception as e:
         st.error(f"🚨 Error durante la restauración: {e}")
         st.code(traceback.format_exc())
