@@ -41,7 +41,6 @@ DICT_DRONES_DEFAULT = {
     "DRONE GENESYS": 71280,
 }
 
-
 def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True):
     mensaje = f"⚠️ Aviso técnico en «{contexto}»: {e}"
     if mostrar_usuario:
@@ -173,7 +172,63 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
         log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
     return 14
 
-# 🧠 LECTURA ORIGINAL DE FLOTA/TARIFAS RESTAURADA
+# 🧠 MÁQUINA DEL TIEMPO: LECTOR DE TARIFAS MAESTRO (MATRIZ_TARIFAS)
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_matriz_tarifas_mod3():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
+    try:
+        sh = gc.open_by_url(SPREADSHEET_URL)
+        ws = sh.worksheet("MATRIZ_TARIFAS")
+        datos = ws.get_all_values()
+        if len(datos) > 1:
+            df = pd.DataFrame(datos[1:], columns=datos[0])
+            df = df.loc[:, df.columns.astype(str).str.strip() != '']
+            df = df[df['PISTA'].str.strip() != '']
+            return df
+    except Exception as e: 
+        log_error_critico("Lectura de MATRIZ_TARIFAS", e, False)
+    return pd.DataFrame()
+
+def extraer_tarifas_dinamicas(df_tarifas, anio_str):
+    dict_av = {}
+    dict_dr = {}
+    dict_topes = {
+        "TOPE MAX GENERAL": {},
+        "TOPE SUR": {},
+        "TOPE PARCELA INTER < 20HA": {}
+    }
+    
+    if df_tarifas.empty:
+        return DICT_AVIONES_DEFAULT, DICT_DRONES_DEFAULT, dict_topes, None
+        
+    anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
+    col_anio = anio_str if anio_str in anios_disp else None
+    
+    if not col_anio:
+        valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
+        col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
+        
+    if col_anio:
+        for _, r in df_tarifas.iterrows():
+            pista = str(r.get('PISTA', '')).strip().upper()
+            equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
+            tarifa_val = extraer_numero(r[col_anio])
+            
+            if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
+            elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
+            elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
+            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
+                 nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
+                 dict_dr[nombre_dron] = tarifa_val
+            elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
+                 dict_av[equipo] = tarifa_val
+                 
+    if not dict_av: dict_av = DICT_AVIONES_DEFAULT
+    if not dict_dr: dict_dr = DICT_DRONES_DEFAULT
+    
+    return dict_av, dict_dr, dict_topes, col_anio
+
 @st.cache_data(show_spinner=False, ttl=1800)
 def preprocesar_flota_gspread():
     gc = obtener_cliente_gspread_unificado()
@@ -540,7 +595,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
             c_f1, c_f2, c_f3 = st.columns(3)
             
-            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
+            # EXTRACCIÓN DINÁMICA DE MATRIZ DE TARIFAS (MODO SIMULADOR)
+            anio_vuelo_sim = str(fecha_eval_sim.year)
+            dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado_sim = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
+            
+            lista_opciones_flota_sim = list(dict_aviones_sim.keys()) + ["DRONE"]
             vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
             
             pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
@@ -558,7 +617,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                val_tope = float(TOPES_PISTA.get(tope_finca_auto, {}).get(pista_sim, 999999))
+                # EXTRACCIÓN DINÁMICA DE TOPE (MODO SIMULADOR)
+                val_tope = float(dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope == 999999: val_tope = 0.0
 
                 if vuelo_sim == "DRONE": 
@@ -567,7 +627,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
-                    tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
+                    tarifa_vuelo_base = float(dict_aviones_sim.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0 and pista_sim != "PDIV": 
                         costo_bruto = min(costo_bruto, val_tope)
@@ -763,6 +823,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
 
+        # 💥 EXTRACCIÓN DINÁMICA DE MATRIZ DE TARIFAS (MODO REAL)
+        anio_vuelo = str(fecha_operacion.year)
+        dict_aviones, dict_drones, dict_topes_pista, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
+
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         col_prod_idx_op, col_tope_idx_op = 5, 6
         if not df_t2.empty:
@@ -919,7 +983,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 else: recargo_final = float(recargo_lista.split(" ")[0])
 
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
-            val_tope = TOPES_PISTA.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
+            val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
             with st.container(border=True):
                 st.markdown("#### ✈️ Hangar de Despliegue")
@@ -977,14 +1041,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             if not df_tarifas_maestras.empty:
                 pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
             
-            pistas_disponibles = []
+            pistas_disponibles_final = []
             for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ:
-                if p and p not in pistas_disponibles and p not in ["PISTA", "NAN", "NONE"]:
-                    pistas_disponibles.append(p)
+                if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE"]:
+                    pistas_disponibles_final.append(p)
 
-            c_pista_sap, _ = st.columns([1.5, 2.5])
-            idx_pista = pistas_disponibles.index(pista_sel) if pista_sel in pistas_disponibles else 0
-            pista_sel = c_pista_sap.selectbox("📍 PISTA / OPERADOR (SAP):", pistas_disponibles, index=idx_pista, key=f"pista_matriz_maestra_{casilla_key}")
+            st.caption("📍 SELECCIONE LA PISTA PARA EXTRAER INVENTARIO DE SAP:")
+            c_p1, _ = st.columns([1.5, 2.5])
+            idx_pista_final = pistas_disponibles_final.index(pista_sel) if pista_sel in pistas_disponibles_final else 0
+            pista_matriz_maestra = c_p1.selectbox("Pista Oculta Label", pistas_disponibles_final, index=idx_pista_final, key=f"pista_matriz_maestra_{casilla_key}", label_visibility="collapsed")
             
             st.markdown("---")
             costo_mezcla_total = 0.0
@@ -1041,7 +1106,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     if not df_sab.empty:
                         match_sabana_global = df_sab[df_sab_col0_clean == cod_item]
                         if not match_sabana_global.empty:
-                            match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
+                            match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_matriz_maestra).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
                             fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
 
                             if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
@@ -1051,7 +1116,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_c[0]])
                                     if c_t > 0: costo_unit = v_t / c_t
 
-                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
+                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_matriz_maestra).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
                             if not match_pista.empty:
                                 fila_final = match_pista.iloc[0]
                                 if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
@@ -1243,20 +1308,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
             st.markdown("---")
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
-            
-            # 💥 AJUSTE SOLICITADO: Selector pequeño alimentado de MATRIZ_TARIFAS
-            pistas_matriz_tarifa = []
-            if not df_tarifas_maestras.empty:
-                pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-            
-            pistas_disponibles_final = []
-            for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ:
-                if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE"]:
-                    pistas_disponibles_final.append(p)
-
             c_p1, c_p2 = st.columns([1.5, 2.5])
-            idx_pista_final = pistas_disponibles_final.index(pista_sel) if pista_sel in pistas_disponibles_final else 0
-            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", pistas_disponibles_final, index=idx_pista_final, key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
+            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", pistas_disponibles_final, index=idx_pista_final, key=f"confirmador_final_real_{pista_sel}_{vuelo_ref}")
             c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
             st.markdown("""
