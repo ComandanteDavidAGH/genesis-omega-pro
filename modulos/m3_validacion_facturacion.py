@@ -41,6 +41,7 @@ DICT_DRONES_DEFAULT = {
     "DRONE GENESYS": 71280,
 }
 
+
 def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True):
     mensaje = f"⚠️ Aviso técnico en «{contexto}»: {e}"
     if mostrar_usuario:
@@ -397,6 +398,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
+    # 💥 FUNCIÓN DE ENLACE DE SELECTORES 💥
+    def sync_pistas(src, tgt):
+        st.session_state[tgt] = st.session_state[src]
+
     st.header("", anchor="inicio_modulo")
     st.markdown("""
     <style>
@@ -442,10 +447,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    # Carga original de flota
     dict_aviones, dict_drones = preprocesar_flota_gspread()
-    
-    # Cargamos también la Matriz Maestra para sacar las Pistas y Operadores únicos
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
     # =================================================================
@@ -482,41 +484,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         df_recetas = st.session_state['df_recetas']
         df_vd = st.session_state['df_vd']
         df_t2 = st.session_state['df_t2']
-
-        pistas_con_tope = []
-        try:
-            filas_a_revisar = [[str(c).upper().strip() for c in df_vd.columns]]
-            for i in range(min(10, len(df_vd))): filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
-            p_idx, t_idx, pr_idx = -1, -1, -1
-            for idx_fila, row_vals in enumerate(filas_a_revisar):
-                for i, val in enumerate(row_vals):
-                    if val.startswith('TOPE'):
-                        t_idx = i
-                        for k in range(max(0, i-3), i):
-                            if row_vals[k].startswith('PISTA'): p_idx = k
-                            if 'PRECIO' in row_vals[k]: pr_idx = k
-                if p_idx != -1 and t_idx != -1: break
-                    
-            if p_idx != -1 and t_idx != -1:
-                for j in range(0, len(df_vd)):
-                    p_name = str(df_vd.iloc[j, p_idx]).strip()
-                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
-                    p_tope = str(df_vd.iloc[j, t_idx]).strip()
-                    if p_tope in ['NAN', 'NONE', '']: continue
-                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
-                    if pd.isna(p_precio): p_precio = 0
-                    texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
-                    if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
-        except Exception as e:
-            log_error_critico("Lectura de topes por pista (hoja «Validación Dosis», modo simulador)", e)
-        
-        if not pistas_con_tope: 
-            pistas_con_tope = [
-                "PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", 
-                "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", 
-                "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", 
-                "PDIV - PORCION TERRESTRE ($8.740)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"
-            ]
 
         diccionario_fincas = {}
         lista_fincas = []
@@ -609,6 +576,42 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
+        # PREPARACIÓN DE LAS PISTAS Y SINCRONIZACIÓN DE CAJAS (SIMULADOR)
+        casilla_key_sim = f"sim_{finca_sim}_{fecha_eval_sim}"
+        pistas_matriz_tarifa = []
+        if not df_tarifas_maestras.empty:
+            pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+        
+        pistas_disponibles_final = []
+        for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ:
+            if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE"]:
+                pistas_disponibles_final.append(p)
+
+        top_key_sim = f"top_pista_sim_{casilla_key_sim}"
+        bot_key_sim = f"bot_pista_sim_{casilla_key_sim}"
+        prev_sel_key_sim = f"prev_pista_sel_sim_{casilla_key_sim}"
+
+        if top_key_sim not in st.session_state: st.session_state[top_key_sim] = pista_sim if pista_sim in pistas_disponibles_final else pistas_disponibles_final[0]
+        if bot_key_sim not in st.session_state: st.session_state[bot_key_sim] = st.session_state[top_key_sim]
+        if prev_sel_key_sim not in st.session_state: st.session_state[prev_sel_key_sim] = pista_sim
+
+        if st.session_state[prev_sel_key_sim] != pista_sim:
+            st.session_state[top_key_sim] = pista_sim if pista_sim in pistas_disponibles_final else pistas_disponibles_final[0]
+            st.session_state[bot_key_sim] = st.session_state[top_key_sim]
+            st.session_state[prev_sel_key_sim] = pista_sim
+
+        st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
+        st.caption("📍 SELECCIONE LA PISTA PARA EXTRAER INVENTARIO DE SAP:")
+        c_p1, _ = st.columns([1.5, 2.5])
+        pista_matriz_maestra = c_p1.selectbox(
+            "Pista Oculta Label", 
+            pistas_disponibles_final, 
+            key=top_key_sim, 
+            label_visibility="collapsed", 
+            on_change=sync_pistas, 
+            args=(top_key_sim, bot_key_sim)
+        )
+        
         if st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True) and ha_sim > 0:
             try:
                 if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
@@ -617,7 +620,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                # EXTRACCIÓN DINÁMICA DE TOPE (MODO SIMULADOR)
                 val_tope = float(dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope == 999999: val_tope = 0.0
 
@@ -737,6 +739,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 with cc4: st.write("⚠️ Recargo"); st.code(f"{valor_recargo_t:,.0f}".replace(",", "."), language="text")
                 with cc5: st.write("💰 Costo x Ha"); st.code(f"{costo_ha:,.0f}".replace(",", "."), language="text")
                 with cc6: st.write("🔥 TOTAL"); st.code(f"{total_finca:,.0f}".replace(",", "."), language="text")
+
+                st.markdown("---")
+                st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
+                c_p1, c_p2 = st.columns([1.5, 2.5])
+                pista_manual = c_p1.selectbox(
+                    "📍 Confirmar Pista de Operación:", 
+                    pistas_disponibles_final, 
+                    key=bot_key_sim, 
+                    on_change=sync_pistas, 
+                    args=(bot_key_sim, top_key_sim)
+                )
+                c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')}")
 
             except Exception as e: st.error(f"Error: {e}")
         st.stop()
@@ -1036,7 +1050,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
             
-            # 💥 AJUSTE SOLICITADO: Selector pequeño alimentado de MATRIZ_TARIFAS
+            # PREPARACIÓN DE LAS PISTAS Y SINCRONIZACIÓN DE CAJAS (REAL)
             pistas_matriz_tarifa = []
             if not df_tarifas_maestras.empty:
                 pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
@@ -1046,10 +1060,29 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE"]:
                     pistas_disponibles_final.append(p)
 
+            top_key_real = f"top_pista_real_{casilla_key}"
+            bot_key_real = f"bot_pista_real_{casilla_key}"
+            prev_sel_key_real = f"prev_pista_sel_real_{casilla_key}"
+
+            if top_key_real not in st.session_state: st.session_state[top_key_real] = pista_sel if pista_sel in pistas_disponibles_final else pistas_disponibles_final[0]
+            if bot_key_real not in st.session_state: st.session_state[bot_key_real] = st.session_state[top_key_real]
+            if prev_sel_key_real not in st.session_state: st.session_state[prev_sel_key_real] = pista_sel
+
+            if st.session_state[prev_sel_key_real] != pista_sel:
+                st.session_state[top_key_real] = pista_sel if pista_sel in pistas_disponibles_final else pistas_disponibles_final[0]
+                st.session_state[bot_key_real] = st.session_state[top_key_real]
+                st.session_state[prev_sel_key_real] = pista_sel
+
             st.caption("📍 SELECCIONE LA PISTA PARA EXTRAER INVENTARIO DE SAP:")
             c_p1, _ = st.columns([1.5, 2.5])
-            idx_pista_final = pistas_disponibles_final.index(pista_sel) if pista_sel in pistas_disponibles_final else 0
-            pista_matriz_maestra = c_p1.selectbox("Pista Oculta Label", pistas_disponibles_final, index=idx_pista_final, key=f"pista_matriz_maestra_{casilla_key}", label_visibility="collapsed")
+            pista_matriz_maestra = c_p1.selectbox(
+                "Pista Oculta Label", 
+                pistas_disponibles_final, 
+                key=top_key_real, 
+                label_visibility="collapsed", 
+                on_change=sync_pistas, 
+                args=(top_key_real, bot_key_real)
+            )
             
             st.markdown("---")
             costo_mezcla_total = 0.0
@@ -1309,7 +1342,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("---")
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
             c_p1, c_p2 = st.columns([1.5, 2.5])
-            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", pistas_disponibles_final, index=idx_pista_final, key=f"confirmador_final_real_{pista_sel}_{vuelo_ref}")
+            pista_manual = c_p1.selectbox(
+                "📍 Confirmar Pista de Operación:", 
+                pistas_disponibles_final, 
+                key=bot_key_real, 
+                on_change=sync_pistas, 
+                args=(bot_key_real, top_key_real)
+            )
             c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
             st.markdown("""
