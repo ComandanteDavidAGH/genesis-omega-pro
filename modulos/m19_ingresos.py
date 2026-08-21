@@ -163,6 +163,9 @@ def ejecutar():
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }
     .btn-ascensor { display: block; width: 100%; text-align: center; background-color: #15283c; color: #d4af37 !important; padding: 12px; border-radius: 8px; text-decoration: none !important; font-weight: 900; border: 2px solid #d4af37; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); transition: all 0.3s ease; }
     .btn-ascensor:hover { background-color: #0d1b2a; box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8); }
+    
+    /* ESTILO PARA ALERTA DE ANULACIÓN */
+    .banner-anulacion { background-color: #721c24; color: #ffffff; padding: 12px; border-radius: 8px; border-left: 6px solid #f5c6cb; font-weight: bold; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -321,17 +324,24 @@ def ejecutar():
 
                 st.markdown("---")
                 st.markdown("""<a href="#seccion-auditoria" class="btn-ascensor">👇 SALTAR DIRECTO A LA MATRIZ DE AUDITORÍA 👇</a>""", unsafe_allow_html=True)
-                st.markdown("### ➕ Inyector de Nuevos Ingresos")
+                st.markdown("### ➕ Inyector de Nuevos Ingresos & Anulaciones SAP")
 
-                with st.expander("🧪 1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL", expanded=True):
+                with st.expander("🧪 1. IDENTIFICACIÓN DEL QUÍMICO OFICIAL Y MODO DE OPERACIÓN", expanded=True):
                     c_tog1, c_tog2 = st.columns(2)
                     es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
                     modificar_prov = False
+                    
+                    # 💥 MODO ANULACIÓN SAP OBLIGATORIO Y PARÁMETROS 💥
+                    st.markdown("<hr style='margin: 5px 0px 15px 0px; border: 1px dashed #d4af37;'>", unsafe_allow_html=True)
+                    es_anulacion_sap = st.toggle("🔴 REGISTRAR ANULACIÓN / DEVOLUCIÓN DE INGRESO (SAP)", help="Activa este interruptor para registrar el Consecutivo de Anulación oficial generado por SAP.")
+
+                    if es_anulacion_sap:
+                        st.markdown("<div class='banner-anulacion'>🚨 MODO ANULACIÓN SAP ACTIVO: Ingrese el Consecutivo de Anulación oficial de SAP y vincúlelo a los lotes anulados.</div>", unsafe_allow_html=True)
+
                     c_prod, c_mat, c_prov = st.columns([2, 1, 2])
                     
                     if es_nuevo_producto:
                         n_prod = c_prod.text_input("🧪 Nombre del Nuevo Producto")
-                        # 💥 CASILLA DESBLOQUEADA PARA EL CÓDIGO DEL MATERIAL 💥
                         mat_item_ing = c_mat.text_input("🔢 Cód. Material", placeholder="Ej: 4591234", key=f"mat_ing_nuevo_{st.session_state['form_key_m19']}")
                         if not mat_item_ing: mat_item_ing = "S/N"
                         n_prov = c_prov.text_input("🏭 Nombre del Proveedor")
@@ -391,24 +401,45 @@ def ejecutar():
                                             st.cache_data.clear(); st.rerun()
                                         except Exception as e: st.error(f"🚨 Fallo: {e}")
 
-                with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD (ENTRADAS MÚLTIPLES)", expanded=True):
+                with st.expander("⚙️ 2. DATOS OPERATIVOS Y TRAZABILIDAD (ENTRADAS Y ANULACIONES)", expanded=True):
                     col_espacio, col_limpiar = st.columns([3, 1])
                     col_limpiar.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_operativos, use_container_width=True)
                     f1, f2, f3 = st.columns(3)
-                    n_fecha_ing = f2.date_input("🗓️ Fecha de Ingreso a SAP", value=hoy_colombia)
+                    n_fecha_ing = f2.date_input("🗓️ Fecha de Contabilización SAP", value=hoy_colombia)
                     semana_calculada = n_fecha_ing.isocalendar()[1]
                     n_semana = f1.text_input("📅 Semana del Año (Auto)", value=str(semana_calculada), disabled=True)
-                    n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"])
+                    n_pista = f3.selectbox("📍 Almacén SAP (Pista)", ["PORI", "LUCI", "PLUC", "PDIV", "TEHO"])
                     
-                    f8, f9, f10 = st.columns(3)
                     fk = st.session_state['form_key_m19']
-                    n_factura = f8.text_input("🧾 Factura", key=f"in_factura_{fk}")
-                    n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
-                    n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
                     
+                    # 💥 MODO DINÁMICO: ANULACIÓN VS INGRESO NORMAL 💥
+                    if es_anulacion_sap:
+                        f8, f9, f10, f11 = st.columns(4)
+                        n_consecutivo_anulacion = f8.text_input("🔢 CONSECUTIVO ANULACIÓN SAP *", placeholder="Ej: 5000799557", key=f"in_anul_sap_{fk}")
+                        n_consecutivo_orig = f9.text_input("📄 Doc. Ingreso Original (Opcional)", placeholder="Ej: 5000799100", key=f"in_orig_sap_{fk}")
+                        n_factura = f10.text_input("🧾 Factura / Nota", key=f"in_factura_anul_{fk}")
+                        n_pedido = f11.text_input("🛒 Pedido SAP", key=f"in_pedido_anul_{fk}")
+                        
+                        n_motivo_anulacion = st.selectbox("📝 Motivo de Anulación SAP", [
+                            "❌ ANULADO: ERROR EN PRECIOS",
+                            "❌ ANULADO: ERROR DE CANTIDAD",
+                            "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR",
+                            "❌ ANULADO: ERROR EN LOTE/FECHAS",
+                            "❌ ANULADO: OTRO MOTIVO"
+                        ], key=f"motivo_anul_sel_{fk}")
+                        
+                        n_consecutivo = n_consecutivo_anulacion
+                    else:
+                        f8, f9, f10 = st.columns(3)
+                        n_factura = f8.text_input("🧾 Factura", key=f"in_factura_{fk}")
+                        n_pedido = f9.text_input("🛒 Pedido", key=f"in_pedido_{fk}")
+                        n_consecutivo = f10.text_input("🔢 Consecutivo SAP", key=f"in_consecutivo_{fk}")
+                        n_consecutivo_anulacion = ""
+                        n_motivo_anulacion = "✅ VIGENTE"
+
                     st.markdown("<hr style='margin: 10px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
-                    st.markdown("#### 📦 Detalle de Lotes Múltiples")
-                    st.caption("Añade tantas filas como líneas tenga el documento SAP.")
+                    st.markdown("#### 📦 Detalle de Lotes a Procesar")
+                    st.caption("Añade tantas filas como líneas tenga el documento SAP de Ingreso o Anulación.")
                     df_lotes_base = pd.DataFrame([{"CANTIDAD": 0.0, "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
                     
                     config_lotes = {
@@ -428,27 +459,49 @@ def ejecutar():
                     if not lotes_validos:
                         st.info("⚠️ Ingresa cantidades y lotes válidos en la tabla superior para generar el panel de copiado.")
                     else:
-                        h1, h2, h3, h4, h5 = st.columns(5)
-                        h1.caption("🔢 MATERIAL")
-                        h2.caption("⚖️ CANTIDAD")
-                        h3.caption("📦 LOTE")
-                        h4.caption("🧾 FACTURA")
-                        h5.caption("🛒 PEDIDO")
-                        
-                        for row_lote in lotes_validos:
-                            c1, c2, c3, c4, c5 = st.columns(5)
-                            c1.code(str(mat_item_ing), language="text")
-                            with c2: st.code(formatear_numero_sap(row_lote['CANTIDAD']), language="text")
-                            with c3: st.code(str(row_lote['LOTE']).strip(), language="text")
-                            with c4: st.code(n_factura if n_factura else "...", language="text")
-                            with c5: st.code(n_pedido if n_pedido else "...", language="text")
+                        if es_anulacion_sap:
+                            h1, h2, h3, h4, h5 = st.columns(5)
+                            h1.caption("🔢 MATERIAL")
+                            h2.caption("⚖️ CANT. ANULADA")
+                            h3.caption("📦 LOTE")
+                            h4.caption("🔴 DOC. ANULACIÓN")
+                            h5.caption("📝 ESTADO / MOTIVO")
+                            
+                            for row_lote in lotes_validos:
+                                c1, c2, c3, c4, c5 = st.columns(5)
+                                c1.code(str(mat_item_ing), language="text")
+                                with c2: st.code(formatear_numero_sap(row_lote['CANTIDAD']), language="text")
+                                with c3: st.code(str(row_lote['LOTE']).strip(), language="text")
+                                with c4: st.code(n_consecutivo_anulacion if n_consecutivo_anulacion else "...", language="text")
+                                with c5: st.code(n_motivo_anulacion, language="text")
+                        else:
+                            h1, h2, h3, h4, h5 = st.columns(5)
+                            h1.caption("🔢 MATERIAL")
+                            h2.caption("⚖️ CANTIDAD")
+                            h3.caption("📦 LOTE")
+                            h4.caption("🧾 FACTURA")
+                            h5.caption("🛒 PEDIDO")
+                            
+                            for row_lote in lotes_validos:
+                                c1, c2, c3, c4, c5 = st.columns(5)
+                                c1.code(str(mat_item_ing), language="text")
+                                with c2: st.code(formatear_numero_sap(row_lote['CANTIDAD']), language="text")
+                                with c3: st.code(str(row_lote['LOTE']).strip(), language="text")
+                                with c4: st.code(n_factura if n_factura else "...", language="text")
+                                with c5: st.code(n_pedido if n_pedido else "...", language="text")
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    btn_guardar_nuevo = st.button("🚀 INYECTAR LOTE(S) A LA BÓVEDA", type="primary", use_container_width=True)
+                    
+                    if es_anulacion_sap:
+                        btn_guardar_nuevo = st.button("🔴 INYECTAR ANULACIÓN DE LOTE(S) A LA BÓVEDA", type="primary", use_container_width=True)
+                    else:
+                        btn_guardar_nuevo = st.button("🚀 INYECTAR LOTE(S) A LA BÓVEDA", type="primary", use_container_width=True)
                     
                     if btn_guardar_nuevo:
                         if not n_prod or str(n_prod).strip() == "": 
                             st.error("🚨 El nombre del producto no puede estar vacío.")
+                        elif es_anulacion_sap and not n_consecutivo_anulacion.strip():
+                            st.error("🚨 Debes ingresar el Consecutivo de Anulación SAP obligatoriamente.")
                         elif not lotes_validos:
                             st.error("🚨 Debes ingresar al menos una fila válida con Cantidad mayor a 0 y Lote.")
                         else:
@@ -474,6 +527,9 @@ def ejecutar():
                                 ff = pd.to_datetime(row_lote['F_FABRICACION']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_FABRICACION']) else hoy_colombia.strftime("%d/%m/%Y")
                                 fv = pd.to_datetime(row_lote['F_VENCIMIENTO']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_VENCIMIENTO']) else hoy_colombia.strftime("%d/%m/%Y")
                                 
+                                estado_final_inyect = n_motivo_anulacion if es_anulacion_sap else "✅ VIGENTE"
+                                consecutivo_final_inyect = f"{n_consecutivo_anulacion} (ANULACIÓN)" if es_anulacion_sap else str(n_consecutivo)
+                                
                                 nueva_fila_drive = []
                                 for header in encabezados_limpios_ing:
                                     h = header.upper()
@@ -488,15 +544,14 @@ def ejecutar():
                                     elif "F/V" in h: nueva_fila_drive.append(fv)
                                     elif "FACT" in h: nueva_fila_drive.append(str(n_factura))
                                     elif "PEDIDO" in h: nueva_fila_drive.append(str(n_pedido))
-                                    elif "CONSECUT" in h: nueva_fila_drive.append(str(n_consecutivo))
-                                    elif "ESTADO" in h: nueva_fila_drive.append("✅ VIGENTE")
-                                    # 💥 APLICADA LA INYECCIÓN DIRECTA DEL CÓDIGO DE MATERIAL A LA HOJA 💥
+                                    elif "CONSECUT" in h: nueva_fila_drive.append(consecutivo_final_inyect)
+                                    elif "ESTADO" in h: nueva_fila_drive.append(estado_final_inyect)
                                     elif any(k in h for k in ["ITEM", "MATERIAL", "CÓDIGO", "COD"]): nueva_fila_drive.append(str(mat_item_ing))
                                     else: nueva_fila_drive.append("") 
                                 nuevas_filas_bulk.append(nueva_fila_drive)
                             
                             try:
-                                with st.spinner(f"Inyectando {len(nuevas_filas_bulk)} lotes con láser matemático..."):
+                                with st.spinner(f"Inyectando {len(nuevas_filas_bulk)} registros con láser matemático..."):
                                     gc_temp = inicializar_cliente_gspread()
                                     sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
                                     ws_write_ing = sh_temp.worksheets()[0]
@@ -512,7 +567,7 @@ def ejecutar():
                                     try: ws_write_ing.update(range_name=rango_inyeccion, values=nuevas_filas_bulk, value_input_option='USER_ENTERED')
                                     except: ws_write_ing.update(rango_inyeccion, nuevas_filas_bulk, value_input_option='USER_ENTERED')
                                     
-                                st.success(f"✅ ¡{len(nuevas_filas_bulk)} lote(s) de {prod_limpio} inyectados exitosamente a partir de la fila {fila_destino}!")
+                                st.success(f"✅ ¡{len(nuevas_filas_bulk)} registro(s) de {prod_limpio} inyectados exitosamente a la Bóveda!")
                                 st.session_state['form_key_m19'] += 1
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e: st.error(f"Error al inyectar datos: {e}")
@@ -577,7 +632,7 @@ def ejecutar():
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
                 f_col1, f_col2 = st.columns([1.5, 1])
-                filtro_seleccionado = f_col1.radio("Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)"], horizontal=True)
+                filtro_seleccionado = f_col1.radio("Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)", "❌ Solo Anulados SAP"], horizontal=True)
                 
                 lista_productos_tabla = ["TODOS"] + sorted(list(set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""]))) if col_producto else ["TODOS"]
                 producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
@@ -597,6 +652,7 @@ def ejecutar():
 
                 if producto_filtro != "TODOS" and col_producto: df_filtrado = df_filtrado[df_filtrado[col_producto].str.upper() == producto_filtro]
                 if filtro_seleccionado == "✅ Solo Vigentes": df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("VIGENTE", case=False, na=False)]
+                elif filtro_seleccionado == "❌ Solo Anulados SAP": df_filtrado = df_filtrado[df_filtrado[COL_ESTADO].str.contains("ANULADO", case=False, na=False)]
                 elif filtro_seleccionado == "🚨 Solo Vencidos" and col_fv: df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] < hoy_ts)]
                 elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv: df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
 
@@ -722,7 +778,6 @@ def ejecutar():
         st.markdown(f"<a href='{URL_SHEET_TRASLADOS}' target='_blank' class='btn-ascensor' style='background-color:#2F75B5; border-color:#1d4e7a; color:#ffffff !important;'>👁️ VER BASE DE TRASLADOS EN GOOGLE SHEETS</a>", unsafe_allow_html=True)
         st.write("Panel táctico de logística interna. Registra los movimientos de inventario entre las diferentes bases operativas.")
 
-        # 💥 NUEVO: PUERTO DE CARGA INDEPENDIENTE (BYPASS DEL MÓDULO 2)
         sabana_guardada = st.session_state.get('mem_sabana')
         if sabana_guardada is None or not isinstance(sabana_guardada, pd.DataFrame) or sabana_guardada.empty:
             st.info("💡 **Conexión Directa:** No necesitas ir al Módulo 2. Sube tu Sábana SAP aquí mismo para habilitar la lectura automática de lotes.")
@@ -762,7 +817,7 @@ def ejecutar():
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
             
-            pistas_disponibles = ["LUCI", "PLUC", "PDIV", "PORI", "TEHO"]
+            pistas_disponibles = ["PORI", "LUCI", "PLUC", "PDIV", "TEHO"]
             p1, p2 = st.columns(2)
             t_origen = p1.selectbox("🛫 Pista Origen", pistas_disponibles, index=0, key=f"t_origen_{fk_t}")
             t_destino = p2.selectbox("🛬 Pista Destino", pistas_disponibles, index=1 if len(pistas_disponibles) > 1 else 0, key=f"t_destino_{fk_t}")
@@ -790,7 +845,6 @@ def ejecutar():
             else: 
                 t_observacion = t_observacion_sel
 
-            # 💥 BÚSQUEDA EXCLUSIVA EN SÁBANA SAP (CERO HISTÓRICOS)
             lotes_disp = []
             df_sabana_memoria = st.session_state.get('mem_sabana')
             if not isinstance(df_sabana_memoria, pd.DataFrame):
@@ -801,7 +855,6 @@ def ejecutar():
             cod_clean = str(mat_item_tras).strip().lstrip('0')
 
             if not df_sabana_memoria.empty:
-                # Buscar columnas clave en la Sábana SAP
                 col_lote_sap = next((c for c in df_sabana_memoria.columns if 'LOTE' in str(c).upper() and 'PROVEEDOR' not in str(c).upper()), None)
                 col_mat_desc = next((c for c in df_sabana_memoria.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()), None)
                 col_mat_cod = next((c for c in df_sabana_memoria.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper().replace('Ó','O') or 'COD' in str(c).upper()), None)
@@ -809,7 +862,6 @@ def ejecutar():
                 col_sal_sap = next((c for c in df_sabana_memoria.columns if ('LIBRE' in str(c).upper() or 'SALDO' in str(c).upper()) and 'VALOR' not in str(c).upper()), None)
 
                 if col_lote_sap and col_alm_sap:
-                    # Match flexible de Pista
                     pista_busqueda = str(t_origen).strip().upper()
                     pista_sap_alias = pista_busqueda
                     if pista_busqueda == "PLUC": pista_sap_alias = "LUCHA"
@@ -820,7 +872,6 @@ def ejecutar():
                     mask_pista = df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(pista_busqueda, na=False) | \
                                  df_sabana_memoria[col_alm_sap].astype(str).str.upper().str.contains(pista_sap_alias, na=False)
                     
-                    # Match flexible de Producto
                     mask_prod_cod = pd.Series(False, index=df_sabana_memoria.index)
                     if col_mat_cod and cod_clean and cod_clean != "S/N":
                         col_cod_limpia = df_sabana_memoria[col_mat_cod].astype(str).str.replace(".0", "", regex=False).str.strip().str.lstrip('0')
@@ -843,7 +894,6 @@ def ejecutar():
                             except: s_val_str = str(s_val)
                             lotes_disp.append(f"{l_val} (Saldo SAP: {s_val_str})")
 
-            # Eliminar duplicados y mantener orden
             lotes_disp = list(dict.fromkeys(lotes_disp))
 
             t_lote_nuevo = ""
@@ -859,7 +909,6 @@ def ejecutar():
                         t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
             
             with tr5:
-                # 💥 LA SOLUCIÓN DEL COMANDANTE: SELECTOR DUAL 💥
                 opcion_metodo = st.selectbox("⚙️ Origen del Lote", ["📋 ELEGIR DE LA LISTA SAP", "✍️ ESCRIBIR MANUALMENTE"], key=f"metodo_lote_{fk_t}")
                 
                 if opcion_metodo == "📋 ELEGIR DE LA LISTA SAP":
@@ -872,12 +921,10 @@ def ejecutar():
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
 
-            # Lógica de Lote Final para visualización y base de datos
             lote_final_print = t_lote_origen
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
 
-            # 💥 PANEL DINÁMICO DE 6 COLUMNAS PARA AJUSTES
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
 
