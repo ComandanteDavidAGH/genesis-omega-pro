@@ -14,18 +14,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 # ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
 # =================================================================
-# Antes estos valores estaban duplicados en dos lugares distintos
-# (modo simulador y modo producción) con cifras que NO coincidían
-# entre sí. Ahora viven en un solo diccionario y se importan en
-# ambos flujos, evitando que una corrección quede aplicada a medias.
 
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-
-TOPES_PISTA = {
-    "TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325},
-    "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
-    "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335},
-}
 
 PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
 PISTAS_DISPONIBLES_MATRIZ = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
@@ -45,21 +35,12 @@ DICT_DRONES_DEFAULT = {
     "DRONE GENESYS": 71280,
 }
 
-
 def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True):
-    """
-    Reemplaza los `except Exception: pass` silenciosos en tramos que
-    afectan directamente valores facturables. En vez de tragarse el
-    error y seguir con un valor por defecto sin que nadie se entere,
-    lo deja visible en pantalla (y queda disponible para engancharlo
-    a un logger real / Sentry / etc. más adelante).
-    """
     mensaje = f"⚠️ Aviso técnico en «{contexto}»: {e}"
     if mostrar_usuario:
         st.warning(mensaje, icon="⚠️")
     else:
         print(mensaje)
-
 
 # =================================================================
 # 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
@@ -184,36 +165,64 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
         log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
     return 14
 
-# 🧠 LECTURA ORIGINAL DE FLOTA/TARIFAS RESTAURADA
-@st.cache_data(show_spinner=False, ttl=1800)
-def preprocesar_flota_gspread():
+# =================================================================
+# 🧠 MÁQUINA DEL TIEMPO: LECTOR DE TARIFAS MAESTRO (MATRIZ_TARIFAS)
+# =================================================================
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_matriz_tarifas_mod3():
     gc = obtener_cliente_gspread_unificado()
-    dict_aviones_default = DICT_AVIONES_DEFAULT
-    dict_drones_default = DICT_DRONES_DEFAULT
-
-    if not gc:
-        return dict_aviones_default, dict_drones_default
+    if not gc: return pd.DataFrame()
     try:
-        boveda = gc.open_by_url(SPREADSHEET_URL)
-        datos_vd = boveda.worksheet("Validación Dosis").get_all_values()
-        df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1])
+        sh = gc.open_by_url(SPREADSHEET_URL)
+        ws = sh.worksheet("MATRIZ_TARIFAS")
+        datos = ws.get_all_values()
+        if len(datos) > 1:
+            df = pd.DataFrame(datos[1:], columns=datos[0])
+            df = df.loc[:, df.columns.astype(str).str.strip() != '']
+            df = df[df['PISTA'].str.strip() != '']
+            return df
+    except Exception as e: 
+        log_error_critico("Lectura de MATRIZ_TARIFAS", e, False)
+    return pd.DataFrame()
+
+def extraer_tarifas_dinamicas(df_tarifas, anio_str):
+    dict_av = {}
+    dict_dr = {}
+    dict_topes = {
+        "TOPE MAX GENERAL": {},
+        "TOPE SUR": {},
+        "TOPE PARCELA INTER < 20HA": {}
+    }
+    
+    if df_tarifas.empty:
+        return DICT_AVIONES_DEFAULT, DICT_DRONES_DEFAULT, dict_topes, None
         
-        df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
-        dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
+    anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
+    col_anio = anio_str if anio_str in anios_disp else None
+    
+    if not col_anio:
+        valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
+        col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
         
-        if "CESSNA ASA" in dict_aviones:
-            dict_aviones["CESSNA ASA"] = 3768500
-        
-        df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
-        nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
-        nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
-        precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
-        dict_drones = dict(zip(nombres_dr, precios_dr))
-        
-        return dict_aviones, dict_drones
-    except Exception as e:
-        log_error_critico("Lectura de tarifas de flota (hoja «Validación Dosis»). Se usarán valores por defecto", e)
-        return dict_aviones_default, dict_drones_default
+    if col_anio:
+        for _, r in df_tarifas.iterrows():
+            pista = str(r.get('PISTA', '')).strip().upper()
+            equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
+            tarifa_val = extraer_numero(r[col_anio])
+            
+            if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
+            elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
+            elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
+            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
+                 nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
+                 dict_dr[nombre_dron] = tarifa_val
+            elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
+                 dict_av[equipo] = tarifa_val
+                 
+    if not dict_av: dict_av = DICT_AVIONES_DEFAULT
+    if not dict_dr: dict_dr = DICT_DRONES_DEFAULT
+    
+    return dict_av, dict_dr, dict_topes, col_anio
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
     try:
@@ -398,8 +407,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    # RESTAURACIÓN: Carga original de flota
-    dict_aviones, dict_drones = preprocesar_flota_gspread()
+    # 💥 CARGAMOS LA MATRIZ DE TARIFAS MAESTRA AL INICIO
+    df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
     # =================================================================
     # 💥 MODO SIMULADOR DE COTIZACIONES
@@ -435,41 +444,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         df_recetas = st.session_state['df_recetas']
         df_vd = st.session_state['df_vd']
         df_t2 = st.session_state['df_t2']
-
-        pistas_con_tope = []
-        try:
-            filas_a_revisar = [[str(c).upper().strip() for c in df_vd.columns]]
-            for i in range(min(10, len(df_vd))): filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
-            p_idx, t_idx, pr_idx = -1, -1, -1
-            for idx_fila, row_vals in enumerate(filas_a_revisar):
-                for i, val in enumerate(row_vals):
-                    if val.startswith('TOPE'):
-                        t_idx = i
-                        for k in range(max(0, i-3), i):
-                            if row_vals[k].startswith('PISTA'): p_idx = k
-                            if 'PRECIO' in row_vals[k]: pr_idx = k
-                if p_idx != -1 and t_idx != -1: break
-                    
-            if p_idx != -1 and t_idx != -1:
-                for j in range(0, len(df_vd)):
-                    p_name = str(df_vd.iloc[j, p_idx]).strip()
-                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
-                    p_tope = str(df_vd.iloc[j, t_idx]).strip()
-                    if p_tope in ['NAN', 'NONE', '']: continue
-                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
-                    if pd.isna(p_precio): p_precio = 0
-                    texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
-                    if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
-        except Exception as e:
-            log_error_critico("Lectura de topes por pista (hoja «Validación Dosis», modo simulador)", e)
-        
-        if not pistas_con_tope: 
-            pistas_con_tope = [
-                "PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", 
-                "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", 
-                "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", 
-                "PDIV - PORCION TERRESTRE ($8.740)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"
-            ]
 
         diccionario_fincas = {}
         lista_fincas = []
@@ -548,7 +522,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
             c_f1, c_f2, c_f3 = st.columns(3)
             
-            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
+            # 💥 EXTRACCIÓN DINÁMICA DE MATRIZ DE TARIFAS (MODO SIMULADOR)
+            anio_vuelo_sim = str(fecha_eval_sim.year)
+            dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado_sim = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
+            
+            lista_opciones_flota_sim = list(dict_aviones_sim.keys()) + ["DRONE"]
             vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
             
             pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
@@ -566,7 +544,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                val_tope = float(TOPES_PISTA.get(tope_finca_auto, {}).get(pista_sim, 999999))
+                # 💥 EXTRACCIÓN DINÁMICA DE TOPE (MODO SIMULADOR)
+                val_tope = float(dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope == 999999: val_tope = 0.0
 
                 if vuelo_sim == "DRONE": 
@@ -575,7 +554,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     else: base_dron = 72600
                     unitario_vuelo = base_dron * mult_v
                 else:
-                    tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
+                    tarifa_vuelo_base = float(dict_aviones_sim.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0 and pista_sim != "PDIV": 
                         costo_bruto = min(costo_bruto, val_tope)
@@ -771,6 +750,10 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
 
+        # 💥 EXTRACCIÓN DINÁMICA DE MATRIZ DE TARIFAS (MODO REAL)
+        anio_vuelo = str(fecha_operacion.year)
+        dict_aviones, dict_drones, dict_topes_pista, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
+
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         col_prod_idx_op, col_tope_idx_op = 5, 6
         if not df_t2.empty:
@@ -926,8 +909,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if recargo_lista == "Otro Valor Manual...": recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
                 else: recargo_final = float(recargo_lista.split(" ")[0])
 
+            # 💥 EXTRACCIÓN DINÁMICA DE TOPE (MODO REAL)
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
-            val_tope = TOPES_PISTA.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
+            val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
             with st.container(border=True):
                 st.markdown("#### ✈️ Hangar de Despliegue")
@@ -1293,15 +1277,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                         total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
                         
-                        # -------------------------------------------------------------
-                        # 🗂️ Fila de "TABLA 1" (hoja_maestra) — mapeo NOMBRADO de columnas.
-                        # Antes se asignaba por posición cruda (row_azul[0]=..., [1]=...)
-                        # sin ninguna referencia de qué significaba cada índice: un
-                        # cambio de columna en Drive rompía todo en silencio.
-                        # Aquí se documenta explícitamente qué va en cada celda, pero
-                        # se conserva el MISMO orden y los MISMOS valores originales
-                        # para no alterar el layout ya usado en producción.
-                        # -------------------------------------------------------------
                         columnas_tabla1 = {
                             0: ("os_virtual", os_virtual),
                             1: ("bloque", bloque_f),
@@ -1348,9 +1323,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         if f_azul > hoja_maestra.row_count: hoja_maestra.add_rows(10)
                         if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
 
-                        # 🔒 Chequeo de concurrencia: si entre calcular la fila libre y
-                        # escribir, otra persona ya ocupó esa fila (dos facturaciones
-                        # simultáneas), abortamos en vez de sobrescribir su registro.
                         valor_actual_fila = hoja_maestra.cell(f_azul, 1).value
                         if valor_actual_fila and str(valor_actual_fila).strip() != "":
                             st.error(
