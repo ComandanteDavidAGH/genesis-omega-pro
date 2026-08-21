@@ -41,14 +41,12 @@ DICT_DRONES_DEFAULT = {
     "DRONE GENESYS": 71280,
 }
 
-
 def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True):
     mensaje = f"⚠️ Aviso técnico en «{contexto}»: {e}"
     if mostrar_usuario:
         st.warning(mensaje, icon="⚠️")
     else:
         print(mensaje)
-
 
 # =================================================================
 # 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
@@ -229,36 +227,6 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
     if not dict_dr: dict_dr = DICT_DRONES_DEFAULT
     
     return dict_av, dict_dr, dict_topes, col_anio
-
-@st.cache_data(show_spinner=False, ttl=1800)
-def preprocesar_flota_gspread():
-    gc = obtener_cliente_gspread_unificado()
-    dict_aviones_default = DICT_AVIONES_DEFAULT
-    dict_drones_default = DICT_DRONES_DEFAULT
-
-    if not gc:
-        return dict_aviones_default, dict_drones_default
-    try:
-        boveda = gc.open_by_url(SPREADSHEET_URL)
-        datos_vd = boveda.worksheet("Validación Dosis").get_all_values()
-        df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1])
-        
-        df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
-        dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
-        
-        if "CESSNA ASA" in dict_aviones:
-            dict_aviones["CESSNA ASA"] = 3768500
-        
-        df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
-        nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
-        nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
-        precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
-        dict_drones = dict(zip(nombres_dr, precios_dr))
-        
-        return dict_aviones, dict_drones
-    except Exception as e:
-        log_error_critico("Lectura de tarifas de flota (hoja «Validación Dosis»). Se usarán valores por defecto", e)
-        return dict_aviones_default, dict_drones_default
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
     try:
@@ -447,7 +415,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    dict_aviones, dict_drones = preprocesar_flota_gspread()
+    # Cargamos la Matriz Maestra para sacar TODA la inteligencia de tarifas
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
     # =================================================================
