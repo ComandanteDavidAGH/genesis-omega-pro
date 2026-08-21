@@ -329,21 +329,26 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
+    /* 💥 REPARACIÓN EXCLUSIVA DE BORDES EN MULTISELECT Y FECHAS 💥 */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stDateInput"] input {
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"],
+    div[data-testid="stDateInput"] div[data-baseweb="baseInput"] {
         border: 3px solid #143521 !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        background-color: transparent !important;
         border: none !important;
     }
     div[data-testid="stSelectbox"] div,
+    div[data-testid="stMultiSelect"] div,
     div[data-testid="stDateInput"] input,
-    div[data-testid="stSelectbox"] span {
+    div[data-testid="stSelectbox"] span,
+    div[data-testid="stMultiSelect"] span {
         color: #000000 !important;
         font-weight: 900 !important;
     }
@@ -1227,7 +1232,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 file_name=f"Reporte_Ejecutivo_BI_{rango_label}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
-            )                        
+            )                       
 
     except Exception as e:
         st.error(f"🚨 Fallo procesando el reporte: {e}")
