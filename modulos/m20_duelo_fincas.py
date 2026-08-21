@@ -230,16 +230,16 @@ def ejecutar():
     .kpi-vs-value { font-size: 32px; font-weight: 900; margin: 0; color: #ffffff; font-family: 'Arial Black', sans-serif; }
     .victoria { border: 3px solid #28a745 !important; box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important; }
     
-    /* ESTILOS LIMPIOS Y SEGUROS PARA INPUTS */
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="baseInput"] {
-        border: 2px solid #0d1b2a !important;
+    /* 🎯 ESTILO ESTABLE CORPORATIVO PARA INPUTS 🎯 */
+    .stSelectbox > div > div, .stDateInput > div > div, .stMultiSelect > div > div {
+        border: 2px solid #d4af37 !important;
         border-radius: 8px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }
     
-    div[data-baseweb="select"] > div:hover,
-    div[data-baseweb="baseInput"]:hover {
-        border-color: #d4af37 !important;
+    .stSelectbox label, .stDateInput label, .stMultiSelect label {
+        color: #0d1b2a !important;
+        font-weight: bold !important;
     }
 
     .lista-hk { 
@@ -264,7 +264,7 @@ def ejecutar():
     st.markdown("### 🎯 Configuración del Duelo")
     lista_fincas = sorted(df_base['FINCA_MAESTRA'].unique().tolist())
     
-    # Selector de finca al 50%
+    # --- CONTENEDOR TÁCTICO AL 50% ---
     c_finca_mitad, _ = st.columns([1, 1])
     with c_finca_mitad:
         finca_sel = st.selectbox("🏡 SELECCIONE LA FINCA A ANALIZAR", lista_fincas)
@@ -392,7 +392,7 @@ def ejecutar():
         fig_rend.update_layout(yaxis_title="Hectáreas por Hora", xaxis_title="Modelo de Aeronave", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', legend_title_text='Pista')
         st.plotly_chart(fig_rend, use_container_width=True)
 
-    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL (ESTILOS EXCEL GERENCIAL) 💥
+    # 💥 CENTRO DE EXTRACCIÓN CON DISEÑO PROFESIONAL (ESTILOS EXCEL) 💥
     st.markdown("<hr style='border: 1px solid #d4af37;'>", unsafe_allow_html=True)
     st.markdown("### 📥 Centro de Extracción de Datos (Reporte Ejecutivo)")
     
@@ -577,7 +577,7 @@ def ejecutar():
                 )
             except Exception as e:
                 st.warning(f"⚠️ Servidor sin openpyxl nativo. Generando CSV: {e}")
-                csv = df_resumen.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
+                csv = df_resumen.to_csv(index=False, sep= me, decimal=',').encode('utf-8-sig')
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EN CSV",
                     data=csv,
