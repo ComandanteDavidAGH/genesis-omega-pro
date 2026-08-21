@@ -12,6 +12,56 @@ from datetime import datetime, timedelta, date
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
+# ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
+# =================================================================
+# Antes estos valores estaban duplicados en dos lugares distintos
+# (modo simulador y modo producción) con cifras que NO coincidían
+# entre sí. Ahora viven en un solo diccionario y se importan en
+# ambos flujos, evitando que una corrección quede aplicada a medias.
+
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+
+TOPES_PISTA = {
+    "TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325},
+    "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517},
+    "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335},
+}
+
+PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+PISTAS_DISPONIBLES_MATRIZ = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
+
+DICT_AVIONES_DEFAULT = {
+    "THRUS SR2": 4606562,
+    "PIPER PA 36-375": 3985831,
+    "CESSNA O PIPER PA 25": 3036525,
+    "AIR TRACTOR": 4665109,
+    "CESSNA ASA": 3768500,
+    "CESSNA FUMIGARAY": 3065952,
+}
+DICT_DRONES_DEFAULT = {
+    "DRONE DATAROT": 84428,
+    "DRONE NORTE": 75518,
+    "DRONE AVIL": 71280,
+    "DRONE GENESYS": 71280,
+}
+
+
+def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True):
+    """
+    Reemplaza los `except Exception: pass` silenciosos en tramos que
+    afectan directamente valores facturables. En vez de tragarse el
+    error y seguir con un valor por defecto sin que nadie se entere,
+    lo deja visible en pantalla (y queda disponible para engancharlo
+    a un logger real / Sentry / etc. más adelante).
+    """
+    mensaje = f"⚠️ Aviso técnico en «{contexto}»: {e}"
+    if mostrar_usuario:
+        st.warning(mensaje, icon="⚠️")
+    else:
+        print(mensaje)
+
+
+# =================================================================
 # 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
 # =================================================================
 
@@ -45,7 +95,7 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
 
-# 💥 PARSEADOR ESTRÍCTO UNIFICADO PARA EVITAR CONGELAMIENTO DE CICLOS 💥
+# 💥 PARSEADOR ESTRÍCTO UNIFICADO (CORRECCIÓN DE DÍAS CICLO)
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
@@ -71,12 +121,12 @@ def procesar_fecha_estricta(val):
     except: return pd.NaT 
 
 @st.cache_data(show_spinner=False, ttl=1800)
-def obtener_historial_completo_ciclos_v3():
+def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame()
     try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        boveda = gc.open_by_url(SPREADSHEET_URL)
         t1 = boveda.worksheet("TABLA 1").get_all_values()
         idx_t1 = 4
         for i in range(min(6, len(t1))):
@@ -92,14 +142,15 @@ def obtener_historial_completo_ciclos_v3():
         df_apoyo = pd.DataFrame(apoyo[idx_ap+1:], columns=apoyo[idx_ap]) if len(apoyo) > idx_ap else pd.DataFrame()
         
         return df_t1, df_apoyo
-    except Exception: return pd.DataFrame(), pd.DataFrame()
+    except Exception as e:
+        log_error_critico("Lectura de historial de ciclos (TABLA 1 / TABLA DE APOYO2023)", e)
+        return pd.DataFrame(), pd.DataFrame()
 
-# 🧠 MÁS MOTOR MÁQUINA DEL TIEMPO (CÁLCULO AUTOMÁTICO DE DÍAS CICLO)
 def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     if not finca_nombre or finca_nombre == "---": return 14
     try:
         f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_nombre).upper())
-        df_viva, df_hist = obtener_historial_completo_ciclos_v3()
+        df_viva, df_hist = obtener_historial_completo_ciclos_cached()
         fechas_encontradas = []
 
         def extraer_fechas_motor(df_temp):
@@ -129,47 +180,40 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
                 fecha_max = max(fechas_validas)
                 dias = (fecha_vuelo_dt - fecha_max).days
                 if 0 <= dias <= 365: return int(dias)
-    except Exception: pass
+    except Exception as e:
+        log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
     return 14
 
-@st.cache_data(show_spinner=False, ttl=600)
-def cargar_matriz_tarifas_mod3():
+# 🧠 LECTURA ORIGINAL DE FLOTA/TARIFAS RESTAURADA
+@st.cache_data(show_spinner=False, ttl=1800)
+def preprocesar_flota_gspread():
     gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame()
-    try:
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        ws = sh.worksheet("MATRIZ_TARIFAS")
-        datos = ws.get_all_values()
-        if len(datos) > 1:
-            df = pd.DataFrame(datos[1:], columns=datos[0])
-            df = df.loc[:, df.columns.astype(str).str.strip() != '']
-            df = df[df['PISTA'].str.strip() != '']
-            return df
-    except: pass
-    return pd.DataFrame()
+    dict_aviones_default = DICT_AVIONES_DEFAULT
+    dict_drones_default = DICT_DRONES_DEFAULT
 
-def extraer_tarifas_dinamicas(df_tarifas, anio_str):
-    dict_av, dict_dr = {}, {}
-    dict_topes = {"TOPE MAX GENERAL": {}, "TOPE SUR": {}, "TOPE PARCELA INTER < 20HA": {}}
-    if df_tarifas.empty:
-        return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes, None
-    anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
-    col_anio = anio_str if anio_str in anios_disp else (max([y for y in anios_disp if int(y) <= int(anio_str)], default=max(anios_disp)) if anios_disp else None)
-    if col_anio:
-        for _, r in df_tarifas.iterrows():
-            pista = str(r.get('PISTA', '')).strip().upper()
-            equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
-            tarifa_val = extraer_numero(r[col_anio])
-            if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
-            elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
-            elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
-            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
-                 dict_dr[equipo if "DRON" in equipo else f"DRONE {equipo}"] = tarifa_val
-            elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
-                 dict_av[equipo] = tarifa_val
-    if not dict_av: dict_av = {"AIR TRACTOR": 4665109}
-    if not dict_dr: dict_dr = {"DRONE DATAROT": 84428}
-    return dict_av, dict_dr, dict_topes, col_anio
+    if not gc:
+        return dict_aviones_default, dict_drones_default
+    try:
+        boveda = gc.open_by_url(SPREADSHEET_URL)
+        datos_vd = boveda.worksheet("Validación Dosis").get_all_values()
+        df_flota = pd.DataFrame(datos_vd[2:], columns=datos_vd[1])
+        
+        df_av = df_flota[df_flota['TIPO'].notna() & (df_flota['TIPO'].astype(str).str.strip() != '')]
+        dict_aviones = dict(zip(df_av['TIPO'].astype(str).str.strip(), pd.to_numeric(df_av['HORA'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)))
+        
+        if "CESSNA ASA" in dict_aviones:
+            dict_aviones["CESSNA ASA"] = 3768500
+        
+        df_dr = df_flota[df_flota['Tarifa'].notna() & (df_flota['Tarifa'].astype(str).str.strip() != '')]
+        nombres_dr = df_dr['Tarifa'].astype(str).str.replace('TARIFA ', '', case=False).str.strip()
+        nombres_dr = nombres_dr.apply(lambda x: f"DRONE {x}" if "DRONE" not in x.upper() else x)
+        precios_dr = pd.to_numeric(df_dr['Valor ha/Dr'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0)
+        dict_drones = dict(zip(nombres_dr, precios_dr))
+        
+        return dict_aviones, dict_drones
+    except Exception as e:
+        log_error_critico("Lectura de tarifas de flota (hoja «Validación Dosis»). Se usarán valores por defecto", e)
+        return dict_aviones_default, dict_drones_default
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
     try:
@@ -186,9 +230,11 @@ def obtener_matriz_fija_cruda_v2():
     gc = obtener_cliente_gspread_unificado()
     if not gc: return []
     try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        boveda = gc.open_by_url(SPREADSHEET_URL)
         return boveda.worksheet("DD_Mesclas").get_all_values()
-    except Exception: return []
+    except Exception as e:
+        log_error_critico("Lectura de la matriz de mezclas (hoja «DD_Mesclas»)", e)
+        return []
 
 def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
     nombre_clean = re.sub(r'[^A-Z0-9]', '', str(nombre_producto_sap).upper())
@@ -351,7 +397,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         """
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
-    df_tarifas_maestras = cargar_matriz_tarifas_mod3()
+    
+    # RESTAURACIÓN: Carga original de flota
+    dict_aviones, dict_drones = preprocesar_flota_gspread()
 
     # =================================================================
     # 💥 MODO SIMULADOR DE COTIZACIONES
@@ -359,7 +407,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
 
     if modo_simulacro:
-        st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico de Tarifas 2026.")
+        st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico.")
         if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
             st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
             url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
@@ -385,7 +433,43 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
         df_cfg = st.session_state['df_cfg']
         df_recetas = st.session_state['df_recetas']
+        df_vd = st.session_state['df_vd']
         df_t2 = st.session_state['df_t2']
+
+        pistas_con_tope = []
+        try:
+            filas_a_revisar = [[str(c).upper().strip() for c in df_vd.columns]]
+            for i in range(min(10, len(df_vd))): filas_a_revisar.append([str(x).upper().strip() for x in df_vd.iloc[i]])
+            p_idx, t_idx, pr_idx = -1, -1, -1
+            for idx_fila, row_vals in enumerate(filas_a_revisar):
+                for i, val in enumerate(row_vals):
+                    if val.startswith('TOPE'):
+                        t_idx = i
+                        for k in range(max(0, i-3), i):
+                            if row_vals[k].startswith('PISTA'): p_idx = k
+                            if 'PRECIO' in row_vals[k]: pr_idx = k
+                if p_idx != -1 and t_idx != -1: break
+                    
+            if p_idx != -1 and t_idx != -1:
+                for j in range(0, len(df_vd)):
+                    p_name = str(df_vd.iloc[j, p_idx]).strip()
+                    if p_name in ['NAN', 'NONE', ''] or pd.isna(df_vd.iloc[j, p_idx]): continue
+                    p_tope = str(df_vd.iloc[j, t_idx]).strip()
+                    if p_tope in ['NAN', 'NONE', '']: continue
+                    p_precio = pd.to_numeric(df_vd.iloc[j, pr_idx], errors='coerce') if pr_idx != -1 else 0
+                    if pd.isna(p_precio): p_precio = 0
+                    texto_tope = f"{p_name} - {p_tope} (${p_precio:,.0f})".replace(',', '.')
+                    if texto_tope not in pistas_con_tope: pistas_con_tope.append(texto_tope)
+        except Exception as e:
+            log_error_critico("Lectura de topes por pista (hoja «Validación Dosis», modo simulador)", e)
+        
+        if not pistas_con_tope: 
+            pistas_con_tope = [
+                "PLUC - TOPE MAX GENERAL ($63.325)", "PLUC - TOPE SUR ($70.829)", 
+                "PLUC - TOPE PARCELA INTER < 20ha ($98.335)", "PORI - TOPE MAX GENERAL ($62.718)", 
+                "PORI - TOPE SUR ($70.829)", "PORI - TOPE PARCELA INTER < 20ha ($105.723)", 
+                "PDIV - PORCION TERRESTRE ($8.740)", "TEHO - BASE ($0)", "LUCI - BASE ($0)"
+            ]
 
         diccionario_fincas = {}
         lista_fincas = []
@@ -397,7 +481,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
                     diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
                     if f_name not in lista_fincas: lista_fincas.append(f_name)
-        except Exception: pass
+        except Exception as e:
+            log_error_critico("Lectura de fincas (TABLA 2, modo simulador)", e)
             
         if not lista_fincas: lista_fincas = ["NUEVO MUNDO"]
         lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
@@ -426,10 +511,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             _, c_f4_sim = st.columns([2, 1.2])
             fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
             
-            # 💥 CÁLCULO DE DÍAS CICLO EN MODO SIMULADOR 💥
+            # CÁLCULO DE DÍAS CICLO EN MODO SIMULADOR
             if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
-                dias_ciclo_calc_sim = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
-                st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
+                st.session_state.dias_ciclo_sim_mem = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
                 st.session_state.finca_anterior_sim = finca_sim
                 st.session_state.fecha_sim_mem = fecha_eval_sim
                 st.rerun()
@@ -464,10 +548,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
             c_f1, c_f2, c_f3 = st.columns(3)
             
-            anio_vuelo_sim = str(fecha_eval_sim.year)
-            dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
-
-            lista_opciones_flota_sim = list(dict_aviones_sim.keys()) + list(dict_drones_sim.keys())
+            lista_opciones_flota_sim = list(dict_aviones.keys()) + ["DRONE"]
             vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
             
             pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
@@ -485,15 +566,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
-                val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
-                if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
+                val_tope = float(TOPES_PISTA.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope == 999999: val_tope = 0.0
 
-                if vuelo_sim in dict_drones_sim: 
-                    tarifa_vuelo_base = float(dict_drones_sim.get(vuelo_sim, 0))
-                    unitario_vuelo = tarifa_vuelo_base * mult_v
+                if vuelo_sim == "DRONE": 
+                    if "PLUC" == pista_sim: base_dron = 84428
+                    elif "PDIV" == pista_sim: base_dron = 76916
+                    else: base_dron = 72600
+                    unitario_vuelo = base_dron * mult_v
                 else:
-                    tarifa_vuelo_base = float(dict_aviones_sim.get(vuelo_sim, 4606562.0))
+                    tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope > 0 and pista_sim != "PDIV": 
                         costo_bruto = min(costo_bruto, val_tope)
@@ -505,8 +587,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 for _, r_area in df_areas_in.iterrows():
                     h_a = float(r_area["Hectáreas"])
                     d_c = int(r_area["Días Ciclo"])
-                    if h_a > 0:
-                        subtotal_st += round(st_base, 0) * d_c * h_a
+                    if h_a > 0: subtotal_st += round(st_base, 0) * d_c * h_a
 
                 coctel_u = coctel_sim.upper().strip()
                 partes = coctel_u.split(" ")
@@ -517,8 +598,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 for idx, row in receta_c.iterrows():
                     p = str(row.iloc[1]).upper().strip()
                     d = pd.to_numeric(row.iloc[2], errors='coerce')
-                    if pd.notna(d) and d > 0 and p not in ['NAN', '']:
-                        prods_f.append({"PRODUCTO": p, "DOSIS": d})
+                    if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
                 coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
                 fert_encontrado_obj = None
@@ -610,7 +690,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.stop()
 
     # =================================================================
-    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL (REPARADO Y RE-SINCRONIZADO)
+    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL RESTAURADO
     # =================================================================
     if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
         st.warning("🚨 No se detectan datos listos en el puente de mando.")
@@ -621,7 +701,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         gc_maestro = obtener_cliente_gspread_unificado()
         if not gc_maestro: return None, None
         try:
-            boveda_m = gc_maestro.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            boveda_m = gc_maestro.open_by_url(SPREADSHEET_URL)
             t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
             df_t2_temp = pd.DataFrame()
             if t2_data: 
@@ -680,19 +760,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     for _, fila_ped in match_sap.iterrows():
                         valor_material = str(fila_ped[col_mat]).strip()
                         if valor_material == "459" or valor_material.split(".")[0] == "459": 
-                            ha_correcta = extraer_numero(fila_ped[col_ha])
-                            break
+                            ha_correcta = extraer_numero(fila_ped[col_ha]); break
                     st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else extraer_numero(match_sap.iloc[0][col_ha])
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
-                except Exception: pass
+                except Exception as e:
+                    log_error_critico("Lectura del pedido SAP escaneado (finca / hectáreas)", e)
 
         c_finca, c_pedido, c_fecha = st.columns([2, 2, 1.3])
         if 'fecha_sim_mem' not in st.session_state: st.session_state.fecha_sim_mem = hoy_colombia_date
 
         fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
-        anio_vuelo = str(fecha_operacion.year)
-        
-        dict_aviones, dict_drones, dict_topes, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
 
         df_t2 = st.session_state.get('df_config', pd.DataFrame())
         col_prod_idx_op, col_tope_idx_op = 5, 6
@@ -757,18 +834,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
-        # 💥 REPARACIÓN DEFINITIVA Y EN TIEMPO REAL DEL CÁLCULO DE DÍAS CICLO EN FACTURACIÓN REAL 💥
+        # 💥 CÁLCULO EN TIEMPO REAL SIN CONGELAMIENTO EN 14
         if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
         if 'fecha_operacion_anterior' not in st.session_state: st.session_state.fecha_operacion_anterior = fecha_operacion
 
-        # Disparador inmediato si la finca o la fecha de vuelo cambian
         if (finca_sel != st.session_state.finca_anterior) or (fecha_operacion != st.session_state.fecha_operacion_anterior):
             st.session_state.dias_ciclo_sim_mem = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
             st.session_state.finca_anterior = finca_sel
             st.session_state.fecha_operacion_anterior = fecha_operacion
             st.rerun()
 
-        # Si es la primera vez que carga, calcular automáticamente
         dias_ciclo_calc = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
 
         datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
@@ -782,7 +857,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
                 if val_celda.isdigit() and len(val_celda) >= 7: num_pedido = val_celda; break
         
-        lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "AVIL", "DATAROT", "GENESYS", "ASA", "PROPIA", "Z-1", "Z-2"]
+        lista_pistas_validas = PISTAS_VALIDAS
         pista_detectada, ha_dosis_detectada, match_ped = "PLUC", 0.0, pd.DataFrame()
 
         if not df_ped.empty and num_pedido != "S/N":
@@ -851,14 +926,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 if recargo_lista == "Otro Valor Manual...": recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
                 else: recargo_final = float(recargo_lista.split(" ")[0])
 
-            dict_topes_pista = {
-                "TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, 
-                "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, 
-                "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}
-            }
-            
             tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
-            val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
+            val_tope = TOPES_PISTA.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
             
             with st.container(border=True):
                 st.markdown("#### ✈️ Hangar de Despliegue")
@@ -910,7 +979,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final
             
             st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
-            pistas_disponibles = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
+            pistas_disponibles = PISTAS_DISPONIBLES_MATRIZ
             pista_sel = st.selectbox("📍 Seleccione la Pista para extraer Inventario de SAP:", pistas_disponibles, index=pistas_disponibles.index(pista_sel), key="pista_matriz_maestra")
             
             st.markdown("---")
@@ -995,7 +1064,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             if mask_cfg.any():
                                 precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
                                 if precio_maestro > 0: costo_unit = float(precio_maestro) 
-                    except Exception: pass
+                    except Exception as e:
+                        log_error_critico(f"Cruce de precio maestro para «{nombre_limpio}» (hoja Configuración)", e)
 
                     dosis_teorica = None
                     for p_receta, d_oficial in dosis_oficiales_coctel.items():
@@ -1170,7 +1240,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("---")
             st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
             c_p1, c_p2 = st.columns(2)
-            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"], index=["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"].index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
+            pista_manual = c_p1.selectbox("📍 Confirmar Pista de Operación:", PISTAS_DISPONIBLES_MATRIZ, index=PISTAS_DISPONIBLES_MATRIZ.index(pista_sel), key=f"confirmador_final_{pista_sel}_{vuelo_ref}")
             c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
             st.markdown("""
@@ -1190,7 +1260,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         gc_save = obtener_cliente_gspread_unificado()
                         if not gc_save: st.error("🚨 Error crítico de conexión."); st.stop()
 
-                        boveda = gc_save.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                        boveda = gc_save.open_by_url(SPREADSHEET_URL)
                         hoja_apoyo = boveda.worksheet("TABLA DE APOYO2023")
                         hoja_maestra = boveda.worksheet("TABLA 1")
                         hoja_memoria = boveda.worksheet("MEMORIA")
@@ -1223,13 +1293,48 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                         total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
                         
+                        # -------------------------------------------------------------
+                        # 🗂️ Fila de "TABLA 1" (hoja_maestra) — mapeo NOMBRADO de columnas.
+                        # Antes se asignaba por posición cruda (row_azul[0]=..., [1]=...)
+                        # sin ninguna referencia de qué significaba cada índice: un
+                        # cambio de columna en Drive rompía todo en silencio.
+                        # Aquí se documenta explícitamente qué va en cada celda, pero
+                        # se conserva el MISMO orden y los MISMOS valores originales
+                        # para no alterar el layout ya usado en producción.
+                        # -------------------------------------------------------------
+                        columnas_tabla1 = {
+                            0: ("os_virtual", os_virtual),
+                            1: ("bloque", bloque_f),
+                            2: ("finca", finca_limpia),
+                            3: ("sector", sector_f),
+                            4: ("ha_bruta", ha_bruta_f),
+                            5: ("ha_neta_cobro", ha_f),
+                            6: ("coctel", coctel_ganador),
+                            7: ("fecha", fecha_str),
+                            8: ("dia_semana", dia_sem),
+                            9: ("num_semana", num_sem),
+                            10: ("horas_totales_vuelo", round(h_total_v, 2)),
+                            11: ("gal_por_ha", 6),
+                            12: ("vol_total_galones", round(vol_total_gln, 2)),
+                            13: ("horas_totales_vuelo_dup", round(h_total_v, 2)),
+                            14: ("rendimiento_min", round(rend_min, 2)),
+                            15: ("piloto", piloto_f),
+                            16: ("equipo_hk", hk_f),
+                            17: ("tipo_mision", tipo_mision_str),
+                            18: ("total_operacion", float(gran_total)),
+                            19: ("tarifa_vuelo_neta_ha", round(tarifa_vuelo_neta_ha, 2)),
+                            20: ("recargo", round(float(recargo_final), 2)),
+                            21: ("total_operacion_dup", float(gran_total)),
+                            23: ("pista", pista_manual),
+                            28: ("total_operacion_dup2", float(gran_total)),
+                            29: ("total_pago_avion_neto", round(total_pago_avion_neto, 2)),
+                            32: ("tipo_productor", tipo_productor),
+                            33: ("version_sistema", "GÉNESIS_V2_PRO"),
+                        }
                         row_azul = [""] * 34
-                        row_azul[0], row_azul[1], row_azul[2], row_azul[3], row_azul[4], row_azul[5] = os_virtual, bloque_f, finca_limpia, sector_f, ha_bruta_f, ha_f
-                        row_azul[6], row_azul[7], row_azul[8], row_azul[9], row_azul[10] = coctel_ganador, fecha_str, dia_sem, num_sem, round(h_total_v, 2)
-                        row_azul[11], row_azul[12], row_azul[13], row_azul[14], row_azul[15] = 6, round(vol_total_gln, 2), round(h_total_v, 2), round(rend_min, 2), piloto_f
-                        row_azul[16], row_azul[17], row_azul[18], row_azul[19], row_azul[20] = hk_f, tipo_mision_str, float(gran_total), round(tarifa_vuelo_neta_ha, 2), round(float(recargo_final), 2)
-                        row_azul[21], row_azul[23], row_azul[28], row_azul[29], row_azul[32], row_azul[33] = float(gran_total), pista_manual, float(gran_total), round(total_pago_avion_neto, 2), tipo_productor, "GÉNESIS_V2_PRO"
-                        
+                        for idx_col, (_nombre, valor) in columnas_tabla1.items():
+                            row_azul[idx_col] = valor
+
                         fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), float(gran_total), fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_mision_str, ""]
                         
                         col_azul = hoja_maestra.col_values(1)
@@ -1242,6 +1347,18 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         
                         if f_azul > hoja_maestra.row_count: hoja_maestra.add_rows(10)
                         if f_apoyo > hoja_apoyo.row_count: hoja_apoyo.add_rows(10)
+
+                        # 🔒 Chequeo de concurrencia: si entre calcular la fila libre y
+                        # escribir, otra persona ya ocupó esa fila (dos facturaciones
+                        # simultáneas), abortamos en vez de sobrescribir su registro.
+                        valor_actual_fila = hoja_maestra.cell(f_azul, 1).value
+                        if valor_actual_fila and str(valor_actual_fila).strip() != "":
+                            st.error(
+                                f"🚨 CONFLICTO DE CONCURRENCIA: la fila {f_azul} de TABLA 1 ya "
+                                "fue ocupada por otra operación mientras se calculaba esta factura. "
+                                "Vuelve a sincronizar el módulo y reintenta para evitar sobrescribir datos."
+                            )
+                            st.stop()
                         
                         set_existentes = {f"{str(r[0]).strip()}|{str(r[9]).strip().upper()}|{str(r[3]).strip().upper()}" for r in datos_memoria[1:] if len(r) >= 10}
                         bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron or total_ha_cobro_escuadron == 0 else "BODEGA PRINCIPAL AVIÓN"
@@ -1281,7 +1398,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     "tipo_productor": str(tipo_productor)
                                 }
                                 supabase_client.table("facturas_detonadas").insert(payload_orden).execute()
-                            except Exception: pass
+                            except Exception as e:
+                                log_error_critico("Sincronización con Supabase (no bloqueante, la factura en Drive sí quedó guardada)", e)
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive.")
