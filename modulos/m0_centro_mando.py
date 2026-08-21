@@ -67,17 +67,54 @@ def procesar_radar_logistico_cached(df_sabana):
     pistas_series = inventario_agrupado[col_pista].astype(str).str.upper()
     productos_series = inventario_agrupado['PRODUCTO_RADAR'].astype(str).str.upper()
     
-    es_pista_menor = pistas_series.str.contains("LUCI|TEHO", na=False)
-    es_aceite = productos_series.str.contains("ACEITE|GRANEL|COMBUSTIBLE|DICAM", na=False)
-    es_mancol = productos_series.str.contains("MANCOL|MANCOZEB|103680|104287", na=False)
-    es_aditivo = productos_series.str.contains("ACONDICIONADOR|NATURAMIN|105980|108214|105296", na=False)
+    # =========================================================
+    # 🛡️ MEJORA 2: MOTOR DE REGLAS LOGÍSTICAS (Fácilmente Editable)
+    # =========================================================
     
-    condiciones = [es_aceite & es_pista_menor, es_aceite & ~es_pista_menor, es_mancol & es_pista_menor, es_mancol & ~es_pista_menor, es_aditivo]
-    valores_limite = [1000, 30280, 1000, 2500, 30]
-    regles_texto = ["1.000 L (Aceite - Pista Menor)", "30,280 L (Aceite - Pista Principal)", "1,000 L (Mancol - Pista Menor)", "2,500 L (Mancol - Pista Principal)", "30 L/Kg (Aditivo de Alta Rotación)"]
+    # 1. Diccionario Central de Parámetros (Modifica los límites aquí arriba, sin tocar la lógica)
+    CONFIG_RADAR = {
+        "PISTAS_MENORES": "LUCI|TEHO",
+        "FAMILIAS": {
+            "ACEITE":  {"filtro": "ACEITE|GRANEL|COMBUSTIBLE|DICAM", "lim_menor": 1000, "lim_ppal": 30280},
+            "MANCOL":  {"filtro": "MANCOL|MANCOZEB|103680|104287", "lim_menor": 1000, "lim_ppal": 2500},
+            "ADITIVO": {"filtro": "ACONDICIONADOR|NATURAMIN|105980|108214|105296", "lim_global": 30}
+        },
+        "LIMITE_ESTANDAR": 100
+    }
     
-    inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, valores_limite, default=100)
-    inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, regles_texto, default="100 L/Kg (Estándar Global)")
+    # 2. Evaluación Lógica
+    es_pista_menor = pistas_series.str.contains(CONFIG_RADAR["PISTAS_MENORES"], na=False)
+    es_aceite = productos_series.str.contains(CONFIG_RADAR["FAMILIAS"]["ACEITE"]["filtro"], na=False)
+    es_mancol = productos_series.str.contains(CONFIG_RADAR["FAMILIAS"]["MANCOL"]["filtro"], na=False)
+    es_aditivo = productos_series.str.contains(CONFIG_RADAR["FAMILIAS"]["ADITIVO"]["filtro"], na=False)
+    
+    condiciones = [
+        es_aceite & es_pista_menor, 
+        es_aceite & ~es_pista_menor, 
+        es_mancol & es_pista_menor, 
+        es_mancol & ~es_pista_menor, 
+        es_aditivo
+    ]
+    
+    valores_limite = [
+        CONFIG_RADAR["FAMILIAS"]["ACEITE"]["lim_menor"], 
+        CONFIG_RADAR["FAMILIAS"]["ACEITE"]["lim_ppal"], 
+        CONFIG_RADAR["FAMILIAS"]["MANCOL"]["lim_menor"], 
+        CONFIG_RADAR["FAMILIAS"]["MANCOL"]["lim_ppal"], 
+        CONFIG_RADAR["FAMILIAS"]["ADITIVO"]["lim_global"]
+    ]
+    
+    regles_texto = [
+        f'{valores_limite[0]:,.0f} L (Aceite - Menor)', 
+        f'{valores_limite[1]:,.0f} L (Aceite - Ppal)', 
+        f'{valores_limite[2]:,.0f} L (Mancol - Menor)', 
+        f'{valores_limite[3]:,.0f} L (Mancol - Ppal)', 
+        f'{valores_limite[4]:,.0f} L/Kg (Aditivos)'
+    ]
+    
+    inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD'] = np.select(condiciones, valores_limite, default=CONFIG_RADAR["LIMITE_ESTANDAR"])
+    inventario_agrupado['📋 REGLA APLICADA'] = np.select(condiciones, regles_texto, default=f'{CONFIG_RADAR["LIMITE_ESTANDAR"]} L/Kg (Estándar)')
+    # =========================================================
     
     df_alertas = inventario_agrupado[inventario_agrupado[col_saldo] < inventario_agrupado['🛡️ LÍMITE DE SEGURIDAD']].copy()
     df_alertas = df_alertas.rename(columns={col_pista: "📍 PISTA / ALMACÉN", 'PRODUCTO_RADAR': "🧪 CÓDIGO | NOMBRE DEL PRODUCTO", col_saldo: "⚠️ SALDO ACTUAL"})
