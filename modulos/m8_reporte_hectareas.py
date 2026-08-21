@@ -433,7 +433,40 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 else:
                     df_tarifas_filtro = df_tarifas[cols_base + anios_seleccionados].copy()
                     
-                    st.dataframe(df_tarifas_filtro, use_container_width=True, hide_index=True)
+                    # =========================================================
+                    # 💎 INICIO DE MEJORA VISUAL DE LA TABLA (UI CORPORATIVA)
+                    # =========================================================
+                    df_mostrar = df_tarifas_filtro.copy()
+                    
+                    # 1. Limpiar y jerarquizar los títulos
+                    renombres = {
+                        'PISTA': '📍 BASE OPERATIVA', 
+                        'EQUIPO_O_TOPE': '🛩️ TIPO DE EQUIPO / CONCEPTO'
+                    }
+                    for anio in anios_seleccionados:
+                        renombres[anio] = f"📅 {anio}"
+                        
+                    df_mostrar.rename(columns=renombres, inplace=True)
+                    
+                    # 2. Inyectar CSS directo a las celdas
+                    def estilo_matriz(row):
+                        estilos = []
+                        for col in row.index:
+                            if col in ['📍 BASE OPERATIVA', '🛩️ TIPO DE EQUIPO / CONCEPTO']:
+                                estilos.append('background-color: #F1F5F9; color: #0D1B2A; font-weight: 800; border-right: 2px solid #CBD5E1;')
+                            else:
+                                estilos.append('background-color: #FFFFFF; color: #1A365D; font-weight: 600; text-align: right;')
+                        return estilos
+
+                    # 3. Renderizar la tabla blindada
+                    st.dataframe(
+                        df_mostrar.style.apply(estilo_matriz, axis=1), 
+                        use_container_width=True, 
+                        hide_index=True
+                    )
+                    # =========================================================
+                    # 💎 FIN DE MEJORA VISUAL
+                    # =========================================================
                     
                     buf_tarifas = io.BytesIO()
                     df_export_t = df_tarifas_filtro.copy()
