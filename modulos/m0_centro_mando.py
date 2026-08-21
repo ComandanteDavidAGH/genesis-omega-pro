@@ -175,24 +175,36 @@ def ordenar_base_datos_global():
                 registros.append(rec)
 
             if registros:
-                st.info("📤 Actualizando Supabase cronológicamente...")
-                supabase.table("TABLA_1").delete().neq(col_id, "_VACIO_IMPOSIBLE_999_").execute()
-                
+                st.info("📤 Actualizando Supabase (Upsert Seguro)...")
+                # =========================================================
+                # 🛡️ MEJORA 1: UPSERT (NO BORRAMOS LA TABLA)
+                # =========================================================
                 tamano_bloque = 250
                 for i in range(0, len(registros), tamano_bloque):
-                    supabase.table("TABLA_1").insert(registros[i:i + tamano_bloque]).execute()
+                    # Upsert inserta los nuevos y actualiza los existentes sin vaciar la base de datos
+                    supabase.table("TABLA_1").upsert(registros[i:i + tamano_bloque]).execute()
 
             # Reescribir Drive (Antiguas arriba -> Nuevas abajo)
             valores_drive = df_form_sorted[db_cols].fillna("").values.tolist()
             if valores_drive:
+                # =========================================================
+                # 🛡️ MEJORA 2: SOBRESCRITURA DIRECTA EN DRIVE
+                # =========================================================
                 rango_inicio = f"A{idx_header + 2}"
-                rango_borrar = f"A{idx_header + 2}:ZZ{ws_t1.row_count}"
-                ws_t1.batch_clear([rango_borrar])
+                
+                # 1. Escribimos DIRECTAMENTE sobre los datos sin borrarlos primero
                 ws_t1.update(range_name=rango_inicio, values=valores_drive, value_input_option='USER_ENTERED')
                 
-            st.success(f"🎉 ¡MUNICIÓN RESTAURADA Y ORDENADA! {len(registros)} registros alineados desde la fecha más antigua hasta la más reciente.")
+                # 2. Limpieza quirúrgica: Solo borramos las filas sobrantes al final (si el nuevo archivo es más corto)
+                filas_nuevas = len(valores_drive)
+                fila_final_datos = idx_header + 2 + filas_nuevas
+                
+                if fila_final_datos <= ws_t1.row_count:
+                    rango_limpieza = f"A{fila_final_datos}:ZZ{ws_t1.row_count}"
+                    ws_t1.batch_clear([rango_limpieza])
+                
+            st.success(f"🎉 ¡MUNICIÓN RESTAURADA Y ORDENADA! {len(registros)} registros alineados de forma segura sin riesgo de pérdida de datos.")
             st.balloons()
-
     except Exception as e:
         st.error(f"🚨 Error durante la restauración: {e}")
         st.code(traceback.format_exc())
