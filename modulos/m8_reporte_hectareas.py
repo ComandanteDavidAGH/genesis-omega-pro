@@ -329,29 +329,60 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
-    /* 💥 REPARACIÓN EXCLUSIVA DE BORDES EN MULTISELECT Y FECHAS 💥 */
+    /* 💥 REPARACIÓN EXCLUSIVA DE BORDES EN MULTISELECT, FECHAS Y RADIO BUTTONS 💥 */
+    
+    /* CAJAS PRINCIPALES: Selectbox, MultiSelect, DateInput */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stMultiSelect"] > div,
     div[data-testid="stMultiSelect"] div[data-baseweb="select"],
-    div[data-testid="stDateInput"] div[data-baseweb="baseInput"] {
+    div[data-testid="stDateInput"] > div {
         border: 3px solid #143521 !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }
+    
+    /* FONDOS INTERNOS TRANSPARENTES Y SIN BORDES DOBLES */
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="baseInput"] {
         background-color: transparent !important;
         border: none !important;
     }
-    div[data-testid="stSelectbox"] div,
-    div[data-testid="stMultiSelect"] div,
+    
+    /* INPUTS Y TEXTOS (Letra negra, fuerte) */
+    div[data-testid="stSelectbox"] *,
+    div[data-testid="stMultiSelect"] *,
     div[data-testid="stDateInput"] input,
-    div[data-testid="stSelectbox"] span,
-    div[data-testid="stMultiSelect"] span {
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input {
         color: #000000 !important;
+        font-weight: bold !important;
+    }
+    
+    /* CHIPS (Etiquetas) DENTRO DEL MULTISELECT PARA QUE SEAN LEGIBLES */
+    span[data-baseweb="tag"] {
+        background-color: #d4af37 !important; /* Dorado Corporativo */
+        color: #000000 !important;
+    }
+    span[data-baseweb="tag"] span {
+        color: #000000 !important;
+    }
+
+    /* RADIO BUTTONS (Vista Operativa) */
+    div[role="radiogroup"] {
+        border: 3px solid #143521 !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    }
+    div[role="radiogroup"] label {
+        color: #0d1b2a !important;
         font-weight: 900 !important;
     }
+
     div[data-testid="stMainBlockContainer"] label p {
         color: #0d1b2a !important;
         font-weight: 800 !important;
@@ -478,13 +509,11 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
         st.markdown("### 🎛️ Centro de Comando y Filtros")
 
-        # 💥 NUEVO: BÓVEDA DE TARIFAS MAESTRAS (VISIBLE Y DESCARGABLE)
         with st.expander("🏦 BÓVEDA DE TARIFAS MAESTRAS (MASTER DATA)", expanded=False):
             df_tarifas = cargar_matriz_tarifas()
             if not df_tarifas.empty:
                 st.info("💡 **CEREBRO CENTRAL:** El sistema lee esta matriz en tiempo real. Selecciona los años que deseas visualizar y descargar.")
                 
-                # 💥 SELECCIÓN DINÁMICA DE AÑOS
                 cols_base = [c for c in df_tarifas.columns if not str(c).isdigit()]
                 cols_anios = [c for c in df_tarifas.columns if str(c).isdigit()]
                 
@@ -495,14 +524,11 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 else:
                     df_tarifas_filtro = df_tarifas[cols_base + anios_seleccionados].copy()
                     
-                    # Tabla visible filtrada
                     st.dataframe(df_tarifas_filtro, use_container_width=True, hide_index=True)
                     
-                    # Botón de Descarga VIP
                     buf_tarifas = io.BytesIO()
                     df_export_t = df_tarifas_filtro.copy()
                     
-                    # Traducir texto a números reales para Excel
                     for col in anios_seleccionados:
                         df_export_t[col] = df_export_t[col].apply(limpiar_dinero)
 
@@ -510,19 +536,16 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         df_export_t.to_excel(writer, sheet_name='Tarifario_Maestro', index=False, startrow=3)
                         ws_t = writer.sheets['Tarifario_Maestro']
                         
-                        # Título de Gala (Centrado)
                         ws_t['A1'] = "REPORTE MÁSTER: MATRIZ DE TARIFAS AUTORIZADAS"
                         ws_t['A1'].font = Font(size=14, bold=True, color="FFFFFF")
                         ws_t['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                         ws_t['A1'].alignment = Alignment(horizontal='center', vertical='center')
                         ws_t.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_export_t.columns))
                         
-                        # Subtítulo con fecha
                         ws_t['A3'] = f"Actualizado a: {datetime.now().strftime('%d/%m/%Y')}"
                         ws_t['A3'].font = Font(italic=True, color="555555", bold=True)
                         ws_t.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_export_t.columns))
 
-                        # Encabezados Dorados (Centrados)
                         header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
                         header_font = Font(bold=True, color="000000")
                         for col_num in range(1, len(df_export_t.columns) + 1):
@@ -531,20 +554,17 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                             cell.font = header_font
                             cell.alignment = Alignment(horizontal='center', vertical='center')
                             
-                        # Ensanchar columnas para que respire el texto
                         ws_t.column_dimensions['A'].width = 12
                         ws_t.column_dimensions['B'].width = 30
                         for col_num in range(3, len(df_export_t.columns) + 1):
                             ws_t.column_dimensions[get_column_letter(col_num)].width = 16
                             
-                        # Aplicar formato de Moneda real y ALINEACIÓN A LA IZQUIERDA
                         for r_idx in range(5, len(df_export_t) + 5):
                             for c_idx in range(1, len(df_export_t.columns) + 1):
                                 cell = ws_t.cell(row=r_idx, column=c_idx)
-                                if c_idx > len(cols_base): # Columnas de dinero
+                                if c_idx > len(cols_base): 
                                     if cell.value != "" and cell.value is not None and cell.value != 0:
                                         cell.number_format = '$#,##0'
-                                # Alineación a la izquierda para los datos
                                 cell.alignment = Alignment(horizontal='left') 
 
                     st.download_button(
@@ -555,7 +575,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         use_container_width=True
                     )
                     
-                    # Curva de Inflación adaptada al filtro
                     try:
                         df_melt = df_export_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_seleccionados, var_name='AÑO', value_name='TARIFA')
                         df_melt['TARIFA'] = pd.to_numeric(df_melt['TARIFA'], errors='coerce').fillna(0)
