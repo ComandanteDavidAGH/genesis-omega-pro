@@ -6,7 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
-
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
@@ -115,6 +115,7 @@ def ejecutar(extraer_numero):
             with st.spinner("Ejecutando protocolo Samurai..."):
                 try:
                     nombre_archivo = f_sap_raw.name.lower()
+                    # Leer archivo
                     if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
                         df = pd.read_excel(f_sap_raw)
                     else:
@@ -123,11 +124,19 @@ def ejecutar(extraer_numero):
                         except Exception:
                             f_sap_raw.seek(0)
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
-                     
+                    
+                    # =========================================================
+                    # 🛡️ MEJORA: ESCUDO ANTI-ARCHIVOS INVÁLIDOS
+                    # =========================================================
+                    if df.empty or len(df.columns) < 11:
+                        st.error("🚨 ARCHIVO INVÁLIDO: La matriz cargada no tiene la estructura de SAP requerida (mínimo 11 columnas). Operación abortada.")
+                        st.stop()
+                        
+                    # Ahora sí, limpiamos con seguridad
                     df = df.dropna(subset=[df.columns[0]])
                     df = df[~df.iloc[:, 0].astype(str).str.contains(r'\*')]
-                    if len(df.columns) >= 11:
-                        df = df.sort_values(by=df.columns[10], ascending=True)
+                    df = df.sort_values(by=df.columns[10], ascending=True)
+                    # =========================================================
                      
                     df_final = df.iloc[:, 0:9].copy()
                     df_final['J'] = df.iloc[:, 10].values
