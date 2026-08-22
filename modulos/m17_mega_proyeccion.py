@@ -88,7 +88,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
         try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         except: pass
         
-        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS (SUPABASE FIRST)
+        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS
         if _supabase_client:
             try:
                 res = _supabase_client.table("DICCIONARIO_SIGLAS").select("*").execute()
@@ -141,7 +141,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. EXTRAER TABLA 1 (CON RECARGOS HISTÓRICOS Y FILTRO DE FECHAS)
+        # 3. EXTRAER TABLA 1 
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -188,7 +188,6 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
 
                     if col_fecha:
                         df_t1['FECHA_CLEAN'] = df_t1[col_fecha].astype(str).str.strip()
-                        df_t1['FECHA_PURA'] = df_t1[col_fecha].apply(normalizar_a_fecha_pura) # Columna nativa para los selectores
         except: pass
                             
     except Exception as e: 
@@ -197,7 +196,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
     return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
 
 # =================================================================
-# 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE
+# 🧠 MOTORES DE LÓGICA Y EMPAREJAMIENTO INTELIGENTE (ORIGINAL INTACTO)
 # =================================================================
 
 def limpiar_numero(val):
@@ -209,8 +208,7 @@ def limpiar_numero(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 NUEVO MOTOR HISTÓRICO PARAMETRIZADO POR SELECTORES DE FECHA
-def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
+def calcular_historicos_finca(finca_usuario, df_t1):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0, 0.0
     
@@ -224,16 +222,16 @@ def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
     if df_finca.empty: 
         return 45000.0, 0.0 
         
-    df_evaluar = df_finca
+    año_actual = str(datetime.now().year)
+    año_corto = año_actual[-2:]
     
-    # Filtrar por el rango de fechas seleccionado por el usuario en lugar de quemar el año 2026
-    if 'FECHA_PURA' in df_finca.columns:
-        mask_fechas = (df_finca['FECHA_PURA'] >= fecha_inicio) & (df_finca['FECHA_PURA'] <= fecha_fin)
-        df_finca_fechas = df_finca[mask_fechas]
-        
-        # Solo aplicamos el filtro de fecha si arroja resultados válidos de vuelo
-        if not df_finca_fechas.empty and not df_finca_fechas[df_finca_fechas['VAL_COSTO_HA'] > 1000].empty:
-            df_evaluar = df_finca_fechas
+    df_evaluar = df_finca
+    if 'FECHA_CLEAN' in df_finca.columns:
+        # BÚSQUEDA TÁCTICA ORIGINAL: Resistente a fechas de SAP sucias
+        mask_año = df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"/{año_corto}", na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"-{año_corto}", na=False)
+        df_finca_año = df_finca[mask_año]
+        if not df_finca_año.empty and not df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000].empty:
+            df_evaluar = df_finca_año
             
     prom_vuelo = 45000.0
     prom_recargo = 0.0
@@ -259,14 +257,9 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     
     dict_prods = {}
     es_organico = False
-    
-    finca_sel_clean = re.sub(r'[^A-Z0-9]', '', str(finca_sel).upper())
-    
     try:
         if not df_t2.empty:
-            # Saneamiento anti espacios invisibles
-            df_t2_clean = df_t2.iloc[:, 0].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-            match_f = df_t2[df_t2_clean == finca_sel_clean]
+            match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
             if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
     except: pass
 
@@ -346,7 +339,6 @@ def ejecutar(supabase_client=None):
     
     div[data-testid="stTextInput"] > div,
     div[data-testid="stNumberInput"] > div,
-    div[data-testid="stDateInput"] > div,
     div[data-testid="stMultiSelect"] div[data-baseweb="select"] {{
         background-color: #ffffff !important;
         border: 2px solid {COLOR_NAVY} !important;
@@ -358,7 +350,6 @@ def ejecutar(supabase_client=None):
     }}
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input, 
-    div[data-testid="stDateInput"] input, 
     div[data-testid="stMultiSelect"] * {{
         color: {COLOR_NAVY} !important;
         font-weight: bold !important;
@@ -447,14 +438,10 @@ def ejecutar(supabase_client=None):
     )
 
     st.markdown("---")
-    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Base Histórica")
-    
-    # 💥 SELECTORES DE FECHA INYECTADOS EN LA INTERFAZ
-    col_f1, col_f2, col_r1, col_r2 = st.columns(4)
-    fecha_base_inicio = col_f1.date_input("📅 Rango Histórico (Desde)", value=date(2026, 1, 1))
-    fecha_base_fin = col_f2.date_input("📅 Rango Histórico (Hasta)", value=date(2026, 12, 31))
-    inflacion_proyectada = col_r1.number_input("📈 Inflación a Proyectar (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
-    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo", min_value=0, max_value=30, value=0, step=1)
+    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
+    col_r1, col_r2 = st.columns(2)
+    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
 
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
@@ -481,8 +468,6 @@ def ejecutar(supabase_client=None):
 
                 for idx, row in df_valid.iterrows():
                     finca_n = str(row['FINCA']).strip().upper()
-                    finca_n_clean = re.sub(r'[^A-Z0-9]', '', finca_n) # Anti espacios
-                    
                     ha_num = limpiar_numero(row['HECTAREAS'])
                     coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
                     
@@ -494,15 +479,13 @@ def ejecutar(supabase_client=None):
                     aplica_dominical = bool(row.get('DOMINICAL', False))
 
                     if ha_num == 0 and not df_t2.empty:
-                        df_t2_clean = df_t2.iloc[:, 0].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-                        match_f = df_t2[df_t2_clean == finca_n_clean]
+                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
                         if not match_f.empty:
                             ha_num = limpiar_numero(match_f.iloc[0].iloc[2])
 
                     if ha_num <= 0: continue
 
-                    # 💥 PASANDO LOS SELECTORES DE FECHA AL MOTOR DE PROMEDIOS
-                    precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1, fecha_base_inicio, fecha_base_fin)
+                    precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1)
 
                     if precio_vuelo_manual == 0:
                         precio_vuelo_final = precio_vuelo_historico
@@ -518,10 +501,8 @@ def ejecutar(supabase_client=None):
 
                     tipo_prod = "TERCERO"
                     if not df_t2.empty:
-                        df_t2_clean = df_t2.iloc[:, 0].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-                        match_f = df_t2[df_t2_clean == finca_n_clean]
-                        if not match_f.empty: 
-                            tipo_prod = str(match_f.iloc[0].iloc[col_prod_idx]).strip().upper() if len(match_f.columns) > col_prod_idx else "TERCERO"
+                        match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
+                        if not match_f.empty: tipo_prod = str(match_f.iloc[0].iloc[col_prod_idx]).strip().upper() if len(match_f.columns) > col_prod_idx else "TERCERO"
                     
                     if "COOP" in finca_n or "EMPREBANCOOP" in finca_n: tipo_prod = "COOPERATIVA"
 
