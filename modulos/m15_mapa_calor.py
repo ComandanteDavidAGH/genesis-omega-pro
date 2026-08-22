@@ -118,7 +118,7 @@ def consultar_clima_avanzado(lat, lon):
                 clima_diario = dict(zip(df_clima['fecha_str'], df_clima['lluvia']))
                 
                 return lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario
-    except Exception as e: pass
+    except Exception: pass
     return 0.0, 0.0, 0.0, {"error": True}
 
 # =================================================================
@@ -267,15 +267,21 @@ def ejecutar(purificar_lote, extraer_numero):
             "PALOMAR": [10.7210, -74.1150], "LA CEIBA": [10.7350, -74.1620], "CAÑO MOCHO": [10.7820, -74.1850],
             "PALOMINO": [11.2442, -73.5623], "BURITACA": [11.2420, -73.7650], "GUACAMAYAL": [10.7292, -74.1594],
             "SEVILLA": [10.7667, -74.1500], "RIO FRIO": [10.9000, -74.1667], "FUNDACION": [10.5208, -74.1833],
-            "GUACHACA": [11.2411, -73.8188] # Agregado Guachaca
+            "GUACHACA": [11.2411, -73.8188]
         }
 
-        # 🎯 NUEVO: CALIBRADOR PLUVIOMÉTRICO (COMPENSADOR DE CEGUERA SATELITAL)
+        # 🎯 ORDENAMIENTO LOGÍSTICO EXACTO (Ruta operativa solicitada por el usuario)
+        orden_logistico = [
+            "PALOMINO", "BURITACA", "GUACHACA", "CAÑO MOCHO", "SEVILLA", 
+            "RIO FRIO", "ORIHUECA", "LA CEIBA", "FLORIDA", "PALOMAR", 
+            "GUACAMAYAL", "TUCURINCA", "FUNDACION"
+        ]
+
         st.markdown("---")
         st.markdown("### 🌦️ 2. Calibración de Sensibilidad del Radar (Ajuste Tropical)")
-        st.caption("Los satélites globales promedian cuadrículas de 10km y subestiman las tormentas locales fuertes. Ajuste el multiplicador para acercarlo a la realidad de sus pluviómetros físicos.")
+        st.caption("Los satélites globales subestiman las tormentas locales. Ajuste el multiplicador para acercarlo a la realidad de sus pluviómetros físicos.")
         c_cal1, c_cal2 = st.columns(2)
-        factor_norte = c_cal1.slider("🌊 Multiplicador Zona Norte (Troncal Caribe: Palomino, Guachaca, Buritaca)", min_value=1.0, max_value=20.0, value=6.0, step=0.5)
+        factor_norte = c_cal1.slider("🌊 Multiplicador Zona Norte (Troncal Caribe)", min_value=1.0, max_value=20.0, value=6.0, step=0.5)
         factor_sur = c_cal2.slider("🍌 Multiplicador Zona Sur (Zona Bananera, Fundación)", min_value=1.0, max_value=20.0, value=3.5, step=0.5)
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -304,7 +310,6 @@ def ejecutar(purificar_lote, extraer_numero):
                 api_fallo = False
                 zona_norte_keywords = ["PALOMINO", "GUACHACA", "BURITACA", "DON DIEGO"]
                 
-                # Pre-descarga Climática agrupada por sector con multiplicadores aplicados
                 for sec, gps in coor_estimadas.items():
                     l_90, l_30, l_7f, dict_diario = consultar_clima_avanzado(gps[0], gps[1])
                     if "error" in dict_diario:
@@ -330,11 +335,18 @@ def ejecutar(purificar_lote, extraer_numero):
                 
                 df_clima_raw = pd.DataFrame(historico_clima)
                 df_clima_pivot = pd.DataFrame()
+                cols_presentes_ordenadas = []
                 
                 if not df_clima_raw.empty:
                     df_clima_pivot = df_clima_raw.pivot_table(index="FECHA", columns="SECTOR", values="LLUVIA (mm)", aggfunc='mean').reset_index()
                     df_clima_pivot = df_clima_pivot.sort_values("FECHA", ascending=False)
                     df_clima_pivot['FECHA'] = pd.to_datetime(df_clima_pivot['FECHA']).dt.strftime('%d/%m/%Y')
+                    
+                    # 🎯 APLICACIÓN EXACTA DE LA RUTA LOGÍSTICA SOLICITADA POR EL USUARIO
+                    cols_presentes_ordenadas = [sec for sec in orden_logistico if sec in df_clima_pivot.columns]
+                    cols_extra = [sec for sec in df_clima_pivot.columns if sec not in orden_logistico and sec != "FECHA"]
+                    
+                    df_clima_pivot = df_clima_pivot[['FECHA'] + cols_presentes_ordenadas + cols_extra]
                 
                 for finca in fincas_unicas:
                     if not finca or finca in ["NAN", "NONE", ""]: continue
@@ -367,7 +379,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     if sector_asociado in cache_clima:
                         lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = cache_clima[sector_asociado]
                     
-                    # Criterios ajustados para las alertas (ahora que los mm son más altos)
                     alerta_epidemia = "Baja / Normal"
                     if lluvia_30d > 100.0: alerta_epidemia = "⚡ ALTA (Peligro Inminente)"
 
@@ -601,16 +612,19 @@ def ejecutar(purificar_lote, extraer_numero):
                     )
 
                 with tab_clima:
-                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico)")
+                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico 7D)")
+                    
                     if not df_clima_raw.empty:
+                        # 🎯 ORDENAMIENTO DE LA GRÁFICA PARA QUE COINCIDA CON LA RUTA LOGÍSTICA
                         fig_lluvia = px.bar(
                             df_clima_raw.sort_values("FECHA"), x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
-                            barmode="group", title="<b>Precipitación Diaria Comparativa (mm)</b>"
+                            barmode="group", title="<b>Precipitación Diaria Comparativa (mm)</b>",
+                            category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
                         )
                         fig_lluvia.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', 
                             yaxis_title="Milímetros (mm)", xaxis_title="",
-                            legend_title="Sector Agrícola"
+                            legend_title="Ruta Logística (Norte a Sur)"
                         )
                         st.plotly_chart(fig_lluvia, use_container_width=True)
                         
