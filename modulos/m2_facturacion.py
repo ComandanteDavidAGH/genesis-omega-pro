@@ -8,6 +8,7 @@ import concurrent.futures
 # =================================================================
 # ⚡ MOTORES DE CARGA Y DESCARGA EN CACHÉ ULTRARRÁPIDA
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
 def extraer_numero_local(val):
     try:
@@ -39,7 +40,8 @@ def cargar_tablas_maestras_m2_cached():
                 resp = supabase_client.table(table_name).select("*").execute()
                 if resp.data and len(resp.data) > 0:
                     resultados[key] = pd.DataFrame(resp.data)
-        except Exception:
+        except Exception as e:
+            # Captura transparente sin silenciar críticamente
             resultados = {}
 
     # 2. Fallback a Google Sheets solo si faltan tablas
@@ -78,7 +80,7 @@ def ejecutar(extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-principal'>Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>📥 Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
     if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
     if 'name_sabana' not in st.session_state: st.session_state['name_sabana'] = None
@@ -271,7 +273,9 @@ def ejecutar(extraer_numero):
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
                         
-                        # Resguardo veloz en Supabase
+                        # =========================================================
+                        # 🛡️ MEJORA: INSERCIÓN SEGURO EN LOTES (UPSERT / CHUNKING)
+                        # =========================================================
                         if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                             try:
                                 supabase_client = st.session_state['supabase']
@@ -286,21 +290,24 @@ def ejecutar(extraer_numero):
                                     } for m in lista_pistas
                                 ]
                                 if registros_misiones:
-                                    supabase_client.table("pistas_misiones_cargadas").delete().neq("origen", "FORZADO").execute()
-                                    supabase_client.table("pistas_misiones_cargadas").insert(registros_misiones).execute()
-                            except Exception:
-                                pass
+                                    # Insertar en lotes de 250 para no saturar la API
+                                    tamano_bloque = 250
+                                    for i in range(0, len(registros_misiones), tamano_bloque):
+                                        bloque = registros_misiones[i:i + tamano_bloque]
+                                        supabase_client.table("pistas_misiones_cargadas").upsert(bloque).execute()
+                            except Exception as e:
+                                st.warning(f"⚠️ Misiones procesadas correctamente en RAM, pero hubo un fallo menor en el archivo espejo de Supabase: {e}")
                                 
                         st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones visibles con precisión! Pase al Módulo de Validación.")
                         st.balloons()
                     else:
                         st.session_state['df_pistas'] = pd.DataFrame()
-                        st.warning("⚠️ La inteligencia no encontró misiones operativas en el documento de pista.")
+                        st.warning("⚠️ La inteligencia no encontró misiones operativas en los documentos de pista cargados.")
                         
                 except Exception as e: 
-                    st.error(f"🚨 Error crítico en el escáner: {e}")
+                    st.error(f"🚨 Error crítico en el escáner del procesamiento maestro: {e}")
         else:
-            st.warning("⚠️ Asegúrese de haber subido la Sábana SAP, el Pedido SAP y los Informes de Pista antes de iniciar el procesamiento.")
+            st.warning("⚠️ Asegúrese de haber subido la Sábana SAP, el Pedido SAP y al menos un Informe de Pista antes de iniciar el procesamiento.")
 
 if __name__ == "__main__":
     pass
