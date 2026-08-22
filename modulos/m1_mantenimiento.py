@@ -25,7 +25,7 @@ def obtener_radar_precios_cached(_extraer_numero):
     """ Función ultrarrápida vectorizada para leer y estructurar el radar de precios """
     gc = inicializar_cliente_gspread()
     if gc is None:
-        return False, "🚨 Enlace satelital roto con Google Cloud.", None, 0, 0, 0
+        return False, "🚨 Enlace satelital roto con Google Cloud.", None, 0, 0, 0, None
         
     try:
         url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
@@ -145,6 +145,9 @@ def ejecutar(extraer_numero):
                     hoja_plantilla.update(range_name="A3", values=df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
                     hoja_plantilla.update(range_name="K3", values=[[x] for x in unicos], value_input_option='USER_ENTERED')
                      
+                    # =========================================================
+                    # 🛡️ MEJORA 1: ELIMINACIÓN DE ERRORES SILENCIOSOS (PASO A)
+                    # =========================================================
                     if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                         try:
                             supabase_client = st.session_state['supabase']
@@ -152,18 +155,21 @@ def ejecutar(extraer_numero):
                             df_db.columns = [f"col_{i}" for i in range(len(df_db.columns) - 1)] + ["col_j"]
                             registros = df_db.fillna("").to_dict(orient='records')
                             
-                            supabase_client.table("sap_precios_plantilla").delete().neq("col_j", "PROBAR_VACIO_FORZADO").execute()
                             if registros:
+                                # Reemplazamos el delete() fantasma. Supabase insertará de forma segura.
+                                # Nota: Como es una "plantilla" que se sobrescribe, borramos solo SI hay datos nuevos listos.
+                                supabase_client.table("sap_precios_plantilla").delete().neq("col_j", "PROBAR_VACIO_FORZADO").execute()
                                 supabase_client.table("sap_precios_plantilla").insert(registros).execute()
-                        except Exception:
-                            pass
+                                
+                        except Exception as e:
+                            st.warning(f"⚠️ Drive actualizado, pero hubo un fallo menor sincronizando la Plantilla en Supabase: {e}")
 
                     st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de forma instantánea.")
                     st.session_state['paso_a_listo'] = True
-                    # Limpiamos el caché viejo para obligarlo a escanear si va al Paso B
                     st.cache_data.clear()
+                    
                 except Exception as e:
-                    st.error(f"🚨 Error en Paso A: {e}")
+                    st.error(f"🚨 Error Crítico en Paso A al leer o procesar el archivo: {e}")
 
     st.markdown("---")
     st.markdown("### ⚡ PASO B: SINCRONIZADOR DE PRECIOS (ESTADO DEL ARSENAL)")
@@ -192,13 +198,19 @@ def ejecutar(extraer_numero):
             ]
 
             if records_espejo:
-                cliente_sb.table("PRECIOS_INSUMOS").delete().neq("PRODUCTO", "FANTASMA_VACIO").execute()
-                res = cliente_sb.table("PRECIOS_INSUMOS").insert(records_espejo).execute()
-                if res.data:
-                    return True, f"✅ Supabase actualizado con {len(records_espejo)} insumos."
+                # =========================================================
+                # 🛡️ MEJORA 2: UPSERT EN LUGAR DE TRUNCATE (PASO B)
+                # =========================================================
+                # Upsert insertará los nuevos insumos y actualizará los precios de los existentes
+                # sin dejar la tabla en blanco durante el proceso.
+                res = cliente_sb.table("PRECIOS_INSUMOS").upsert(records_espejo).execute()
+                
+                if res.data or res.data == []: # Dependiendo de la versión de supabase, insert exitoso puede retornar data
+                    return True, f"✅ Supabase actualizado (Upsert Seguro) con {len(records_espejo)} insumos."
+                    
             return False, "⚠️ No se encontraron registros válidos para sincronizar."
         except Exception as e:
-            return False, f"🚨 Error en Supabase: {e}"
+            return False, f"🚨 Error en Supabase durante Upsert: {e}"
 
     col_scan1, col_scan2 = st.columns([1, 1])
     
@@ -245,7 +257,6 @@ def ejecutar(extraer_numero):
 
         st.markdown("#### 🛰️ Reporte Detallado de Situación:")
 
-        # 💥 PANEL DE BOTONES DUAL: GOOGLE DRIVE + BOTÓN DEDICADO SUPABASE
         c_btn1, c_btn2, c_btn3 = st.columns([1.5, 1.5, 1])
         
         with c_btn1:
@@ -260,11 +271,9 @@ def ejecutar(extraer_numero):
                         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
                         ws_conf = sh.worksheet("Configuración")
                         
-                        # Usar data_full del caché para no volver a descargar la hoja si no es necesario
                         if not data_full:
                             data_full = ws_conf.get_all_values()
                         
-                        # 1. Copiar Columna K (10) -> Columna J (9) en Google Sheets "Configuración"
                         valores_para_j = []
                         for fila in data_full[1:]:
                             valor_k = fila[10] if len(fila) > 10 else ""
@@ -275,14 +284,12 @@ def ejecutar(extraer_numero):
                             ws_conf.update(range_name=rango_destino, values=valores_para_j, value_input_option='USER_ENTERED')
                             st.toast("✅ Google Drive actualizado.", icon="📊")
 
-                        # 2. Inyección explícita a Supabase
                         ok_sb, msg_sb = inyectar_precios_a_supabase(data_full)
                         if ok_sb:
                             st.toast(msg_sb, icon="🌩️")
                         else:
                             st.warning(msg_sb)
 
-                        # 3. Limpiar caché viejo y RE-ESCANEO EN VIVO
                         st.cache_data.clear()
                         ok_re, msg_re, radar_re, tot, ok_i, fail_i, df_re = obtener_radar_precios_cached(extraer_numero)
                         if ok_re:
@@ -334,7 +341,6 @@ def ejecutar(extraer_numero):
                         st.session_state['data_full_cache'] = df_re
                     st.rerun()
 
-        # Despliegue de la tabla estilizada
         def color_estado(val):
             if val == "✅ OK": return 'background-color: #d4edda; color: #155724; font-weight: bold; text-align: center;'
             if val == "❌ DESFASE": return 'background-color: #f8d7da; color: #721c24; font-weight: bold; text-align: center;'
