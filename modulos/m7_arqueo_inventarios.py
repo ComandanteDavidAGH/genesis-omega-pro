@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import gspread
 import re
 import math
@@ -8,27 +9,57 @@ import openpyxl
 from datetime import datetime, timedelta
 import streamlit.components.v1 as components
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# 🔌 CONEXIÓN GOOGLE CLOUD Y MOTORES DE EXTRACCIÓN
+# ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
+URL_BASE_AFOROS = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
 @st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread():
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
     try:
-        if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
-        elif "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
-    except Exception: return None
+    except Exception:
+        return None
 
-# 💥 URL MAESTRA DEL COMANDANTE
-URL_BASE_AFOROS = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+def procesar_fecha_pesada(val):
+    """ Convierte seriales de Excel, cadenas texto y formatos pesados a datetime nativo """
+    if pd.isna(val) or val is None or str(val).strip().lower() in ["", "nan", "none", "nat", "<na>"]:
+        return None
+    s = str(val).strip().lower()
+    if s.replace('.', '', 1).isdigit():
+        try:
+            num = float(s)
+            if 30000 < num < 60000:
+                return (pd.Timestamp('1899-12-30') + pd.Timedelta(days=num)).to_pydatetime()
+        except Exception: pass
+    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception: pass
+    try:
+        dt = pd.to_datetime(s, dayfirst=True)
+        if pd.notna(dt):
+            return dt.to_pydatetime()
+    except Exception: pass
+    return None
 
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_tablas_aforo():
-    gc = inicializar_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), "Sin conexión a Google Cloud"
     try:
         sh = gc.open_by_url(URL_BASE_AFOROS)
@@ -67,7 +98,7 @@ def extraer_tablas_aforo():
 
 @st.cache_data(show_spinner=False, ttl=300)
 def extraer_consumos_teoricos():
-    gc = inicializar_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame(), "Sin conexión a Google Cloud"
     try:
         sh = gc.open_by_url(URL_BASE_AFOROS)
@@ -195,7 +226,6 @@ def obtener_hora_colombia():
 # 🛢️ RENDERIZADOR DEL RADAR DE PLOMADAS Y CONCILIACIÓN
 # =================================================================
 def renderizar_radar_plomadas():
-    
     with st.spinner("Sincronizando Bóveda de Aforos y Tabla de Vuelos (Teórico)..."):
         df_aforo, error_aforo = extraer_tablas_aforo()
         df_teorico, df_auditoria, error_teorico = extraer_consumos_teoricos()
@@ -208,7 +238,6 @@ def renderizar_radar_plomadas():
         
     st.markdown("<h3 style='color: #0d1b2a; border-bottom: 2px solid #d4af37;'>📋 1. Formulario Maestro de Supervisor (Lectura Física)</h3>", unsafe_allow_html=True)
     
-    # --- CABECERA DE CONFIGURACIÓN ---
     c_f, c_p = st.columns(2)
     fecha_plomada = c_f.date_input("🗓️ Fecha del Reporte", value=obtener_hora_colombia().date())
     semana_calculada = str(fecha_plomada.isocalendar()[1]).strip()
@@ -298,7 +327,7 @@ def renderizar_radar_plomadas():
             if btn_registrar_plomada and not errores_aforo:
                 with st.spinner("Inyectando desglose de manera táctica..."):
                     try:
-                        gc = inicializar_cliente_gspread()
+                        gc = obtener_cliente_gspread_unificado()
                         sh = gc.open_by_url(URL_BASE_AFOROS)
                         try: ws_reg = sh.worksheet("REGISTRO_PLOMADAS")
                         except:
@@ -324,7 +353,6 @@ def renderizar_radar_plomadas():
                                 usuario_actual
                             ])
                         
-                        # 💥 INYECCIÓN TÁCTICA (Clona el formato exacto de la tabla)
                         col_a = ws_reg.col_values(1)
                         ultima_fila = 1
                         for idx in range(len(col_a)-1, -1, -1):
@@ -333,6 +361,9 @@ def renderizar_radar_plomadas():
                                 break
                         siguiente_fila = ultima_fila + 1
                         
+                        if (siguiente_fila + len(filas_a_guardar)) > ws_reg.row_count:
+                            ws_reg.add_rows(50)
+                            
                         ws_reg.insert_rows(filas_a_guardar, row=siguiente_fila, value_input_option="USER_ENTERED")
                         st.success(f"✅ ¡Desglose por tanque guardado exitosamente!")
                     except Exception as e: st.error(f"🚨 Error: {e}")
@@ -417,7 +448,7 @@ def renderizar_radar_plomadas():
         if st.button("💾 GUARDAR ARQUEO GLOBAL", type="primary", use_container_width=True):
             with st.spinner("Inyectando Arqueo Global..."):
                 try:
-                    gc = inicializar_cliente_gspread()
+                    gc = obtener_cliente_gspread_unificado()
                     sh = gc.open_by_url(URL_BASE_AFOROS)
                     try: 
                         ws_reg = sh.worksheet("ARQUEOS_GLOBALES")
@@ -441,7 +472,6 @@ def renderizar_radar_plomadas():
                         usuario_actual
                     ]
                     
-                    # 💥 INYECCIÓN TÁCTICA 
                     col_a = ws_reg.col_values(1)
                     ultima_fila = 1
                     for idx in range(len(col_a)-1, -1, -1):
@@ -450,6 +480,9 @@ def renderizar_radar_plomadas():
                             break
                     siguiente_fila = ultima_fila + 1
                     
+                    if siguiente_fila > ws_reg.row_count:
+                        ws_reg.add_rows(50)
+                        
                     ws_reg.insert_rows([fila_global], row=siguiente_fila, value_input_option="USER_ENTERED")
                     st.success(f"✅ ¡Arqueo Global Guardado con Éxito!")
                 except Exception as e: st.error(f"🚨 Error al guardar: {e}")
@@ -669,7 +702,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                             generar_cruce()
                             st.session_state.arqueo_procesado = True
                             
-                            if 'supabase' in st.session_state:
+                            if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                 try:
                                     payload_cruce = [{"semana": str(semana_obj).strip(), "pista": str(r["PISTA"]), "item_codigo": str(r["ITEM"]), "producto": str(r["PRODUCTO"]), "lote": str(r["LOTE"]), "saldo_sap": float(r["SALDO_SAP"]), "saldo_fisico": float(r["SALDO_FISICO"]), "diferencia": float(r["DIFERENCIA"]), "estado": str(r["ESTADO"])} for _, r in st.session_state.cruce_final.iterrows()]
                                     if payload_cruce:
@@ -713,7 +746,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                         idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == lote_purificado)].index
                         if not idx_m.empty: st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = row['OBSERVACIONES']
                         payload_obs_cloud.append({"semana": str(st.session_state.semana_actual).strip(), "lote_pista_key": str(key), "observacion": str(row['OBSERVACIONES']), "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-                    if 'supabase' in st.session_state and payload_obs_cloud:
+                    if 'supabase' in st.session_state and st.session_state['supabase'] is not None and payload_obs_cloud:
                         try: st.session_state['supabase'].table("arqueos_observaciones").upsert(payload_obs_cloud, on_conflict="semana,lote_pista_key").execute()
                         except Exception: pass
     
@@ -762,7 +795,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 st.session_state.observaciones_memoria[key_obs] = txt_obs
                                 idx_m = st.session_state.cruce_final[(st.session_state.cruce_final['PISTA'] == row_s['PISTA']) & (st.session_state.cruce_final['LOTE_KEY'] == row_s['LOTE_KEY'])].index
                                 if not idx_m.empty: st.session_state.cruce_final.at[idx_m[0], 'OBSERVACIONES'] = txt_obs
-                                if 'supabase' in st.session_state:
+                                if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                     try: st.session_state['supabase'].table("arqueos_observaciones").upsert([{"semana": str(st.session_state.semana_actual).strip(), "lote_pista_key": str(key_obs), "observacion": txt_obs, "fecha_auditoria": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}], on_conflict="semana,lote_pista_key").execute()
                                     except Exception: pass
                                 st.toast("✅ Lote justificado exitosamente.", icon="✅")
@@ -780,7 +813,7 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 st.session_state.df_sup_grouped.loc[mask, 'LOTE_KEY'] = purificar_lote(lote_sap)
                                 st.session_state.df_sup_grouped.loc[mask, 'PRODUCTO_SUP'] = prod_sap
                                 st.session_state.df_sup_grouped = st.session_state.df_sup_grouped.groupby(['PISTA', 'LOTE_KEY'], as_index=False).agg({'PRODUCTO_SUP': 'first', 'LOTE_SUP': 'first', 'SALDO_FISICO': 'sum'})
-                                if 'supabase' in st.session_state:
+                                if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                     try: st.session_state['supabase'].table("arqueos_log_fusiones").insert({"semana": str(st.session_state.semana_actual).strip(), "pista": str(row_s['PISTA']), "lote_erroneo": str(row_s['LOTE']), "lote_corregido_sap": str(lote_sap), "insumo": str(prod_sap), "fecha_correccion": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).execute()
                                     except Exception: pass
                                 generar_cruce()
@@ -812,10 +845,10 @@ def ejecutar(quitar_tildes, purificar_lote):
                                 generar_cruce()
                                 st.toast("✅ Fusión deshecha con éxito.", icon="↩️")
                                 st.rerun()
-    
+
             with tab3:
                 st.dataframe(st.session_state.cruce_final.drop(columns=['LOTE_KEY'], errors='ignore').style.map(lambda x: 'background-color: #d4edda; color: #155724' if x == "✅ OK" else '', subset=['ESTADO']), use_container_width=True, hide_index=True, column_config={"SALDO_SAP": st.column_config.NumberColumn("SALDO SAP", format="%.3f"), "SALDO_FISICO": st.column_config.NumberColumn("SALDO FÍSICO", format="%.3f"), "DIFERENCIA": st.column_config.NumberColumn("DIFERENCIA", format="%.3f")})
-    
+
             st.markdown("---")
             col_dw1, col_dw2 = st.columns(2)
             with col_dw1:
