@@ -285,16 +285,31 @@ def ejecutar(purificar_lote, extraer_numero):
             "SEVILLA", "GUACAMAYAL", "TUCURINCA", "FUNDACION"
         ]
 
-        st.markdown("---")
-        st.markdown("### 🌦️ 2. Calibración de Sensibilidad del Radar (Ajuste Tropical)")
-        st.caption("Los satélites globales subestiman las tormentas locales. Ajuste el multiplicador para acercarlo a la realidad de sus pluviómetros físicos.")
-        c_cal1, c_cal2 = st.columns(2)
-        factor_norte = c_cal1.slider("🌊 Multiplicador Zona Norte (Troncal Caribe)", min_value=1.0, max_value=20.0, value=6.0, step=0.5)
-        factor_sur = c_cal2.slider("🍌 Multiplicador Zona Sur (Zona Bananera, Fundación)", min_value=1.0, max_value=20.0, value=3.5, step=0.5)
+        # 🎯 MEJORA TÁCTICA: MODO AUTOCALIBRADO CON ESCENARIOS (LIMPIEZA DE PANTALLA)
+        escenario_sel = st.selectbox(
+            "⚙️ Escenario de Calibración Satelital:",
+            ["🤖 Autocalibrado Estándar (Recomendado por Defecto)", "🟢 Lectura Satelital Pura (Sin Ajuste - 1.0x)", "🔴 Escenario de Tormenta Convectiva Extrema"],
+            index=0,
+            help="Seleccione el escenario sin necesidad de ajustar deslizadores numéricos."
+        )
+
+        # Asignación de factores según el escenario
+        if escenario_sel == "🟢 Lectura Satelital Pura (Sin Ajuste - 1.0x)":
+            factor_norte, factor_sur = 1.0, 1.0
+        elif escenario_sel == "🔴 Escenario de Tormenta Convectiva Extrema":
+            factor_norte, factor_sur = 10.0, 6.0
+        else: # Autocalibrado por defecto
+            factor_norte, factor_sur = 6.0, 3.5
+
+        # Expander opcional por si el analista experto desea un ajuste fino
+        with st.expander("🛠️ Ajuste Fino Manual de Multiplicadores (Avanzado)"):
+            c_cal1, c_cal2 = st.columns(2)
+            factor_norte = c_cal1.slider("🌊 Multiplicador Zona Norte (Caribe)", min_value=1.0, max_value=20.0, value=factor_norte, step=0.5)
+            factor_sur = c_cal2.slider("🍌 Multiplicador Zona Sur (Bananera/Fundación)", min_value=1.0, max_value=20.0, value=factor_sur, step=0.5)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        if st.button("🛰️ ENCENDER RADAR METEOROLÓGICO Y EPIDEMIOLÓGICO", type="primary", use_container_width=True):
+        if st.button("🚀 BARRIDO SATELITAL Y EJECUCIÓN GENERAL", type="primary", use_container_width=True):
             with st.spinner("Decodificando satélites y construyendo base pluviométrica..."):
                 
                 df_t1 = cargar_historico_t1()
@@ -618,12 +633,10 @@ def ejecutar(purificar_lote, extraer_numero):
                         }
                     )
 
-                # 🎯 PESTAÑA HISTORIAL CON MODELO FACETADO DE PANELES INDEPENDIENTES (SMALL MULTIPLES)
                 with tab_clima:
                     st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Paneles Independientes de Norte a Sur)")
                     
                     if not df_clima_raw.empty:
-                        # 🎯 MODELO FACETADO: Cada sector tiene su propio carril y su propia escala
                         df_chart = df_clima_raw.sort_values("FECHA")
                         
                         fig_lluvia = px.area(
@@ -631,24 +644,22 @@ def ejecutar(purificar_lote, extraer_numero):
                             x="FECHA", 
                             y="LLUVIA (mm)", 
                             facet_col="SECTOR", 
-                            facet_col_wrap=3, # 3 columnas por fila para legibilidad perfecta
+                            facet_col_wrap=3, 
                             color="SECTOR",
                             title="<b>Comportamiento de Lluvia por Sector (Paneles Independientes)</b>",
                             category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
                         )
                         
-                        # Permitir que cada panel tenga su propia escala de Y para que un sector de 400mm no aplaste a uno de 20mm
                         fig_lluvia.for_each_yaxis(lambda yaxis: yaxis.update(matches=None, showticklabels=True))
                         
                         fig_lluvia.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)', 
                             paper_bgcolor='rgba(0,0,0,0)', 
-                            height=800, # Altura generosa para acomodar la cuadrícula
+                            height=800, 
                             showlegend=False,
                             margin=dict(t=50, b=20, l=10, r=10)
                         )
                         
-                        # Limpiar títulos de las facetas para que se lean elegantes
                         fig_lluvia.for_each_annotation(lambda a: a.update(text=f"<b>{a.text.split('=')[-1]}</b>"))
                         
                         st.plotly_chart(fig_lluvia, use_container_width=True)
