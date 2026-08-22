@@ -20,10 +20,6 @@ def extraer_numero_local(val):
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def cargar_tablas_maestras_m2_cached():
-    """
-    Intenta recuperar las 4 tablas maestras desde Supabase primero (milisegundos).
-    Si no existen, las descarga de Google Sheets en paralelo.
-    """
     resultados = {}
     mapeo_tablas = {
         'df_config': ('config_tabla2', "TABLA%202"),
@@ -32,7 +28,6 @@ def cargar_tablas_maestras_m2_cached():
         'df_apoyo_raw': ('tabla_apoyo_raw', "TABLA%20DE%20APOYO2023")
     }
 
-    # 1. Intentar vía Supabase (Velocidad Luz)
     if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
         try:
             supabase_client = st.session_state['supabase']
@@ -43,7 +38,6 @@ def cargar_tablas_maestras_m2_cached():
         except Exception:
             resultados = {}
 
-    # 2. Fallback a Google Sheets solo si faltan tablas
     if len(resultados) < 4:
         url_base = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/gviz/tq?tqx=out:csv&sheet="
         urls_a_bajar = {k: f"{url_base}{v[1]}" for k, v in mapeo_tablas.items() if k not in resultados}
@@ -76,6 +70,32 @@ def ejecutar(extraer_numero):
         padding-bottom: 5px; 
         font-family: 'Arial Black', sans-serif; 
     }
+
+    /* 🎯 ALINEACIÓN FLEXBOX SIMÉTRICA DE COLUMNAS (MÓDULO 2) */
+    [data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        align-items: stretch !important;
+    }
+
+    [data-testid="column"] > div {
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+    }
+
+    div[data-testid="stFileUploader"] section {
+        background-color: #ffffff !important;
+        border: 2px dashed #0d1b2a !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+        min-height: 110px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -100,9 +120,11 @@ def ejecutar(extraer_numero):
                 st.session_state['name_sabana'] = f_sabana_up.name
                 st.rerun()
         else:
-            st.success(f"✅ Sábana en memoria: {st.session_state['name_sabana']}")
-            if st.button("🔄 Cambiar Sábana", use_container_width=True):
+            st.success(f"✅ Sábana en memoria:\n**{st.session_state['name_sabana']}**")
+            st.markdown("<div style='margin-top: auto;'></div>", unsafe_allow_html=True)
+            if st.button("🔄 Cambiar Sábana", use_container_width=True, key="btn_change_sab_m2"):
                 st.session_state['mem_sabana'] = None
+                st.session_state['name_sabana'] = None
                 st.rerun()
 
     with c2:
@@ -114,9 +136,11 @@ def ejecutar(extraer_numero):
                 st.session_state['name_pedidos'] = f_pedidos_up.name
                 st.rerun()
         else:
-            st.success(f"✅ Pedidos en memoria: {st.session_state['name_pedidos']}")
-            if st.button("🔄 Cambiar Pedidos", use_container_width=True):
+            st.success(f"✅ Pedidos en memoria:\n**{st.session_state['name_pedidos']}**")
+            st.markdown("<div style='margin-top: auto;'></div>", unsafe_allow_html=True)
+            if st.button("🔄 Cambiar Pedidos", use_container_width=True, key="btn_change_ped_m2"):
                 st.session_state['mem_pedidos'] = None
+                st.session_state['name_pedidos'] = None
                 st.rerun()
 
     with c3:
@@ -133,11 +157,12 @@ def ejecutar(extraer_numero):
         f_pedidos = io.BytesIO(st.session_state['mem_pedidos'])
         f_pedidos.name = st.session_state['name_pedidos']
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
     if st.button("🚀 INICIAR PROCESAMIENTO MAESTRO", type="primary", use_container_width=True):
         if f_sabana and f_pedidos and f_pistas:
             with st.spinner("Desplegando Anclaje de Extracción Inteligente (Optimizado)..."):
                 try: 
-                    # 1. Carga directa de Sábana y Pedidos
                     nombre_sabana = f_sabana.name.lower()
                     if nombre_sabana.endswith(('.xlsx', '.xls')): 
                         st.session_state['df_sabana'] = pd.read_excel(f_sabana)
@@ -151,16 +176,13 @@ def ejecutar(extraer_numero):
                     bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
                     st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
-                    # ⚡ 2. Carga en caché ultrarrápida de tablas maestras
                     resultados = cargar_tablas_maestras_m2_cached()
 
-                    # Asignación a memoria de sesión
                     st.session_state['df_config'] = resultados.get('df_config', pd.DataFrame())
                     st.session_state['df_mezclas'] = resultados.get('df_mezclas', pd.DataFrame())
                     st.session_state['df_config_base'] = resultados.get('df_config_base', pd.DataFrame())
                     df_apoyo_raw = resultados.get('df_apoyo_raw', pd.DataFrame())
                     
-                    # Limpieza veloz de TABLA DE APOYO
                     df_apoyo_final = pd.DataFrame()
                     if not df_apoyo_raw.empty:
                         fila_titulos = 0
@@ -186,7 +208,6 @@ def ejecutar(extraer_numero):
                         df_apoyo_final.columns = encabezados_limpios
                     st.session_state['df_apoyo'] = df_apoyo_final
 
-                    # ⚡ 3. Procesamiento optimizado de Pistas mediante pd.ExcelFile (Una sola lectura)
                     lista_pistas = []
                     
                     for f in f_pistas:
@@ -271,12 +292,6 @@ def ejecutar(extraer_numero):
 
                     if lista_pistas:
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
-                        
-                        # =========================================================
-                        # 🛡️ MEJORA: MEMORIA PURA PARA MÓDULO 3
-                        # Las misiones quedan cargadas directamente en RAM sin 
-                        # depender de tablas inexistentes en Supabase.
-                        # =========================================================
                                 
                         st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones visibles con precisión! Pase al Módulo de Validación.")
                         st.balloons()
