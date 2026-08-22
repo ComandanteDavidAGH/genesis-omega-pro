@@ -254,10 +254,6 @@ def ejecutar(purificar_lote, extraer_numero):
         font-weight: 800 !important;
         text-transform: uppercase !important;
     }}
-    
-    /* Pestañas (Tabs) de Alta Gama */
-    div[data-testid="stTabs"] button[role="tab"] {{ font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }}
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -288,7 +284,6 @@ def ejecutar(purificar_lote, extraer_numero):
         opciones_profundidad = ["Último Año (Tendencia Reciente)", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"]
         profundidad_sel = col_profundidad.selectbox("🔍 Profundidad del Histórico:", opciones_profundidad)
 
-        # 🎯 MEJORA TÁCTICA: HOMOLOGACIÓN DINÁMICA DE SAP
         with st.expander("⚙️ Homologación Avanzada de Almacenes (SAP vs Operación)"):
             st.info("💡 **Visión Táctica:** Aquí puedes modificar cómo el sistema lee los almacenes de SAP y los cruza contra la TABLA 1, sin alterar el código de Python.")
             c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns(5)
@@ -308,7 +303,7 @@ def ejecutar(purificar_lote, extraer_numero):
         if st.button("🚀 EJECUTAR PREDICCIÓN DE RUPTURAS", type="primary", use_container_width=True):
             with st.spinner(f"Sincronizando lenguajes y analizando comportamiento agronómico..."):
                 try:
-                    # --- A. LECTURA DE SAP ---
+                    # --- LECTURA DE SAP ---
                     if archivo_sap.name.lower().endswith('.xlsx') or archivo_sap.name.lower().endswith('.xls'):
                         df_sap = pd.read_excel(archivo_sap)
                     else:
@@ -350,7 +345,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     if pista_objetivo != "TODAS":
                         df_sap_agrupado = df_sap_agrupado[df_sap_agrupado['PISTA_SAP'].str.contains(pista_objetivo, na=False)]
 
-                    # --- B. LECTURA DE BÓVEDA ---
+                    # --- LECTURA DE BÓVEDA ---
                     df_t1, df_mezclas = extraer_datos_boveda_oraculo()
 
                     if df_t1.empty or df_mezclas.empty:
@@ -397,7 +392,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     consumo_esperado_pista = {} 
                     ha_total_detectada = 0.0
 
-                    # 🎯 CÁLCULO DE INTERVALOS DE CICLO (VISIÓN TÁCTICA)
+                    # 🎯 CÁLCULO DE INTERVALOS DE CICLO
                     intervalos_pista = {}
                     for pista_u in df_hist_mes['PISTA_OPERATIVA'].unique():
                         intervalos_pista[pista_u] = calcular_intervalo_pista(df_hist_mes[df_hist_mes['PISTA_OPERATIVA'] == pista_u])
@@ -419,7 +414,6 @@ def ejecutar(purificar_lote, extraer_numero):
                             for prod_quimico, dosis in receta_dict.items():
                                 volumen_hist_total[pista_op][prod_quimico] = volumen_hist_total[pista_op].get(prod_quimico, 0) + (dosis * ha_aplicadas)
 
-                        # Fusión Híbrida Mensual
                         for pista_op, prods in volumen_hist_total.items():
                             ha_historicas_mes = ha_hist_total_pista.get(pista_op, 0)
                             ha_actuales_mes = ha_mensual_actual_pista.get(pista_op, ha_historicas_mes / df_hist_mes['AÑO'].nunique() if df_hist_mes['AÑO'].nunique() > 0 else 1)
@@ -434,7 +428,6 @@ def ejecutar(purificar_lote, extraer_numero):
                                 else:
                                     consumo_esperado_pista[pista_op][prod] = 0.0
 
-                    # CONSTRUCCIÓN DE MATRICES (LINEAL Y TÁCTICA)
                     resultados_lineal = []
                     resultados_tactico = []
                     
@@ -456,7 +449,7 @@ def ejecutar(purificar_lote, extraer_numero):
                                 if p_receta_clean in prod_sap_clean or prod_sap_clean in p_receta_clean:
                                     consumo_mes_proyectado += vol_mes
 
-                        # --- LÓGICA 1: LINEAL (DIARIA) ---
+                        # --- CÁLCULO LINEAL ---
                         consumo_diario = consumo_mes_proyectado / 30 if consumo_mes_proyectado > 0 else 0
                         if consumo_diario > 0:
                             dias_autonomia = saldo / consumo_diario
@@ -476,8 +469,7 @@ def ejecutar(purificar_lote, extraer_numero):
                             "ESTADO": est_lin
                         })
                         
-                        # --- LÓGICA 2: TÁCTICA (POR CICLOS DE FUMIGACIÓN) ---
-                        # Si el mes tiene 30 días, y el ciclo dura 'intervalo_real_dias'. El consumo por ciclo es:
+                        # --- CÁLCULO TÁCTICO (POR CICLOS) ---
                         ciclos_al_mes = 30.0 / intervalo_real_dias if intervalo_real_dias > 0 else 2.0
                         consumo_por_ciclo = consumo_mes_proyectado / ciclos_al_mes if ciclos_al_mes > 0 else 0
                         
@@ -496,7 +488,7 @@ def ejecutar(purificar_lote, extraer_numero):
                             "📦 SALDO (SAP)": saldo,
                             "⏱️ DÍAS POR CICLO": round(intervalo_real_dias, 1),
                             "🔄 CONSUMO POR CICLO": round(consumo_por_ciclo, 1),
-                            "🔋 CICLOS DE AUTONOMÍA": round(ciclos_autonomia, 1),
+                            "🔋 CICLOS DE AUTONOMÍA": round(ciclos_autonomia, 2),
                             "ESTADO TÁCTICO": est_tac
                         })
 
@@ -509,89 +501,19 @@ def ejecutar(purificar_lote, extraer_numero):
                     else:
                         st.warning(f"⚠️ El radar no encontró hectáreas operadas en el mes de {meses_dict[mes_proyeccion]} dentro de la base histórica seleccionada.")
 
-                    # =========================================================
-                    # 💎 INTERFAZ DE DOBLE NÚCLEO (TABS VIP)
-                    # =========================================================
                     st.markdown(f"### 🎯 Tablero de Mando: Proyección para {meses_dict[mes_proyeccion]}")
                     
                     if df_oraculo_lineal.empty:
                         st.info("No se hallaron productos en SAP para la pista seleccionada.")
                     else:
-                        tab_lineal, tab_tactico = st.tabs(["📊 Proyección Estándar (Lineal por Días)", "🔬 Proyección Táctica Avanzada (Por Ciclos Operativos)"])
-                        
-                        # --- RENDER TAB 1: LINEAL ---
-                        with tab_lineal:
-                            st.caption("Asume un consumo químico distribuido equitativamente en 30 días.")
-                            def get_sort_weight_lin(estado_str):
-                                if "CRÍTICO" in estado_str: return 1
-                                if "ALERTA" in estado_str: return 2
-                                return 3
+                        # =========================================================
+                        # 💎 AISLAMIENTO TOTAL: INTERRUPTOR MODO TÁCTICO
+                        # =========================================================
+                        modo_tactico = st.toggle("🔬 ACTIVAR VISIÓN TÁCTICA AVANZADA (Cálculo Físico por Ciclos Operativos)", value=False)
 
-                            df_oraculo_lineal['SORT_WEIGHT'] = df_oraculo_lineal['ESTADO'].apply(get_sort_weight_lin)
-                            df_oraculo_lineal['SOLO_NOMBRE'] = df_oraculo_lineal['🧪 CÓDIGO | PRODUCTO'].apply(lambda x: x.split('|')[1].strip() if '|' in x else x)
-                            df_oraculo_lineal = df_oraculo_lineal.sort_values(by=["📍 PISTA", "SORT_WEIGHT", "SOLO_NOMBRE"], ascending=[True, True, True])
-                            df_oraculo_lineal = df_oraculo_lineal.drop(columns=['SORT_WEIGHT', 'SOLO_NOMBRE'])
+                        if modo_tactico:
+                            st.info("💡 **Visión Táctica Aislada:** El sistema calcula los días reales entre aplicaciones para medir la autonomía en 'Ciclos de Fumigación' en lugar de días lineales.")
                             
-                            criticos = len(df_oraculo_lineal[df_oraculo_lineal['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
-                            alertas = len(df_oraculo_lineal[df_oraculo_lineal['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
-                            optimos = len(df_oraculo_lineal) - (criticos + alertas)
-                            
-                            c_k1, c_k2, c_k3 = st.columns(3)
-                            c_k1.markdown(f"""
-                            <div style="background-color: #ffe6e6; border-left: 5px solid #cc0000; padding: 10px; border-radius: 5px; height: 100%;">
-                                <span style="color: #cc0000; font-weight: bold;">🚨 RUPTURA INMINENTE</span><br/>
-                                <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{criticos} Insumos</span>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            c_k2.markdown(f"""
-                            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 10px; border-radius: 5px; height: 100%;">
-                                <span style="color: #856404; font-weight: bold;">⚠️ ALERTA LOGÍSTICA</span><br/>
-                                <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{alertas} Insumos</span>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            c_k3.markdown(f"""
-                            <div style="background-color: #d4edda; border-left: 5px solid #28a745; padding: 10px; border-radius: 5px; height: 100%;">
-                                <span style="color: #155724; font-weight: bold;">✅ INVENTARIO SANO</span><br/>
-                                <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{optimos} Insumos</span>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            st.markdown("<br/>", unsafe_allow_html=True)
-                            
-                            def pintar_oraculo_lin(row):
-                                if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
-                                if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold;'] * len(row)
-                                return ['color: #155724;'] * len(row)
-
-                            df_vista_lin = df_oraculo_lineal.copy()
-                            df_vista_lin['⏳ AUTONOMÍA'] = df_vista_lin['⏳ AUTONOMÍA'].apply(lambda x: "∞" if x >= 9999 else x)
-
-                            st.dataframe(
-                                df_vista_lin.style.apply(pintar_oraculo_lin, axis=1), 
-                                use_container_width=True, 
-                                hide_index=True,
-                                column_config={
-                                    "📍 PISTA": st.column_config.TextColumn("PISTA", width="small"),
-                                    "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("PRODUCTO", width="large"),
-                                    "📦 SALDO (SAP)": st.column_config.NumberColumn("SALDO (SAP)", format="%,.1f", width="medium"),
-                                    "📈 PROYECCIÓN MES (L/Kg)": st.column_config.NumberColumn("PROYECCIÓN MES", format="%,.1f", width="medium"),
-                                    "⏳ AUTONOMÍA": st.column_config.TextColumn("DÍAS DE AUTONOMÍA", width="medium"),
-                                    "ESTADO": st.column_config.TextColumn("ESTADO LOGÍSTICO", width="medium")
-                                }
-                            )
-
-                            excel_export_lin = generar_excel_vip(df_vista_lin, "Proyeccion_Lineal")
-                            st.download_button(
-                                label="💾 DESCARGAR INFORME ESTÁNDAR (EXCEL VIP)", 
-                                data=excel_export_lin, 
-                                file_name=f"Proyeccion_Lineal_{meses_dict[mes_proyeccion]}.xlsx", 
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-                                use_container_width=True,
-                                key="btn_dw_lin"
-                            )
-
-                        # --- RENDER TAB 2: TÁCTICO (CICLOS) ---
-                        with tab_tactico:
-                            st.info("💡 **Visión Táctica:** El sistema calcula los días reales entre aplicaciones para medir la autonomía en 'Ciclos de Fumigación' en lugar de días lineales.")
                             def get_sort_weight_tac(estado_str):
                                 if "CRÍTICO" in estado_str: return 1
                                 if "ALERTA" in estado_str: return 2
@@ -633,7 +555,7 @@ def ejecutar(purificar_lote, extraer_numero):
                                 return ['color: #155724;'] * len(row)
 
                             df_vista_tac = df_oraculo_tactico.copy()
-                            df_vista_tac['🔋 CICLOS DE AUTONOMÍA'] = df_vista_tac['🔋 CICLOS DE AUTONOMÍA'].apply(lambda x: "∞" if x >= 99.9 else x)
+                            df_vista_tac['🔋 CICLOS DE AUTONOMÍA'] = df_vista_tac['🔋 CICLOS DE AUTONOMÍA'].apply(lambda x: "∞" if x >= 99.9 else round(x, 2))
 
                             st.dataframe(
                                 df_vista_tac.style.apply(pintar_oraculo_tac, axis=1), 
@@ -645,7 +567,7 @@ def ejecutar(purificar_lote, extraer_numero):
                                     "📦 SALDO (SAP)": st.column_config.NumberColumn("SALDO (SAP)", format="%,.1f", width="medium"),
                                     "⏱️ DÍAS POR CICLO": st.column_config.NumberColumn("DÍAS POR CICLO", format="%.1f", width="small"),
                                     "🔄 CONSUMO POR CICLO": st.column_config.NumberColumn("CONSUMO/CICLO", format="%,.1f", width="medium"),
-                                    "🔋 CICLOS DE AUTONOMÍA": st.column_config.TextColumn("CICLOS RESTANTES", width="medium"),
+                                    "🔋 CICLOS DE AUTONOMÍA": st.column_config.NumberColumn("CICLOS RESTANTES", format="%.2f", width="medium"),
                                     "ESTADO TÁCTICO": st.column_config.TextColumn("ESTADO TÁCTICO", width="medium")
                                 }
                             )
@@ -659,6 +581,76 @@ def ejecutar(purificar_lote, extraer_numero):
                                 use_container_width=True,
                                 key="btn_dw_tac"
                             )
+                            st.stop() # 🛑 PARADA EN SECO: Aísla el resto de la interfaz
+
+                        # --- RENDER ESTÁNDAR (LINEAL) SI EL TOGGLE ESTÁ APAGADO ---
+                        st.caption("Proyección Estándar: Asume un consumo químico distribuido equitativamente en 30 días.")
+                        def get_sort_weight_lin(estado_str):
+                            if "CRÍTICO" in estado_str: return 1
+                            if "ALERTA" in estado_str: return 2
+                            return 3
+
+                        df_oraculo_lineal['SORT_WEIGHT'] = df_oraculo_lineal['ESTADO'].apply(get_sort_weight_lin)
+                        df_oraculo_lineal['SOLO_NOMBRE'] = df_oraculo_lineal['🧪 CÓDIGO | PRODUCTO'].apply(lambda x: x.split('|')[1].strip() if '|' in x else x)
+                        df_oraculo_lineal = df_oraculo_lineal.sort_values(by=["📍 PISTA", "SORT_WEIGHT", "SOLO_NOMBRE"], ascending=[True, True, True])
+                        df_oraculo_lineal = df_oraculo_lineal.drop(columns=['SORT_WEIGHT', 'SOLO_NOMBRE'])
+                        
+                        criticos = len(df_oraculo_lineal[df_oraculo_lineal['ESTADO'] == "🚨 CRÍTICO (< 7 Días)"])
+                        alertas = len(df_oraculo_lineal[df_oraculo_lineal['ESTADO'] == "⚠️ ALERTA (8-21 Días)"])
+                        optimos = len(df_oraculo_lineal) - (criticos + alertas)
+                        
+                        c_k1, c_k2, c_k3 = st.columns(3)
+                        c_k1.markdown(f"""
+                        <div style="background-color: #ffe6e6; border-left: 5px solid #cc0000; padding: 10px; border-radius: 5px; height: 100%;">
+                            <span style="color: #cc0000; font-weight: bold;">🚨 RUPTURA INMINENTE</span><br/>
+                            <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{criticos} Insumos</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        c_k2.markdown(f"""
+                        <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 10px; border-radius: 5px; height: 100%;">
+                            <span style="color: #856404; font-weight: bold;">⚠️ ALERTA LOGÍSTICA</span><br/>
+                            <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{alertas} Insumos</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        c_k3.markdown(f"""
+                        <div style="background-color: #d4edda; border-left: 5px solid #28a745; padding: 10px; border-radius: 5px; height: 100%;">
+                            <span style="color: #155724; font-weight: bold;">✅ INVENTARIO SANO</span><br/>
+                            <span style="font-size: 18px; color: #0d1b2a; font-weight: bold;">{optimos} Insumos</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        st.markdown("<br/>", unsafe_allow_html=True)
+                        
+                        def pintar_oraculo_lin(row):
+                            if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
+                            if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold;'] * len(row)
+                            return ['color: #155724;'] * len(row)
+
+                        df_vista_lin = df_oraculo_lineal.copy()
+                        df_vista_lin['⏳ AUTONOMÍA'] = df_vista_lin['⏳ AUTONOMÍA'].apply(lambda x: "∞" if x >= 9999 else x)
+
+                        st.dataframe(
+                            df_vista_lin.style.apply(pintar_oraculo_lin, axis=1), 
+                            use_container_width=True, 
+                            hide_index=True,
+                            column_config={
+                                "📍 PISTA": st.column_config.TextColumn("PISTA", width="small"),
+                                "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("PRODUCTO", width="large"),
+                                "📦 SALDO (SAP)": st.column_config.NumberColumn("SALDO (SAP)", format="%,.1f", width="medium"),
+                                "📈 PROYECCIÓN MES (L/Kg)": st.column_config.NumberColumn("PROYECCIÓN MES", format="%,.1f", width="medium"),
+                                "⏳ AUTONOMÍA": st.column_config.TextColumn("DÍAS DE AUTONOMÍA", width="medium"),
+                                "ESTADO": st.column_config.TextColumn("ESTADO LOGÍSTICO", width="medium")
+                            }
+                        )
+
+                        excel_export_lin = generar_excel_vip(df_vista_lin, "Proyeccion_Lineal")
+                        st.download_button(
+                            label="💾 DESCARGAR INFORME ESTÁNDAR (EXCEL VIP)", 
+                            data=excel_export_lin, 
+                            file_name=f"Proyeccion_Lineal_{meses_dict[mes_proyeccion]}.xlsx", 
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                            use_container_width=True,
+                            key="btn_dw_lin"
+                        )
                         
                 except Exception as e:
                     st.error(f"🚨 Falla en los cálculos predictivos o estructura de datos: {e}")
