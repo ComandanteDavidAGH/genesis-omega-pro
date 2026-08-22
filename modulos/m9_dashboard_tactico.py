@@ -10,17 +10,28 @@ import re
 import io
 
 # =================================================================
-# ⚡ MOTORES DE CONEXIÓN PROPIO (INTERCONEXIÓN DIRECTA EN RAM)
+# ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
+# =================================================================
+# ⚡ MOTORES DE CONEXIÓN UNIFICADOS
+# =================================================================
 @st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread_propio():
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
             return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    try:
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
@@ -29,15 +40,14 @@ def acortar_fecha(txt):
     try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
     except Exception: return txt
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=600)
 def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_numero):
-    gc = inicializar_cliente_gspread_propio()
+    gc = obtener_cliente_gspread_unificado()
     datos_brutos = []
     
     if gc:
         try:
-            url_maestra = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-            sh = gc.open_by_url(url_maestra)
+            sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
             ws = sh.worksheet("TABLA 1")
             datos_brutos = ws.get_all_values()
         except Exception:
@@ -45,7 +55,7 @@ def cargar_y_preprocesar_boveda_mando_directo(_procesar_fecha_pesada, _extraer_n
             
     columnas_obj = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
 
-    if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state:
+    if (not datos_brutos or len(datos_brutos) <= 2) and 'supabase' in st.session_state and st.session_state['supabase'] is not None:
         try:
             supabase_client = st.session_state['supabase']
             respuesta_cloud = supabase_client.table("sap_tabla_1_maestro").select("*").execute()
@@ -149,11 +159,20 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     .hud-comando-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
     .hud-comando-value {{ font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
     
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
+    [data-testid="column"] {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }}
+    
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"] {{
         background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
+        border: 2px solid {VERDE_INTENSO} !important;
         border-radius: 6px !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }}
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
         background-color: transparent !important;
@@ -192,6 +211,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
 
     st.markdown("### 🎛️ Filtros de Operación y Tiempo")
     
+    # 🎯 FILTROS NIVELADOS (Fila 1)
     t1, t2, t3 = st.columns(3)
     años_disp = ["TODOS (Comparativa Anual)"] + sorted(df_dash['AÑO'].unique().tolist(), reverse=True)
     año_sel = t1.selectbox("📅 AÑO FISCAL", años_disp, index=0)
@@ -202,6 +222,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     meses_disp = ["TODOS", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
     mes_sel = t3.selectbox("📆 MES", meses_disp)
 
+    # 🎯 FILTROS NIVELADOS (Fila 2)
     f1, f2, f3 = st.columns(3)
     fincas_disp = ["TODAS"] + sorted(df_dash['FINCA'].astype(str).unique().tolist())
     pilotos_disp = ["TODOS"] + sorted(df_dash['PILOTO'].astype(str).unique().tolist())
@@ -218,6 +239,10 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     if finca_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['FINCA'] == finca_filtro]
     if piloto_filtro != "TODOS": df_filtrado = df_filtrado[df_filtrado['PILOTO'] == piloto_filtro]
     if hk_filtro != "TODAS": df_filtrado = df_filtrado[df_filtrado['HK'] == hk_filtro]
+
+    if df_filtrado.empty:
+        st.info("⚠️ No hay datos que coincidan con los filtros seleccionados.")
+        return
 
     meses_nom = {1:"01-Ene", 2:"02-Feb", 3:"03-Mar", 4:"04-Abr", 5:"05-May", 6:"06-Jun", 7:"07-Jul", 8:"08-Ago", 9:"09-Sep", 10:"10-Oct", 11:"11-Nov", 12:"12-Dic"}
     df_filtrado['MES'] = df_filtrado['MES_NUM'].map(meses_nom).fillna("Desconocido")
@@ -248,7 +273,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (RETORNO A BARRAS VERTICALES ROBUSTAS)
+    # GRÁFICO 1: ÁREA ASPERJADA
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -257,23 +282,25 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
         df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
-        fig1 = px.bar(
-            df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
-            barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY
-        )
-        fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        fig1.update_layout(
-            xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", 
-            plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
-            margin=dict(t=50)
-        )
         if not df_area_chart.empty:
+            fig1 = px.bar(
+                df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
+                barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_YOY
+            )
+            fig1.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
+            fig1.update_layout(
+                xaxis_title="Mes Operativo", yaxis_title="Hectáreas (ha)", 
+                plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
+                margin=dict(t=50)
+            )
             fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
-        st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, use_container_width=True)
+        else:
+            st.info("Sin datos para graficar Áreas.")
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO (MANTENIDO HYBRID)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE COMPUESTO
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE COMPUESTO — {titulo_finca}", unsafe_allow_html=True)
@@ -293,39 +320,42 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_costo['HOVER_FACT'] = df_costo['VALOR_FACTURAR'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
         df_costo['HOVER_LIMITE'] = df_costo['LIMITE'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
 
-        go_fig = go.Figure()
-        
-        años_presentes = sorted(df_costo['AÑO'].unique())
-        for i, año_map in enumerate(años_presentes):
-            df_año = df_costo[df_costo['AÑO'] == año_map]
-            color_asignado = PALETA_YOY[i % len(PALETA_YOY)]
+        if not df_costo.empty:
+            go_fig = go.Figure()
             
-            custom_data_hover = np.stack((df_año['COCTEL'], df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
-            
-            go_fig.add_trace(go.Bar(
-                x=df_año['ETIQUETA_X'], 
-                y=df_año['VALOR_FACTURAR'], 
-                name=f"Facturación ({año_map})", 
-                marker_color=color_asignado,
-                customdata=custom_data_hover,
-                hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Cóctel:</b> %{customdata[0]}<br><b>Facturación:</b> %{customdata[1]}<extra></extra>'
+            años_presentes = sorted(df_costo['AÑO'].unique())
+            for i, año_map in enumerate(años_presentes):
+                df_año = df_costo[df_costo['AÑO'] == año_map]
+                color_asignado = PALETA_YOY[i % len(PALETA_YOY)]
+                
+                custom_data_hover = np.stack((df_año['COCTEL'], df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
+                
+                go_fig.add_trace(go.Bar(
+                    x=df_año['ETIQUETA_X'], 
+                    y=df_año['VALOR_FACTURAR'], 
+                    name=f"Facturación ({año_map})", 
+                    marker_color=color_asignado,
+                    customdata=custom_data_hover,
+                    hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Cóctel:</b> %{customdata[0]}<br><b>Facturación:</b> %{customdata[1]}<extra></extra>'
+                ))
+                
+            go_fig.add_trace(go.Scatter(
+                x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Finca",
+                mode='lines+markers', line=dict(color='#ff0000', width=3), marker=dict(size=6),
+                customdata=df_costo['HOVER_LIMITE'], hovertext=df_costo['COCTEL'],
+                hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
             ))
             
-        go_fig.add_trace(go.Scatter(
-            x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Finca",
-            mode='lines+markers', line=dict(color='#ff0000', width=3), marker=dict(size=6),
-            customdata=df_costo['HOVER_LIMITE'], hovertext=df_costo['COCTEL'],
-            hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
-        ))
-        
-        go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100, t=50))
-        go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10), type='category') 
-        st.plotly_chart(go_fig, use_container_width=True)
+            go_fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, limite_real * 1.3]), margin=dict(b=100, t=50))
+            go_fig.update_xaxes(tickangle=-90, tickfont=dict(size=10), type='category') 
+            st.plotly_chart(go_fig, use_container_width=True)
+        else:
+            st.info("Sin datos de facturación para graficar.")
         
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO/HORA (RETORNO A BARRAS HORIZONTALES)
+    # GRÁFICO 3: RENDIMIENTO/HORA
     # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
@@ -337,19 +367,21 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
         altura_dinamica = max(400, len(df_rend) * 22)
         
-        fig3 = px.bar(
-            df_rend, y='EJE_Y', x='REND_HR', orientation='h', 
-            text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO]
-        )
-        fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
-        fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
-        fig3.update_yaxes(type='category')
         if not df_rend.empty:
+            fig3 = px.bar(
+                df_rend, y='EJE_Y', x='REND_HR', orientation='h', 
+                text='ETIQUETA', color_discrete_sequence=[VERDE_INTENSO]
+            )
+            fig3.update_traces(textposition='outside', textfont=dict(size=12, color='black'))
+            fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula (HK) | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)')
+            fig3.update_yaxes(type='category')
             fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.25])
-        st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("Sin datos de Rendimiento/Hr.")
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE (RETORNO A BARRAS VERTICALES)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL BASE
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
@@ -358,23 +390,25 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
         df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
         
-        fig4 = px.bar(
-            df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', 
-            barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY
-        )
-        fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
-        fig4.update_layout(
-            xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", 
-            plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
-            margin=dict(t=50)
-        )
         if not df_mes.empty:
+            fig4 = px.bar(
+                df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', 
+                barmode='group', text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY
+            )
+            fig4.update_traces(textposition='outside', textfont=dict(size=12, color='black', family="Arial"))
+            fig4.update_layout(
+                xaxis_title="Mes Operativo", yaxis_title="Total Facturado ($ COP)", 
+                plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
+                margin=dict(t=50)
+            )
             fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.25])
-        st.plotly_chart(fig4, use_container_width=True)
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("Sin datos de facturación para graficar.")
 
     # -----------------------------------------------------
-    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES (RETORNO A BARRAS VERTICALES)
+    # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES
     # -----------------------------------------------------
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"#### ⚠️ RASTREO FINANCIERO DE RECARGOS DOMINICALES — {titulo_finca}", unsafe_allow_html=True)
@@ -401,8 +435,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50)
         )
-        if not df_dom.empty:
-            fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
+        fig5.update_yaxes(range=[0, df_dom['DOMINICAL_HA'].max() * 1.35]) 
         st.plotly_chart(fig5, use_container_width=True)
     else:
         st.info("✅ Excelente: No hay recargos dominicales registrados en el periodo seleccionado.")
