@@ -52,6 +52,12 @@ def formato_latino(numero, decimales=0):
     except Exception:
         return "0"
 
+def formato_gerencial_latino(numero):
+    if pd.isna(numero) or numero == 0: return "$ 0"
+    if numero >= 1_000_000: return f"$ {numero / 1_000_000:,.1f} M".replace(".", "X").replace(",", ".").replace("X", ",")
+    elif numero >= 1_000: return f"$ {numero / 1_000:,.0f} K".replace(",", ".")
+    else: return f"$ {formato_latino(numero, 0)}"
+
 def parsear_precio_colombia(val):
     v = str(val).strip()
     if not v or v == '-': return None
@@ -124,7 +130,7 @@ def acortar_fecha(txt):
     except Exception: return txt
 
 # =================================================================
-# 🎨 UTILIDAD: COLORES CONDICIONALES PARA TABLAS
+# 🎨 UTILIDADES DE INTERFAZ Y EXPORTACIÓN VIP
 # =================================================================
 def color_variacion(val):
     """ Colorea rojo si > 0 (sobrecosto), verde si < 0 (ahorro) """
@@ -134,6 +140,50 @@ def color_variacion(val):
         return 'color: #555555; font-weight: bold;'
     except:
         return ''
+
+def generar_excel_vip(df, sheet_name="Reporte"):
+    """ Genera un archivo Excel real (.xlsx) con formatos numéricos nativos y estilo VIP """
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        ws = writer.sheets[sheet_name]
+        
+        # Estilo de Cabeceras
+        header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+        header_font = Font(color="D4AF37", bold=True)
+        borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
+                            top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+                            
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = borde_fino
+            
+        # Formatos Numéricos y Ancho de Columnas
+        for col in ws.columns:
+            max_length = 0
+            col_letter = col[0].column_letter
+            
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                except: pass
+                
+                if cell.row > 1:
+                    cell.border = borde_fino
+                    if isinstance(cell.value, (int, float)):
+                        col_name = str(ws[col_letter + '1'].value).upper()
+                        # Si la columna trata sobre dinero
+                        if "COSTO" in col_name or "$" in col_name or "P. PROM" in col_name or "TARIFA" in col_name or "VARIACIÓN" in col_name:
+                            cell.number_format = '"$" #,##0'
+                        # Si la columna trata sobre litros o dosis
+                        elif "DOSIS" in col_name or "GLN" in col_name or "VOLUMEN" in col_name or "HECT" in col_name:
+                            cell.number_format = '#,##0.00'
+                            
+            ws.column_dimensions[col_letter].width = min(max_length + 4, 35)
+            
+    return buffer.getvalue()
 
 # =================================================================
 # 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
@@ -325,7 +375,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
     
-    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
     [data-testid="column"] {{
         display: flex !important;
         flex-direction: column !important;
@@ -358,7 +407,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         text-transform: uppercase !important;
     }}
 
-    /* 🔍 EFECTO LUPA MAGNIFICADOR EN TODOS LOS GRÁFICOS DEL MÓDULO 10 */
     div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
         border-radius: 12px !important;
@@ -366,6 +414,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         padding: 8px !important;
         border: 1px solid #e2e8f0 !important;
     }}
+    
     div[data-testid="stPlotlyChart"]:hover {{
         transform: scale(1.05) !important;
         z-index: 9999 !important;
@@ -376,7 +425,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    # 💥 FUNCIÓN PARA GENERAR TARJETAS KPI ESTILO GALA VIP 💥
     def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
         delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
         return f"""
@@ -388,7 +436,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown(f"<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:{DORADO};'>(v41.0 - EJECUTIVO)</span></h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:{DORADO};'>(v42.0 - VIP)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
@@ -409,9 +457,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO']:
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
-        # =================================================================
-        # 1. NORMALIZACIÓN QUIRÚRGICA SIN BUGS
-        # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
@@ -424,9 +469,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
-        # =================================================================
-        # 2. CANDADO ANTI-DUPLICIDAD
-        # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
             keep='last'
@@ -438,8 +480,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             return v
             
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
-        
-        # 🎯 EXTRACCIÓN PURA DE TARIFA UNIFICADA (SIN DIVIDIR NUNCA ENTRE HECTÁREAS)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
@@ -635,7 +675,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 df_vista = g_b.copy()
                 
-                # 💎 TABLA EJECUTIVA
                 col_cfg = {
                     "CÓCTEL APLICADO": st.column_config.TextColumn("🧪 CÓCTEL APLICADO"),
                     "Costo Promedio/Ha": st.column_config.NumberColumn("💰 Costo Promedio/Ha", format="$ %,.0f"),
@@ -645,8 +684,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 st.dataframe(df_vista, use_container_width=True, hide_index=True, column_config=col_cfg)
                 
-                csv_n1 = df_vista.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📄 Exportar Cócteles (CSV)", data=csv_n1, file_name="Cocteles_Rango_Personalizado.csv", mime="text/csv", key="btn_down_n1")
+                excel_n1 = generar_excel_vip(df_vista, "Cocteles_Aplicados")
+                st.download_button(label="📄 Exportar Cócteles (Excel VIP)", data=excel_n1, file_name="Cocteles_Rango_Personalizado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n1")
 
         else:
             delta_pct = ((costo_b - costo_a) / costo_a * 100) if costo_a > 0 else 0
@@ -817,7 +856,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 if col_gln: dicc_renombres[f'{col_gln}_BASE'] = f'Gln/Ha ({año_base})'; dicc_renombres[f'{col_gln}_ACTUAL'] = f'Gln/Ha ({año_comp})'
                 tabla_autopsia.rename(columns=dicc_renombres, inplace=True)
                 
-                # 💎 TABLA EJECUTIVA
+                # 💎 TABLA EJECUTIVA CÓCTELES
                 col_cfg = {
                     dicc_renombres[col_coctel]: st.column_config.TextColumn("🧪 " + dicc_renombres[col_coctel]),
                     dicc_renombres['COSTO_NUM_BASE']: st.column_config.NumberColumn("💰 " + dicc_renombres['COSTO_NUM_BASE'], format="$ %,.0f"),
@@ -835,8 +874,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     column_config=col_cfg
                 )
                 
-                csv_n1 = tabla_autopsia.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📄 Exportar Variación de Cócteles (CSV)", data=csv_n1, file_name="Variacion_Cocteles.csv", mime="text/csv", key="btn_down_n1")
+                excel_n1 = generar_excel_vip(tabla_autopsia, "Variacion_Cocteles")
+                st.download_button(label="📄 Exportar Variación de Cócteles (Excel VIP)", data=excel_n1, file_name="Variacion_Cocteles.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n1")
 
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
@@ -877,7 +916,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                     df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
                     
-                    # 💎 TABLA EJECUTIVA
+                    # 💎 TABLA EJECUTIVA RECETAS
                     col_cfg_mol = {
                         "INSUMO QUÍMICO": st.column_config.TextColumn("📦 INSUMO QUÍMICO"),
                         "DOSIS/HA": st.column_config.NumberColumn("⚖️ DOSIS/HA", format="%.3f"),
@@ -895,8 +934,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         column_config=col_cfg_mol
                     )
                     
-                    csv_n2 = df_vista_mol.to_csv(index=False).encode('utf-8')
-                    st.download_button(label="📄 Exportar Receta vs Año (CSV)", data=csv_n2, file_name=f"Comparativo_{coctel_sel}.csv", mime="text/csv", key="btn_down_n2")
+                    excel_n2 = generar_excel_vip(df_vista_mol, "Receta_vs_Año")
+                    st.download_button(label="📄 Exportar Receta vs Año (Excel VIP)", data=excel_n2, file_name=f"Comparativo_{coctel_sel}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n2")
                     
                     c1, c2, c3 = st.columns(3)
                     c1.markdown(tarjeta_kpi(f"Total Teórico ({año_base})", f"$ {formato_latino(costo_total_a, 0)}"), unsafe_allow_html=True)
@@ -970,7 +1009,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                 
                                 c1, c2 = st.columns([1, 1.2])
                                 with c1: 
-                                    # 💎 TABLA EJECUTIVA
+                                    # 💎 TABLA EJECUTIVA LOGÍSTICA
                                     st.dataframe(
                                         df_vista, 
                                         use_container_width=True, 
@@ -980,8 +1019,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                             "📦 VOLUMEN ESTIMADO (L/Kg)": st.column_config.NumberColumn("📦 VOLUMEN ESTIMADO (L/Kg)", format="%,.1f")
                                         }
                                     )
-                                    csv_n3 = df_log.to_csv(index=False).encode('utf-8')
-                                    st.download_button(label="📊 Exportar Consumo Volumétrico (CSV)", data=csv_n3, file_name=f"Consumo_Volumetrico_{pista_inv_sel}.csv", mime="text/csv", key="btn_down_n3")
+                                    excel_n3 = generar_excel_vip(df_log, "Consumo_Volumetrico")
+                                    st.download_button(label="📊 Exportar Consumo Volumétrico (Excel VIP)", data=excel_n3, file_name=f"Consumo_Volumetrico_{pista_inv_sel}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n3")
                                 with c2:
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15).copy()
                                     
@@ -1106,7 +1145,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         tab_resumen, tab_detalle = st.tabs(["📊 Resumen", "📋 Desglose"])
                         
-                        # 💎 TABLA EJECUTIVA SIMULADOR
                         def color_diferencia(val):
                             try:
                                 if val > 0: return 'color: #ff4b4b; font-weight: bold;'
@@ -1188,7 +1226,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(
-                            label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL)",
+                            label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL VIP)",
                             data=buffer_sim.getvalue(),
                             file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
