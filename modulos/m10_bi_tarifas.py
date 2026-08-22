@@ -13,8 +13,33 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
-# ⚡ MOTORES DE CONEXIÓN Y FORMATO (Blindados contra NameErrors)
+# ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+URL_BOVEDA_HISTORICA = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+URL_BOVEDA_PRECIOS = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
+
+# =================================================================
+# ⚡ MOTORES DE CONEXIÓN Y FORMATO UNIFICADOS (V41)
+# =================================================================
+@st.cache_resource(show_spinner=False)
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    try:
+        return gspread.service_account(filename='credenciales.json')
+    except Exception:
+        return None
 
 def formato_latino(numero, decimales=0):
     if pd.isna(numero) or numero is None: return "0"
@@ -24,7 +49,7 @@ def formato_latino(numero, decimales=0):
         if decimales == 0: texto_us = f"{num:,.0f}"
         else: texto_us = f"{num:,.{decimales}f}"
         return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
+    except Exception:
         return "0"
 
 def formato_gerencial_latino(numero):
@@ -32,28 +57,6 @@ def formato_gerencial_latino(numero):
     if numero >= 1_000_000: return f"$ {numero / 1_000_000:,.1f} M".replace(".", "X").replace(",", ".").replace("X", ",")
     elif numero >= 1_000: return f"$ {numero / 1_000:,.0f} K".replace(",", ".")
     else: return f"$ {formato_latino(numero, 0)}"
-
-def obtener_cliente_gspread_unificado():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return gspread.service_account(filename='credenciales.json')
-    except:
-        return None
-
-def obtener_cliente_gspread_viejo():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_credentials" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_credentials"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return gspread.service_account(filename='credenciales.json')
-    except:
-        return None
 
 def parsear_precio_colombia(val):
     v = str(val).strip()
@@ -69,109 +72,8 @@ def parsear_precio_colombia(val):
         elif ',' in v: 
             v = v.replace(',', '.')
         return float(v)
-    except:
+    except Exception:
         return None
-
-@st.cache_data(show_spinner=False, ttl=600)
-def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
-    gc_nuevo = obtener_cliente_gspread_unificado()
-    
-    try:
-        boveda_act = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
-    except:
-        datos_brutos_act = []
-    
-    if len(datos_brutos_act) > 5:
-        columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
-        filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
-        df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
-        df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
-        df_vivos['ORIGEN_BI'] = 'ACTUAL'
-    else:
-        df_vivos = pd.DataFrame()
-
-    datos_brutos_hist = []
-    try:
-        boveda_hist = gc_nuevo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
-    except:
-        try:
-            gc_viejo = obtener_cliente_gspread_viejo()
-            boveda_hist = gc_viejo.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
-            datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
-        except: pass
-    
-    if len(datos_brutos_hist) > 0:
-        df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
-        df_historico = estandarizar_base(limpiar_encabezados(df_historico))
-        df_historico['ORIGEN_BI'] = 'HISTORICO'
-    else:
-        df_historico = pd.DataFrame()
-
-    return df_vivos, df_historico
-
-@st.cache_data(show_spinner=False, ttl=600)
-def cargar_boveda_recetas_y_precios():
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
-    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-
-    try:
-        boveda_recetas = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        try:
-            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
-            if data_mez:
-                df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
-                df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-        except Exception as e: st.error(f"🚨 Falla en DD_Mesclas: {e}")
-
-        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
-        except: pass
-        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
-        except: pass
-        try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
-        except: pass
-    except Exception as e:
-        st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
-
-    try:
-        url_precios = "https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit"
-        sh_precios = gc.open_by_url(url_precios)
-        precios_consolidados = []
-        for ws in sh_precios.worksheets():
-            datos_hoja = ws.get_all_values()
-            if not datos_hoja: continue
-            idx_header, col_anio, col_prod = -1, -1, -1
-            for i in range(min(10, len(datos_hoja))):
-                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
-                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
-            if idx_header != -1:
-                for row in datos_hoja[idx_header+1:]:
-                    if len(row) > max(col_anio, col_prod):
-                        anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
-                        if anio_str and str_prod:
-                            col_inicio = max(col_anio, col_prod) + 1
-                            vals = []
-                            for v in row[col_inicio:]:
-                                val_num = parsear_precio_colombia(v)
-                                if val_num is not None and val_num > 0:
-                                    vals.append(val_num)
-                            
-                            prom = sum(vals)/len(vals) if vals else 0.0
-                            prod_limpio = re.sub(r'\s+', ' ', str_prod).strip()
-                            precios_consolidados.append({
-                                'AÑO': anio_str, 
-                                'PRODUCTO': prod_limpio, 
-                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""),
-                                'PRECIO_PROM': prom
-                            })
-        df_precios = pd.DataFrame(precios_consolidados)
-    except Exception as e: pass
-
-    return df_mezclas, df_conf, df_dicc, df_precios, df_t2
 
 def limpiar_encabezados(df):
     df.columns = [str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip() for col in df.columns]
@@ -206,7 +108,7 @@ def limpiar_area(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         return float(v) if v else 0.0
-    except: return 0.0
+    except Exception: return 0.0
 
 def limpiar_dinero(val):
     try:
@@ -221,7 +123,103 @@ def limpiar_dinero(val):
         num = float(v) if v else 0.0
         if 5 < num < 2000: num = num * 1000
         return num
-    except: return 0.0
+    except Exception: return 0.0
+
+def acortar_fecha(txt):
+    try: return txt.split('(')[1].replace(')','') + " '" + txt[2:4]
+    except Exception: return txt
+
+# =================================================================
+# 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
+# =================================================================
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
+    gc = obtener_cliente_gspread_unificado()
+    
+    df_vivos = pd.DataFrame()
+    try:
+        boveda_act = gc.open_by_url(URL_BOVEDA_MAESTRA)
+        datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
+        if len(datos_brutos_act) > 5:
+            columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
+            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos_act[5:]]
+            df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+            df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
+            df_vivos['ORIGEN_BI'] = 'ACTUAL'
+    except Exception: pass
+
+    df_historico = pd.DataFrame()
+    try:
+        boveda_hist = gc.open_by_url(URL_BOVEDA_HISTORICA)
+        datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
+        if len(datos_brutos_hist) > 0:
+            df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
+            df_historico = estandarizar_base(limpiar_encabezados(df_historico))
+            df_historico['ORIGEN_BI'] = 'HISTORICO'
+    except Exception: pass
+    
+    return df_vivos, df_historico
+
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_boveda_recetas_y_precios():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+    df_mezclas, df_conf, df_dicc, df_t2, df_precios = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    try:
+        boveda_recetas = gc.open_by_url(URL_BOVEDA_MAESTRA)
+        try:
+            data_mez = boveda_recetas.worksheet("DD_Mesclas").get_all_values()
+            if data_mez:
+                df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
+                df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
+        except Exception as e: st.error(f"🚨 Falla en DD_Mesclas: {e}")
+
+        try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
+        except Exception: pass
+        try: df_dicc = pd.DataFrame(boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[1:], columns=boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()[0])
+        except Exception: pass
+        try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
+        except Exception: pass
+    except Exception as e:
+        st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
+
+    try:
+        sh_precios = gc.open_by_url(URL_BOVEDA_PRECIOS)
+        precios_consolidados = []
+        for ws in sh_precios.worksheets():
+            datos_hoja = ws.get_all_values()
+            if not datos_hoja: continue
+            idx_header, col_anio, col_prod = -1, -1, -1
+            for i in range(min(10, len(datos_hoja))):
+                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                    idx_header = i; col_anio = fila_upper.index('AÑO'); col_prod = fila_upper.index('PRODUCTO'); break
+            if idx_header != -1:
+                for row in datos_hoja[idx_header+1:]:
+                    if len(row) > max(col_anio, col_prod):
+                        anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
+                        if anio_str and str_prod:
+                            col_inicio = max(col_anio, col_prod) + 1
+                            vals = []
+                            for v in row[col_inicio:]:
+                                val_num = parsear_precio_colombia(v)
+                                if val_num is not None and val_num > 0:
+                                    vals.append(val_num)
+                            
+                            prom = sum(vals)/len(vals) if vals else 0.0
+                            prod_limpio = re.sub(r'\s+', ' ', str_prod).strip()
+                            precios_consolidados.append({
+                                'AÑO': anio_str, 
+                                'PRODUCTO': prod_limpio, 
+                                'PRODUCTO_CLEAN': prod_limpio.replace(" ", ""),
+                                'PRECIO_PROM': prom
+                            })
+        df_precios = pd.DataFrame(precios_consolidados)
+    except Exception: pass
+
+    return df_mezclas, df_conf, df_dicc, df_precios, df_t2
 
 def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     coctel_u = str(coctel_sel).upper().strip()
@@ -238,7 +236,7 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
         if not df_t2.empty:
             match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_sel.upper().strip()]
             if not match_f.empty and "ORGANIC" in str(match_f.iloc[0, 5]).upper(): es_organico = True
-    except: pass
+    except Exception: pass
 
     base_buscar = f"{base_coctel}O" if es_organico and not base_coctel.endswith('O') else base_coctel
 
@@ -313,54 +311,67 @@ def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
 def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.header("", anchor="inicio_modulo")
 
-    st.markdown("""
+    VERDE_INTENSO = '#143521' 
+    DORADO = '#d4af37'         
+    PALETA_YOY = [VERDE_INTENSO, '#27AE60', '#2F75B5', '#E67E22'] 
+
+    st.markdown(f"""
     <style>
-    .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    .hud-bi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }
-    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-    .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
+    .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    .hud-bi {{ background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid {DORADO}; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }}
+    .hud-bi-title {{ font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
+    .hud-bi-value {{ font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }}
+    
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
+    [data-testid="column"] {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }}
     
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stDateInput"] input {
-        border: 3px solid #143521 !important;
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stNumberInput"] input {{
+        border: 3px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
-    }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
+    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+        background-color: transparent !important;
         border: none !important;
-    }
-    div[data-testid="stSelectbox"] div,
+    }}
+    div[data-testid="stSelectbox"] *,
     div[data-testid="stDateInput"] input,
-    div[data-testid="stSelectbox"] span {
+    div[data-testid="stNumberInput"] input {{
         color: #000000 !important;
         font-weight: 900 !important;
-    }
-    div[data-testid="stMainBlockContainer"] label p {
+    }}
+    div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
-    }
+    }}
 
     /* 🔍 EFECTO LUPA MAGNIFICADOR EN TODOS LOS GRÁFICOS DEL MÓDULO 10 */
-    div[data-testid="stPlotlyChart"] {
+    div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
         border-radius: 12px !important;
         background-color: #ffffff !important;
         padding: 8px !important;
         border: 1px solid #e2e8f0 !important;
-    }
+    }}
     
-    div[data-testid="stPlotlyChart"]:hover {
+    div[data-testid="stPlotlyChart"]:hover {{
         transform: scale(1.05) !important;
         z-index: 9999 !important;
         position: relative !important;
         box-shadow: 0px 16px 32px rgba(0, 0, 0, 0.2) !important;
-        border: 2px solid #d4af37 !important;
-    }
+        border: 2px solid {DORADO} !important;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -368,7 +379,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
         delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
         return f"""
-        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px;'>
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: center;'>
             <p style='font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
             <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
         </div>
@@ -376,10 +387,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:#d4af37;'>(v4.0 - TARIFAS REALES GLOBAL)</span></h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:{DORADO};'>(v41.0 - TARIFAS REALES)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
-        if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
+        if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
@@ -413,7 +424,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
         # =================================================================
-        # 2. CANDADO ANTI-DUPLICIDAD (AHORA BLINDADO CON LA OS PARA NO BORRAR VUELOS)
+        # 2. CANDADO ANTI-DUPLICIDAD
         # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
@@ -427,7 +438,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
         
-        # 🎯 EXTRACCIÓN PURA DE TARIFA UNIFICADA (SIN DIVIDIR NUNCA ENTRE HECTÁREAS)
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
