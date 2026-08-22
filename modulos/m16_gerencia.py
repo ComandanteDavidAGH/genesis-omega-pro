@@ -115,6 +115,7 @@ def cargar_datos_gerenciales():
                 return 'AVIÓN'
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
+            # 🎯 CLASIFICADOR INTELIGENTE
             df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVA' if es_cooperativa(x) else 'INDEPENDIENTE')
             
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
@@ -279,7 +280,7 @@ def ejecutar(*args, **kwargs):
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
         st.markdown("<h1 class='titulo-gerencial'>⚖️ Módulo 16: Comparativo Gerencial (Dron vs Avión)</h1>", unsafe_allow_html=True)
-        st.write("Análisis táctico de costos desglosado por Cooperativas vs Fincas Independientes.")
+        st.write("Análisis táctico de costos desglosado por Cooperativas vs Fincas Especiales/Piloto.")
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
@@ -347,7 +348,7 @@ def ejecutar(*args, **kwargs):
         fincas_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'INDEPENDIENTE']['FINCA'].nunique()
 
         k1, k2, k3 = st.columns(3)
-        with k1: st.markdown(tarjeta_kpi("Cobertura Mapeada", f"{fincas_coop} Coop / {fincas_indep} Indep", "Fincas Cruzadas", "#d4af37"), unsafe_allow_html=True)
+        with k1: st.markdown(tarjeta_kpi("Cobertura Mapeada", f"{fincas_coop} Coop / {fincas_indep} Especiales", "Fincas Cruzadas", "#d4af37"), unsafe_allow_html=True)
         with k2: st.markdown(tarjeta_kpi("Brecha Promedio Vuelo", f"$ {ahorro_prom_vuelo:,.0f} /ha".replace(",", "."), "Ahorro Dron vs Avión", "#28a745" if ahorro_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
         with k3: st.markdown(tarjeta_kpi("Eficiencia Financiera", f"{eficiencia_prom_vuelo:.1f}%", "vs Tarifa Avión", "#28a745" if eficiencia_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
 
@@ -369,14 +370,14 @@ def ejecutar(*args, **kwargs):
     # PESTAÑA 1: TARIFA VUELO PURA (SEGMENTADA EN 2 GRÁFICOS)
     # ==========================================================
     with tab_vuelo:
-        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs Fincas Independientes.")
+        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs Fincas Especiales y Pilotos.")
         
         if not m_comp_v.empty:
             m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVA'].copy()
             m_comp_v_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'INDEPENDIENTE'].copy()
             
-            # --- 🏢 GRÁFICO 1: COOPERATIVAS ---
-            st.markdown("### 🏢 1. Tarifas en Cooperativas y Gremios")
+            # --- 🌾 GRÁFICO 1: COOPERATIVAS ---
+            st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas")
             if not m_comp_v_coop.empty:
                 fig_coop = construir_grafico_comparativo(m_comp_v_coop, "Cooperativas: Avión vs Dron")
                 if fig_coop: st.plotly_chart(fig_coop, use_container_width=True)
@@ -385,13 +386,13 @@ def ejecutar(*args, **kwargs):
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- 🚜 GRÁFICO 2: FINCAS INDEPENDIENTES ---
-            st.markdown("### 🚜 2. Tarifas en Fincas Normales / Independientes")
+            # --- 🍌 GRÁFICO 2: FINCAS ESPECIALES ---
+            st.markdown("### 🍌 2. Fincas Especiales y Lotes Piloto")
             if not m_comp_v_indep.empty:
-                fig_indep = construir_grafico_comparativo(m_comp_v_indep, "Fincas Independientes: Avión vs Dron")
+                fig_indep = construir_grafico_comparativo(m_comp_v_indep, "Especiales/Piloto: Avión vs Dron")
                 if fig_indep: st.plotly_chart(fig_indep, use_container_width=True)
             else:
-                st.info("No se registraron Fincas Independientes en el rango.")
+                st.info("No se registraron Fincas Especiales en el rango.")
 
             # TABLA GENERAL DETALLADA
             st.markdown("---")
@@ -414,14 +415,14 @@ def ejecutar(*args, **kwargs):
     # PESTAÑA 2: COSTO TOTAL FACTURADO (SEGMENTADA EN 2 GRÁFICOS)
     # ==========================================================
     with tab_total:
-        st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs Fincas Independientes.")
+        st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs Fincas Especiales.")
         
         if not m_comp_t.empty:
             m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVA'].copy()
             m_comp_t_indep = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'INDEPENDIENTE'].copy()
             
-            # --- 🏢 GRÁFICO 1: COOPERATIVAS (TOTAL) ---
-            st.markdown("### 🏢 1. Facturación Total en Cooperativas")
+            # --- 🌾 GRÁFICO 1: COOPERATIVAS (TOTAL) ---
+            st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas (Total Facturado)")
             if not m_comp_t_coop.empty:
                 fig_t_coop = construir_grafico_comparativo(m_comp_t_coop, "Facturación Total: Cooperativas")
                 if fig_t_coop: st.plotly_chart(fig_t_coop, use_container_width=True)
@@ -430,13 +431,13 @@ def ejecutar(*args, **kwargs):
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- 🚜 GRÁFICO 2: FINCAS INDEPENDIENTES (TOTAL) ---
-            st.markdown("### 🚜 2. Facturación Total en Fincas Independientes")
+            # --- 🍌 GRÁFICO 2: FINCAS ESPECIALES (TOTAL) ---
+            st.markdown("### 🍌 2. Fincas Especiales y Lotes Piloto (Total Facturado)")
             if not m_comp_t_indep.empty:
-                fig_t_indep = construir_grafico_comparativo(m_comp_t_indep, "Facturación Total: Fincas Independientes")
+                fig_t_indep = construir_grafico_comparativo(m_comp_t_indep, "Facturación Total: Especiales y Pilotos")
                 if fig_t_indep: st.plotly_chart(fig_t_indep, use_container_width=True)
             else:
-                st.info("No se registraron Fincas Independientes en el rango.")
+                st.info("No se registraron Fincas Especiales en el rango.")
 
             # TABLA GENERAL DETALLADA TOTAL
             st.markdown("---")
