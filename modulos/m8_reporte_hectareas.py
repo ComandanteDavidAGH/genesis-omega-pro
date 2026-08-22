@@ -17,6 +17,12 @@ from openpyxl.utils import get_column_letter
 from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
+# ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
+# =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+URL_BOVEDA_HISTORICA = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+
+# =================================================================
 # 🛡️ BLOQUE 1: UTILIDADES Y FORMATO
 # =================================================================
 
@@ -96,24 +102,25 @@ def limpiar_dinero(val):
         return 0.0
 
 def fecha_fallback(val):
-    """Respaldo en caso de que app.py no inyecte procesar_fecha_pesada_app"""
+    """ Respaldo en caso de que app.py no inyecte procesar_fecha_pesada_app """
     return pd.to_datetime(val, errors='coerce', dayfirst=True)
 
 # =================================================================
 # ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS
 # =================================================================
-def obtener_cliente_gspread():
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" in st.secrets:
         try:
             creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
             return gspread.authorize(creds)
-        except Exception as e: pass
+        except Exception: pass
     if "gcp_credentials" in st.secrets:
         try:
             creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
             return gspread.authorize(creds)
-        except Exception as e: pass
+        except Exception: pass
     try:
         return gspread.service_account(filename='credenciales.json')
     except Exception:
@@ -124,12 +131,13 @@ def obtener_cliente_gspread():
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
-    gc = obtener_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), pd.DataFrame()
     
     df_vivos = pd.DataFrame()
+    boveda_act = None
     try:
-        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        boveda_act = gc.open_by_url(URL_BOVEDA_MAESTRA)
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
         if len(datos_brutos_act) > 5:
             columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA", "INC_2026", "LIMITE", "ALERTA", "VAR_PCT", "COSTO_TOTAL", "PAGO_AVION"]
@@ -137,20 +145,18 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
             df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
             df_vivos['ORIGEN_BI'] = 'ACTUAL'
-    except Exception as e:
-        pass
+    except Exception: pass
 
     df_historico = pd.DataFrame()
     boveda_hist = None
     try:
-        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        boveda_hist = gc.open_by_url(URL_BOVEDA_HISTORICA)
         datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
         if len(datos_brutos_hist) > 0:
             df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
             df_historico = estandarizar_base(limpiar_encabezados(df_historico))
             df_historico['ORIGEN_BI'] = 'HISTORICO'
-    except Exception as e:
-        pass
+    except Exception: pass
 
     ws_historico = None
     for bv in [boveda_act, boveda_hist]:
@@ -200,17 +206,16 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
                     df_hp_clean['FECHA_MAESTRA'] = df_hp_clean.apply(lambda r: f"28/{int(r['MES_NUM']):02d}/{int(r['AÑO'])}", axis=1)
                     
                     df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
-        except Exception as e:
-            pass
+        except Exception: pass
 
     return df_vivos, df_historico
 
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas():
-    gc = obtener_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame()
     try:
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
         ws = sh.worksheet("MATRIZ_TARIFAS")
         datos = ws.get_all_values()
         if len(datos) > 1:
@@ -236,6 +241,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     st.header("", anchor="inicio_modulo")
 
+    # 🎯 CSS UNIFICADO V41: FLEXBOX STRICT Y ALINEACIÓN DE BORDES
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
@@ -244,13 +250,20 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
-    /* 💥 REPARACIÓN EXCLUSIVA DE BORDES EN MULTISELECT, FECHAS Y RADIO BUTTONS 💥 */
+    /* ALINEACIÓN VERTICAL SIMÉTRICA */
+    [data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }
+    
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
     div[data-testid="stMultiSelect"] > div,
     div[data-testid="stMultiSelect"] div[data-baseweb="select"],
     div[data-testid="stDateInput"] > div {
-        border: 3px solid #143521 !important;
+        border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
@@ -268,7 +281,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     div[data-testid="stDateInput"] input,
     div[data-testid="stTextInput"] input,
     div[data-testid="stNumberInput"] input {
-        color: #000000 !important;
+        color: #0d1b2a !important;
         font-weight: bold !important;
     }
     
@@ -281,7 +294,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     }
 
     section[data-testid="stMain"] div[role="radiogroup"] {
-        border: 3px solid #143521 !important;
+        border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         padding: 10px !important;
         background-color: #ffffff !important;
@@ -333,7 +346,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v41.0 - VISOR DE PROYECCIÓN)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
-        if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True):
+        if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
@@ -432,13 +445,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     st.warning("⚠️ Selecciona al menos un año para visualizar la matriz.")
                 else:
                     df_tarifas_filtro = df_tarifas[cols_base + anios_seleccionados].copy()
-                    
-                    # =========================================================
-                    # 💎 INICIO DE MEJORA VISUAL DE LA TABLA (UI CORPORATIVA)
-                    # =========================================================
                     df_mostrar = df_tarifas_filtro.copy()
                     
-                    # 1. Limpiar y jerarquizar los títulos
                     renombres = {
                         'PISTA': '📍 BASE OPERATIVA', 
                         'EQUIPO_O_TOPE': '🛩️ TIPO DE EQUIPO / CONCEPTO'
@@ -448,7 +456,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         
                     df_mostrar.rename(columns=renombres, inplace=True)
                     
-                    # 2. Inyectar CSS directo a las celdas
                     def estilo_matriz(row):
                         estilos = []
                         for col in row.index:
@@ -458,15 +465,11 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                                 estilos.append('background-color: #FFFFFF; color: #1A365D; font-weight: 600; text-align: right;')
                         return estilos
 
-                    # 3. Renderizar la tabla blindada
                     st.dataframe(
                         df_mostrar.style.apply(estilo_matriz, axis=1), 
                         use_container_width=True, 
                         hide_index=True
                     )
-                    # =========================================================
-                    # 💎 FIN DE MEJORA VISUAL
-                    # =========================================================
                     
                     buf_tarifas = io.BytesIO()
                     df_export_t = df_tarifas_filtro.copy()
@@ -525,9 +528,9 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
                         fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
                         st.plotly_chart(fig_tarifas, use_container_width=True)
-                    except Exception as e: pass
+                    except Exception: pass
             else:
-                st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía. (Asegúrate de presionar el botón amarillo 'Sincronizar Nube').")
+                st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
 
         modo_historico_global = st.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO (Hectáreas 2017 - 2026 por Pista y Mes)", value=False)
 
@@ -749,8 +752,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     HA_CON_COSTO=('HA_CON_COSTO', 'sum')
                 ).reset_index()
                 
-                df_dash['% VUELOS'] = (df_dash['VUELOS'] / total_vuelos) * 100
-                df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100
+                df_dash['% VUELOS'] = (df_dash['VUELOS'] / total_vuelos) * 100 if total_vuelos > 0 else 0
+                df_dash['% HECTAREAS'] = (df_dash['HECTAREAS'] / total_ha) * 100 if total_ha > 0 else 0
                 df_dash = df_dash.sort_values(by='HECTAREAS', ascending=False)
 
                 g1, g2 = st.columns(2)
@@ -1060,30 +1063,31 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 ws.column_dimensions['F'].width = 20
                 
                 data_len = len(df_export)
-                cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
-                
-                bar_chart = BarChart()
-                bar_chart.type = "bar"
-                bar_chart.style = 11
-                bar_chart.title = "Costo Total por Base Operativa ($)"
-                data_costo = Reference(ws, min_col=5, min_row=start_row, max_row=start_row+data_len)
-                bar_chart.add_data(data_costo, titles_from_data=True)
-                bar_chart.set_categories(cats)
-                bar_chart.legend = None
-                bar_chart.dataLabels = DataLabelList()
-                bar_chart.dataLabels.showVal = True
-                ws.add_chart(bar_chart, "H5")
-                
-                pie_chart = DoughnutChart()
-                pie_chart.title = "Distribución de Hectáreas"
-                pie_chart.style = 2
-                data_ha = Reference(ws, min_col=4, min_row=start_row, max_row=start_row+data_len)
-                pie_chart.add_data(data_ha, titles_from_data=True)
-                pie_chart.set_categories(cats)
-                pie_chart.dataLabels = DataLabelList()
-                pie_chart.dataLabels.showPercent = True 
-                pie_chart.dataLabels.showCatName = False
-                ws.add_chart(pie_chart, "H20")
+                if data_len > 0:
+                    cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
+                    
+                    bar_chart = BarChart()
+                    bar_chart.type = "bar"
+                    bar_chart.style = 11
+                    bar_chart.title = "Costo Total por Base Operativa ($)"
+                    data_costo = Reference(ws, min_col=5, min_row=start_row, max_row=start_row+data_len)
+                    bar_chart.add_data(data_costo, titles_from_data=True)
+                    bar_chart.set_categories(cats)
+                    bar_chart.legend = None
+                    bar_chart.dataLabels = DataLabelList()
+                    bar_chart.dataLabels.showVal = True
+                    ws.add_chart(bar_chart, "H5")
+                    
+                    pie_chart = DoughnutChart()
+                    pie_chart.title = "Distribución de Hectáreas"
+                    pie_chart.style = 2
+                    data_ha = Reference(ws, min_col=4, min_row=start_row, max_row=start_row+data_len)
+                    pie_chart.add_data(data_ha, titles_from_data=True)
+                    pie_chart.set_categories(cats)
+                    pie_chart.dataLabels = DataLabelList()
+                    pie_chart.dataLabels.showPercent = True 
+                    pie_chart.dataLabels.showCatName = False
+                    ws.add_chart(pie_chart, "H20")
                 
                 wb.save(buffer_rep)
 
@@ -1146,14 +1150,14 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                                                 cell.value = float(cell.value)
                                                 cell.number_format = '#,##0.00'
                                                 cell.alignment = Alignment(horizontal='center')
-                                        except: pass
+                                        except Exception: pass
                                     elif col_name in ['COSTO TOTAL ($)', 'TARIFA PROM ($/ha)']:
                                         try:
                                             if cell.value != "" and cell.value is not None:
                                                 cell.value = float(cell.value)
                                                 cell.number_format = '$#,##0'
                                                 cell.alignment = Alignment(horizontal='center')
-                                        except: pass
+                                        except Exception: pass
                             
                     elif vista_seleccionada == "📅 Mapa Semanal":
                         matriz.to_excel(writer, sheet_name='Mapa_Mensual', startrow=3)
@@ -1184,7 +1188,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                                             cell.value = float(cell.value)
                                             cell.number_format = '#,##0.00'
                                             cell.alignment = Alignment(horizontal='center')
-                                    except: pass
+                                    except Exception: pass
                 
             st.download_button(
                 label="💾 DESCARGAR REPORTE EJECUTIVO EN EXCEL",
@@ -1192,7 +1196,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 file_name=f"Reporte_Ejecutivo_BI_{rango_label}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
-            )                       
+            )                        
 
     except Exception as e:
         st.error(f"🚨 Fallo procesando el reporte: {e}")
+
+if __name__ == "__main__":
+    pass
