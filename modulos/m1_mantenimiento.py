@@ -106,7 +106,7 @@ def ejecutar(extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 class='titulo-principal'>Inteligencia de Precios SAP</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='titulo-principal'>🛠️ Mantenimiento Plantilla SAP</h1>", unsafe_allow_html=True)
      
     f_sap_raw = st.file_uploader("📥 1. Suba la Sábana Cruda de SAP", type=["xlsx", "xls", "csv"])
      
@@ -144,14 +144,11 @@ def ejecutar(extraer_numero):
                         st.error("🚨 No se pudo establecer conexión con Google Cloud. Verifique sus credenciales.")
                         st.stop()
                         
-                    url_boveda = URL_BOVEDA_MAESTRA
-                    boveda = gc.open_by_url(url_boveda)
+                    boveda = gc.open_by_url(URL_BOVEDA_MAESTRA)
                     hoja_plantilla = boveda.worksheet("Plantilla")
                     hoja_plantilla.batch_clear(["A3:K5000"])
                     hoja_plantilla.update(range_name="A3", values=df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
                     hoja_plantilla.update(range_name="K3", values=[[x] for x in unicos], value_input_option='USER_ENTERED')
-                     
-                    # Eliminamos el intento a Supabase del Paso A, Drive se encarga de esto.
 
                     st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de Drive de forma instantánea.")
                     st.session_state['paso_a_listo'] = True
@@ -187,7 +184,7 @@ def ejecutar(extraer_numero):
             ]
 
             if records_espejo:
-                # 🛡️ MEJORA: UPSERT EN LUGAR DE TRUNCATE (PASO B)
+                # 🛡️ MEJORA: UPSERT SEGURO EN LUGAR DE DELETE FANTASMA
                 res = cliente_sb.table("PRECIOS_INSUMOS").upsert(records_espejo).execute()
                 if res.data or res.data == []: 
                     return True, f"✅ Supabase actualizado (Upsert Seguro) con {len(records_espejo)} insumos."
