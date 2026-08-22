@@ -10,16 +10,30 @@ from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-# --- 🔌 CONEXIÓN Y UTILIDADES ---
+# =================================================================
+# ⚙️ MOTOR DE CONEXIÓN UNIFICADO (V42 VIP)
+# =================================================================
 @st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread():
+def obtener_cliente_gspread_unificado():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
     try:
-        if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
-    except: 
+    except Exception:
         return None
 
+# =================================================================
+# 🛡️ UTILIDADES DE PURIFICACIÓN Y FORMATO
+# =================================================================
 def a_numero_limpio(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -94,106 +108,113 @@ def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fert
 
     return dict_prods
 
+# =================================================================
+# 💾 EXTRACCIÓN Y PREPROCESAMIENTO
+# =================================================================
 @st.cache_data(show_spinner=False, ttl=7200) 
 def descargar_y_masticar_bases():
-    gc = inicializar_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), {}, {}, {}, pd.DataFrame(), pd.DataFrame()
     
-    boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-    t1_vals = boveda.worksheet("TABLA 1").get_all_values()
-    mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
-    cfg_vals = boveda.worksheet("Configuración").get_all_values()
-    
-    df_t1 = pd.DataFrame(t1_vals[5:], columns=[str(c).upper().strip() for c in t1_vals[4]])
-    df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
-    df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
-    
-    col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
-    col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
-    col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
-    col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
-
-    if col_fecha and col_ha and col_pista_t1 and col_coctel:
-        df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
-        df_t1 = df_t1.dropna(subset=['FECHA_DT'])
-        df_t1['MES'] = df_t1['FECHA_DT'].dt.month
-        df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
-        df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
-        df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
-        df_t1['COCTEL_NOM'] = df_t1[col_coctel].astype(str).str.upper().str.strip()
-    
-    dict_bases = {}
-    dict_aditivos_dosis = {}
-    dict_fert = {}
-
-    if not df_mezclas.empty:
-        col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
-        for base_name in col_0_limpia.unique():
-            if base_name in ["NAN", "", "NONE"]: continue
-            rb = df_mezclas[col_0_limpia == base_name]
-            prods = {}
-            for _, r in rb.iterrows():
-                p = str(r.iloc[1]).strip().upper()
-                d = a_numero_limpio(r.iloc[2])
-                if d > 0 and p not in ['NAN', 'NONE', '']: prods[p] = d
-            dict_bases[base_name] = prods
-        
-        for col_idx in range(len(df_mezclas.columns) - 1):
-            for row_idx in range(len(df_mezclas)):
-                val_name = str(df_mezclas.iloc[row_idx, col_idx]).strip().upper()
-                if val_name and val_name not in ['NAN', 'NONE', '']:
-                    val_dosis = a_numero_limpio(df_mezclas.iloc[row_idx, col_idx+1])
-                    if val_dosis > 0: dict_aditivos_dosis[val_name] = val_dosis
-
-        if len(df_mezclas.columns) > 13:
-            for _, row in df_mezclas.iterrows():
-                f_n = str(row.iloc[12]).strip().upper() 
-                f_s = str(row.iloc[13]).strip().upper() 
-                if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
-                    dict_fert[f_s] = f_n
-
-    df_precios_master = pd.DataFrame()
     try:
-        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
-        precios_consolidados = []
-        for ws in sh_precios.worksheets():
-            datos_hoja = ws.get_all_values()
-            if not datos_hoja: continue
-            
-            idx_header, col_anio, col_prod, col_precio_tipo = -1, -1, -1, -1
-            for i in range(min(10, len(datos_hoja))):
-                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
-                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                    idx_header = i
-                    col_anio = fila_upper.index('AÑO')
-                    col_prod = fila_upper.index('PRODUCTO')
-                    col_precio_tipo = next((idx for idx, val in enumerate(fila_upper) if 'PRECIO' in val), -1)
-                    break
-            
-            if idx_header != -1:
-                for row in datos_hoja[idx_header+1:]:
-                    if col_precio_tipo != -1 and len(row) > col_precio_tipo:
-                        if "DOSIS" in str(row[col_precio_tipo]).upper(): continue
-                            
-                    if len(row) > max(col_anio, col_prod):
-                        anio_str = str(row[col_anio]).strip()
-                        str_prod = str(row[col_prod]).strip().upper()
-                        if anio_str.isdigit() and str_prod:
-                            col_inicio = max(col_anio, col_prod) + 1
-                            vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != ""]
-                            vals = [v for v in vals if v > 0]
-                            prom = sum(vals)/len(vals) if vals else 0.0
-                            if prom > 0:
-                                precios_consolidados.append({
-                                    'AÑO': int(anio_str), 
-                                    'PRODUCTO': str_prod, 
-                                    'PROD_CLEAN': re.sub(r'[^\w]', '', str_prod), 
-                                    'PRECIO': prom
-                                })
-        df_precios_master = pd.DataFrame(precios_consolidados)
-    except: pass
+        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        t1_vals = boveda.worksheet("TABLA 1").get_all_values()
+        mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
+        cfg_vals = boveda.worksheet("Configuración").get_all_values()
         
-    return df_t1, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master
+        df_t1 = pd.DataFrame(t1_vals[5:], columns=[str(c).upper().strip() for c in t1_vals[4]])
+        df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
+        df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
+        
+        col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
+        col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
+        col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
+        col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
+
+        if col_fecha and col_ha and col_pista_t1 and col_coctel:
+            df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
+            df_t1 = df_t1.dropna(subset=['FECHA_DT'])
+            df_t1['MES'] = df_t1['FECHA_DT'].dt.month
+            df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
+            df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
+            df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
+            df_t1['COCTEL_NOM'] = df_t1[col_coctel].astype(str).str.upper().str.strip()
+        
+        dict_bases = {}
+        dict_aditivos_dosis = {}
+        dict_fert = {}
+
+        if not df_mezclas.empty:
+            col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
+            for base_name in col_0_limpia.unique():
+                if base_name in ["NAN", "", "NONE"]: continue
+                rb = df_mezclas[col_0_limpia == base_name]
+                prods = {}
+                for _, r in rb.iterrows():
+                    p = str(r.iloc[1]).strip().upper()
+                    d = a_numero_limpio(r.iloc[2])
+                    if d > 0 and p not in ['NAN', 'NONE', '']: prods[p] = d
+                dict_bases[base_name] = prods
+            
+            for col_idx in range(len(df_mezclas.columns) - 1):
+                for row_idx in range(len(df_mezclas)):
+                    val_name = str(df_mezclas.iloc[row_idx, col_idx]).strip().upper()
+                    if val_name and val_name not in ['NAN', 'NONE', '']:
+                        val_dosis = a_numero_limpio(df_mezclas.iloc[row_idx, col_idx+1])
+                        if val_dosis > 0: dict_aditivos_dosis[val_name] = val_dosis
+
+            if len(df_mezclas.columns) > 13:
+                for _, row in df_mezclas.iterrows():
+                    f_n = str(row.iloc[12]).strip().upper() 
+                    f_s = str(row.iloc[13]).strip().upper() 
+                    if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
+                        dict_fert[f_s] = f_n
+
+        df_precios_master = pd.DataFrame()
+        try:
+            sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
+            precios_consolidados = []
+            for ws in sh_precios.worksheets():
+                datos_hoja = ws.get_all_values()
+                if not datos_hoja: continue
+                
+                idx_header, col_anio, col_prod, col_precio_tipo = -1, -1, -1, -1
+                for i in range(min(10, len(datos_hoja))):
+                    fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                    if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                        idx_header = i
+                        col_anio = fila_upper.index('AÑO')
+                        col_prod = fila_upper.index('PRODUCTO')
+                        col_precio_tipo = next((idx for idx, val in enumerate(fila_upper) if 'PRECIO' in val), -1)
+                        break
+                
+                if idx_header != -1:
+                    for row in datos_hoja[idx_header+1:]:
+                        if col_precio_tipo != -1 and len(row) > col_precio_tipo:
+                            if "DOSIS" in str(row[col_precio_tipo]).upper(): continue
+                                
+                        if len(row) > max(col_anio, col_prod):
+                            anio_str = str(row[col_anio]).strip()
+                            str_prod = str(row[col_prod]).strip().upper()
+                            if anio_str.isdigit() and str_prod:
+                                col_inicio = max(col_anio, col_prod) + 1
+                                vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != ""]
+                                vals = [v for v in vals if v > 0]
+                                prom = sum(vals)/len(vals) if vals else 0.0
+                                if prom > 0:
+                                    precios_consolidados.append({
+                                        'AÑO': int(anio_str), 
+                                        'PRODUCTO': str_prod, 
+                                        'PROD_CLEAN': re.sub(r'[^\w]', '', str_prod), 
+                                        'PRECIO': prom
+                                    })
+            df_precios_master = pd.DataFrame(precios_consolidados)
+        except Exception: pass
+            
+        return df_t1, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master
+    except Exception as e:
+        st.error(f"🚨 Error de Extracción: {e}")
+        return pd.DataFrame(), {}, {}, {}, pd.DataFrame(), pd.DataFrame()
 
 def extraer_precios_maestros(df_cfg):
     precios = {}
@@ -210,13 +231,17 @@ def extraer_precios_maestros(df_cfg):
         if p and p not in ["NAN", "NONE", ""]: precios[p] = c
     return precios
 
-# --- 🚀 EJECUCIÓN PRINCIPAL ---
+# =================================================================
+# 🚀 EJECUCIÓN PRINCIPAL DEL SIMULADOR
+# =================================================================
 def ejecutar(purificar_lote, extraer_numero):
+    VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
     
     st.markdown(f"""
     <style>
-    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
     
     .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; transition: transform 0.3s ease, box-shadow 0.3s ease;}}
     .kpi-presupuesto:hover {{ transform: translateY(-5px) scale(1.02); box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37;}}
@@ -226,8 +251,16 @@ def ejecutar(purificar_lote, extraer_numero):
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
 
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V42 */
+    [data-testid="column"] {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }}
+
     div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input, div[data-testid="stTextInput"] input {{
-        background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; color: #000000 !important; font-weight: bold !important;
+        background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 8px !important; color: #000000 !important; font-weight: bold !important;
     }}
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background-color: transparent !important; border: none !important; }}
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
@@ -235,7 +268,7 @@ def ejecutar(purificar_lote, extraer_numero):
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 4.8]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown(f"<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:{DORADO}; font-size:16px;'>[V.GERENCIAL 42.0 VIP]</span></h1>", unsafe_allow_html=True)
     
     if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v48"):
         st.cache_data.clear()
@@ -250,7 +283,7 @@ def ejecutar(purificar_lote, extraer_numero):
     # ==========================================
     # FASE 1: PARÁMETROS BASE
     # ==========================================
-    with st.expander("⚙️ 1. Definir Escenario Base (Parámetros Históricos)", expanded=True):
+    with st.expander("⚙️ 1. Definir Escenario Base (Parámetros Históricos)", expanded=not bool(st.session_state.get('lab_df') is not None and not st.session_state['lab_df'].empty)):
         f1, f2, f3 = st.columns(3)
         meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
         opciones_mes = ["📊 AÑO COMPLETO (TODOS)"] + list(meses_dict.values())
@@ -324,7 +357,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     for r_db in precios_records:
                         if r_db['AÑO'] == año_base:
                             if p_clean in r_db['PROD_CLEAN'] or r_db['PROD_CLEAN'] in p_clean:
-                                precio_hist_base = r_db['PRECIO']
+                                precio_hist_base = float(r_db['PRECIO'])
                                 anios_pasados = max(0, anio_presupuesto - año_base)
                                 precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
                                 break
@@ -333,18 +366,18 @@ def ejecutar(purificar_lote, extraer_numero):
                         matches_hist = [r for r in precios_records if r['AÑO'] < año_base and (p_clean in r['PROD_CLEAN'] or r['PROD_CLEAN'] in p_clean)]
                         if matches_hist:
                             best_match = max(matches_hist, key=lambda x: x['AÑO'])
-                            precio_hist_base = best_match['PRECIO']
+                            precio_hist_base = float(best_match['PRECIO'])
                             anios_pasados = max(0, anio_presupuesto - int(best_match['AÑO']))
                             precio_unitario_final = precio_hist_base * ((1 + (inflacion_sel / 100.0)) ** anios_pasados)
 
                     if precio_unitario_final == 0.0:
-                        precio_bk = dict_precios_backup.get(producto, 0.0)
+                        precio_bk = float(dict_precios_backup.get(producto, 0.0))
                         if precio_bk < 1000:
                             for p_bk, val_bk in dict_precios_backup.items():
                                 bk_clean = re.sub(r'[^\w]', '', p_bk.upper().strip())
                                 if p_clean in bk_clean or bk_clean in p_clean:
                                     if val_bk >= 1000: 
-                                        precio_bk = val_bk
+                                        precio_bk = float(val_bk)
                                         break
                         if precio_bk >= 1000:
                             precio_hist_base = precio_bk
@@ -356,12 +389,12 @@ def ejecutar(purificar_lote, extraer_numero):
                         "🧪 Insumo Químico": producto,
                         "vol_sist_num": float(volumen),
                         "precio_sist_num": float(precio_unitario_final),
-                        "precio_base_num": float(precio_hist_base), # Pura matemática guardada
-                        "📦 Vol. Sist. (Base)": fmt_latino(volumen, 2),
+                        "precio_base_num": float(precio_hist_base),
+                        "📦 Vol. Sist. (Base)": float(volumen),
                         "🎯 Ajuste Vol. (%)": 0.0,
-                        "💵 Precio Base (Histórico)": fmt_latino(precio_hist_base, 0),
-                        "📈 Precio Sist. (+Inflación)": fmt_latino(precio_unitario_final, 0),
-                        "🎯 Precio Irreal (Modificable)": round(precio_unitario_final, 0)
+                        "💵 Precio Base (Histórico)": float(precio_hist_base),
+                        "📈 Precio Sist. (+Inflación)": float(precio_unitario_final),
+                        "🎯 Precio Irreal (Modificable)": float(round(precio_unitario_final, 0))
                     })
             
             st.session_state['lab_df'] = pd.DataFrame(resultados).sort_values(by="🧪 Insumo Químico", ascending=True).reset_index(drop=True)
@@ -397,11 +430,12 @@ def ejecutar(purificar_lote, extraer_numero):
         factor_frecuencia_global = 1 + (frecuencia_vuelos / 100.0)
         df_para_editor['vol_final_num'] = df_para_editor['vol_sist_num'] * factor_frecuencia_global * (1 + (pd.to_numeric(df_para_editor['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0))
         
-        df_para_editor['vol_final_num'] = df_para_editor.apply(lambda row: row['vol_final_num'] if row['✅ Activo'] else 0.0, axis=1)
+        df_para_editor['vol_final_num'] = df_para_editor.apply(lambda row: float(row['vol_final_num']) if row['✅ Activo'] else 0.0, axis=1)
         df_para_editor['subtotal_num'] = df_para_editor['vol_final_num'] * pd.to_numeric(df_para_editor['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
 
-        df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num'].apply(lambda x: fmt_latino(x, 2))
-        df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num'].apply(lambda x: f"$ {fmt_latino(x, 0)}")
+        # 🎯 VIP FIX: Mantener en memoria como flotantes, no convertirlos a strings!
+        df_para_editor['📊 Vol. Final (Calc)'] = df_para_editor['vol_final_num']
+        df_para_editor['💰 Subtotal (Calc)'] = df_para_editor['subtotal_num']
 
         cols_ordenadas = [
             "✅ Activo", "🧪 Insumo Químico", 
@@ -412,6 +446,7 @@ def ejecutar(purificar_lote, extraer_numero):
         ]
         df_para_editor = df_para_editor[cols_ordenadas]
 
+        # 🎯 RENDERIZADO NATIVO CON ST.COLUMN_CONFIG
         df_editado = st.data_editor(
             df_para_editor,
             column_config={
@@ -422,13 +457,13 @@ def ejecutar(purificar_lote, extraer_numero):
                 "subtotal_num": None,
                 "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para llevar todo a cero y eliminar del presupuesto."),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
-                "📦 Vol. Sist. (Base)": st.column_config.TextColumn("Vol. Sist. (Base)"),
-                "🎯 Ajuste Vol. (%)": st.column_config.NumberColumn("🎯 Ajuste Vol. (%)", format="%d%%", step=1.0),
-                "📊 Vol. Final (Calc)": st.column_config.TextColumn("📊 Vol. Proyectado"),
-                "💵 Precio Base (Histórico)": st.column_config.TextColumn("Precio Base (Histórico)"),
-                "📈 Precio Sist. (+Inflación)": st.column_config.TextColumn("Precio Sist. (+Inflación)"),
-                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Irreal (Modificable)", min_value=0.0, format="%d"),
-                "💰 Subtotal (Calc)": st.column_config.TextColumn("💰 Subtotal")
+                "📦 Vol. Sist. (Base)": st.column_config.NumberColumn("📦 Vol. Sist. (Base)", format="%,.1f"),
+                "🎯 Ajuste Vol. (%)": st.column_config.NumberColumn("🎯 Ajuste Vol. (%)", format="%d %%", step=1.0),
+                "📊 Vol. Final (Calc)": st.column_config.NumberColumn("📊 Vol. Proyectado", format="%,.1f"),
+                "💵 Precio Base (Histórico)": st.column_config.NumberColumn("💵 Precio Histórico", format="$ %,.0f"),
+                "📈 Precio Sist. (+Inflación)": st.column_config.NumberColumn("📈 Precio Sist. (+Inflación)", format="$ %,.0f"),
+                "🎯 Precio Irreal (Modificable)": st.column_config.NumberColumn("🎯 Precio Modificable", min_value=0.0, format="$ %,.0f"),
+                "💰 Subtotal (Calc)": st.column_config.NumberColumn("💰 Subtotal", format="$ %,.0f")
             },
             disabled=["🧪 Insumo Químico", "📦 Vol. Sist. (Base)", "📊 Vol. Final (Calc)", "💵 Precio Base (Histórico)", "📈 Precio Sist. (+Inflación)", "💰 Subtotal (Calc)"],
             hide_index=True,
@@ -442,22 +477,24 @@ def ejecutar(purificar_lote, extraer_numero):
             nuevo_vol = i2.number_input("Volumen Proyectado", min_value=0.0, value=100.0, step=10.0)
             nuevo_precio = i3.number_input("Precio Estimado", min_value=0.0, value=50000.0, step=5000.0)
             
-            if i4.button("Inyectar", type="secondary", use_container_width=True):
-                if nuevo_nombre:
-                    nueva_fila = pd.DataFrame([{
-                        "✅ Activo": True,
-                        "🧪 Insumo Químico": nuevo_nombre.upper(),
-                        "vol_sist_num": nuevo_vol,
-                        "precio_sist_num": 0.0,
-                        "precio_base_num": 0.0,
-                        "📦 Vol. Sist. (Base)": fmt_latino(nuevo_vol, 2),
-                        "🎯 Ajuste Vol. (%)": 0.0,
-                        "💵 Precio Base (Histórico)": fmt_latino(0, 0),
-                        "📈 Precio Sist. (+Inflación)": fmt_latino(0, 0),
-                        "🎯 Precio Irreal (Modificable)": round(nuevo_precio, 0)
-                    }])
-                    st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
-                    st.rerun()
+            with i4:
+                st.markdown("<br>", unsafe_allow_html=True) # Alineación del botón
+                if st.button("Inyectar", type="secondary", use_container_width=True):
+                    if nuevo_nombre:
+                        nueva_fila = pd.DataFrame([{
+                            "✅ Activo": True,
+                            "🧪 Insumo Químico": nuevo_nombre.upper(),
+                            "vol_sist_num": float(nuevo_vol),
+                            "precio_sist_num": 0.0,
+                            "precio_base_num": 0.0,
+                            "📦 Vol. Sist. (Base)": float(nuevo_vol),
+                            "🎯 Ajuste Vol. (%)": 0.0,
+                            "💵 Precio Base (Histórico)": 0.0,
+                            "📈 Precio Sist. (+Inflación)": 0.0,
+                            "🎯 Precio Irreal (Modificable)": float(nuevo_precio)
+                        }])
+                        st.session_state['lab_df'] = pd.concat([st.session_state['lab_df'], nueva_fila], ignore_index=True)
+                        st.rerun()
 
         # ==========================================
         # FASE 3: DASHBOARD DE CONTRASTE GERENCIAL
@@ -514,7 +551,7 @@ def ejecutar(purificar_lote, extraer_numero):
                          color="Escenario", color_discrete_map={"Tradicional (Inercial)": "#6c757d", "Estratégico (Modificado)": "#d4af37"},
                          title="<b>Comparativo Global</b>")
         fig_bar.update_traces(textposition='auto', textfont_size=14, textfont_color="white")
-        fig_bar.update_layout(showlegend=False, yaxis_title="COP", xaxis_title="")
+        fig_bar.update_layout(showlegend=False, yaxis_title="COP", xaxis_title="", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
         g_col1.plotly_chart(fig_bar, use_container_width=True)
 
         df_pie = df_estrategico.copy().sort_values('subtotal_num', ascending=False)
@@ -527,19 +564,19 @@ def ejecutar(purificar_lote, extraer_numero):
         fig_pie = px.pie(df_pie, values='subtotal_num', names='🧪 Insumo Químico', hole=0.45, 
                          title="<b>Peso Financiero por Molécula (Estratégico)</b>", color_discrete_sequence=px.colors.qualitative.Prism)
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0))
+        fig_pie.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
         g_col2.plotly_chart(fig_pie, use_container_width=True)
 
         st.markdown("---")
         
-        # 💥 EXPORTACIÓN A EXCEL: USO DIRECTO DE NÚMEROS PUROS 💥
+        # 💥 EXPORTACIÓN A EXCEL VIP
         df_export = df_estrategico.copy()
         
         # Seleccionamos las columnas matemáticas reales
         df_export = df_export[[
             "🧪 Insumo Químico", 
             "vol_final_num", 
-            "precio_base_num", # <--- NÚMERO VIRGEN, SIN LIMPIEZA TEXTUAL
+            "precio_base_num", 
             "🎯 Precio Irreal (Modificable)", 
             "subtotal_num"
         ]]
@@ -566,11 +603,15 @@ def ejecutar(purificar_lote, extraer_numero):
             ws.merge_cells('A1:E2')
             
             header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-            header_font = Font(bold=True, color="FFFFFF")
+            header_font = Font(bold=True, color="D4AF37")
+            borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
+                                top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+
             for col in range(1, 6):
                 cell = ws.cell(row=3, column=col)
                 cell.fill = header_fill
                 cell.font = header_font
+                cell.border = borde_fino
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 
             max_row = ws.max_row
@@ -578,11 +619,15 @@ def ejecutar(purificar_lote, extraer_numero):
                 ws.cell(row=row, column=2).number_format = '#,##0.00'
                 for col in [3, 4, 5]:
                     ws.cell(row=row, column=col).number_format = '"$" #,##0'
+                for col in range(1, 6):
+                    ws.cell(row=row, column=col).border = borde_fino
             
+            # Fila de Totales
             ws.cell(row=max_row + 1, column=1, value="TOTAL GENERAL").font = Font(bold=True, size=12)
             ws.cell(row=max_row + 1, column=1).alignment = Alignment(horizontal='right')
             ws.cell(row=max_row + 1, column=5, value=f"=SUM(E4:E{max_row})").font = Font(bold=True, size=12)
             ws.cell(row=max_row + 1, column=5).number_format = '"$" #,##0'
+            ws.cell(row=max_row + 1, column=5).border = borde_fino
             
             for col_letter, width in zip(["A", "B", "C", "D", "E"], [35, 30, 25, 30, 25]):
                 ws.column_dimensions[col_letter].width = width
