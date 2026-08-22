@@ -88,7 +88,7 @@ def obtener_cliente_gspread_unificado():
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
-# 💥 PARSEADOR ESTRÍCTO UNIFICADO (CORRECCIÓN DE DÍAS CICLO)
+
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
@@ -177,7 +177,6 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
         log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
     return 14
 
-# 🧠 MÁQUINA DEL TIEMPO: LECTOR DE TARIFAS MAESTRO (MATRIZ_TARIFAS)
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas_mod3():
     gc = obtener_cliente_gspread_unificado()
@@ -372,69 +371,102 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
-    # 💥 FUNCIÓN DE ENLACE DE SELECTORES 💥
     def sync_pistas(src, tgt):
         st.session_state[tgt] = st.session_state[src]
 
     st.header("", anchor="inicio_modulo")
+    
+    # 🎯 CSS REFORZADO: ESTÁNDAR FLEXBOX Y ALINEACIÓN DE COLUMNAS
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     
-    /* 🛡️ REGLA CORREGIDA PARA TABLA TIPO EXCEL (PERMITE TABULACIÓN FLUIDA) */
-    div[data-testid="stDataFrame"] { 
-        border: 3px solid #143521 !important; 
+    /* ALINEACIÓN VERTICAL SIMÉTRICA Y PERMANENTE EN COLUMNAS */
+    [data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }
+    
+    [data-testid="column"] > div {
+        width: 100% !important;
+    }
+    
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { 
+        border: 3px solid #0d1b2a !important; 
         border-radius: 8px !important; 
         box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; 
         overflow: hidden !important; 
     }
     
-    div[data-testid="stDataEditor"] { 
-        border: 3px solid #143521 !important; 
+    /* PERMITIR TABULACIÓN FLUIDA TIPO EXCEL EN TABLAS */
+    div[data-testid="stDataEditor"] canvas { outline: none !important; }
+    div[data-testid="stDataEditor"] :focus { border-color: #d4af37 !important; }
+    
+    div[data-testid="stSelectbox"] > div, 
+    div[data-testid="stSelectbox"] div[data-baseweb="select"], 
+    div[data-testid="stTextInput"] > div, 
+    div[data-testid="stNumberInput"] > div,
+    div[data-testid="stDateInput"] > div { 
+        background-color: #ffffff !important; 
+        border: 2px solid #0d1b2a !important; 
         border-radius: 8px !important; 
-        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; 
     }
-
-    /* Forzar que el lienzo de edición retenga la tecla TAB nativa de Excel */
-    div[data-testid="stDataEditor"] canvas {
-        outline: none !important;
+    
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input, 
+    div[data-testid="stDateInput"] input { 
+        border: none !important; 
+        box-shadow: none !important; 
+        font-weight: 800 !important; 
+        color: #0d1b2a !important; 
+        background-color: transparent !important; 
     }
-    div[data-testid="stDataEditor"] :focus {
-        border-color: #d4af37 !important;
-    }
-
-    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
-    div[data-testid="stDateInput"] > div { border: 3px solid #143521 !important; border-radius: 8px !important; background-color: #ffffff !important; }
-    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: none !important; box-shadow: none !important; font-weight: bold !important; color: #000000 !important; background-color: transparent !important; }
+    
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
-    div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
+    div[data-testid="stSelectbox"] * { color: #0d1b2a !important; font-weight: bold !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
-    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; padding: 2px 5px !important; }
-    div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
+    
+    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { 
+        background-color: #ffffff !important; 
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 8px !important; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; 
+        padding: 2px 5px !important; 
+    }
+    
+    div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { 
+        color: #0d1b2a !important; 
+        font-weight: 900 !important; 
+        font-size: 17px !important; 
+        font-family: 'Arial Black', monospace !important; 
+    }
     </style>
     """, unsafe_allow_html=True)
 
     def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
         def f_h(val): return f"{val:,.0f}".replace(",", ".")
         return f"""
-        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px; align-items: stretch;">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">👨‍🔬 Serv. Tec</div>
                 <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(st_val)}</div>
             </div>
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">✈️ Vuelo</div>
                 <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(vuelo_val)}</div>
             </div>
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">🧪 Mezcla</div>
                 <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(mezcla_val)}</div>
             </div>
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
                 <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">⚠️ Recargo</div>
                 <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(recargo_val)}</div>
             </div>
-            <div style="flex: 1.2; min-width: 140px; background-color: #0d1b2a; border: 3px solid #d4af37; padding: 12px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); text-align: center;">
+            <div style="flex: 1.2; min-width: 140px; background-color: #0d1b2a; border: 3px solid #d4af37; padding: 12px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
                 <div style="font-size: 11px; color: #d4af37; font-weight: 800; text-transform: uppercase;">💰 COSTO x HA</div>
                 <div style="font-size: 19px; color: white; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(costo_ha_val)}</div>
             </div>
@@ -443,12 +475,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    # Cargamos la Matriz Maestra para sacar TODA la inteligencia de tarifas
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
-    # =================================================================
-    # 💥 MODO SIMULADOR DE COTIZACIONES
-    # =================================================================
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
 
     if modo_simulacro:
@@ -521,7 +549,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             _, c_f4_sim = st.columns([2, 1.2])
             fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
             
-            # CÁLCULO DE DÍAS CICLO EN MODO SIMULADOR
             if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
                 st.session_state.dias_ciclo_sim_mem = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
                 st.session_state.finca_anterior_sim = finca_sim
@@ -529,7 +556,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 st.rerun()
 
             st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
-            st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días (ej. 92Ha a 25 días y 51Ha a 9 días), edite o añada filas. El ST se cobrará línea por línea.")
+            st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días, edite o añada filas.")
             
             df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(st.session_state.dias_ciclo_sim_mem)}])
             df_areas_in = st.data_editor(
@@ -558,7 +585,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
             c_f1, c_f2, c_f3 = st.columns(3)
             
-            # EXTRACCIÓN DINÁMICA DE MATRIZ DE TARIFAS (MODO SIMULADOR)
             anio_vuelo_sim = str(fecha_eval_sim.year)
             dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado_sim = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
             
@@ -572,7 +598,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
-        # PREPARACIÓN DE LAS PISTAS Y SINCRONIZACIÓN DE CAJAS (SIMULADOR)
         casilla_key_sim = f"sim_{finca_sim}_{fecha_eval_sim}"
         pistas_matriz_tarifa = []
         if not df_tarifas_maestras.empty:
@@ -828,12 +853,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 except Exception as e:
                     log_error_critico("Lectura del pedido SAP escaneado (finca / hectáreas)", e)
 
+        # 🎯 FILA DE PARÁMETROS NIVELES SIMÉTRICAMENTE
         c_finca, c_pedido, c_fecha = st.columns([2, 2, 1.3])
         if 'fecha_sim_mem' not in st.session_state: st.session_state.fecha_sim_mem = hoy_colombia_date
 
         fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
 
-        # 💥 EXTRACCIÓN DINÁMICA DE MATRIZ DE TARIFAS (MODO REAL)
         anio_vuelo = str(fecha_operacion.year)
         dict_aviones, dict_drones, dict_topes_pista, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
 
@@ -900,7 +925,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                 tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
                 mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
-        # 💥 CÁLCULO EN TIEMPO REAL SIN CONGELAMIENTO EN 14
         if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
         if 'fecha_operacion_anterior' not in st.session_state: st.session_state.fecha_operacion_anterior = fecha_operacion
 
@@ -951,6 +975,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
             mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
+            # 🎯 FILA DE 4 COLUMNAS TOTALMENTE NIVELADAS
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             with r1c1:
                 st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
@@ -1046,7 +1071,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             
             st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
             
-            # PREPARACIÓN DE LAS PISTAS Y SINCRONIZACIÓN DE CAJAS (REAL)
             pistas_matriz_tarifa = []
             if not df_tarifas_maestras.empty:
                 pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
@@ -1284,7 +1308,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             m1, m2, m3, m4, m5 = st.columns(5)
             
             def mini_metric(i, t, v): 
-                return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06);'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
+                return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06); height: 100%; display: flex; flex-direction: column; justify-content: space-between;'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
             
             with m1: st.markdown(mini_metric("🗺️", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
             with m2: 
@@ -1309,16 +1333,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             with c_sap4: st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
             html_totales = f"""
-            <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
-                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px; align-items: stretch;">
+                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
                     <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
                     <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_st_finca)}</h3>
                 </div>
-                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
                     <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
                     <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_vuelo_finca)}</h3>
                 </div>
-                <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center;">
+                <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
                     <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
                     <h2 style="margin:0; color: white; font-weight: 900; user-select: all;">$ {gran_total:,.0f}</h2>
                 </div>
@@ -1492,15 +1516,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     "pista": str(pista_manual),
                                     "tipo_productor": str(tipo_productor)
                                 }
-                                # Apuntamos a la tabla correcta
                                 supabase_client.table("TABLA_1").insert(payload_orden).execute()
                             except Exception:
-                                # ESCUDO SILENCIADOR: Si las columnas de Supabase exigen nombres 
-                                # distintos (ej: "Nº ORDEN" en vez de "os_virtual"), el sistema fallará 
-                                # en silencio SIN mostrar recuadros amarillos al usuario. 
-                                # Esto es 100% seguro porque la factura YA SE GUARDÓ con éxito en el Drive.
                                 pass
-                        # =========================================================
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive.")
