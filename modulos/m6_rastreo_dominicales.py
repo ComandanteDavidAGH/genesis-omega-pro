@@ -9,18 +9,25 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
+URL_DESTINO_RECARGOS_DEFAULT = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
 
 @st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread():
-    """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
             return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    try:
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
 # =================================================================
@@ -28,7 +35,6 @@ def inicializar_cliente_gspread():
 # =================================================================
 
 def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
-    # 🚀 REFORZAMIENTO ESTÉTICO VIP COMPLETO: Destrucción de Casillas Pálidas
     st.markdown("""
     <style>
     .titulo-principal { 
@@ -43,7 +49,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
         overflow: hidden !important; 
     }
     
-    /* 💥 CONTROLES ENDURECIDOS: Forzar fondo blanco y contraste extremo en cuadros de texto */
     div[data-testid="stTextInput"] input {
         border: 2px solid #0d1b2a !important;
         border-radius: 6px !important;
@@ -53,7 +58,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
         font-size: 15px !important;
     }
     
-    /* HUD Analítico de Recargos */
     .hud-recargos {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
         border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white;
@@ -73,18 +77,18 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
         placeholder="Pegue aquí el link del archivo origen..."
     )
 
-    gc = inicializar_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if gc is None:
         st.error("🚨 Enlace satelital roto con Google Cloud. Verifique sus credenciales.")
         return
 
-    if st.button("🚀 RASTREAR E INYECTAR FALTANTES", use_container_width=True):
+    if st.button("🚀 RASTREAR E INYECTAR FALTANTES", use_container_width=True, type="primary"):
         if not url_ori or "http" not in url_ori:
             st.error("❌ Por favor, introduzca una URL válida de Google Sheets.")
         else:
             try:
                 with st.spinner("Modo Inyección Exacta Activado..."):
-                    url_dest = "https://docs.google.com/spreadsheets/d/1FTiKlHo2UF8lWHk4SrFf9oxTUa2Q_n1l5IK9XFoqQaU/edit"
+                    url_dest = URL_DESTINO_RECARGOS_DEFAULT
                     
                     sh_dest = gc.open_by_url(url_dest)
                     ws_dest = sh_dest.sheet1
@@ -104,7 +108,7 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
 
                     st.info(f"📅 Radar Destino: Última fecha validada en bóveda -> {max_f.strftime('%d/%m/%Y')}")
 
-                    # Apertura y Rayos X del archivo origen
+                    # Apertura del archivo origen
                     sh_ori = gc.open_by_url(url_ori)
                     ws_ori = next((s for s in sh_ori.worksheets() if "TABLA 1" in s.title.upper()), sh_ori.sheet1)
                     
@@ -158,7 +162,7 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                             else:
                                 recargos_ignorados += 1
 
-                    # 🚀 DESPLIEGUE DEL HUD DE CONTROL DE RECARGOS
+                    # HUD de Control de Recargos
                     st.markdown(f"""
                     <div class="hud-recargos">
                         <div class="hud-recargos-item">
@@ -179,7 +183,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                     if dict_nuevos:
                         prox_fila = len(datos_dest) + 1 
                         
-                        # 💥 ESCUDO ANTI-ERROR 500: Purificación de NaNs e Infinitos
                         def sanitizar_numero(val):
                             if pd.isna(val): return 0.0
                             if isinstance(val, (float, int)):
@@ -199,7 +202,6 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                                 int(sanitizar_numero(v['semana']))
                             ])
                             
-                            # Estructuración asíncrona para la base de datos relacional
                             payload_supabase.append({
                                 "finca": str(v['finca']),
                                 "hectareas": float(sanitizar_numero(v['ha'])),
@@ -211,23 +213,18 @@ def ejecutar(procesar_fecha_pesada, limpiar_val_dom):
                                 "origen_link": str(url_ori)
                             })
                         
-                        # 💥 ESCUDO ANTI-LIMITES: Verificamos si la hoja tiene filas suficientes antes de escribir
                         filas_necesarias = prox_fila + len(filas_nuevas)
                         if filas_necesarias > ws_dest.row_count:
-                            ws_dest.add_rows(len(filas_nuevas) + 50) # Le damos un colchón de 50 filas extra
+                            ws_dest.add_rows(len(filas_nuevas) + 50)
                         
-                        # Definimos el rango exacto para que la API trabaje segura
                         rango_destino = f'B{prox_fila}:G{prox_fila + len(filas_nuevas) - 1}'
+                        ws_dest.update(range_name=rango_destino, values=filas_nuevas, value_input_option='USER_ENTERED')
                         
-                        # Volcado blindado hacia la base destino en Drive
-                        ws_dest.update(values=filas_nuevas, range_name=rango_destino, value_input_option='USER_ENTERED')
-                        
-                        # INTEGRACIÓN SUPABASE: Shadow Ledger Preventivo
-                        if 'supabase' in st.session_state:
+                        if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                             try:
                                 st.session_state['supabase'].table("recargos_logistica").insert(payload_supabase).execute()
                             except Exception:
-                                pass # Mitigación silenciosa para no obstruir el flujo primario de gspread
+                                pass
                         
                         st.success(f"🎯 ¡IMPACTO PERFECTO! Se inyectaron exitosamente {len(filas_nuevas)} registros nuevos empezando en la fila {prox_fila} y sincronizados en la nube.")
                         st.balloons()
