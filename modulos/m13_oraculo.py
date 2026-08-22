@@ -84,6 +84,7 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
     return None 
 
 def calcular_intervalo_pista(df_pista):
+    """ Calcula cuántos días tarda un ciclo de fumigación en una pista """
     if df_pista.empty: return 14.0
     fechas = sorted(df_pista['FECHA_DT'].dt.date.unique())
     if len(fechas) < 2: return 14.0
@@ -228,17 +229,19 @@ def ejecutar(purificar_lote, extraer_numero):
     
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stFileUploader"] > div {{
+    div[data-testid="stFileUploader"] > div,
+    div[data-testid="stTextInput"] > div {{
         background-color: #ffffff !important;
         border: 2px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stTextInput"] div[data-baseweb="input"] {{
         background-color: transparent !important;
         border: none !important;
     }}
-    div[data-testid="stSelectbox"] *, div[data-testid="stFileUploader"] * {{
+    div[data-testid="stSelectbox"] *, div[data-testid="stFileUploader"] *, div[data-testid="stTextInput"] input {{
         color: #000000 !important;
         font-weight: bold !important;
     }}
@@ -265,12 +268,46 @@ def ejecutar(purificar_lote, extraer_numero):
             st.cache_data.clear()
             st.rerun()
 
+    # 💾 MEMORIA RAM DE SESIÓN PARA LA HOMOLOGACIÓN
+    if 'traductor_sap' not in st.session_state:
+        st.session_state['traductor_sap'] = {
+            "PLUC": "FUMIGARAY",
+            "PORI": "AEROPENOR",
+            "LUCI": "GENESYS",
+            "TEHO": "AVIL",
+            "PDIV": "ASA"
+        }
+
+    # =================================================================
+    # 🎯 AISLAMIENTO TÁCTICO: MODO CONFIGURACIÓN SAP
+    # =================================================================
+    modo_config = st.toggle("⚙️ MODO CONFIGURACIÓN: Homologación Avanzada de Almacenes SAP", value=False)
+    
+    if modo_config:
+        with st.container(border=True):
+            st.markdown("### ⚙️ Diccionario de Traducción (SAP ↔ Operación)")
+            st.info("💡 **Visión Aislada:** SAP utiliza códigos técnicos que difieren de los nombres operativos. Empareja los códigos aquí; el sistema guardará tu configuración en la memoria RAM.")
+            
+            c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns(5)
+            st.session_state['traductor_sap']["PLUC"] = c_h1.text_input("PLUC (Dron)", value=st.session_state['traductor_sap']["PLUC"]).upper()
+            st.session_state['traductor_sap']["PORI"] = c_h2.text_input("PORI (Dron)", value=st.session_state['traductor_sap']["PORI"]).upper()
+            st.session_state['traductor_sap']["LUCI"] = c_h3.text_input("LUCI (Dron)", value=st.session_state['traductor_sap']["LUCI"]).upper()
+            st.session_state['traductor_sap']["TEHO"] = c_h4.text_input("TEHO (Dron)", value=st.session_state['traductor_sap']["TEHO"]).upper()
+            st.session_state['traductor_sap']["PDIV"] = c_h5.text_input("PDIV (Dron)", value=st.session_state['traductor_sap']["PDIV"]).upper()
+            
+            st.success("✅ Las homologaciones están sincronizadas. **Apaga este interruptor para volver al Radar del Oráculo.**")
+        st.stop() # 🛑 PARADA EN SECO: Oculta el resto de la interfaz
+
+    traductor_pistas = st.session_state['traductor_sap']
+
+    # =================================================================
+    # 🚀 INTERFAZ PRINCIPAL DEL ORÁCULO
+    # =================================================================
     with st.container(border=True):
         st.markdown("### 📥 1. Radar de Existencias Actuales (SAP)")
         archivo_sap = st.file_uploader("Cargue la Sábana SAP actualizada (.xlsx o .csv)", type=['xlsx', 'csv'], key="sap_oraculo")
         
         st.markdown("### 📅 2. Parámetros de Predicción")
-        # 🎯 NUEVA ESTRUCTURA: 4 Columnas para incluir el Selector de Modo
         col_mes, col_pista, col_profundidad, col_modo = st.columns([1, 1, 1.2, 1.2])
         
         meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
@@ -281,20 +318,9 @@ def ejecutar(purificar_lote, extraer_numero):
         pista_objetivo = col_pista.selectbox("📍 Base Operativa (SAP):", lista_pistas)
 
         opciones_profundidad = ["Último Año (Tendencia Reciente)", "Últimos 2 Años", "Últimos 3 Años", "Histórico Completo"]
-        profundidad_sel = col_profundidad.selectbox("🔍 Profundidad del Histórico:", opciones_profundidad)
+        profundidad_sel = col_profundidad.selectbox("🔍 Profundidad Histórica:", opciones_profundidad)
         
-        # 🎯 EL USUARIO DECIDE EL MODO ANTES DE EJECUTAR
-        modo_analisis = col_modo.selectbox("⚙️ Tipo de Análisis:", ["Estándar (Autonomía en Días)", "Táctico (Autonomía en Ciclos)"])
-
-        with st.expander("⚙️ Homologación Avanzada de Almacenes (SAP vs Operación)"):
-            st.info("💡 **Visión Táctica:** Aquí puedes modificar cómo el sistema lee los almacenes de SAP y los cruza contra la TABLA 1, sin alterar el código.")
-            c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns(5)
-            h_pluc = c_h1.text_input("PLUC (Dron)", value="FUMIGARAY")
-            h_pori = c_h2.text_input("PORI (Dron)", value="AEROPENOR")
-            h_luci = c_h3.text_input("LUCI (Dron)", value="GENESYS")
-            h_teho = c_h4.text_input("TEHO (Dron)", value="AVIL")
-            h_pdiv = c_h5.text_input("PDIV (Dron)", value="ASA")
-            traductor_pistas = {"PLUC": h_pluc.upper(), "PORI": h_pori.upper(), "LUCI": h_luci.upper(), "TEHO": h_teho.upper(), "PDIV": h_pdiv.upper()}
+        modo_analisis = col_modo.selectbox("⚙️ Tipo de Análisis:", ["Estándar (Autonomía Días)", "Táctico (Autonomía Ciclos)"])
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -429,7 +455,6 @@ def ejecutar(purificar_lote, extraer_numero):
                                 else:
                                     consumo_esperado_pista[pista_op][prod] = 0.0
 
-                    # 🎯 EJECUCIÓN DEL MODO SELECCIONADO
                     resultados = []
                     
                     for _, row_s in df_sap_agrupado.iterrows():
@@ -450,7 +475,7 @@ def ejecutar(purificar_lote, extraer_numero):
                                 if p_receta_clean in prod_sap_clean or prod_sap_clean in p_receta_clean:
                                     consumo_mes_proyectado += vol_mes
 
-                        if modo_analisis == "Estándar (Autonomía en Días)":
+                        if modo_analisis == "Estándar (Autonomía Días)":
                             consumo_diario = consumo_mes_proyectado / 30 if consumo_mes_proyectado > 0 else 0
                             if consumo_diario > 0:
                                 dias_autonomia = saldo / consumo_diario
@@ -548,7 +573,7 @@ def ejecutar(purificar_lote, extraer_numero):
 
                         df_vista = df_oraculo.copy()
 
-                        if modo_analisis == "Estándar (Autonomía en Días)":
+                        if modo_analisis == "Estándar (Autonomía Días)":
                             df_vista['⏳ AUTONOMÍA (DÍAS)'] = df_vista['⏳ AUTONOMÍA (DÍAS)'].apply(lambda x: "∞" if x >= 9999 else x)
                             config_columnas = {
                                 "📍 PISTA": st.column_config.TextColumn("PISTA", width="small"),
@@ -566,7 +591,7 @@ def ejecutar(purificar_lote, extraer_numero):
                                 "📦 SALDO (SAP)": st.column_config.NumberColumn("SALDO (SAP)", format="%,.1f", width="medium"),
                                 "⏱️ DÍAS POR CICLO": st.column_config.NumberColumn("DÍAS POR CICLO", format="%.1f", width="small"),
                                 "🔄 CONSUMO POR CICLO": st.column_config.NumberColumn("CONSUMO/CICLO", format="%,.1f", width="medium"),
-                                "🔋 CICLOS RESTANTES": st.column_config.NumberColumn("CICLOS RESTANTES", format="%.2f", width="medium"),
+                                "🔋 CICLOS RESTANTES": st.column_config.TextColumn("CICLOS RESTANTES", width="medium"),
                                 "ESTADO": st.column_config.TextColumn("ESTADO TÁCTICO", width="medium")
                             }
 
@@ -577,7 +602,7 @@ def ejecutar(purificar_lote, extraer_numero):
                             column_config=config_columnas
                         )
 
-                        nombre_archivo = "Proyeccion_Lineal" if modo_analisis == "Estándar (Autonomía en Días)" else "Proyeccion_Tactica_Ciclos"
+                        nombre_archivo = "Proyeccion_Lineal" if modo_analisis == "Estándar (Autonomía Días)" else "Proyeccion_Tactica_Ciclos"
                         excel_export = generar_excel_vip(df_vista, nombre_archivo)
                         
                         st.download_button(
