@@ -89,29 +89,35 @@ def extraer_poligonos_kml(kml_bytes):
     except: return []
 
 # =================================================================
-# 🛰️ CONEXIÓN SATELITAL CLIMÁTICA
+# 🛰️ CONEXIÓN SATELITAL CLIMÁTICA AVANZADA (PREDICCIÓN + HISTÓRICO)
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=3600)
-def consultar_clima_satelital(lat, lon):
+def consultar_clima_avanzado(lat, lon):
+    """ Descarga lluvia de 90 días atrás y pronóstico de 7 días adelante """
     try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&past_days=90&daily=precipitation_sum&timezone=America/Bogota"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&past_days=90&forecast_days=7&daily=precipitation_sum&timezone=America/Bogota"
         res = requests.get(url, timeout=10).json()
         
         if "daily" in res and "precipitation_sum" in res["daily"]:
             df_clima = pd.DataFrame({
-                'fecha': pd.to_datetime(res['daily']['time']),
+                'fecha': pd.to_datetime(res['daily']['time']).dt.date,
                 'lluvia': [x if x is not None else 0.0 for x in res['daily']['precipitation_sum']]
             })
             
-            hoy = pd.to_datetime(datetime.now().date())
-            hace_30_dias = hoy - pd.Timedelta(days=30)
+            hoy = datetime.now().date()
+            hace_30_dias = hoy - timedelta(days=30)
             
+            # Sumatorias
             lluvia_90d = df_clima[df_clima['fecha'] <= hoy]['lluvia'].sum()
             lluvia_30d = df_clima[(df_clima['fecha'] <= hoy) & (df_clima['fecha'] >= hace_30_dias)]['lluvia'].sum()
+            lluvia_7d_futuro = df_clima[df_clima['fecha'] > hoy]['lluvia'].sum()
             
-            return lluvia_90d, lluvia_30d
+            # Diccionario diario para buscar la lluvia exacta del día de la aplicación
+            clima_diario = dict(zip(df_clima['fecha'], df_clima['lluvia']))
+            
+            return lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario
     except Exception: pass
-    return 0.0, 0.0
+    return 0.0, 0.0, 0.0, {}
 
 # =================================================================
 # 💾 EXTRACCIÓN CACHEADA
@@ -150,43 +156,45 @@ def cargar_historico_t1():
     return pd.DataFrame()
 
 # =================================================================
-# 📤 EXPORTADOR EXCEL VIP
+# 📤 EXPORTADOR EXCEL VIP MULTI-HOJA
 # =================================================================
-def generar_excel_vip(df, sheet_name="Mapa_Agronomico"):
+def generar_excel_agronomico_vip(dict_dfs):
+    """ Recibe un diccionario con los nombres de las hojas y sus DataFrames """
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
-        ws = writer.sheets[sheet_name]
-        
-        header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        header_font = Font(color="D4AF37", bold=True)
-        borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
-                            top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
-                            
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = borde_fino
+        for sheet_name, df in dict_dfs.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            ws = writer.sheets[sheet_name]
             
-        for col in ws.columns:
-            max_length = 0
-            col_letter = col[0].column_letter
-            
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
-                except: pass
+            header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+            header_font = Font(color="D4AF37", bold=True)
+            borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
+                                top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+                                
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border = borde_fino
                 
-                if cell.row > 1:
-                    cell.border = borde_fino
-                    if isinstance(cell.value, (int, float)):
-                        col_name = str(ws[col_letter + '1'].value).upper()
-                        if "LLUVIA" in col_name or "DÍAS" in col_name or "RETORNO" in col_name:
-                            cell.number_format = '#,##0.0'
-                            
-            ws.column_dimensions[col_letter].width = min(max_length + 4, 30)
-            
+            for col in ws.columns:
+                max_length = 0
+                col_letter = col[0].column_letter
+                
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                    except: pass
+                    
+                    if cell.row > 1:
+                        cell.border = borde_fino
+                        if isinstance(cell.value, (int, float)):
+                            col_name = str(ws[col_letter + '1'].value).upper()
+                            if "LLUVIA" in col_name or "DÍAS" in col_name or "RETORNO" in col_name or "PRONÓSTICO" in col_name:
+                                cell.number_format = '#,##0.0'
+                                
+                ws.column_dimensions[col_letter].width = min(max_length + 4, 30)
+                
     return buffer.getvalue()
 
 # =================================================================
@@ -200,33 +208,19 @@ def ejecutar(purificar_lote, extraer_numero):
     <style>
     .titulo-agronomo {{ color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }}
     
-    [data-testid="column"] {{
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: flex-start !important;
-        align-items: stretch !important;
-    }}
+    [data-testid="column"] {{ display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }}
 
     div[data-testid="stDataFrame"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
     
-    div[data-testid="stFileUploader"] > div {{
-        background-color: #ffffff !important;
-        border: 2px solid {VERDE_INTENSO} !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
-    }}
-    div[data-testid="stFileUploader"] * {{
-        color: #000000 !important;
-        font-weight: bold !important;
-    }}
-    div[data-testid="stFileUploader"] button, div[data-testid="stFileUploader"] button * {{
-        color: #ffffff !important;
-    }}
-    div[data-testid="stMainBlockContainer"] label p {{
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-    }}
+    div[data-testid="stFileUploader"] > div {{ background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }}
+    div[data-testid="stFileUploader"] * {{ color: #000000 !important; font-weight: bold !important; }}
+    div[data-testid="stFileUploader"] button, div[data-testid="stFileUploader"] button * {{ color: #ffffff !important; }}
+    
+    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
+    
+    /* Pestañas (Tabs) de Alta Gama */
+    div[data-testid="stTabs"] button[role="tab"] {{ font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }}
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: #27AE60; background-color: rgba(39, 174, 96, 0.1); }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -241,8 +235,8 @@ def ejecutar(purificar_lote, extraer_numero):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Mapa de Calor Agronómico</h1>", unsafe_allow_html=True)
-        st.write("Análisis de ciclos biológicos por FINCA sobre terreno satelital y lluvia trimestral.")
+        st.markdown("<h1 class='titulo-agronomo'>🗺️ Módulo 15: Centro de Mando Agronómico</h1>", unsafe_allow_html=True)
+        st.write("Radar de ciclos biológicos, riesgo de lavado de producto y ventanas de vuelo satelitales.")
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
@@ -279,7 +273,7 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("<br>", unsafe_allow_html=True)
 
         if st.button("🛰️ ENCENDER RADAR METEOROLÓGICO Y EPIDEMIOLÓGICO", type="primary", use_container_width=True):
-            with st.spinner("Decodificando satélites e imprimiendo nombres en el terreno..."):
+            with st.spinner("Decodificando satélites y segmentando inteligencia agronómica..."):
                 
                 df_t1 = cargar_historico_t1()
                 if df_t1.empty:
@@ -297,14 +291,14 @@ def ejecutar(purificar_lote, extraer_numero):
                 fincas_unicas = df_t1['FINCA_NOM'].unique()
                 analisis_fincas = []
                 
-                # 🎯 OPTIMIZACIÓN VIP: Pre-calcular el clima por coordenadas únicas para no saturar la API
+                # 🎯 OPTIMIZACIÓN VIP: Pre-calcular Clima Global (Histórico y Futuro)
                 sectores_unicos = df_t1['SECTOR_NOM'].unique()
                 cache_clima = {}
                 for sec in sectores_unicos:
                     if sec in coor_estimadas:
                         gps = coor_estimadas[sec]
-                        lluvia_90, lluvia_30 = consultar_clima_satelital(gps[0], gps[1])
-                        cache_clima[sec] = (lluvia_90, lluvia_30)
+                        l_90, l_30, l_7f, dict_diario = consultar_clima_avanzado(gps[0], gps[1])
+                        cache_clima[sec] = (l_90, l_30, l_7f, dict_diario)
                 
                 for finca in fincas_unicas:
                     if not finca or finca in ["NAN", "NONE", ""]: continue
@@ -315,13 +309,16 @@ def ejecutar(purificar_lote, extraer_numero):
                     sectores_frecuentes = df_finca['SECTOR_NOM'].value_counts()
                     sector_asociado = sectores_frecuentes.index[0] if not sectores_frecuentes.empty else "DESCONOCIDO"
                     
-                    if len(fechas_vuelos) >= 2:
+                    # Determinar fechas y ciclos
+                    ultimo_vuelo = None
+                    dias_ciclo = 30
+                    if len(fechas_vuelos) >= 1:
                         ultimo_vuelo = pd.to_datetime(fechas_vuelos[-1])
-                        vuelo_anterior = pd.to_datetime(fechas_vuelos[-2])
-                        dias_ciclo = (ultimo_vuelo - vuelo_anterior).days
-                    else:
-                        dias_ciclo = 30 
+                        if len(fechas_vuelos) >= 2:
+                            vuelo_anterior = pd.to_datetime(fechas_vuelos[-2])
+                            dias_ciclo = (ultimo_vuelo - vuelo_anterior).days
                     
+                    # Color del ciclo
                     if dias_ciclo <= 12:
                         estado = "🚨 CRÍTICO"
                         color_hex = "#cc0000"
@@ -334,21 +331,45 @@ def ejecutar(purificar_lote, extraer_numero):
 
                     gps = coor_estimadas.get(sector_asociado, [10.7483, -74.1542])
                     
-                    # Usar la caché local optimizada
+                    # Datos Climáticos
+                    lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = 0.0, 0.0, 0.0, {}
                     if sector_asociado in cache_clima:
-                        lluvia_90d, lluvia_30d = cache_clima[sector_asociado]
+                        lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = cache_clima[sector_asociado]
                     else:
-                        lluvia_90d, lluvia_30d = consultar_clima_satelital(gps[0], gps[1])
+                        lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = consultar_clima_avanzado(gps[0], gps[1])
                     
+                    # Inteligencia 1: Presión Hongo
                     alerta_epidemia = "Baja / Normal"
-                    if lluvia_30d > 45.0: 
-                        alerta_epidemia = "⚡ ALTA (Peligro Inminente)"
+                    if lluvia_30d > 45.0: alerta_epidemia = "⚡ ALTA (Peligro)"
+
+                    # Inteligencia 2: Riesgo de Lavado
+                    lluvia_aplicacion = 0.0
+                    riesgo_lavado = "🟢 SEGURO"
+                    if ultimo_vuelo:
+                        lluvia_aplicacion = clima_diario.get(ultimo_vuelo.date(), 0.0)
+                        if lluvia_aplicacion >= 15.0:
+                            riesgo_lavado = "🔴 ALTO (Lavado Probable)"
+                        elif lluvia_aplicacion >= 5.0:
+                            riesgo_lavado = "🟡 MODERADO"
+
+                    # Inteligencia 3: Ventana de Vuelo Futura
+                    if lluvia_7d_futuro >= 40.0:
+                        ventana_vuelo = "🔴 CERRADA (No programar)"
+                    elif lluvia_7d_futuro >= 15.0:
+                        ventana_vuelo = "🟡 PRECAUCIÓN"
+                    else:
+                        ventana_vuelo = "🟢 ÓPTIMA"
 
                     analisis_fincas.append({
                         "FINCA": finca,
                         "SECTOR": sector_asociado,
+                        "ÚLTIMA APLICACIÓN": ultimo_vuelo.strftime('%d/%m/%Y') if ultimo_vuelo else "Sin Registro",
                         "ÚLTIMO RETORNO (Días)": float(dias_ciclo),
                         "ESTADO CICLO": estado,
+                        "LLUVIA DÍA APLIC. (mm)": float(lluvia_aplicacion),
+                        "RIESGO DE LAVADO": riesgo_lavado,
+                        "PRONÓSTICO 7D (mm)": float(lluvia_7d_futuro),
+                        "VENTANA DE VUELO": ventana_vuelo,
                         "LLUVIA 90D (mm)": float(lluvia_90d),
                         "LLUVIA 30D (mm)": float(lluvia_30d),
                         "PRESIÓN HONGO": alerta_epidemia,
@@ -357,20 +378,19 @@ def ejecutar(purificar_lote, extraer_numero):
                     })
 
                 # ==================================================
-                # 💎 TARJETAS KPI SUPERIORES
+                # 💎 TARJETAS KPI SUPERIORES (AHORA CON LAVADO Y VENTANA)
                 # ==================================================
                 st.markdown("---")
-                df_resumen = pd.DataFrame(analisis_fincas)
+                df_maestro = pd.DataFrame(analisis_fincas)
                 
-                if not df_resumen.empty:
-                    total_fincas = len(df_resumen)
-                    fincas_criticas = len(df_resumen[df_resumen['ESTADO CICLO'] == "🚨 CRÍTICO"])
-                    fincas_hongo = len(df_resumen[df_resumen['PRESIÓN HONGO'].str.contains("ALTA")])
+                if not df_maestro.empty:
+                    fincas_lavado = len(df_maestro[df_maestro['RIESGO DE LAVADO'].str.contains("ALTO")])
+                    fincas_ventana_cerrada = len(df_maestro[df_maestro['VENTANA DE VUELO'].str.contains("CERRADA")])
 
                     k1, k2, k3 = st.columns(3)
-                    with k1: st.markdown(tarjeta_kpi("Total Fincas Mapeadas", f"{total_fincas} Fincas"), unsafe_allow_html=True)
-                    with k2: st.markdown(tarjeta_kpi("Fincas con Ciclo Crítico (<12 Días)", f"{fincas_criticas} Fincas", "Atención Requerida", "#ff4b4b" if fincas_criticas > 0 else "#28a745"), unsafe_allow_html=True)
-                    with k3: st.markdown(tarjeta_kpi("Fincas con Alta Presión de Hongo", f"{fincas_hongo} Fincas", "Por Lluvia", "#ff4b4b" if fincas_hongo > 0 else "#28a745"), unsafe_allow_html=True)
+                    with k1: st.markdown(tarjeta_kpi("Fincas Mapeadas", f"{len(df_maestro)}", "En radar", "#27AE60"), unsafe_allow_html=True)
+                    with k2: st.markdown(tarjeta_kpi("🚨 Riesgo Lavado Químico", f"{fincas_lavado} Fincas", "Acortar ciclo recomendado", "#ff4b4b" if fincas_lavado > 0 else "#28a745"), unsafe_allow_html=True)
+                    with k3: st.markdown(tarjeta_kpi("⛈️ Ventana Vuelo Cerrada", f"{fincas_ventana_cerrada} Zonas", "No programar en 7 días", "#ff4b4b" if fincas_ventana_cerrada > 0 else "#28a745"), unsafe_allow_html=True)
 
                 # ==================================================
                 # 🛰️ RENDERIZADO DEL MAPA SATELITAL
@@ -381,7 +401,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                     attr='Esri World Imagery'
                 )
-                st.markdown("### 🛰️ Mapa Georeferenciado en Vivo (Satelital)")
+                st.markdown("### 🛰️ Mapa de Calor y Decisiones (En Vivo)")
                 
                 sectores_dibujados = []
                 kmls_usados = set() 
@@ -393,9 +413,9 @@ def ejecutar(purificar_lote, extraer_numero):
                     
                     popup_text = f"""
                     <b>Finca:</b> {finca_nom} ({sector_nom})<br>
-                    <b>Retorno:</b> {f_info["ÚLTIMO RETORNO (Días)"]:.0f} Días<br>
-                    <b>Estado:</b> {f_info["ESTADO CICLO"]}<br>
-                    <b>Lluvia Trimestre:</b> {f_info["LLUVIA 90D (mm)"]:.1f} mm<br>
+                    <b>Retorno Actual:</b> {f_info["ÚLTIMO RETORNO (Días)"]:.0f} Días<br>
+                    <b>Riesgo Lavado:</b> {f_info["RIESGO DE LAVADO"]}<br>
+                    <b>Ventana 7D:</b> {f_info["VENTANA DE VUELO"]}<br>
                     <b>Lluvia Mensual:</b> {f_info["LLUVIA 30D (mm)"]:.1f} mm
                     """
                     
@@ -412,141 +432,132 @@ def ejecutar(purificar_lote, extraer_numero):
                     if kml_clave:
                         lats_finca = []
                         lons_finca = []
-                        
                         for poligono in dict_poligonos_kml[kml_clave]:
                             folium.Polygon(
-                                locations=poligono,
-                                color=color_nodo,
-                                weight=2,
-                                fill=True,
-                                fill_color=color_nodo,
-                                fill_opacity=0.6,
-                                tooltip=f"Finca: {finca_nom} | Estado: {f_info['ESTADO CICLO']}",
+                                locations=poligono, color=color_nodo, weight=2, fill=True,
+                                fill_color=color_nodo, fill_opacity=0.6,
+                                tooltip=f"{finca_nom} | Ventana: {f_info['VENTANA DE VUELO']}",
                                 popup=folium.Popup(popup_text, max_width=300)
                             ).add_to(mapa_magdalena)
-                            
                             lats_finca.extend([p[0] for p in poligono])
                             lons_finca.extend([p[1] for p in poligono])
                             
                         if lats_finca and lons_finca:
                             centro_lat = (min(lats_finca) + max(lats_finca)) / 2
                             centro_lon = (min(lons_finca) + max(lons_finca)) / 2
-                            
-                            html_label = f"""
-                            <div style="
-                                font-size: 11px; 
-                                font-weight: 900; 
-                                color: #FFFFFF; 
-                                text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000, 0px 0px 5px #000;
-                                white-space: nowrap;
-                                text-align: center;
-                                transform: translate(-50%, -50%);
-                            ">
-                                {finca_nom}
-                            </div>
-                            """
-                            folium.Marker(
-                                location=[centro_lat, centro_lon],
-                                icon=folium.DivIcon(html=html_label)
-                            ).add_to(mapa_magdalena)
-
+                            html_label = f"""<div style="font-size: 11px; font-weight: 900; color: #FFFFFF; text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000, 0px 0px 5px #000; white-space: nowrap; text-align: center; transform: translate(-50%, -50%);">{finca_nom}</div>"""
+                            folium.Marker(location=[centro_lat, centro_lon], icon=folium.DivIcon(html=html_label)).add_to(mapa_magdalena)
                     else:
                         if sector_nom not in sectores_dibujados:
                             folium.CircleMarker(
-                                location=f_info["COOR"],
-                                radius=15,
-                                color=color_nodo,
-                                fill=True,
-                                fill_color=color_nodo,
-                                fill_opacity=0.8,
-                                tooltip=f"Sector: {sector_nom}",
-                                popup=folium.Popup(f"Sector: {sector_nom} (Suba KML para detalle)", max_width=300)
+                                location=f_info["COOR"], radius=15, color=color_nodo, fill=True,
+                                fill_color=color_nodo, fill_opacity=0.8,
+                                tooltip=f"Sector: {sector_nom}", popup=folium.Popup(f"Sector: {sector_nom} (Suba KML para detalle)", max_width=300)
                             ).add_to(mapa_magdalena)
-                            
-                            html_label = f"""
-                            <div style="font-size: 12px; font-weight: 900; color: #FFFFFF; text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000;">
-                                {sector_nom}
-                            </div>
-                            """
-                            folium.Marker(
-                                location=[f_info["COOR"][0] + 0.01, f_info["COOR"][1]],
-                                icon=folium.DivIcon(html=html_label)
-                            ).add_to(mapa_magdalena)
-                            
+                            html_label = f"""<div style="font-size: 12px; font-weight: 900; color: #FFFFFF; text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000;">{sector_nom}</div>"""
+                            folium.Marker(location=[f_info["COOR"][0] + 0.01, f_info["COOR"][1]], icon=folium.DivIcon(html=html_label)).add_to(mapa_magdalena)
                             sectores_dibujados.append(sector_nom)
 
-                # Dibuja KMLs huérfanos
+                # Dibuja KMLs inactivos
                 for kml_clave, poligonos in dict_poligonos_kml.items():
                     if kml_clave not in kmls_usados:
-                        lats_finca = []
-                        lons_finca = []
-                        color_gris = "#A0A0A0" 
-                        
+                        lats_finca, lons_finca, color_gris = [], [], "#A0A0A0" 
                         for poligono in poligonos:
-                            folium.Polygon(
-                                locations=poligono,
-                                color=color_gris,
-                                weight=2,
-                                fill=True,
-                                fill_color=color_gris,
-                                fill_opacity=0.4,
-                                tooltip=f"Finca: {kml_clave} | Sin historial reciente",
-                                popup=folium.Popup(f"<b>{kml_clave}</b><br>No se encontraron vuelos recientes en la base de datos.", max_width=300)
-                            ).add_to(mapa_magdalena)
-                            
+                            folium.Polygon(locations=poligono, color=color_gris, weight=2, fill=True, fill_color=color_gris, fill_opacity=0.4, tooltip=f"{kml_clave} | Inactiva").add_to(mapa_magdalena)
                             lats_finca.extend([p[0] for p in poligono])
                             lons_finca.extend([p[1] for p in poligono])
-                            
                         if lats_finca and lons_finca:
-                            centro_lat = (min(lats_finca) + max(lats_finca)) / 2
-                            centro_lon = (min(lons_finca) + max(lons_finca)) / 2
-                            html_label = f"""
-                            <div style="font-size: 10px; font-weight: 700; color: #CCCCCC; text-shadow: 1px 1px 2px #000; text-align: center; transform: translate(-50%, -50%);">
-                                {kml_clave} (Inactiva)
-                            </div>
-                            """
-                            folium.Marker(
-                                location=[centro_lat, centro_lon],
-                                icon=folium.DivIcon(html=html_label)
-                            ).add_to(mapa_magdalena)
+                            centro_lat, centro_lon = sum(lats_finca)/len(lats_finca), sum(lons_finca)/len(lons_finca)
+                            html_label = f"""<div style="font-size: 10px; font-weight: 700; color: #CCCCCC; text-shadow: 1px 1px 2px #000; text-align: center; transform: translate(-50%, -50%);">{kml_clave} (Inactiva)</div>"""
+                            folium.Marker(location=[centro_lat, centro_lon], icon=folium.DivIcon(html=html_label)).add_to(mapa_magdalena)
 
-                # Renderiza el mapa en Streamlit
                 st.components.v1.html(mapa_magdalena._repr_html_(), height=650)
 
                 # ==================================================
-                # 📋 TABLA DE REPORTE EPIDEMIOLÓGICO Y DESCARGA
+                # 📋 PANELES SEGMENTADOS (TABS)
                 # ==================================================
-                st.markdown("<br>### 📋 Reporte Epidemiológico y Satelital por Finca", unsafe_allow_html=True)
+                st.markdown("<br>### 📋 Segmentación de Inteligencia Operativa", unsafe_allow_html=True)
                 
-                df_vista = df_resumen.drop(columns=['COOR', 'COLOR']).copy()
-                df_vista = df_vista.sort_values(by=['ESTADO CICLO', 'LLUVIA 30D (mm)'], ascending=[True, False])
+                tab_general, tab_lavado, tab_ventana = st.tabs(["📋 Estado del Ciclo", "⛈️ Riesgo de Lavado Químico", "🔭 Pronóstico (Ventanas de Vuelo)"])
                 
                 def pintar_estado_ciclo(row):
                     if "CRÍTICO" in row['ESTADO CICLO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
                     if "MODERADO" in row['ESTADO CICLO']: return ['background-color: #fff3cd; color: #ff9900; font-weight:bold;'] * len(row)
                     return ['color: #155724;'] * len(row)
+                    
+                def pintar_estado_lavado(row):
+                    if "ALTO" in row['RIESGO DE LAVADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
+                    if "MODERADO" in row['RIESGO DE LAVADO']: return ['background-color: #fff3cd; color: #ff9900; font-weight:bold;'] * len(row)
+                    return ['color: #155724;'] * len(row)
 
-                # 💎 TABLA EJECUTIVA
-                st.dataframe(
-                    df_vista.style.apply(pintar_estado_ciclo, axis=1), 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "FINCA": st.column_config.TextColumn("📍 FINCA", width="medium"),
-                        "SECTOR": st.column_config.TextColumn("🗺️ SECTOR", width="small"),
-                        "ÚLTIMO RETORNO (Días)": st.column_config.NumberColumn("⏱️ RETORNO (DÍAS)", format="%.0f Días", width="small"),
-                        "ESTADO CICLO": st.column_config.TextColumn("🚨 ESTADO", width="small"),
-                        "LLUVIA 90D (mm)": st.column_config.NumberColumn("🌧️ LLUVIA 90D", format="%.1f mm", width="small"),
-                        "LLUVIA 30D (mm)": st.column_config.NumberColumn("🌧️ LLUVIA 30D", format="%.1f mm", width="small"),
-                        "PRESIÓN HONGO": st.column_config.TextColumn("🍄 RIESGO EPIDEMIOLÓGICO", width="medium")
-                    }
-                )
+                def pintar_estado_ventana(row):
+                    if "CERRADA" in row['VENTANA DE VUELO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
+                    if "PRECAUCIÓN" in row['VENTANA DE VUELO']: return ['background-color: #fff3cd; color: #ff9900; font-weight:bold;'] * len(row)
+                    return ['color: #155724;'] * len(row)
+
+                # TAB 1: GENERAL
+                with tab_general:
+                    df_general = df_maestro[['FINCA', 'SECTOR', 'ÚLTIMO RETORNO (Días)', 'ESTADO CICLO', 'LLUVIA 30D (mm)', 'PRESIÓN HONGO']].copy()
+                    df_general = df_general.sort_values(by=['ESTADO CICLO'], ascending=True)
+                    st.dataframe(
+                        df_general.style.apply(pintar_estado_ciclo, axis=1), 
+                        use_container_width=True, hide_index=True,
+                        column_config={
+                            "FINCA": st.column_config.TextColumn("📍 FINCA", width="medium"),
+                            "SECTOR": st.column_config.TextColumn("🗺️ SECTOR", width="small"),
+                            "ÚLTIMO RETORNO (Días)": st.column_config.NumberColumn("⏱️ RETORNO (DÍAS)", format="%.0f Días", width="small"),
+                            "ESTADO CICLO": st.column_config.TextColumn("🚨 ESTADO", width="small"),
+                            "LLUVIA 30D (mm)": st.column_config.NumberColumn("🌧️ LLUVIA 30D", format="%.1f mm", width="small"),
+                            "PRESIÓN HONGO": st.column_config.TextColumn("🍄 RIESGO EPIDEMIOLÓGICO", width="medium")
+                        }
+                    )
+
+                # TAB 2: LAVADO
+                with tab_lavado:
+                    df_lavado = df_maestro[['FINCA', 'SECTOR', 'ÚLTIMA APLICACIÓN', 'LLUVIA DÍA APLIC. (mm)', 'RIESGO DE LAVADO']].copy()
+                    df_lavado = df_lavado.sort_values(by=['RIESGO DE LAVADO', 'LLUVIA DÍA APLIC. (mm)'], ascending=[True, False])
+                    st.dataframe(
+                        df_lavado.style.apply(pintar_estado_lavado, axis=1), 
+                        use_container_width=True, hide_index=True,
+                        column_config={
+                            "FINCA": st.column_config.TextColumn("📍 FINCA", width="medium"),
+                            "SECTOR": st.column_config.TextColumn("🗺️ SECTOR", width="small"),
+                            "ÚLTIMA APLICACIÓN": st.column_config.TextColumn("📅 FECHA VUELO", width="small"),
+                            "LLUVIA DÍA APLIC. (mm)": st.column_config.NumberColumn("⛈️ LLUVIA EXACTA", format="%.1f mm", width="small"),
+                            "RIESGO DE LAVADO": st.column_config.TextColumn("⚠️ RIESGO DE LAVADO", width="medium")
+                        }
+                    )
+
+                # TAB 3: VENTANA
+                with tab_ventana:
+                    df_ventana = df_maestro[['FINCA', 'SECTOR', 'PRONÓSTICO 7D (mm)', 'VENTANA DE VUELO']].copy()
+                    df_ventana = df_ventana.sort_values(by=['VENTANA DE VUELO', 'PRONÓSTICO 7D (mm)'], ascending=[True, False])
+                    st.dataframe(
+                        df_ventana.style.apply(pintar_estado_ventana, axis=1), 
+                        use_container_width=True, hide_index=True,
+                        column_config={
+                            "FINCA": st.column_config.TextColumn("📍 FINCA", width="medium"),
+                            "SECTOR": st.column_config.TextColumn("🗺️ SECTOR", width="small"),
+                            "PRONÓSTICO 7D (mm)": st.column_config.NumberColumn("🔭 LLUVIA ESPERADA (7D)", format="%.1f mm", width="small"),
+                            "VENTANA DE VUELO": st.column_config.TextColumn("✈️ DECISIÓN LOGÍSTICA", width="medium")
+                        }
+                    )
+
+                # ==================================================
+                # 📥 EXPORTACIÓN MULTI-HOJA VIP
+                # ==================================================
+                st.markdown("<br>", unsafe_allow_html=True)
+                dict_exportacion = {
+                    "Estado_Ciclos": df_general,
+                    "Riesgo_Lavado": df_lavado,
+                    "Ventanas_Vuelo_7D": df_ventana
+                }
                 
-                excel_export = generar_excel_vip(df_vista, "Mapa_Agronomico")
+                excel_export = generar_excel_agronomico_vip(dict_exportacion)
                 st.download_button(
-                    label="💾 DESCARGAR REPORTE AGRONÓMICO (EXCEL VIP)", 
+                    label="💾 DESCARGAR INTELIGENCIA AGRONÓMICA COMPLETA (EXCEL VIP - 3 HOJAS)", 
                     data=excel_export, 
-                    file_name=f"Reporte_Agronomico_Satelital.xlsx", 
+                    file_name=f"Inteligencia_Agronomica_Satelital.xlsx", 
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                     use_container_width=True
                 )
