@@ -115,8 +115,9 @@ def cargar_datos_gerenciales():
                 return 'AVIÓN'
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
-            # 🎯 CLASIFICADOR INTELIGENTE
-            df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVA' if es_cooperativa(x) else 'INDEPENDIENTE')
+            
+            # 🎯 CLASIFICADOR INTELIGENTE RENOMBRADO DESDE LA RAÍZ
+            df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVAS' if es_cooperativa(x) else 'ESPECIALES / PILOTOS')
             
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
@@ -154,7 +155,7 @@ def generar_excel_maestro(df_total, df_vuelo):
             ws = writer.sheets[sheet_name]
             
             ws.column_dimensions['A'].width = 32
-            ws.column_dimensions['B'].width = 16
+            ws.column_dimensions['B'].width = 24  # Para "TIPO_ENTIDAD"
             ws.column_dimensions['C'].width = 28
             ws.column_dimensions['D'].width = 18
             ws.column_dimensions['E'].width = 18
@@ -280,9 +281,10 @@ def ejecutar(*args, **kwargs):
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
         st.markdown("<h1 class='titulo-gerencial'>⚖️ Módulo 16: Comparativo Gerencial (Dron vs Avión)</h1>", unsafe_allow_html=True)
-        st.write("Análisis táctico de costos desglosado por Cooperativas vs Fincas Especiales/Piloto.")
+        st.write("Análisis táctico de costos desglosado por Cooperativas vs Fincas Especiales y Piloto.")
     with c_sync:
         st.write("")
+        # 💥 BOTÓN CRÍTICO PARA LIMPIAR LA CACHÉ Y CARGAR LOS NUEVOS NOMBRES
         if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
@@ -344,8 +346,8 @@ def ejecutar(*args, **kwargs):
     if not m_comp_v.empty:
         ahorro_prom_vuelo = m_comp_v['Diferencia ($)'].mean()
         eficiencia_prom_vuelo = m_comp_v['Eficiencia (%)'].mean() * 100
-        fincas_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVA']['FINCA'].nunique()
-        fincas_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'INDEPENDIENTE']['FINCA'].nunique()
+        fincas_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS']['FINCA'].nunique()
+        fincas_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS']['FINCA'].nunique()
 
         k1, k2, k3 = st.columns(3)
         with k1: st.markdown(tarjeta_kpi("Cobertura Mapeada", f"{fincas_coop} Coop / {fincas_indep} Especiales", "Fincas Cruzadas", "#d4af37"), unsafe_allow_html=True)
@@ -370,11 +372,11 @@ def ejecutar(*args, **kwargs):
     # PESTAÑA 1: TARIFA VUELO PURA (SEGMENTADA EN 2 GRÁFICOS)
     # ==========================================================
     with tab_vuelo:
-        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs Fincas Especiales y Pilotos.")
+        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs Fincas Especiales / Pilotos.")
         
         if not m_comp_v.empty:
-            m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVA'].copy()
-            m_comp_v_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'INDEPENDIENTE'].copy()
+            m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
+            m_comp_v_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
             
             # --- 🌾 GRÁFICO 1: COOPERATIVAS ---
             st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas")
@@ -418,8 +420,8 @@ def ejecutar(*args, **kwargs):
         st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs Fincas Especiales.")
         
         if not m_comp_t.empty:
-            m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVA'].copy()
-            m_comp_t_indep = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'INDEPENDIENTE'].copy()
+            m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
+            m_comp_t_indep = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
             
             # --- 🌾 GRÁFICO 1: COOPERATIVAS (TOTAL) ---
             st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas (Total Facturado)")
