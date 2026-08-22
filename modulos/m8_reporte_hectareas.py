@@ -339,7 +339,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v41.0 - VISOR DE PROYECCIÓN)</span></h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='titulo-principal'>📊 Radar Operativo y Financiero <span style='font-size:14px; color:#d4af37;'>(v41.0)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
@@ -428,15 +428,22 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         st.markdown("### 🎛️ Centro de Comando y Filtros")
 
         # =========================================================
-        # 🎯 MEJORA SOLICITADA: INTERRUPTOR INDEPENDIENTE (TOGGLE)
+        # 🎯 MEJORA VIP: SELECTORES DE MODO ESTRICTAMENTE EXCLUSIVOS
         # =========================================================
-        ver_boveda_tarifas = st.toggle("🏦 ACTIVAR VISOR BÓVEDA DE TARIFAS MAESTRAS (MASTER DATA)", value=False, key="toggle_boveda_tarifas_m8")
+        st.info("💡 **MODOS DE VISUALIZACIÓN:** Seleccione un modo exclusivo para analizar la información sin superposiciones.")
+        
+        c_tog1, c_tog2 = st.columns(2)
+        ver_boveda_tarifas = c_tog1.toggle("🏦 ACTIVAR BÓVEDA DE TARIFAS MAESTRAS", value=False, key="toggle_boveda_tarifas_m8")
+        modo_historico_global = c_tog2.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO", value=False, key="toggle_macro_m8", disabled=ver_boveda_tarifas)
 
+        # ---------------------------------------------------------
+        # 🏦 MODO 1: BÓVEDA DE TARIFAS MAESTRAS
+        # ---------------------------------------------------------
         if ver_boveda_tarifas:
             with st.container(border=True):
                 df_tarifas = cargar_matriz_tarifas()
                 if not df_tarifas.empty:
-                    st.info("💡 **CEREBRO CENTRAL:** El sistema lee esta matriz en tiempo real. Selecciona los años que deseas visualizar y descargar.")
+                    st.success("🏦 **BÓVEDA DE TARIFAS:** Estás viendo en exclusiva la matriz central de precios.")
                     
                     cols_base = [c for c in df_tarifas.columns if not str(c).isdigit()]
                     cols_anios = [c for c in df_tarifas.columns if str(c).isdigit()]
@@ -533,10 +540,13 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         except Exception: pass
                 else:
                     st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
+            
+            st.stop() # 🛑 DETIENE LA EJECUCIÓN AQUÍ PARA GARANTIZAR INDEPENDENCIA TOTAL
 
-        modo_historico_global = st.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO (Hectáreas 2017 - 2026 por Pista y Mes)", value=False)
-
-        if modo_historico_global:
+        # ---------------------------------------------------------
+        # 🕰️ MODO 2: VISOR MACRO-HISTÓRICO
+        # ---------------------------------------------------------
+        elif modo_historico_global:
             st.success("🌐 **MODO MACRO ACTIVADO:** Tienes el control total de la historia operativa. Selecciona el rango de tiempo a analizar.")
             
             cm1, cm2 = st.columns(2)
@@ -620,6 +630,9 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     use_container_width=True
                 )
 
+        # ---------------------------------------------------------
+        # 📊 MODO 3: DASHBOARD OPERATIVO Y FINANCIERO ESTÁNDAR
+        # ---------------------------------------------------------
         else:
             c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
             vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
