@@ -94,30 +94,39 @@ def extraer_poligonos_kml(kml_bytes):
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=3600)
 def consultar_clima_avanzado(lat, lon):
-    """ Descarga lluvia de 90 días atrás y pronóstico de 7 días adelante, basándose en la hora del satélite """
+    """ Descarga lluvia y pronóstico. Ancla la fecha al SATÉLITE, no al PC. """
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&past_days=90&forecast_days=7&daily=precipitation_sum&timezone=America/Bogota"
-        res = requests.get(url, timeout=10).json()
+        headers = {"User-Agent": "AgroAereoTactico/1.0"} # Evita el bloqueo del API
+        res = requests.get(url, headers=headers, timeout=15)
         
-        if "daily" in res and "precipitation_sum" in res["daily"]:
-            df_clima = pd.DataFrame({
-                'fecha': pd.to_datetime(res['daily']['time']).dt.date,
-                'lluvia': [x if x is not None else 0.0 for x in res['daily']['precipitation_sum']]
-            })
-            
-            # 🎯 CORRECCIÓN: El anclaje temporal ahora es dictado por el satélite, no por el PC del usuario.
-            hoy_satelite = df_clima['fecha'].max() - timedelta(days=7)
-            hace_30_dias = hoy_satelite - timedelta(days=30)
-            
-            lluvia_90d = df_clima[df_clima['fecha'] <= hoy_satelite]['lluvia'].sum()
-            lluvia_30d = df_clima[(df_clima['fecha'] <= hoy_satelite) & (df_clima['fecha'] >= hace_30_dias)]['lluvia'].sum()
-            lluvia_7d_futuro = df_clima[df_clima['fecha'] > hoy_satelite]['lluvia'].sum()
-            
-            clima_diario = dict(zip(df_clima['fecha'], df_clima['lluvia']))
-            
-            return lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario
-    except Exception: pass
-    return 0.0, 0.0, 0.0, {}
+        if res.status_code == 200:
+            data = res.json()
+            if "daily" in data and "precipitation_sum" in data["daily"]:
+                df_clima = pd.DataFrame({
+                    'fecha': pd.to_datetime(data['daily']['time']),
+                    'lluvia': [float(x) if x is not None else 0.0 for x in data['daily']['precipitation_sum']]
+                })
+                
+                # 🎯 ANCLAJE AL SATÉLITE: Restamos 7 días al futuro máximo para saber cuál es el "Hoy" real
+                hoy_satelite = df_clima['fecha'].max() - pd.Timedelta(days=7)
+                hace_30_dias = hoy_satelite - pd.Timedelta(days=30)
+                
+                lluvia_90d = float(df_clima[df_clima['fecha'] <= hoy_satelite]['lluvia'].sum())
+                lluvia_30d = float(df_clima[(df_clima['fecha'] <= hoy_satelite) & (df_clima['fecha'] >= hace_30_dias)]['lluvia'].sum())
+                lluvia_7d_futuro = float(df_clima[df_clima['fecha'] > hoy_satelite]['lluvia'].sum())
+                
+                # Convertimos las fechas a string para evitar fallas en diccionarios
+                df_clima['fecha_str'] = df_clima['fecha'].dt.strftime('%Y-%m-%d')
+                clima_diario = dict(zip(df_clima['fecha_str'], df_clima['lluvia']))
+                
+                return lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario
+    except Exception as e: 
+        print(f"Error API: {e}")
+        pass
+        
+    # Retorna clave "error" si la conexión falla para avisarle al usuario
+    return 0.0, 0.0, 0.0, {"error": True}
 
 # =================================================================
 # 💾 EXTRACCIÓN CACHEADA
@@ -202,14 +211,11 @@ def generar_excel_agronomico_vip(dict_dfs):
 # =================================================================
 def ejecutar(purificar_lote, extraer_numero):
     VERDE_INTENSO = '#143521'
-    DORADO = '#d4af37'
 
     st.markdown(f"""
     <style>
     .titulo-agronomo {{ color: #0d1b2a; border-bottom: 3px solid #27AE60; padding-bottom: 5px; font-family: 'Arial Black'; }}
-    
     [data-testid="column"] {{ display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }}
-
     div[data-testid="stDataFrame"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
     
     div[data-testid="stFileUploader"] > div {{ background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }}
@@ -218,11 +224,9 @@ def ejecutar(purificar_lote, extraer_numero):
     
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
     
-    /* Pestañas (Tabs) de Alta Gama */
     div[data-testid="stTabs"] button[role="tab"] {{ font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: #27AE60; background-color: rgba(39, 174, 96, 0.1); }}
     
-    /* Efecto Plotly */
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(39, 174, 96, 0.25) !important; z-index: 10; }}
     </style>
@@ -256,10 +260,8 @@ def ejecutar(purificar_lote, extraer_numero):
         c_file, c_btn_trash = st.columns([3, 1])
         archivos_kml = c_file.file_uploader(
             "Arrastre aquí los archivos .kml de sus fincas", 
-            type=['kml'], 
-            accept_multiple_files=True, 
-            key=f"kml_uploader_{st.session_state.kml_reset_key}",
-            label_visibility="collapsed"
+            type=['kml'], accept_multiple_files=True, 
+            key=f"kml_uploader_{st.session_state.kml_reset_key}", label_visibility="collapsed"
         )
 
         with c_btn_trash:
@@ -297,23 +299,32 @@ def ejecutar(purificar_lote, extraer_numero):
                 
                 sectores_unicos = df_t1['SECTOR_NOM'].unique()
                 cache_clima = {}
+                api_fallo = False
                 
-                for sec in sectores_unicos:
-                    if sec in coor_estimadas:
-                        gps = coor_estimadas[sec]
-                        l_90, l_30, l_7f, dict_diario = consultar_clima_avanzado(gps[0], gps[1])
-                        cache_clima[sec] = (l_90, l_30, l_7f, dict_diario)
+                # Pre-descarga Climática agrupada por sector
+                for sec, gps in coor_estimadas.items():
+                    l_90, l_30, l_7f, dict_diario = consultar_clima_avanzado(gps[0], gps[1])
+                    if "error" in dict_diario:
+                        api_fallo = True
+                    cache_clima[sec] = (max(0.0, l_90), max(0.0, l_30), max(0.0, l_7f), dict_diario)
                 
+                if api_fallo:
+                    st.error("📡 SATÉLITE DESCONECTADO: Open-Meteo no devolvió la pluviometría. Los valores mostrarán 0 mm.")
+                
+                # Construcción Matriz Diaria Histórica
                 historico_clima = []
                 for sec, datos in cache_clima.items():
                     dict_diario = datos[3] 
-                    for d, val in dict_diario.items():
-                        historico_clima.append({"FECHA": d, "SECTOR": sec, "LLUVIA (mm)": val})
+                    if "error" not in dict_diario:
+                        for d, val in dict_diario.items():
+                            historico_clima.append({"FECHA": d, "SECTOR": sec, "LLUVIA (mm)": val})
                 
                 df_clima_raw = pd.DataFrame(historico_clima)
                 df_clima_pivot = pd.DataFrame()
+                
                 if not df_clima_raw.empty:
-                    df_clima_pivot = df_clima_raw.pivot(index="FECHA", columns="SECTOR", values="LLUVIA (mm)").reset_index()
+                    # 🎯 CORECCIÓN: pivot_table previene crashes si hay fechas duplicadas por sector
+                    df_clima_pivot = df_clima_raw.pivot_table(index="FECHA", columns="SECTOR", values="LLUVIA (mm)", aggfunc='mean').reset_index()
                     df_clima_pivot = df_clima_pivot.sort_values("FECHA", ascending=False)
                     df_clima_pivot['FECHA'] = pd.to_datetime(df_clima_pivot['FECHA']).dt.strftime('%d/%m/%Y')
                 
@@ -344,21 +355,18 @@ def ejecutar(purificar_lote, extraer_numero):
                         estado = "🟢 CONTROLADO"
                         color_hex = "#27AE60"
 
-                    gps = coor_estimadas.get(sector_asociado, [10.7483, -74.1542])
-                    
                     lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = 0.0, 0.0, 0.0, {}
                     if sector_asociado in cache_clima:
                         lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = cache_clima[sector_asociado]
-                    else:
-                        lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = consultar_clima_avanzado(gps[0], gps[1])
                     
                     alerta_epidemia = "Baja / Normal"
                     if lluvia_30d > 45.0: alerta_epidemia = "⚡ ALTA (Peligro Inminente)"
 
                     lluvia_aplicacion = 0.0
                     riesgo_lavado = "🟢 SEGURO"
-                    if ultimo_vuelo:
-                        lluvia_aplicacion = clima_diario.get(ultimo_vuelo.date(), 0.0)
+                    if ultimo_vuelo and not api_fallo:
+                        fecha_vuelo_str = ultimo_vuelo.strftime('%Y-%m-%d')
+                        lluvia_aplicacion = clima_diario.get(fecha_vuelo_str, 0.0)
                         if lluvia_aplicacion >= 15.0:
                             riesgo_lavado = "🔴 ALTO (Lavado Probable)"
                         elif lluvia_aplicacion >= 5.0:
@@ -370,6 +378,8 @@ def ejecutar(purificar_lote, extraer_numero):
                         ventana_vuelo = "🟡 PRECAUCIÓN"
                     else:
                         ventana_vuelo = "🟢 ÓPTIMA"
+                        
+                    gps = coor_estimadas.get(sector_asociado, [10.7483, -74.1542])
 
                     analisis_fincas.append({
                         "FINCA": finca,
@@ -397,8 +407,8 @@ def ejecutar(purificar_lote, extraer_numero):
 
                     k1, k2, k3 = st.columns(3)
                     with k1: st.markdown(tarjeta_kpi("Fincas Mapeadas", f"{len(df_maestro)}", "En radar", "#27AE60"), unsafe_allow_html=True)
-                    with k2: st.markdown(tarjeta_kpi("🚨 Riesgo Lavado Químico", f"{fincas_lavado} Fincas", "Acortar ciclo recomendado", "#ff4b4b" if fincas_lavado > 0 else "#28a745"), unsafe_allow_html=True)
-                    with k3: st.markdown(tarjeta_kpi("⛈️ Ventana Vuelo Cerrada", f"{fincas_ventana_cerrada} Zonas", "No programar en 7 días", "#ff4b4b" if fincas_ventana_cerrada > 0 else "#28a745"), unsafe_allow_html=True)
+                    with k2: st.markdown(tarjeta_kpi("🚨 Riesgo Lavado Químico", f"{fincas_lavado} Fincas", "Acortar ciclo", "#ff4b4b" if fincas_lavado > 0 else "#28a745"), unsafe_allow_html=True)
+                    with k3: st.markdown(tarjeta_kpi("⛈️ Ventana Vuelo Cerrada", f"{fincas_ventana_cerrada} Zonas", "No volar (7 Días)", "#ff4b4b" if fincas_ventana_cerrada > 0 else "#28a745"), unsafe_allow_html=True)
 
                 mapa_magdalena = folium.Map(
                     location=[10.7483, -74.1542], 
@@ -483,11 +493,11 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.markdown("<br>### 📋 Segmentación de Inteligencia Operativa", unsafe_allow_html=True)
                 
                 tab_maestra, tab_general, tab_lavado, tab_ventana, tab_clima = st.tabs([
-                    "👑 Vista Maestra (Completa)",
+                    "👑 Vista Maestra",
                     "📋 Estado del Ciclo", 
-                    "⛈️ Riesgo de Lavado", 
-                    "🔭 Ventanas de Vuelo", 
-                    "🌧️ Historial Pluviométrico"
+                    "⛈️ Riesgo Lavado", 
+                    "🔭 Ventanas Vuelo", 
+                    "🌧️ Historial Lluvias"
                 ])
                 
                 def pintar_estado_ciclo(row):
@@ -511,7 +521,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     if "CERRADA" in row['VENTANA DE VUELO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
                     return [''] * len(row)
 
-                # 👑 TAB MAESTRA
                 with tab_maestra:
                     st.markdown("#### 👑 Matriz Satelital Completa")
                     st.caption("Visión global de todos los indicadores agrometeorológicos. Idéntica a la exportación en Excel.")
@@ -525,14 +534,14 @@ def ejecutar(purificar_lote, extraer_numero):
                             "FINCA": st.column_config.TextColumn("📍 FINCA", width="medium"),
                             "SECTOR": st.column_config.TextColumn("🗺️ SECTOR", width="small"),
                             "ÚLTIMA APLICACIÓN": st.column_config.TextColumn("📅 ÚLTIMA APLICACIÓN", width="medium"),
-                            "ÚLTIMO RETORNO (Días)": st.column_config.NumberColumn("⏱️ RETORNO (DÍAS)", format="%.0f Días", width="small"),
+                            "ÚLTIMO RETORNO (Días)": st.column_config.NumberColumn("⏱️ RETORNO", format="%.0f Días", width="small"),
                             "ESTADO CICLO": st.column_config.TextColumn("🚨 ESTADO CICLO", width="small"),
-                            "LLUVIA DÍA APLIC. (mm)": st.column_config.NumberColumn("⛈️ LLUVIA DÍA APLIC.", format="%.1f mm", width="small"),
-                            "RIESGO DE LAVADO": st.column_config.TextColumn("⚠️ RIESGO LAVADO", width="small"),
-                            "PRONÓSTICO 7D (mm)": st.column_config.NumberColumn("🔭 PRONÓSTICO 7D", format="%.1f mm", width="small"),
-                            "VENTANA DE VUELO": st.column_config.TextColumn("✈️ VENTANA VUELO", width="medium"),
-                            "LLUVIA 90D (mm)": st.column_config.NumberColumn("🌧️ LLUVIA 90D", format="%.1f mm", width="small"),
-                            "LLUVIA 30D (mm)": st.column_config.NumberColumn("🌧️ LLUVIA 30D", format="%.1f mm", width="small"),
+                            "LLUVIA DÍA APLIC. (mm)": st.column_config.NumberColumn("⛈️ LLU. APLIC.", format="%.1f mm", width="small"),
+                            "RIESGO DE LAVADO": st.column_config.TextColumn("⚠️ LAVADO", width="small"),
+                            "PRONÓSTICO 7D (mm)": st.column_config.NumberColumn("🔭 PRONÓSTICO", format="%.1f mm", width="small"),
+                            "VENTANA DE VUELO": st.column_config.TextColumn("✈️ VENTANA", width="medium"),
+                            "LLUVIA 90D (mm)": st.column_config.NumberColumn("🌧️ 90D", format="%.1f mm", width="small"),
+                            "LLUVIA 30D (mm)": st.column_config.NumberColumn("🌧️ 30D", format="%.1f mm", width="small"),
                             "PRESIÓN HONGO": st.column_config.TextColumn("🍄 PRESIÓN HONGO", width="small")
                         }
                     )
@@ -584,10 +593,11 @@ def ejecutar(purificar_lote, extraer_numero):
 
                 # 🎯 NUEVA TABLA Y GRÁFICA DE HISTORIAL DIARIO
                 with tab_clima:
-                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico)")
+                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico 7D)")
+                    
                     if not df_clima_raw.empty:
                         fig_lluvia = px.bar(
-                            df_clima_raw, x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
+                            df_clima_raw.sort_values("FECHA"), x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
                             barmode="group", title="<b>Precipitación Diaria Comparativa (mm)</b>"
                         )
                         fig_lluvia.update_layout(
@@ -603,6 +613,8 @@ def ejecutar(purificar_lote, extraer_numero):
                                 cols_cfg_clima[col] = st.column_config.NumberColumn(f"🗺️ {col}", format="%.1f mm")
                                 
                         st.dataframe(df_clima_pivot, use_container_width=True, hide_index=True, column_config=cols_cfg_clima)
+                    else:
+                        st.warning("⚠️ No se encontraron datos de lluvia para los sectores operativos (La API no respondió correctamente).")
 
                 # ==================================================
                 # 📥 EXPORTACIÓN MULTI-HOJA VIP
@@ -613,7 +625,7 @@ def ejecutar(purificar_lote, extraer_numero):
                     "Estado_Ciclos": df_general,
                     "Riesgo_Lavado": df_lavado,
                     "Ventanas_Vuelo_7D": df_ventana,
-                    "Historial_Lluvias": df_clima_pivot
+                    "Historial_Lluvias": df_clima_pivot if not df_clima_pivot.empty else pd.DataFrame()
                 }
                 
                 excel_export = generar_excel_agronomico_vip(dict_exportacion)
