@@ -16,15 +16,15 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from modulos.utilidades import procesar_fecha_pesada
 
 # =================================================================
-# ⚙️ CONSTANTES CENTRALIZADAS Y VALORES POR DEFECTO
+# ⚙️ CONSTANTES Y CORTAFUEGOS MATEMÁTICOS
 # =================================================================
 COLOR_NAVY = '#0d1b2a'
 COLOR_DORADO = '#d4af37'
 COLOR_VERDE = '#143521'
 
 TARIFA_VUELO_DEFAULT = 45000.0
+TOPE_MAX_PRECIO_UNITARIO = 500000.0  # Cortafuegos: Un insumo no cuesta más de $500k/L
 
-# Multiplicadores de respaldo para cálculo de mezclas y servicios por tipo de producto
 MULTIPLICADORES_FALLBACK = {
     "TERCERO": {"mult_m": 1.451, "st_base": 1583.0, "mult_v": 1.451},
     "AFILIADO": {"mult_m": 1.164, "st_base": 1510.0, "mult_v": 1.164},
@@ -42,7 +42,7 @@ FERTILIZANTES_FALLBACK = {
 }
 
 # =================================================================
-# 🛡️ MOTOR ÚNICO DE SANITIZACIÓN NUMÉRICA Y FORMATO
+# 🛡️ SANITIZADOR NUMÉRICO ROBUTESTO
 # =================================================================
 def a_numero_limpio(val):
     if pd.isna(val) or val is None: return 0.0
@@ -66,15 +66,13 @@ def a_numero_limpio(val):
             else:
                 s_clean = s_clean.replace(',', '.')
         elif '.' in s_clean:
+            # Si hay más de un punto, son separadores de miles de SAP
             if s_clean.count('.') > 1:
                 s_clean = s_clean.replace('.', '')
-            elif len(s_clean.split('.')[-1]) == 3:
+            elif len(s_clean.split('.')[-1]) == 3 and not s_clean.startswith('0.'):
                 s_clean = s_clean.replace('.', '')
                 
-        f_val = float(s_clean)
-        if f_val < 1000 and '.' in str(val) and len(str(val).split('.')[-1]) == 3:
-            f_val *= 1000.0
-        return f_val
+        return float(s_clean)
     except Exception:
         return 0.0
 
@@ -119,7 +117,7 @@ def obtener_cliente_gspread_unificado():
         return None
 
 # =================================================================
-# 💾 EXTRACCIÓN Y PROCESAMIENTO DE BASES DE DATOS
+# 💾 EXTRACCIÓN Y PROCESAMIENTO
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=120)
 def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
@@ -147,7 +145,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
                 df_conf = pd.DataFrame(raw_c[1:], columns=[str(c).strip() for c in raw_c[0]])
         except Exception: pass
         
-        # 3. DICCIONARIO SIGLAS (SUPABASE FIRST -> FALLBACK DRIVE)
+        # 3. DICCIONARIO SIGLAS
         if _supabase_client:
             try:
                 res = _supabase_client.table("DICCIONARIO_SIGLAS").select("*").execute()
@@ -189,7 +187,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
                         if len(row) > max(col_anio, col_prod):
                             anio_str, str_prod = str(row[col_anio]).strip().upper(), str(row[col_prod]).strip().upper()
                             if anio_str and str_prod:
-                                vals = [a_numero_limpio(v) for v in row[max(col_anio, col_prod) + 1:] if a_numero_limpio(v) > 0]
+                                vals = [a_numero_limpio(v) for v in row[max(col_anio, col_prod) + 1:] if 0 < a_numero_limpio(v) < TOPE_MAX_PRECIO_UNITARIO]
                                 if vals:
                                     precios_consolidados.append({
                                         'AÑO': anio_str, 
@@ -200,7 +198,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
             df_precios = pd.DataFrame(precios_consolidados)
         except Exception: pass
 
-        # 6. TABLA 1 (HISTÓRICO OPERATIVO)
+        # 6. TABLA 1
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -229,7 +227,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
     return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
 
 # =================================================================
-# 🧠 CÁLCULOS HISTÓRICOS Y EXTRACCIÓN DE RECETAS
+# 🧠 CÁLCULOS HISTÓRICOS Y RECETAS
 # =================================================================
 def calcular_historicos_finca(finca_usuario, df_t1):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
@@ -259,13 +257,13 @@ def calcular_historicos_finca(finca_usuario, df_t1):
     prom_vuelo = TARIFA_VUELO_DEFAULT
     prom_recargo = 0.0
             
-    df_valid_costos = df_evaluar[df_evaluar['VAL_COSTO_HA'] > 1000]
+    df_valid_costos = df_evaluar[(df_evaluar['VAL_COSTO_HA'] > 1000) & (df_evaluar['VAL_COSTO_HA'] < 200000)]
     if not df_valid_costos.empty:
         prom_vuelo = float(df_valid_costos['VAL_COSTO_HA'].mean())
         if pd.isna(prom_vuelo): prom_vuelo = TARIFA_VUELO_DEFAULT
 
     if 'VAL_RECARGO_HA' in df_evaluar.columns:
-        df_recargos_validos = df_evaluar[df_evaluar['VAL_RECARGO_HA'] > 100]
+        df_recargos_validos = df_evaluar[(df_evaluar['VAL_RECARGO_HA'] > 100) & (df_evaluar['VAL_RECARGO_HA'] < 100000)]
         if not df_recargos_validos.empty:
             prom_recargo = float(df_recargos_validos['VAL_RECARGO_HA'].mean())
             if pd.isna(prom_recargo): prom_recargo = 0.0
@@ -342,12 +340,10 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
 # =================================================================
 def ejecutar(supabase_client=None):
 
-    # CSS NATIVO VIP
     st.markdown(f"""
     <style>
     .titulo-mega {{ color: #0d1b2a; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 5px; font-weight: 900; margin-bottom: 15px; text-transform: uppercase; }}
     
-    /* CONFIGURACIÓN DEL EDITOR DE DATOS Y ENTRADAS */
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {{
         border: 2px solid {COLOR_NAVY} !important;
         border-radius: 8px !important;
@@ -376,7 +372,7 @@ def ejecutar(supabase_client=None):
         margin-bottom: 15px;
     }}
     .kpi-titulo {{ font-size: 11px; font-weight: 800; color: {COLOR_DORADO}; text-transform: uppercase; margin:0; letter-spacing: 0.5px; }}
-    .kpi-valor {{ font-size: 19px; font-weight: 900; margin: 4px 0 0 0; }}
+    .kpi-valor {{ font-size: 18px; font-weight: 900; margin: 4px 0 0 0; }}
     
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
     </style>
@@ -429,21 +425,20 @@ def ejecutar(supabase_client=None):
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
     df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
     
-    # 🎯 CORRECCIÓN DE RENDIMIENTO: Inicialización ligera con filas dinámicas (Evita freeze del DOM)
     if 'm17_df_entrada_grid' not in st.session_state or 'DOMINICAL' not in st.session_state.m17_df_entrada_grid.columns:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": "", "DOMINICAL": False
         } for _ in range(15)])
 
     st.markdown("### 📥 1. Entrada de Datos Operativos (Pegado masivo desde Excel)")
-    st.caption("Copie sus columnas en Excel y péguelas directamente en la tabla. Use el botón '+' para agregar más filas si lo requiere.")
+    st.caption("Copie sus columnas en Excel y péguelas directamente en la tabla. Use el botón '+' para agregar más filas.")
     
     df_edited = st.data_editor(
         st.session_state.m17_df_entrada_grid,
         key="m17_tabla_maestra_grid", 
         use_container_width=True,
         hide_index=True,
-        num_rows="dynamic", # Agregado dinámico para optimizar memoria
+        num_rows="dynamic",
         column_config={
             "FINCA": st.column_config.TextColumn("Finca"),
             "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
@@ -463,7 +458,7 @@ def ejecutar(supabase_client=None):
 
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
-    if st.button("🚀 EJECUTAR MEGA-PROYECCIÓN FINANCIAL", type="primary", use_container_width=True):
+    if st.button("🚀 EJECUTAR MEGA-PROYECCIÓN FINANCIERA", type="primary", use_container_width=True):
         
         df_valid = df_edited.dropna(subset=['FINCA']).copy()
         df_valid = df_valid[df_valid['FINCA'].astype(str).str.strip() != ""]
@@ -481,6 +476,13 @@ def ejecutar(supabase_client=None):
                             col_prod_idx = i
                             break 
                 
+                # 🎯 BÚSQUEDA ROBUSTA DE COLUMNAS DE PRECIO EN CONFIGURACIÓN
+                col_prod_cfg, col_costo_cfg = None, None
+                if not df_conf.empty:
+                    cols_u = [str(c).upper().strip() for c in df_conf.columns]
+                    col_prod_cfg = next((c for c in df_conf.columns if 'PRODUCTO' in c.upper() or 'INSUMO' in c.upper()), None)
+                    col_costo_cfg = next((c for c in df_conf.columns if 'COSTO' in c.upper() or 'PRECIO' in c.upper() or 'VALOR' in c.upper()), None)
+
                 resultados = []
                 log_volumetrico = {}
 
@@ -518,7 +520,6 @@ def ejecutar(supabase_client=None):
                     
                     if "COOP" in finca_n or "EMPREBANCOOP" in finca_n: tipo_prod = "COOPERATIVA"
 
-                    # Búsqueda de multiplicadores o fallback
                     cfg_target = MULTIPLICADORES_FALLBACK.get(tipo_prod, MULTIPLICADORES_FALLBACK["DEFAULT"])
                     mult_m, st_base, mult_v = cfg_target["mult_m"], cfg_target["st_base"], cfg_target["mult_v"]
 
@@ -530,15 +531,7 @@ def ejecutar(supabase_client=None):
                             mult_v = a_numero_limpio(match_cfg.iloc[0].iloc[6]) or mult_v
 
                     st_base *= factor_inflacion
-
                     costo_mezcla_fila = 0.0
-                    c_p_i, c_c_i = 8, 9
-                    if not df_conf.empty:
-                        for i in range(min(5, len(df_conf))):
-                            r_c = [str(x).upper() for x in df_conf.iloc[i]]
-                            if 'PRODUCTO' in r_c and 'COSTO' in r_c:
-                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
-                                break
 
                     dict_receta = extraer_receta_mega(coctel_combinado, finca_n, df_mezclas, df_dicc, df_t2)
                     
@@ -547,17 +540,28 @@ def ejecutar(supabase_client=None):
                         log_volumetrico[finca_n][p] = log_volumetrico[finca_n].get(p, 0.0) + (d * ha_num)
 
                         precio_unitario = 0.0
-                        if not df_conf.empty and len(df_conf.columns) > max(c_p_i, c_c_i):
-                            mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
-                            if not mask_cfg.any() and "NEMATICIDA" in p: 
-                                mask_cfg = df_conf.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
-                            if mask_cfg.any(): 
-                                precio_unitario = a_numero_limpio(df_conf[mask_cfg].iloc[0, c_c_i])
                         
+                        # 🎯 BUSQUEDA SEGURA DE PRECIO UNITARIO POR NOMBRE DE COLUMNA
+                        if col_prod_cfg and col_costo_cfg:
+                            mask_cfg = df_conf[col_prod_cfg].astype(str).str.upper().str.strip() == p
+                            if not mask_cfg.any() and "NEMATICIDA" in p: 
+                                mask_cfg = df_conf[col_prod_cfg].astype(str).str.upper().str.contains("NEMATI", na=False)
+                            if mask_cfg.any(): 
+                                p_cand = a_numero_limpio(df_conf[mask_cfg].iloc[0][col_costo_cfg])
+                                if p_cand < TOPE_MAX_PRECIO_UNITARIO:
+                                    precio_unitario = p_cand
+                        
+                        # Fallback a la base de precios históricos
                         if precio_unitario == 0.0 and not df_precios.empty:
                             match_p = df_precios[df_precios['PRODUCTO_CLEAN'] == p.replace(" ","")]
                             if not match_p.empty: 
-                                precio_unitario = match_p['PRECIO_PROM'].mean()
+                                p_cand = match_p['PRECIO_PROM'].mean()
+                                if p_cand < TOPE_MAX_PRECIO_UNITARIO:
+                                    precio_unitario = p_cand
+
+                        # CORTAFUEGOS FINAL: Evita desbordamiento en $
+                        if precio_unitario > TOPE_MAX_PRECIO_UNITARIO:
+                            precio_unitario = 0.0
 
                         precio_unitario *= factor_inflacion
                         costo_mezcla_fila += (d * ha_num * precio_unitario * mult_m)
