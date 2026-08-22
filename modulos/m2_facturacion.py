@@ -40,8 +40,7 @@ def cargar_tablas_maestras_m2_cached():
                 resp = supabase_client.table(table_name).select("*").execute()
                 if resp.data and len(resp.data) > 0:
                     resultados[key] = pd.DataFrame(resp.data)
-        except Exception as e:
-            # Captura transparente sin silenciar críticamente
+        except Exception:
             resultados = {}
 
     # 2. Fallback a Google Sheets solo si faltan tablas
@@ -274,29 +273,10 @@ def ejecutar(extraer_numero):
                         st.session_state['df_pistas'] = pd.DataFrame(lista_pistas)
                         
                         # =========================================================
-                        # 🛡️ MEJORA: INSERCIÓN SEGURO EN LOTES (UPSERT / CHUNKING)
+                        # 🛡️ MEJORA: MEMORIA PURA PARA MÓDULO 3
+                        # Las misiones quedan cargadas directamente en RAM sin 
+                        # depender de tablas inexistentes en Supabase.
                         # =========================================================
-                        if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
-                            try:
-                                supabase_client = st.session_state['supabase']
-                                registros_misiones = [
-                                    {
-                                        "origen": str(m["ORIGEN"]),
-                                        "coctel": str(m["COCTEL"]),
-                                        "finca_informe": str(m["FINCA_INFORME"]),
-                                        "pedido_sap": str(m["PEDIDO_SAP"]),
-                                        "ha_pista": float(m["HA_PISTA"]),
-                                        "datos_fila_json": json.dumps(m["DATOS_FILA"], default=str)
-                                    } for m in lista_pistas
-                                ]
-                                if registros_misiones:
-                                    # Insertar en lotes de 250 para no saturar la API
-                                    tamano_bloque = 250
-                                    for i in range(0, len(registros_misiones), tamano_bloque):
-                                        bloque = registros_misiones[i:i + tamano_bloque]
-                                        supabase_client.table("pistas_misiones_cargadas").upsert(bloque).execute()
-                            except Exception as e:
-                                st.warning(f"⚠️ Misiones procesadas correctamente en RAM, pero hubo un fallo menor en el archivo espejo de Supabase: {e}")
                                 
                         st.success(f"🛰️ Enlace Satelital Establecido. ¡Se extrajeron {len(lista_pistas)} misiones visibles con precisión! Pase al Módulo de Validación.")
                         st.balloons()
