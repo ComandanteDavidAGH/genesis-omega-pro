@@ -1,54 +1,47 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import gspread
 import io
 import re
+import math
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
-from openpyxl import Workbook
+import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# 🔌 CONEXIÓN A BÓVEDA DE DATOS
+# ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+
+# =================================================================
+# ⚡ MOTOR DE CONEXIÓN UNIFICADO (V41)
+# =================================================================
+@st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
             return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    try:
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
 
-@st.cache_data(show_spinner=False, ttl=10)
-def extraer_datos_boveda():
-    gc = obtener_cliente_gspread_unificado()
-    if not gc: return pd.DataFrame(), pd.DataFrame()
-    try:
-        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        
-        t1 = boveda.worksheet("TABLA 1").get_all_values()
-        idx_t1 = 4
-        for i in range(min(6, len(t1))):
-            if "FINCA" in [str(x).upper() for x in t1[i]]:
-                idx_t1 = i
-                break
-        df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
-        
-        hojas = [ws.title for ws in boveda.worksheets()]
-        nombre_t2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
-        t2 = boveda.worksheet(nombre_t2).get_all_values()
-        df_t2 = pd.DataFrame(t2)
-        
-        return df_t1, df_t2
-    except Exception:
-        return pd.DataFrame(), pd.DataFrame()
-
-# 🌟 MOTORES DE LIMPIEZA MATEMÁTICA Y PURIFICACIÓN EXTREMA
+# =================================================================
+# 🛡️ UTILIDADES DE PURIFICACIÓN Y FORMATO
+# =================================================================
 def limpiar_orden_extrema(val):
     if pd.isna(val) or str(val).strip() == "": return "SIN_ORDEN"
     v = str(val).upper().strip()
@@ -127,6 +120,53 @@ def purificar_datos_vuelo(eq_raw, pista_raw):
         return "CESSNA O PIPER PA 25", "AEROPENORT"
     return "IGNORAR", "IGNORAR"
 
+def formato_latino(numero, decimales=0):
+    if pd.isna(numero) or numero is None: return "0"
+    try:
+        num = float(numero)
+        if num == 0: return "0"
+        if decimales == 0: texto_us = f"{num:,.0f}"
+        else: texto_us = f"{num:,.{decimales}f}"
+        return texto_us.replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0"
+
+# =================================================================
+# 📦 EXTRACCIÓN DE DATOS BLINDADA
+# =================================================================
+@st.cache_data(show_spinner=False, ttl=600)
+def extraer_datos_boveda():
+    gc = obtener_cliente_gspread_unificado()
+    df_t1, df_t2 = pd.DataFrame(), pd.DataFrame()
+    if not gc: return df_t1, df_t2
+    
+    try:
+        boveda = gc.open_by_url(URL_BOVEDA_MAESTRA)
+        
+        # Extracción TABLA 1
+        try:
+            t1 = boveda.worksheet("TABLA 1").get_all_values()
+            idx_t1 = 4
+            for i in range(min(8, len(t1))):
+                fila_limpia = [str(x).upper().strip() for x in t1[i]]
+                if "Nº ORDEN" in fila_limpia or "FINCA" in fila_limpia or "VALOR A FACTURAR" in "".join(fila_limpia):
+                    idx_t1 = i
+                    break
+            df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
+        except Exception: pass
+        
+        # Extracción TABLA 2
+        try:
+            hojas = [ws.title for ws in boveda.worksheets()]
+            nombre_t2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
+            t2 = boveda.worksheet(nombre_t2).get_all_values()
+            df_t2 = pd.DataFrame(t2[1:], columns=t2[0]) if len(t2)>1 else pd.DataFrame()
+        except Exception: pass
+        
+    except Exception: pass
+    
+    return df_t1, df_t2
+
 # =================================================================
 # 💾 EXPORTADOR EXCEL MULTI-HOJA GERENCIAL
 # =================================================================
@@ -169,7 +209,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
         ws2 = writer.sheets["Detalle_Diario_Auditoria"]
 
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        font_header = Font(color="FFFFFF", bold=True)
+        font_header = Font(color="D4AF37", bold=True) # Navy and Gold
         borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
@@ -219,23 +259,58 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
     
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stDateInput"] input,
-    div[data-testid="stTextInput"] input {{
-        background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
-        border-radius: 6px !important;
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
+    [data-testid="column"] {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+    
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{
+        border: 3px solid #0d1b2a !important; 
+        border-radius: 8px !important; 
+        overflow: hidden !important; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
+    }}
+
+    /* 🎯 REPARACIÓN DE BORDES: SELECTORES, FECHAS Y NÚMEROS */
+    div[data-testid="stSelectbox"] > div,
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stNumberInput"] > div,
+    div[data-testid="stTextInput"] > div {{
+        border: 2px solid {VERDE_INTENSO} !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+        overflow: hidden !important;
+    }}
+    
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="input"],
+    div[data-testid="stTextInput"] div[data-baseweb="input"] {{
         background-color: transparent !important;
         border: none !important;
     }}
-    div[data-testid="stSelectbox"] *, div[data-testid="stDateInput"] *, div[data-testid="stTextInput"] * {{
-        color: #000000 !important;
-        font-weight: bold !important;
+
+    div[data-testid="stSelectbox"] *,
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stTextInput"] input {{
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
     }}
-    div[data-testid="stSelectbox"] label p, div[data-testid="stDateInput"] label p, div[data-testid="stTextInput"] label p {{
+    
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stTextInput"] input {{
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }}
+
+    div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
@@ -243,13 +318,22 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
+    def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
+        delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
+        return f"""
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: center;'>
+            <p style='font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
+            <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
+        </div>
+        """
+
     c_t, c_btn = st.columns([3, 1])
     with c_t:
         st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (OS Unificada)</h1>", unsafe_allow_html=True)
-        st.caption("Consolidación Matemática y Proyección Gerencial con Formato Condicional")
+        st.caption("Consolidación Matemática y Proyección Gerencial VIP (v42.0)")
     with c_btn:
         st.write("")
-        if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
+        if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
@@ -478,25 +562,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     t_perdido = df_agrupado["Lucro Cesante"].sum()
     porcentaje_fuga = ((t_ideal / t_real) - 1) * 100 if t_real > 0 else 0
 
-    def f_h(val): return f"{val:,.0f}".replace(",", ".")
-
-    html_cards = f"""
-    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
-        <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #0D1B2A; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Cobro Real Facturado</div>
-            <div style="font-size: 20px; color: #0D1B2A; font-weight: 900; margin-top: 4px;">$ {f_h(t_real)}</div>
-        </div>
-        <div style="flex: 1; min-width: 180px; background-color: #f8f9fa; border-left: 4px solid #D4AF37; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">Costo Base OS Ideal</div>
-            <div style="font-size: 20px; color: #0D1B2A; font-weight: 900; margin-top: 4px;">$ {f_h(t_ideal)}</div>
-        </div>
-        <div style="flex: 1.2; min-width: 200px; background-color: #0D1B2A; border: 2px solid #ff4d4d; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); text-align: center;">
-            <div style="font-size: 12px; color: #ff4d4d; font-weight: bold; text-transform: uppercase;">⚠️ Brecha Total (Lucro Cesante)</div>
-            <div style="font-size: 22px; color: white; font-weight: 900; margin-top: 4px;">$ {f_h(t_perdido)} <span style="font-size: 13px; color: #ff4d4d;">({porcentaje_fuga:.1f}%)</span></div>
-        </div>
-    </div>
-    """
-    st.markdown(html_cards, unsafe_allow_html=True)
+    c_k1, c_k2, c_k3 = st.columns(3)
+    with c_k1: st.markdown(tarjeta_kpi("Cobro Real Facturado", f"$ {formato_latino(t_real, 0)}"), unsafe_allow_html=True)
+    with c_k2: st.markdown(tarjeta_kpi("Costo Base OS Ideal", f"$ {formato_latino(t_ideal, 0)}"), unsafe_allow_html=True)
+    with c_k3: st.markdown(tarjeta_kpi("⚠️ Brecha Total (Lucro Cesante)", f"$ {formato_latino(t_perdido, 0)}", f"{porcentaje_fuga:.1f}%", "#ff4b4b" if t_perdido > 0 else "#28a745"), unsafe_allow_html=True)
 
     # =================================================================
     # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA)
@@ -508,44 +577,33 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     def color_fuga(val):
         if pd.isna(val): return ''
-        if val > 0: return 'color: #D32F2F; font-weight: bold;'
-        elif val < 0: return 'color: #198754; font-weight: bold;'
+        if val > 0: return 'color: #ff4b4b; font-weight: bold;'
+        elif val < 0: return 'color: #28a745; font-weight: bold;'
         return 'color: #424242;'
 
-    # ESTILOS DE ENCABEZADO: Negrita, fondo sutil y subrayado dorado.
-    header_styles = [{
-        'selector': 'th',
-        'props': [
-            ('font-weight', 'bold'),
-            ('color', '#0d1b2a'),
-            ('background-color', '#f4f6f9'),
-            ('font-size', '13px'),
-            ('text-transform', 'uppercase'),
-            ('border-bottom', '3px solid #d4af37')
-        ]
-    }]
+    # 💎 TABLA EJECUTIVA
+    col_cfg = {
+        "Fecha Operación": st.column_config.TextColumn("📅 FECHA"),
+        "Semana": st.column_config.TextColumn("📆 SEMANA"),
+        "Pista": st.column_config.TextColumn("🛫 PISTA"),
+        "Finca": st.column_config.TextColumn("📍 FINCA"),
+        "Equipo": st.column_config.TextColumn("🛩️ EQUIPO"),
+        "Hectareas": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f"),
+        "Tarifa Real Prom/Ha": st.column_config.NumberColumn("💰 TARIFA REAL", format="$ %,.0f"),
+        "Tarifa Ideal Prom/Ha": st.column_config.NumberColumn("🎯 TARIFA IDEAL", format="$ %,.0f"),
+        "Brecha por Ha": st.column_config.NumberColumn("⚖️ BRECHA/HA", format="$ %,.0f"),
+        "Total Real Facturado": st.column_config.NumberColumn("💵 TOTAL REAL", format="$ %,.0f"),
+        "Total Simulado Ideal": st.column_config.NumberColumn("🚀 TOTAL IDEAL", format="$ %,.0f"),
+        "Lucro Cesante": st.column_config.NumberColumn("📉 LUCRO CESANTE", format="$ %,.0f")
+    }
 
-    estilo_visual = df_visual.style.format({
-        "Hectareas": "{:,.2f}",
-        "Tarifa Real Prom/Ha": "$ {:,.0f}",
-        "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
-        "Brecha por Ha": "$ {:,.0f}",
-        "Total Real Facturado": "$ {:,.0f}",
-        "Total Simulado Ideal": "$ {:,.0f}",
-        "Lucro Cesante": "$ {:,.0f}"
-    })
-    
-    if hasattr(estilo_visual, "map"):
-        estilo_visual = estilo_visual.map(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
-    else:
-        estilo_visual = estilo_visual.applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
-        
-    estilo_visual = estilo_visual.background_gradient(cmap='Blues', subset=['Hectareas']) \
-                                 .background_gradient(cmap='Greens', subset=['Tarifa Real Prom/Ha', 'Total Real Facturado']) \
-                                 .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal']) \
-                                 .set_table_styles(header_styles)
-
-    st.dataframe(estilo_visual, use_container_width=True, height=400, hide_index=True)
+    st.dataframe(
+        df_visual.style.map(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha']), 
+        use_container_width=True, 
+        height=400, 
+        hide_index=True,
+        column_config=col_cfg
+    )
 
     # =================================================================
     # 🪤 EL CEBO RODADO HACIA ABAJO (HERRAMIENTA TÉCNICA)
@@ -561,78 +619,17 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
         ).reset_index()
         
-        try:
-            estilo_cebo = df_cebo.style.format({
-                "Horas_Calculadas_OS": "{:,.3f} hrs",
-                "Suma_Hectareas_OS": "{:,.2f} ha",
-                "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"
-            }).background_gradient(cmap='Greens', subset=['Horas_Calculadas_OS']) \
-              .background_gradient(cmap='Purples', subset=['Suma_Hectareas_OS']) \
-              .background_gradient(cmap='YlOrBr', subset=['Tarifa_Ideal_Final_Ha']) \
-              .set_table_styles(header_styles)
-        except Exception:
-            estilo_cebo = df_cebo.style.format({"Horas_Calculadas_OS": "{:,.3f} hrs", "Suma_Hectareas_OS": "{:,.2f} ha", "Tarifa_Ideal_Final_Ha": "$ {:,.0f}"}).set_table_styles(header_styles)
+        col_cfg_cebo = {
+            "Nº ORDEN": st.column_config.TextColumn("🛰️ Nº ORDEN"),
+            "Fincas_En_La_OS": st.column_config.TextColumn("📍 FINCAS UNIFICADAS"),
+            "Equipo": st.column_config.TextColumn("🛩️ EQUIPO"),
+            "Fecha Operación": st.column_config.TextColumn("📅 FECHA"),
+            "Horas_Calculadas_OS": st.column_config.NumberColumn("⏱️ HORAS TOTALES OS", format="%.3f hrs"),
+            "Suma_Hectareas_OS": st.column_config.NumberColumn("🗺️ HECTÁREAS TOTALES OS", format="%.2f ha"),
+            "Tarifa_Ideal_Final_Ha": st.column_config.NumberColumn("🎯 TARIFA IDEAL UNIFICADA", format="$ %,.0f")
+        }
 
-        st.dataframe(estilo_cebo, use_container_width=True, hide_index=True)
-
-    # =================================================================
-    # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
-    # =================================================================
-    st.markdown("---")
-    st.markdown("### 📈 Dashboard Analítico de Tendencias")
-
-    df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
-    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"]).dt.strftime('%d/%m/%Y')
-
-    fig_tarifas = px.bar(
-        df_graficos,
-        x="Fecha Formateada",
-        y=["Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha"],
-        barmode="group",
-        hover_data=["Finca", "Equipo", "Hectareas"],
-        labels={"value": "Tarifa ($/ha)", "Fecha Formateada": "Fecha de Vuelo"},
-        title="<b>Evolución Cronológica: Tarifa Cobrada vs Costo OS Calculado</b>"
-    )
-    
-    fig_tarifas.update_traces(marker_line_width=0)
-    
-    if len(fig_tarifas.data) >= 2:
-        fig_tarifas.data[0].marker.color = "#0D1B2A"  
-        fig_tarifas.data[0].name = "Cobro Real Facturado"
-        fig_tarifas.data[1].marker.color = "#D4AF37"  
-        fig_tarifas.data[1].name = "Costo Base OS Ideal"
-    
-    fig_tarifas.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white",
-        font=dict(family="Segoe UI, Arial", size=12, color="#333333"),
-        xaxis=dict(showgrid=False, tickangle=-45, title=None),
-        yaxis=dict(showgrid=True, gridcolor="#EAEAEA", zeroline=True, zerolinecolor="#CCCCCC", title="Valor por Hectárea ($)"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=30, t=70, b=70),
-        hovermode="closest"
-    )
-    st.plotly_chart(fig_tarifas, use_container_width=True)
-
-    df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
-    
-    fig_lucro = px.bar(
-        df_lucro_sem,
-        x="Semana",
-        y="Lucro Cesante",
-        labels={"Lucro Cesante": "Pérdida Total ($)", "Semana": "Semana del Año"},
-        title="<b>Fuga Operativa Consolidada Semanal (Lucro Cesante Puro)</b>"
-    )
-    
-    fig_lucro.update_traces(marker_color="#A31D1D", marker_line_width=0)
-    fig_lucro.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white",
-        font=dict(family="Segoe UI, Arial", size=12, color="#333333"),
-        xaxis=dict(showgrid=False, title=None),
-        yaxis=dict(showgrid=True, gridcolor="#EAEAEA", title="Monto de Fuga ($)"),
-        margin=dict(l=50, r=30, t=70, b=50),
-        hovermode="closest"
-    )
-    st.plotly_chart(fig_lucro, use_container_width=True)
+        st.dataframe(df_cebo, use_container_width=True, hide_index=True, column_config=col_cfg_cebo)
 
     # =================================================================
     # 📤 DESCARGA GERENCIAL DE EXCEL MULTI-HOJA COMPLETO
@@ -643,14 +640,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     buffer_excel = generar_excel_multi_hoja(df_filtrado, df_agrupado, t_real, t_ideal, t_perdido, porcentaje_fuga)
 
     st.download_button(
-        label="💾 DESCARGAR REPORTE MULTI-HOJA COMPLETO (EXCEL GERENCIAL)",
+        label="💾 DESCARGAR REPORTE MULTI-HOJA COMPLETO (EXCEL VIP)",
         data=buffer_excel,
         file_name=f"Reporte_Simulador_Agro_OS_{fecha_ini}_{fecha_fin}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera con Formato Gerencial Dinámico.")
+    st.success("🏁 Proceso completado. La interfaz opera con Formato Gerencial Dinámico y Extracción Unificada.")
 
 if __name__ == "__main__":
     pass
