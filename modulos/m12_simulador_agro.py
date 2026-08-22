@@ -274,19 +274,21 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
     }}
 
+    /* 🎯 REPARACIÓN DE BORDES: SELECTORES, FECHAS Y NÚMEROS */
     div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
     div[data-testid="stDateInput"] > div,
+    div[data-testid="stNumberInput"] > div,
     div[data-testid="stTextInput"] > div {{
-        background-color: #ffffff !important;
         border: 2px solid {VERDE_INTENSO} !important;
-        border-radius: 6px !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
         overflow: hidden !important;
     }}
     
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
     div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="input"],
     div[data-testid="stTextInput"] div[data-baseweb="input"] {{
         background-color: transparent !important;
         border: none !important;
@@ -294,12 +296,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     div[data-testid="stSelectbox"] *,
     div[data-testid="stDateInput"] input,
+    div[data-testid="stNumberInput"] input,
     div[data-testid="stTextInput"] input {{
         color: #0d1b2a !important;
         font-weight: 900 !important;
     }}
     
     div[data-testid="stDateInput"] input,
+    div[data-testid="stNumberInput"] input,
     div[data-testid="stTextInput"] input {{
         background-color: transparent !important;
         border: none !important;
@@ -313,6 +317,15 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     }}
     </style>
     """, unsafe_allow_html=True)
+
+    def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
+        delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
+        return f"""
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: center;'>
+            <p style='font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
+            <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
+        </div>
+        """
 
     c_t, c_btn = st.columns([3, 1])
     with c_t:
@@ -544,10 +557,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             }
 
             st.dataframe(df_cebo, use_container_width=True, hide_index=True, column_config=col_cfg_cebo)
-        st.stop() # 🛑 PARADA EN SECO: Aislamiento absoluto de la interfaz.
+        st.stop() 
 
     # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY (Si el Toggle está apagado)
+    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY 
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
@@ -594,12 +607,14 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown(html_cards, unsafe_allow_html=True)
 
     # =================================================================
-    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE (TRAJE DE GALA)
+    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE 
     # =================================================================
     st.markdown("### 📋 Resumen Detallado y Auditoría Financiera")
     
     df_visual = df_agrupado.copy()
-    df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"]).dt.strftime('%d/%m/%Y')
+    
+    # 🎯 CORRECCIÓN: Evita el error "dayfirst=True" dando el formato estricto
+    df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"], format='%Y-%m-%d', errors='coerce').dt.strftime('%d/%m/%Y')
 
     def color_fuga(val):
         if pd.isna(val): return ''
@@ -607,40 +622,28 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         elif val < 0: return 'color: #198754; font-weight: bold;'
         return 'color: #424242;'
 
-    # ESTILOS DE ENCABEZADO
-    header_styles = [{
-        'selector': 'th',
-        'props': [
-            ('font-weight', 'bold'),
-            ('color', '#0d1b2a'),
-            ('background-color', '#f4f6f9'),
-            ('font-size', '13px'),
-            ('text-transform', 'uppercase'),
-            ('border-bottom', '3px solid #d4af37')
-        ]
-    }]
+    col_cfg = {
+        "Fecha Operación": st.column_config.TextColumn("📅 FECHA"),
+        "Semana": st.column_config.TextColumn("📆 SEMANA"),
+        "Pista": st.column_config.TextColumn("🛫 PISTA"),
+        "Finca": st.column_config.TextColumn("📍 FINCA"),
+        "Equipo": st.column_config.TextColumn("🛩️ EQUIPO"),
+        "Hectareas": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f"),
+        "Tarifa Real Prom/Ha": st.column_config.NumberColumn("💰 TARIFA REAL", format="$ %,.0f"),
+        "Tarifa Ideal Prom/Ha": st.column_config.NumberColumn("🎯 TARIFA IDEAL", format="$ %,.0f"),
+        "Brecha por Ha": st.column_config.NumberColumn("⚖️ BRECHA/HA", format="$ %,.0f"),
+        "Total Real Facturado": st.column_config.NumberColumn("💵 TOTAL REAL", format="$ %,.0f"),
+        "Total Simulado Ideal": st.column_config.NumberColumn("🚀 TOTAL IDEAL", format="$ %,.0f"),
+        "Lucro Cesante": st.column_config.NumberColumn("📉 LUCRO CESANTE", format="$ %,.0f")
+    }
 
-    estilo_visual = df_visual.style.format({
-        "Hectareas": "{:,.2f}",
-        "Tarifa Real Prom/Ha": "$ {:,.0f}",
-        "Tarifa Ideal Prom/Ha": "$ {:,.0f}",
-        "Brecha por Ha": "$ {:,.0f}",
-        "Total Real Facturado": "$ {:,.0f}",
-        "Total Simulado Ideal": "$ {:,.0f}",
-        "Lucro Cesante": "$ {:,.0f}"
-    })
-    
-    if hasattr(estilo_visual, "map"):
-        estilo_visual = estilo_visual.map(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
-    else:
-        estilo_visual = estilo_visual.applymap(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha'])
-        
-    estilo_visual = estilo_visual.background_gradient(cmap='Blues', subset=['Hectareas']) \
-                                 .background_gradient(cmap='Greens', subset=['Tarifa Real Prom/Ha', 'Total Real Facturado']) \
-                                 .background_gradient(cmap='YlOrBr', subset=['Tarifa Ideal Prom/Ha', 'Total Simulado Ideal']) \
-                                 .set_table_styles(header_styles)
-
-    st.dataframe(estilo_visual, use_container_width=True, height=400, hide_index=True)
+    st.dataframe(
+        df_visual.style.map(color_fuga, subset=['Lucro Cesante', 'Brecha por Ha']), 
+        use_container_width=True, 
+        height=400, 
+        hide_index=True,
+        column_config=col_cfg
+    )
 
     # =================================================================
     # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
@@ -649,7 +652,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
     df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
-    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"], dayfirst=True).dt.strftime('%d/%m/%Y')
+    
+    # 🎯 CORRECCIÓN APLICADA AQUÍ TAMBIÉN
+    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"], format='%Y-%m-%d', errors='coerce').dt.strftime('%d/%m/%Y')
 
     fig_tarifas = px.bar(
         df_graficos,
