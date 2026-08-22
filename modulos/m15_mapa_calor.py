@@ -90,14 +90,13 @@ def extraer_poligonos_kml(kml_bytes):
     except: return []
 
 # =================================================================
-# 🛰️ CONEXIÓN SATELITAL CLIMÁTICA AVANZADA (BLINDADA CONTRA VIAJES EN EL TIEMPO)
+# 🛰️ CONEXIÓN SATELITAL CLIMÁTICA AVANZADA
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=3600)
 def consultar_clima_avanzado(lat, lon):
-    """ Descarga lluvia y pronóstico. Ancla la fecha al SATÉLITE, no al PC. """
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&past_days=90&forecast_days=7&daily=precipitation_sum&timezone=America/Bogota"
-        headers = {"User-Agent": "AgroAereoTactico/1.0"} # Evita el bloqueo del API
+        headers = {"User-Agent": "AgroAereoTactico/1.0"}
         res = requests.get(url, headers=headers, timeout=15)
         
         if res.status_code == 200:
@@ -108,7 +107,6 @@ def consultar_clima_avanzado(lat, lon):
                     'lluvia': [float(x) if x is not None else 0.0 for x in data['daily']['precipitation_sum']]
                 })
                 
-                # 🎯 ANCLAJE AL SATÉLITE: Restamos 7 días al futuro máximo para saber cuál es el "Hoy" real
                 hoy_satelite = df_clima['fecha'].max() - pd.Timedelta(days=7)
                 hace_30_dias = hoy_satelite - pd.Timedelta(days=30)
                 
@@ -116,16 +114,11 @@ def consultar_clima_avanzado(lat, lon):
                 lluvia_30d = float(df_clima[(df_clima['fecha'] <= hoy_satelite) & (df_clima['fecha'] >= hace_30_dias)]['lluvia'].sum())
                 lluvia_7d_futuro = float(df_clima[df_clima['fecha'] > hoy_satelite]['lluvia'].sum())
                 
-                # Convertimos las fechas a string para evitar fallas en diccionarios
                 df_clima['fecha_str'] = df_clima['fecha'].dt.strftime('%Y-%m-%d')
                 clima_diario = dict(zip(df_clima['fecha_str'], df_clima['lluvia']))
                 
                 return lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario
-    except Exception as e: 
-        print(f"Error API: {e}")
-        pass
-        
-    # Retorna clave "error" si la conexión falla para avisarle al usuario
+    except Exception as e: pass
     return 0.0, 0.0, 0.0, {"error": True}
 
 # =================================================================
@@ -211,6 +204,7 @@ def generar_excel_agronomico_vip(dict_dfs):
 # =================================================================
 def ejecutar(purificar_lote, extraer_numero):
     VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
 
     st.markdown(f"""
     <style>
@@ -223,7 +217,6 @@ def ejecutar(purificar_lote, extraer_numero):
     div[data-testid="stFileUploader"] button, div[data-testid="stFileUploader"] button * {{ color: #ffffff !important; }}
     
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
-    
     div[data-testid="stTabs"] button[role="tab"] {{ font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: #27AE60; background-color: rgba(39, 174, 96, 0.1); }}
     
@@ -273,8 +266,17 @@ def ejecutar(purificar_lote, extraer_numero):
             "ORIHUECA": [10.7483, -74.1542], "FLORIDA": [10.7650, -74.1320], "TUCURINCA": [10.5842, -74.1489],
             "PALOMAR": [10.7210, -74.1150], "LA CEIBA": [10.7350, -74.1620], "CAÑO MOCHO": [10.7820, -74.1850],
             "PALOMINO": [11.2442, -73.5623], "BURITACA": [11.2420, -73.7650], "GUACAMAYAL": [10.7292, -74.1594],
-            "SEVILLA": [10.7667, -74.1500], "RIO FRIO": [10.9000, -74.1667], "FUNDACION": [10.5208, -74.1833]
+            "SEVILLA": [10.7667, -74.1500], "RIO FRIO": [10.9000, -74.1667], "FUNDACION": [10.5208, -74.1833],
+            "GUACHACA": [11.2411, -73.8188] # Agregado Guachaca
         }
+
+        # 🎯 NUEVO: CALIBRADOR PLUVIOMÉTRICO (COMPENSADOR DE CEGUERA SATELITAL)
+        st.markdown("---")
+        st.markdown("### 🌦️ 2. Calibración de Sensibilidad del Radar (Ajuste Tropical)")
+        st.caption("Los satélites globales promedian cuadrículas de 10km y subestiman las tormentas locales fuertes. Ajuste el multiplicador para acercarlo a la realidad de sus pluviómetros físicos.")
+        c_cal1, c_cal2 = st.columns(2)
+        factor_norte = c_cal1.slider("🌊 Multiplicador Zona Norte (Troncal Caribe: Palomino, Guachaca, Buritaca)", min_value=1.0, max_value=20.0, value=6.0, step=0.5)
+        factor_sur = c_cal2.slider("🍌 Multiplicador Zona Sur (Zona Bananera, Fundación)", min_value=1.0, max_value=20.0, value=3.5, step=0.5)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -300,30 +302,36 @@ def ejecutar(purificar_lote, extraer_numero):
                 sectores_unicos = df_t1['SECTOR_NOM'].unique()
                 cache_clima = {}
                 api_fallo = False
+                zona_norte_keywords = ["PALOMINO", "GUACHACA", "BURITACA", "DON DIEGO"]
                 
-                # Pre-descarga Climática agrupada por sector
+                # Pre-descarga Climática agrupada por sector con multiplicadores aplicados
                 for sec, gps in coor_estimadas.items():
                     l_90, l_30, l_7f, dict_diario = consultar_clima_avanzado(gps[0], gps[1])
                     if "error" in dict_diario:
                         api_fallo = True
-                    cache_clima[sec] = (max(0.0, l_90), max(0.0, l_30), max(0.0, l_7f), dict_diario)
+                        
+                    multiplicador = factor_norte if any(k in sec for k in zona_norte_keywords) else factor_sur
+                    
+                    l_90 = max(0.0, l_90) * multiplicador
+                    l_30 = max(0.0, l_30) * multiplicador
+                    l_7f = max(0.0, l_7f) * multiplicador
+                    dict_diario_ajustado = {k: max(0.0, v) * multiplicador for k, v in dict_diario.items() if k != "error"}
+                    
+                    cache_clima[sec] = (l_90, l_30, l_7f, dict_diario_ajustado)
                 
                 if api_fallo:
                     st.error("📡 SATÉLITE DESCONECTADO: Open-Meteo no devolvió la pluviometría. Los valores mostrarán 0 mm.")
                 
-                # Construcción Matriz Diaria Histórica
                 historico_clima = []
                 for sec, datos in cache_clima.items():
                     dict_diario = datos[3] 
-                    if "error" not in dict_diario:
-                        for d, val in dict_diario.items():
-                            historico_clima.append({"FECHA": d, "SECTOR": sec, "LLUVIA (mm)": val})
+                    for d, val in dict_diario.items():
+                        historico_clima.append({"FECHA": d, "SECTOR": sec, "LLUVIA (mm)": val})
                 
                 df_clima_raw = pd.DataFrame(historico_clima)
                 df_clima_pivot = pd.DataFrame()
                 
                 if not df_clima_raw.empty:
-                    # 🎯 CORECCIÓN: pivot_table previene crashes si hay fechas duplicadas por sector
                     df_clima_pivot = df_clima_raw.pivot_table(index="FECHA", columns="SECTOR", values="LLUVIA (mm)", aggfunc='mean').reset_index()
                     df_clima_pivot = df_clima_pivot.sort_values("FECHA", ascending=False)
                     df_clima_pivot['FECHA'] = pd.to_datetime(df_clima_pivot['FECHA']).dt.strftime('%d/%m/%Y')
@@ -359,22 +367,23 @@ def ejecutar(purificar_lote, extraer_numero):
                     if sector_asociado in cache_clima:
                         lluvia_90d, lluvia_30d, lluvia_7d_futuro, clima_diario = cache_clima[sector_asociado]
                     
+                    # Criterios ajustados para las alertas (ahora que los mm son más altos)
                     alerta_epidemia = "Baja / Normal"
-                    if lluvia_30d > 45.0: alerta_epidemia = "⚡ ALTA (Peligro Inminente)"
+                    if lluvia_30d > 100.0: alerta_epidemia = "⚡ ALTA (Peligro Inminente)"
 
                     lluvia_aplicacion = 0.0
                     riesgo_lavado = "🟢 SEGURO"
                     if ultimo_vuelo and not api_fallo:
                         fecha_vuelo_str = ultimo_vuelo.strftime('%Y-%m-%d')
                         lluvia_aplicacion = clima_diario.get(fecha_vuelo_str, 0.0)
-                        if lluvia_aplicacion >= 15.0:
+                        if lluvia_aplicacion >= 30.0:
                             riesgo_lavado = "🔴 ALTO (Lavado Probable)"
-                        elif lluvia_aplicacion >= 5.0:
+                        elif lluvia_aplicacion >= 10.0:
                             riesgo_lavado = "🟡 MODERADO"
 
-                    if lluvia_7d_futuro >= 40.0:
+                    if lluvia_7d_futuro >= 80.0:
                         ventana_vuelo = "🔴 CERRADA (No programar)"
-                    elif lluvia_7d_futuro >= 15.0:
+                    elif lluvia_7d_futuro >= 30.0:
                         ventana_vuelo = "🟡 PRECAUCIÓN"
                     else:
                         ventana_vuelo = "🟢 ÓPTIMA"
@@ -591,10 +600,8 @@ def ejecutar(purificar_lote, extraer_numero):
                         }
                     )
 
-                # 🎯 NUEVA TABLA Y GRÁFICA DE HISTORIAL DIARIO
                 with tab_clima:
-                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico 7D)")
-                    
+                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico)")
                     if not df_clima_raw.empty:
                         fig_lluvia = px.bar(
                             df_clima_raw.sort_values("FECHA"), x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
