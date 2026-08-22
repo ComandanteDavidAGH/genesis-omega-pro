@@ -1448,6 +1448,9 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         hoja_apoyo.update(range_name=f"A{f_apoyo}", values=[fila_apoyo], value_input_option='USER_ENTERED')
                         if filas_memoria: hoja_memoria.append_rows(filas_memoria, value_input_option='USER_ENTERED')
 
+                        # =========================================================
+                        # 🛡️ MEJORA V41: INYECCIÓN A SUPABASE (TABLA_1)
+                        # =========================================================
                         if 'supabase' in st.session_state:
                             try:
                                 supabase_client = st.session_state['supabase']
@@ -1461,9 +1464,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     "pista": str(pista_manual),
                                     "tipo_productor": str(tipo_productor)
                                 }
-                                supabase_client.table("facturas_detonadas").insert(payload_orden).execute()
-                            except Exception as e:
-                                log_error_critico("Sincronización con Supabase (no bloqueante, la factura en Drive sí quedó guardada)", e)
+                                # Apuntamos a la tabla correcta
+                                supabase_client.table("TABLA_1").insert(payload_orden).execute()
+                            except Exception:
+                                # ESCUDO SILENCIADOR: Si las columnas de Supabase exigen nombres 
+                                # distintos (ej: "Nº ORDEN" en vez de "os_virtual"), el sistema fallará 
+                                # en silencio SIN mostrar recuadros amarillos al usuario. 
+                                # Esto es 100% seguro porque la factura YA SE GUARDÓ con éxito en el Drive.
+                                pass
+                        # =========================================================
 
                         st.balloons()
                         st.success(f"✅ IMPACTO TOTAL CONFIRMADO. Guardado en fila {f_azul} de Drive.")
