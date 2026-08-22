@@ -391,10 +391,11 @@ def ejecutar(supabase_client=None):
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
     df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
     
+    # 🎯 CONFIGURACIÓN CON 1000 FILAS PREASIGNADAS PARA PEGAR MASIVO DESDE EXCEL
     if 'm17_df_entrada_grid' not in st.session_state or 'DOMINICAL' not in st.session_state.m17_df_entrada_grid.columns:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": "", "DOMINICAL": False
-        } for _ in range(500)])
+        } for _ in range(1000)])
 
     st.markdown("### 📥 1. Pista de Aterrizaje Segura")
     st.caption("📋 Selecciona tus columnas en Excel, haz Ctrl+C, párate en la primera celda de abajo y presiona **Ctrl+V**.")
