@@ -7,6 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
 URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
     """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
@@ -28,8 +29,7 @@ def obtener_radar_precios_cached(_extraer_numero):
         return False, "🚨 Enlace satelital roto con Google Cloud.", None, 0, 0, 0, None
         
     try:
-        url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
-        sh = gc.open_by_url(url_boveda)
+        sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
         ws_conf = sh.worksheet("Configuración")
         
         data = ws_conf.get_all_values()
@@ -115,7 +115,6 @@ def ejecutar(extraer_numero):
             with st.spinner("Ejecutando protocolo Samurai..."):
                 try:
                     nombre_archivo = f_sap_raw.name.lower()
-                    # Leer archivo
                     if nombre_archivo.endswith('.xlsx') or nombre_archivo.endswith('.xls'):
                         df = pd.read_excel(f_sap_raw)
                     else:
@@ -124,7 +123,7 @@ def ejecutar(extraer_numero):
                         except Exception:
                             f_sap_raw.seek(0)
                             df = pd.read_csv(f_sap_raw, sep=None, engine='python', encoding='latin1')
-                    
+                     
                     # =========================================================
                     # 🛡️ MEJORA: ESCUDO ANTI-ARCHIVOS INVÁLIDOS
                     # =========================================================
@@ -132,11 +131,9 @@ def ejecutar(extraer_numero):
                         st.error("🚨 ARCHIVO INVÁLIDO: La matriz cargada no tiene la estructura de SAP requerida (mínimo 11 columnas). Operación abortada.")
                         st.stop()
                         
-                    # Ahora sí, limpiamos con seguridad
                     df = df.dropna(subset=[df.columns[0]])
                     df = df[~df.iloc[:, 0].astype(str).str.contains(r'\*')]
                     df = df.sort_values(by=df.columns[10], ascending=True)
-                    # =========================================================
                      
                     df_final = df.iloc[:, 0:9].copy()
                     df_final['J'] = df.iloc[:, 10].values
@@ -147,33 +144,16 @@ def ejecutar(extraer_numero):
                         st.error("🚨 No se pudo establecer conexión con Google Cloud. Verifique sus credenciales.")
                         st.stop()
                         
-                    url_boveda = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                    url_boveda = URL_BOVEDA_MAESTRA
                     boveda = gc.open_by_url(url_boveda)
                     hoja_plantilla = boveda.worksheet("Plantilla")
                     hoja_plantilla.batch_clear(["A3:K5000"])
                     hoja_plantilla.update(range_name="A3", values=df_final.fillna("").values.tolist(), value_input_option='USER_ENTERED')
                     hoja_plantilla.update(range_name="K3", values=[[x] for x in unicos], value_input_option='USER_ENTERED')
                      
-                    # =========================================================
-                    # 🛡️ MEJORA 1: ELIMINACIÓN DE ERRORES SILENCIOSOS (PASO A)
-                    # =========================================================
-                    if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
-                        try:
-                            supabase_client = st.session_state['supabase']
-                            df_db = df_final.copy()
-                            df_db.columns = [f"col_{i}" for i in range(len(df_db.columns) - 1)] + ["col_j"]
-                            registros = df_db.fillna("").to_dict(orient='records')
-                            
-                            if registros:
-                                # Reemplazamos el delete() fantasma. Supabase insertará de forma segura.
-                                # Nota: Como es una "plantilla" que se sobrescribe, borramos solo SI hay datos nuevos listos.
-                                supabase_client.table("sap_precios_plantilla").delete().neq("col_j", "PROBAR_VACIO_FORZADO").execute()
-                                supabase_client.table("sap_precios_plantilla").insert(registros).execute()
-                                
-                        except Exception as e:
-                            st.warning(f"⚠️ Drive actualizado, pero hubo un fallo menor sincronizando la Plantilla en Supabase: {e}")
+                    # Eliminamos el intento a Supabase del Paso A, Drive se encarga de esto.
 
-                    st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de forma instantánea.")
+                    st.success("✅ PASO A COMPLETADO: Datos frescos cargados en Plantilla de Drive de forma instantánea.")
                     st.session_state['paso_a_listo'] = True
                     st.cache_data.clear()
                     
@@ -207,14 +187,9 @@ def ejecutar(extraer_numero):
             ]
 
             if records_espejo:
-                # =========================================================
-                # 🛡️ MEJORA 2: UPSERT EN LUGAR DE TRUNCATE (PASO B)
-                # =========================================================
-                # Upsert insertará los nuevos insumos y actualizará los precios de los existentes
-                # sin dejar la tabla en blanco durante el proceso.
+                # 🛡️ MEJORA: UPSERT EN LUGAR DE TRUNCATE (PASO B)
                 res = cliente_sb.table("PRECIOS_INSUMOS").upsert(records_espejo).execute()
-                
-                if res.data or res.data == []: # Dependiendo de la versión de supabase, insert exitoso puede retornar data
+                if res.data or res.data == []: 
                     return True, f"✅ Supabase actualizado (Upsert Seguro) con {len(records_espejo)} insumos."
                     
             return False, "⚠️ No se encontraron registros válidos para sincronizar."
@@ -277,7 +252,7 @@ def ejecutar(extraer_numero):
                             st.error("🚨 Enlace satelital roto con Google Drive.")
                             st.stop()
                             
-                        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                        sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
                         ws_conf = sh.worksheet("Configuración")
                         
                         if not data_full:
@@ -323,7 +298,7 @@ def ejecutar(extraer_numero):
                             if gc is None:
                                 st.error("🚨 Enlace satelital roto con Google Drive.")
                                 st.stop()
-                            sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                            sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
                             ws_conf = sh.worksheet("Configuración")
                             data_full = ws_conf.get_all_values()
 
