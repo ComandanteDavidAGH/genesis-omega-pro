@@ -76,6 +76,14 @@ def normalizar_a_fecha_pura(val):
         return pd.to_datetime(str(res_nativo)).date()
     except: return None
 
+def es_cooperativa(finca_nombre):
+    f_up = str(finca_nombre).upper().strip()
+    patrones_coop = [
+        'BANAFRUCOOP', 'COOMULBANANO', 'COOBAMAG', 'EMPREBANCOOP', 
+        'COOBAFRIO', 'BANAORGANICO', 'COOP', 'ASOCIACION', 'ASO'
+    ]
+    return any(p in f_up for p in patrones_coop)
+
 # =================================================================
 # 💾 EXTRACCIÓN CACHEADA DE DATOS OPERATIVOS
 # =================================================================
@@ -107,6 +115,8 @@ def cargar_datos_gerenciales():
                 return 'AVIÓN'
             
             df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
+            df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVA' if es_cooperativa(x) else 'INDEPENDIENTE')
+            
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
@@ -122,7 +132,7 @@ def cargar_datos_gerenciales():
     except Exception: return pd.DataFrame()
 
 # =================================================================
-# ⚙️ MOTOR EXCEL PROFESIONAL (CON SEMAFORIZACIÓN)
+# ⚙️ MOTOR EXCEL PROFESIONAL
 # =================================================================
 def generar_excel_maestro(df_total, df_vuelo):
     output = io.BytesIO()
@@ -143,11 +153,12 @@ def generar_excel_maestro(df_total, df_vuelo):
             ws = writer.sheets[sheet_name]
             
             ws.column_dimensions['A'].width = 32
-            ws.column_dimensions['B'].width = 28
-            ws.column_dimensions['C'].width = 20
-            ws.column_dimensions['D'].width = 20
-            ws.column_dimensions['E'].width = 22
-            ws.column_dimensions['F'].width = 18
+            ws.column_dimensions['B'].width = 16
+            ws.column_dimensions['C'].width = 28
+            ws.column_dimensions['D'].width = 18
+            ws.column_dimensions['E'].width = 18
+            ws.column_dimensions['F'].width = 20
+            ws.column_dimensions['G'].width = 16
             
             for cell in ws[1]:
                 cell.fill = header_fill
@@ -156,16 +167,16 @@ def generar_excel_maestro(df_total, df_vuelo):
                 cell.border = borde_fino
                 
             for row in range(2, ws.max_row + 1):
-                ws[f'C{row}'].number_format = '"$"#,##0'
                 ws[f'D{row}'].number_format = '"$"#,##0'
+                ws[f'E{row}'].number_format = '"$"#,##0'
                 
-                celda_dif = ws[f'E{row}']
-                celda_efi = ws[f'F{row}']
+                celda_dif = ws[f'F{row}']
+                celda_efi = ws[f'G{row}']
                 
                 celda_dif.number_format = '"$"#,##0'
                 celda_efi.number_format = '0.0%' 
                 
-                for col_letter in ['A', 'B', 'C', 'D', 'E', 'F']:
+                for col_letter in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
                     ws[f'{col_letter}{row}'].border = borde_fino
                 
                 if isinstance(celda_dif.value, (int, float)):
@@ -177,6 +188,58 @@ def generar_excel_maestro(df_total, df_vuelo):
                         celda_efi.font = font_rojo
                 
     return output.getvalue()
+
+def construir_grafico_comparativo(df_datos, titulo_grafico):
+    if df_datos.empty:
+        return None
+        
+    df_plot = df_datos.copy()
+    df_plot['X_UNIQUE'] = df_plot['FINCA'].apply(lambda x: str(x)[:14] + '...' if len(str(x)) > 14 else str(x)) + " [" + df_plot.index.astype(str) + "]"
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=df_plot['X_UNIQUE'], 
+        y=df_plot['AVIÓN'], 
+        name='Avión', 
+        marker_color='#1a365d',
+        customdata=df_plot['FINCA'],
+        hovertemplate='<b>Finca:</b> %{customdata}<br><b>Avión:</b> $%{y:,.0f}<extra></extra>'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=df_plot['X_UNIQUE'], 
+        y=df_plot['DRONE'], 
+        name='Dron', 
+        marker_color='#d4af37',
+        customdata=df_plot['FINCA'],
+        hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
+    ))
+    
+    vista_inicial = min(12.5, len(df_plot) - 0.5) 
+    
+    fig.update_layout(
+        title=f"<b>{titulo_grafico}</b>", 
+        barmode='group', 
+        plot_bgcolor='rgba(0,0,0,0)', 
+        paper_bgcolor='rgba(0,0,0,0)',
+        height=420,
+        xaxis=dict(
+            tickangle=-90,
+            tickfont=dict(size=10),
+            range=[-0.5, vista_inicial],
+            rangeslider=dict(visible=True, thickness=0.06, bgcolor="#e2e8f0"),
+            type='category'
+        ),
+        yaxis=dict(
+            tickformat="$,.0f", 
+            title="Costo ($ COP / ha)", 
+            showgrid=True, 
+            gridcolor='rgba(200,200,200,0.2)'
+        ),
+        hovermode="closest",
+        margin=dict(b=10, t=40, l=10, r=10)
+    )
+    return fig
 
 # =================================================================
 # 👑 RENDERIZADO VISUAL EN PANTALLA
@@ -216,7 +279,7 @@ def ejecutar(*args, **kwargs):
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
         st.markdown("<h1 class='titulo-gerencial'>⚖️ Módulo 16: Comparativo Gerencial (Dron vs Avión)</h1>", unsafe_allow_html=True)
-        st.write("Análisis táctico de costos por hectárea, brecha de eficiencia y rendimiento financiero.")
+        st.write("Análisis táctico de costos desglosado por Cooperativas vs Fincas Independientes.")
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
@@ -252,23 +315,23 @@ def ejecutar(*args, **kwargs):
     df_drones = df_base[df_base['TECNOLOGIA'] == 'DRONE'].copy()
 
     # PREPARAR DATA: COSTO VUELO PURA
-    df_vuelo_avion = df_aviones.groupby('FINCA')['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'AVIÓN'})
-    df_vuelo_dron = df_drones.groupby(['FINCA', 'OPERADOR_DRON'])['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'DRONE'})
-    m_comp_v = pd.merge(df_vuelo_dron, df_vuelo_avion, on='FINCA', how='inner')
+    df_vuelo_avion = df_aviones.groupby(['FINCA', 'TIPO_ENTIDAD'])['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'AVIÓN'})
+    df_vuelo_dron = df_drones.groupby(['FINCA', 'TIPO_ENTIDAD', 'OPERADOR_DRON'])['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'DRONE'})
+    m_comp_v = pd.merge(df_vuelo_dron, df_vuelo_avion, on=['FINCA', 'TIPO_ENTIDAD'], how='inner')
     
     if not m_comp_v.empty:
-        m_comp_v = m_comp_v[['FINCA', 'OPERADOR_DRON', 'AVIÓN', 'DRONE']]
+        m_comp_v = m_comp_v[['FINCA', 'TIPO_ENTIDAD', 'OPERADOR_DRON', 'AVIÓN', 'DRONE']]
         m_comp_v.rename(columns={'OPERADOR_DRON': 'EQUIPO DRON'}, inplace=True)
         m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'] - m_comp_v['DRONE']
         m_comp_v['Eficiencia (%)'] = m_comp_v['Diferencia ($)'] / m_comp_v['AVIÓN']
 
     # PREPARAR DATA: COSTO TOTAL
-    df_total_avion = df_aviones.groupby('FINCA')['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'AVIÓN'})
-    df_total_dron = df_drones.groupby(['FINCA', 'OPERADOR_DRON'])['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'DRONE'})
-    m_comp_t = pd.merge(df_total_dron, df_total_avion, on='FINCA', how='inner')
+    df_total_avion = df_aviones.groupby(['FINCA', 'TIPO_ENTIDAD'])['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'AVIÓN'})
+    df_total_dron = df_drones.groupby(['FINCA', 'TIPO_ENTIDAD', 'OPERADOR_DRON'])['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'DRONE'})
+    m_comp_t = pd.merge(df_total_dron, df_total_avion, on=['FINCA', 'TIPO_ENTIDAD'], how='inner')
 
     if not m_comp_t.empty:
-        m_comp_t = m_comp_t[['FINCA', 'OPERADOR_DRON', 'AVIÓN', 'DRONE']]
+        m_comp_t = m_comp_t[['FINCA', 'TIPO_ENTIDAD', 'OPERADOR_DRON', 'AVIÓN', 'DRONE']]
         m_comp_t.rename(columns={'OPERADOR_DRON': 'EQUIPO DRON'}, inplace=True)
         m_comp_t['Diferencia ($)'] = m_comp_t['AVIÓN'] - m_comp_t['DRONE']
         m_comp_t['Eficiencia (%)'] = m_comp_t['Diferencia ($)'] / m_comp_t['AVIÓN'] 
@@ -280,10 +343,11 @@ def ejecutar(*args, **kwargs):
     if not m_comp_v.empty:
         ahorro_prom_vuelo = m_comp_v['Diferencia ($)'].mean()
         eficiencia_prom_vuelo = m_comp_v['Eficiencia (%)'].mean() * 100
-        fincas_comparadas = m_comp_v['FINCA'].nunique()
+        fincas_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVA']['FINCA'].nunique()
+        fincas_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'INDEPENDIENTE']['FINCA'].nunique()
 
         k1, k2, k3 = st.columns(3)
-        with k1: st.markdown(tarjeta_kpi("Fincas Cruzadas", f"{fincas_comparadas} Fincas", "Con Dron y Avión", "#d4af37"), unsafe_allow_html=True)
+        with k1: st.markdown(tarjeta_kpi("Cobertura Mapeada", f"{fincas_coop} Coop / {fincas_indep} Indep", "Fincas Cruzadas", "#d4af37"), unsafe_allow_html=True)
         with k2: st.markdown(tarjeta_kpi("Brecha Promedio Vuelo", f"$ {ahorro_prom_vuelo:,.0f} /ha".replace(",", "."), "Ahorro Dron vs Avión", "#28a745" if ahorro_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
         with k3: st.markdown(tarjeta_kpi("Eficiencia Financiera", f"{eficiencia_prom_vuelo:.1f}%", "vs Tarifa Avión", "#28a745" if eficiencia_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
 
@@ -302,11 +366,36 @@ def ejecutar(*args, **kwargs):
         return ''
 
     # ==========================================================
-    # PESTAÑA 1: TARIFA VUELO PURA
+    # PESTAÑA 1: TARIFA VUELO PURA (SEGMENTADA EN 2 GRÁFICOS)
     # ==========================================================
     with tab_vuelo:
-        st.success("🔬 Brecha de tarifa directa por Hectárea (Desglosado por Operación de Dron).")
+        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs Fincas Independientes.")
+        
         if not m_comp_v.empty:
+            m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVA'].copy()
+            m_comp_v_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'INDEPENDIENTE'].copy()
+            
+            # --- 🏢 GRÁFICO 1: COOPERATIVAS ---
+            st.markdown("### 🏢 1. Tarifas en Cooperativas y Gremios")
+            if not m_comp_v_coop.empty:
+                fig_coop = construir_grafico_comparativo(m_comp_v_coop, "Cooperativas: Avión vs Dron")
+                if fig_coop: st.plotly_chart(fig_coop, use_container_width=True)
+            else:
+                st.info("No se registraron fincas asociadas a Cooperativas en el rango.")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- 🚜 GRÁFICO 2: FINCAS INDEPENDIENTES ---
+            st.markdown("### 🚜 2. Tarifas en Fincas Normales / Independientes")
+            if not m_comp_v_indep.empty:
+                fig_indep = construir_grafico_comparativo(m_comp_v_indep, "Fincas Independientes: Avión vs Dron")
+                if fig_indep: st.plotly_chart(fig_indep, use_container_width=True)
+            else:
+                st.info("No se registraron Fincas Independientes en el rango.")
+
+            # TABLA GENERAL DETALLADA
+            st.markdown("---")
+            st.markdown("#### 📋 Matriz Detallada de Comparación")
             df_print_v = m_comp_v.copy()
             df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
             df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
@@ -318,62 +407,40 @@ def ejecutar(*args, **kwargs):
                 use_container_width=True, 
                 hide_index=True
             )
-            
-            # Gráfico Plotly
-            df_print_v['X_UNIQUE'] = df_print_v['FINCA'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x)) + " [" + df_print_v.index.astype(str) + "]"
-            
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=df_print_v['X_UNIQUE'], 
-                y=m_comp_v['AVIÓN'], 
-                name='Avión', 
-                marker_color='#1a365d',
-                customdata=df_print_v['FINCA'],
-                hovertemplate='<b>Finca:</b> %{customdata}<br><b>Avión:</b> $%{y:,.0f}<extra></extra>'
-            ))
-            
-            fig.add_trace(go.Bar(
-                x=df_print_v['X_UNIQUE'], 
-                y=m_comp_v['DRONE'], 
-                name='Dron', 
-                marker_color='#d4af37',
-                customdata=df_print_v['FINCA'],
-                hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
-            ))
-            
-            vista_inicial = min(14.5, len(df_print_v) - 0.5) 
-            
-            fig.update_layout(
-                title="<b>Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)</b>", 
-                barmode='group', 
-                plot_bgcolor='rgba(0,0,0,0)', 
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(
-                    tickangle=-90,
-                    tickfont=dict(size=11),
-                    range=[-0.5, vista_inicial],
-                    rangeslider=dict(visible=True, thickness=0.08, bgcolor="#e2e8f0"),
-                    type='category'
-                ),
-                yaxis=dict(
-                    tickformat="$,.0f", 
-                    title="Costo ($ COP / ha)", 
-                    showgrid=True, 
-                    gridcolor='rgba(200,200,200,0.2)'
-                ),
-                hovermode="closest",
-                margin=dict(b=20)
-            )
-            st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
     # ==========================================================
-    # PESTAÑA 2: COSTO TOTAL FACTURADO
+    # PESTAÑA 2: COSTO TOTAL FACTURADO (SEGMENTADA EN 2 GRÁFICOS)
     # ==========================================================
     with tab_total:
-        st.info("📊 Impacto macro en presupuesto desglosado por Operador (Consolidado Facturado).")
+        st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs Fincas Independientes.")
+        
         if not m_comp_t.empty:
+            m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVA'].copy()
+            m_comp_t_indep = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'INDEPENDIENTE'].copy()
+            
+            # --- 🏢 GRÁFICO 1: COOPERATIVAS (TOTAL) ---
+            st.markdown("### 🏢 1. Facturación Total en Cooperativas")
+            if not m_comp_t_coop.empty:
+                fig_t_coop = construir_grafico_comparativo(m_comp_t_coop, "Facturación Total: Cooperativas")
+                if fig_t_coop: st.plotly_chart(fig_t_coop, use_container_width=True)
+            else:
+                st.info("No se registraron Cooperativas en el rango.")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- 🚜 GRÁFICO 2: FINCAS INDEPENDIENTES (TOTAL) ---
+            st.markdown("### 🚜 2. Facturación Total en Fincas Independientes")
+            if not m_comp_t_indep.empty:
+                fig_t_indep = construir_grafico_comparativo(m_comp_t_indep, "Facturación Total: Fincas Independientes")
+                if fig_t_indep: st.plotly_chart(fig_t_indep, use_container_width=True)
+            else:
+                st.info("No se registraron Fincas Independientes en el rango.")
+
+            # TABLA GENERAL DETALLADA TOTAL
+            st.markdown("---")
+            st.markdown("#### 📋 Matriz Detallada Facturación Total")
             df_print_t = m_comp_t.copy()
             df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
             df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
@@ -393,7 +460,7 @@ def ejecutar(*args, **kwargs):
         st.markdown("---")
         excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
         st.download_button(
-            label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (2 HOJAS CON SEMÁFORO)", 
+            label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (2 HOJAS CON TIPO DE ENTIDAD Y SEMÁFORO)", 
             data=excel_data, 
             file_name=f"Reporte_Eficiencia_Avion_vs_Dron.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
