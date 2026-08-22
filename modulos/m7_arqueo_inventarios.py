@@ -488,24 +488,64 @@ def renderizar_radar_plomadas():
                 except Exception as e: st.error(f"🚨 Error al guardar: {e}")
 
 # =================================================================
-# 👑 INTERFAZ PRINCIPAL 
+# 👑 INTERFAZ PRINCIPAL CON MEMORIA Y ALINEACIÓN DE COLUMNAS
 # =================================================================
 
 def ejecutar(quitar_tildes, purificar_lote):
+    # CSS Unificado con Alineación Flexbox Vertical y Apariencia VIP
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    div[data-testid="stTextInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; color: #0d1b2a !important; font-weight: 800 !important; font-size: 15px !important; }
+    
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { 
+        border: 3px solid #0d1b2a !important; 
+        border-radius: 8px !important; 
+        overflow: hidden !important; 
+    }
+    
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL PARA COLUMNAS Y CONTENEDORES */
+    [data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+    }
+    
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stDateInput"] input, 
+    div[data-testid="stSelectbox"] > div, 
+    div[data-testid="stSelectbox"] div[data-baseweb="select"], 
+    div[data-testid="stNumberInput"] input { 
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 6px !important; 
+        background-color: #ffffff !important; 
+        color: #0d1b2a !important; 
+        font-weight: 800 !important; 
+        font-size: 15px !important; 
+    }
+    
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
-    div[data-testid="stFileUploader"] section { background-color: #ffffff !important; border: 2px dashed #0d1b2a !important; border-radius: 8px !important; padding: 10px !important; }
+    
+    /* TARJETA PERSISTENTE TIPO MÓDULO 2 */
+    .card-memoria-m7 {
+        background-color: #ffffff;
+        border: 2px solid #0d1b2a;
+        border-radius: 8px;
+        padding: 12px;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06);
+        min-height: 140px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
     .hud-arqueo { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
     .hud-arqueo-item { text-align: center; flex: 1; }
     .hud-arqueo-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-arqueo-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     .hud-arqueo-ok { color: #00ff66; font-family: 'Arial Black'; }
     .hud-arqueo-fail { color: #ff3333; font-family: 'Arial Black'; }
+    
     div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }
     </style>
@@ -519,21 +559,58 @@ def ejecutar(quitar_tildes, purificar_lote):
         renderizar_radar_plomadas()
 
     with tab_arqueo:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown("### 📁 1. Sábana SAP")
-            archivo_sap = st.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'])
-        with c2:
-            st.markdown("### 📋 2. Reportes Físicos")
-            archivos_sup = st.file_uploader("2️⃣ Reportes Supervisores (.xlsx)", type=['xlsx'], accept_multiple_files=True)
-        with c3:
-            st.markdown("### 🎯 3. Objetivo")
-            semana_obj = st.text_input("Semana a Auditar (Ej: 29):", placeholder="Escriba la semana aquí...")
+        # Inicialización de Sesión de Memoria (Estilo Módulo 2)
+        if 'mem_sap_m7' not in st.session_state: st.session_state['mem_sap_m7'] = None
+        if 'name_sap_m7' not in st.session_state: st.session_state['name_sap_m7'] = None
+        if 'mem_sup_m7' not in st.session_state: st.session_state['mem_sup_m7'] = []
+        if 'names_sup_m7' not in st.session_state: st.session_state['names_sup_m7'] = []
 
         if "arqueo_procesado" not in st.session_state: st.session_state.arqueo_procesado = False
         if "observaciones_memoria" not in st.session_state: st.session_state.observaciones_memoria = {}
         if "historial_fusiones" not in st.session_state: st.session_state.historial_fusiones = []
         if "centro_pdf_activo" not in st.session_state: st.session_state.centro_pdf_activo = False
+
+        c1, c2, c3 = st.columns(3)
+        
+        # COLUMNA 1: SÁBANA SAP
+        with c1:
+            st.markdown("### 📁 1. Sábana SAP")
+            if st.session_state['mem_sap_m7'] is None:
+                up_sap = st.file_uploader("1️⃣ Sábana de SAP", type=['xlsx', 'csv'], key="up_sap_m7")
+                if up_sap:
+                    st.session_state['mem_sap_m7'] = up_sap.getvalue()
+                    st.session_state['name_sap_m7'] = up_sap.name
+                    st.rerun()
+            else:
+                st.success(f"✅ En memoria:\n**{st.session_state['name_sap_m7']}**")
+                if st.button("🔄 Cambiar Sábana SAP", use_container_width=True, key="btn_change_sap"):
+                    st.session_state['mem_sap_m7'] = None
+                    st.session_state['name_sap_m7'] = None
+                    st.rerun()
+
+        # COLUMNA 2: REPORTES FÍSICOS
+        with c2:
+            st.markdown("### 📋 2. Reportes Físicos")
+            if not st.session_state['mem_sup_m7']:
+                up_sup = st.file_uploader("2️⃣ Reportes Supervisores", type=['xlsx'], accept_multiple_files=True, key="up_sup_m7")
+                if up_sup:
+                    st.session_state['mem_sup_m7'] = [f.getvalue() for f in up_sup]
+                    st.session_state['names_sup_m7'] = [f.name for f in up_sup]
+                    st.rerun()
+            else:
+                cant_arch = len(st.session_state['names_sup_m7'])
+                st.success(f"✅ En memoria:\n**{cant_arch} Reporte(s) Físico(s)**")
+                if st.button("🔄 Cambiar Reportes", use_container_width=True, key="btn_change_sup"):
+                    st.session_state['mem_sup_m7'] = []
+                    st.session_state['names_sup_m7'] = []
+                    st.rerun()
+
+        # COLUMNA 3: OBJETIVO (ALINEADO VISUALMENTE)
+        with c3:
+            st.markdown("### 🎯 3. Objetivo")
+            semana_obj = st.text_input("Semana a Auditar (Ej: 29):", placeholder="Escriba la semana aquí...", key="input_sem_m7")
+            st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+            st.caption("📌 Génesis filtrará automáticamente la pestaña correspondiente a esta semana dentro del informe físico.")
 
         def limpiar_numeros_generico(x):
             if pd.isna(x) or x is None: return 0.0
@@ -581,7 +658,7 @@ def ejecutar(quitar_tildes, purificar_lote):
         
         with col_act2:
             if st.button("🔄 RESETEAR Y PURGAR MEMORIA", use_container_width=True):
-                for k in ["arqueo_procesado", "df_sap_grouped", "df_sup_grouped", "df_sup_grouped_virgen", "cruce_final", "observaciones_memoria", "df_sap_raw", "historial_fusiones"]:
+                for k in ["arqueo_procesado", "df_sap_grouped", "df_sup_grouped", "df_sup_grouped_virgen", "cruce_final", "observaciones_memoria", "df_sap_raw", "historial_fusiones", "mem_sap_m7", "name_sap_m7", "mem_sup_m7", "names_sup_m7"]:
                     if k in st.session_state: del st.session_state[k]
                 st.toast("✅ Memoria purgada.", icon="🔄")
                 st.rerun()
@@ -590,21 +667,24 @@ def ejecutar(quitar_tildes, purificar_lote):
             btn_iniciar = st.button("🚀 INICIAR ARQUEO ESTRATÉGICO", type="primary", use_container_width=True)
 
         if btn_iniciar:
-            if not archivo_sap or not archivos_sup or not semana_obj: st.error("❌ Suministros insuficientes para el cruce maestro.")
+            if not st.session_state['mem_sap_m7'] or not st.session_state['mem_sup_m7'] or not semana_obj: 
+                st.error("❌ Suministros insuficientes para el cruce maestro. Verifique haber cargado SAP, Reportes Físicos y la Semana.")
             else:
                 try:
                     with st.spinner("Desplegando analista algorítmico y escáner anti-filas ocultas..."):
                         st.session_state.observaciones_memoria = {}
                         st.session_state.historial_fusiones = []
                         
-                        sap_file = archivo_sap[0] if isinstance(archivo_sap, list) else archivo_sap
-                        sap_file.seek(0)
-                        if sap_file.name.lower().endswith('.xlsx') or sap_file.name.lower().endswith('.xls'): df_sap = pd.read_excel(sap_file)
+                        sap_bytes = io.BytesIO(st.session_state['mem_sap_m7'])
+                        name_sap = st.session_state['name_sap_m7'].lower()
+                        
+                        if name_sap.endswith('.xlsx') or name_sap.endswith('.xls'): 
+                            df_sap = pd.read_excel(sap_bytes)
                         else:
-                            try: df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='utf-8')
+                            try: df_sap = pd.read_csv(sap_bytes, sep=None, engine='python', encoding='utf-8')
                             except UnicodeDecodeError: 
-                                sap_file.seek(0)
-                                df_sap = pd.read_csv(sap_file, sep=None, engine='python', encoding='latin1')
+                                sap_bytes.seek(0)
+                                df_sap = pd.read_csv(sap_bytes, sep=None, engine='python', encoding='latin1')
 
                         columnas_originales = list(df_sap.columns)
                         headers = [quitar_tildes(str(c)).strip().lower() for c in columnas_originales]
@@ -644,11 +724,11 @@ def ejecutar(quitar_tildes, purificar_lote):
                         lista_sup = []
                         sem_num = str(semana_obj).strip()
                         
-                        for file in archivos_sup:
-                            file.seek(0)
-                            dict_dfs = pd.read_excel(file, sheet_name=None, header=None, dtype=str)
-                            file.seek(0)
-                            try: wb = openpyxl.load_workbook(file, data_only=True)
+                        for raw_b in st.session_state['mem_sup_m7']:
+                            file_b = io.BytesIO(raw_b)
+                            dict_dfs = pd.read_excel(file_b, sheet_name=None, header=None, dtype=str)
+                            file_b.seek(0)
+                            try: wb = openpyxl.load_workbook(file_b, data_only=True)
                             except: wb = None
                                 
                             target_sheet = None
