@@ -102,14 +102,12 @@ def limpiar_dinero(val):
         return 0.0
 
 def fecha_fallback(val):
-    """ Respaldo en caso de que app.py no inyecte procesar_fecha_pesada_app """
     return pd.to_datetime(val, errors='coerce', dayfirst=True)
 
 # =================================================================
 # ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS
 # =================================================================
 def obtener_cliente_gspread_unificado():
-    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" in st.secrets:
         try:
@@ -241,7 +239,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
     st.header("", anchor="inicio_modulo")
 
-    # 🎯 CSS UNIFICADO V41: FLEXBOX STRICT Y ALINEACIÓN DE BORDES
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
@@ -250,7 +247,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
     
-    /* ALINEACIÓN VERTICAL SIMÉTRICA */
     [data-testid="column"] {
         display: flex !important;
         flex-direction: column !important;
@@ -431,106 +427,112 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
         st.markdown("### 🎛️ Centro de Comando y Filtros")
 
-        with st.expander("🏦 BÓVEDA DE TARIFAS MAESTRAS (MASTER DATA)", expanded=False):
-            df_tarifas = cargar_matriz_tarifas()
-            if not df_tarifas.empty:
-                st.info("💡 **CEREBRO CENTRAL:** El sistema lee esta matriz en tiempo real. Selecciona los años que deseas visualizar y descargar.")
-                
-                cols_base = [c for c in df_tarifas.columns if not str(c).isdigit()]
-                cols_anios = [c for c in df_tarifas.columns if str(c).isdigit()]
-                
-                anios_seleccionados = st.multiselect("📅 Selecciona los años a incluir en el reporte:", cols_anios, default=cols_anios)
-                
-                if not anios_seleccionados:
-                    st.warning("⚠️ Selecciona al menos un año para visualizar la matriz.")
+        # =========================================================
+        # 🎯 MEJORA SOLICITADA: INTERRUPTOR INDEPENDIENTE (TOGGLE)
+        # =========================================================
+        ver_boveda_tarifas = st.toggle("🏦 ACTIVAR VISOR BÓVEDA DE TARIFAS MAESTRAS (MASTER DATA)", value=False, key="toggle_boveda_tarifas_m8")
+
+        if ver_boveda_tarifas:
+            with st.container(border=True):
+                df_tarifas = cargar_matriz_tarifas()
+                if not df_tarifas.empty:
+                    st.info("💡 **CEREBRO CENTRAL:** El sistema lee esta matriz en tiempo real. Selecciona los años que deseas visualizar y descargar.")
+                    
+                    cols_base = [c for c in df_tarifas.columns if not str(c).isdigit()]
+                    cols_anios = [c for c in df_tarifas.columns if str(c).isdigit()]
+                    
+                    anios_seleccionados = st.multiselect("📅 Selecciona los años a incluir en el reporte:", cols_anios, default=cols_anios)
+                    
+                    if not anios_seleccionados:
+                        st.warning("⚠️ Selecciona al menos un año para visualizar la matriz.")
+                    else:
+                        df_tarifas_filtro = df_tarifas[cols_base + anios_seleccionados].copy()
+                        df_mostrar = df_tarifas_filtro.copy()
+                        
+                        renombres = {
+                            'PISTA': '📍 BASE OPERATIVA', 
+                            'EQUIPO_O_TOPE': '🛩️ TIPO DE EQUIPO / CONCEPTO'
+                        }
+                        for anio in anios_seleccionados:
+                            renombres[anio] = f"📅 {anio}"
+                            
+                        df_mostrar.rename(columns=renombres, inplace=True)
+                        
+                        def estilo_matriz(row):
+                            estilos = []
+                            for col in row.index:
+                                if col in ['📍 BASE OPERATIVA', '🛩️ TIPO DE EQUIPO / CONCEPTO']:
+                                    estilos.append('background-color: #F1F5F9; color: #0D1B2A; font-weight: 800; border-right: 2px solid #CBD5E1;')
+                                else:
+                                    estilos.append('background-color: #FFFFFF; color: #1A365D; font-weight: 600; text-align: right;')
+                            return estilos
+
+                        st.dataframe(
+                            df_mostrar.style.apply(estilo_matriz, axis=1), 
+                            use_container_width=True, 
+                            hide_index=True
+                        )
+                        
+                        buf_tarifas = io.BytesIO()
+                        df_export_t = df_tarifas_filtro.copy()
+                        
+                        for col in anios_seleccionados:
+                            df_export_t[col] = df_export_t[col].apply(limpiar_dinero)
+
+                        with pd.ExcelWriter(buf_tarifas, engine='openpyxl') as writer:
+                            df_export_t.to_excel(writer, sheet_name='Tarifario_Maestro', index=False, startrow=3)
+                            ws_t = writer.sheets['Tarifario_Maestro']
+                            
+                            ws_t['A1'] = "REPORTE MÁSTER: MATRIZ DE TARIFAS AUTORIZADAS"
+                            ws_t['A1'].font = Font(size=14, bold=True, color="FFFFFF")
+                            ws_t['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                            ws_t['A1'].alignment = Alignment(horizontal='center', vertical='center')
+                            ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_export_t.columns))
+                            
+                            ws_t['A3'] = f"Actualizado a: {datetime.now().strftime('%d/%m/%Y')}"
+                            ws_t['A3'].font = Font(italic=True, color="555555", bold=True)
+                            ws_t.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_export_t.columns))
+
+                            header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                            header_font = Font(bold=True, color="000000")
+                            for col_num in range(1, len(df_export_t.columns) + 1):
+                                cell = ws_t.cell(row=4, column=col_num)
+                                cell.fill = header_fill
+                                cell.font = header_font
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
+                                
+                            ws_t.column_dimensions['A'].width = 12
+                            ws_t.column_dimensions['B'].width = 30
+                            for col_num in range(3, len(df_export_t.columns) + 1):
+                                ws_t.column_dimensions[get_column_letter(col_num)].width = 16
+                                
+                            for r_idx in range(5, len(df_export_t) + 5):
+                                for c_idx in range(1, len(df_export_t.columns) + 1):
+                                    cell = ws_t.cell(row=r_idx, column=c_idx)
+                                    if c_idx > len(cols_base): 
+                                        if cell.value != "" and cell.value is not None and cell.value != 0:
+                                            cell.number_format = '$#,##0'
+                                    cell.alignment = Alignment(horizontal='left') 
+
+                        st.download_button(
+                            label="💾 DESCARGAR TARIFARIO MÁSTER VIP (EXCEL)", 
+                            data=buf_tarifas.getvalue(), 
+                            file_name=f"Tarifario_Oficial_MasterData_{datetime.now().strftime('%Y%m%d')}.xlsx", 
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                        
+                        try:
+                            df_melt = df_export_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_seleccionados, var_name='AÑO', value_name='TARIFA')
+                            df_melt['TARIFA'] = pd.to_numeric(df_melt['TARIFA'], errors='coerce').fillna(0)
+                            df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
+                            
+                            fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
+                            fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
+                            st.plotly_chart(fig_tarifas, use_container_width=True)
+                        except Exception: pass
                 else:
-                    df_tarifas_filtro = df_tarifas[cols_base + anios_seleccionados].copy()
-                    df_mostrar = df_tarifas_filtro.copy()
-                    
-                    renombres = {
-                        'PISTA': '📍 BASE OPERATIVA', 
-                        'EQUIPO_O_TOPE': '🛩️ TIPO DE EQUIPO / CONCEPTO'
-                    }
-                    for anio in anios_seleccionados:
-                        renombres[anio] = f"📅 {anio}"
-                        
-                    df_mostrar.rename(columns=renombres, inplace=True)
-                    
-                    def estilo_matriz(row):
-                        estilos = []
-                        for col in row.index:
-                            if col in ['📍 BASE OPERATIVA', '🛩️ TIPO DE EQUIPO / CONCEPTO']:
-                                estilos.append('background-color: #F1F5F9; color: #0D1B2A; font-weight: 800; border-right: 2px solid #CBD5E1;')
-                            else:
-                                estilos.append('background-color: #FFFFFF; color: #1A365D; font-weight: 600; text-align: right;')
-                        return estilos
-
-                    st.dataframe(
-                        df_mostrar.style.apply(estilo_matriz, axis=1), 
-                        use_container_width=True, 
-                        hide_index=True
-                    )
-                    
-                    buf_tarifas = io.BytesIO()
-                    df_export_t = df_tarifas_filtro.copy()
-                    
-                    for col in anios_seleccionados:
-                        df_export_t[col] = df_export_t[col].apply(limpiar_dinero)
-
-                    with pd.ExcelWriter(buf_tarifas, engine='openpyxl') as writer:
-                        df_export_t.to_excel(writer, sheet_name='Tarifario_Maestro', index=False, startrow=3)
-                        ws_t = writer.sheets['Tarifario_Maestro']
-                        
-                        ws_t['A1'] = "REPORTE MÁSTER: MATRIZ DE TARIFAS AUTORIZADAS"
-                        ws_t['A1'].font = Font(size=14, bold=True, color="FFFFFF")
-                        ws_t['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                        ws_t['A1'].alignment = Alignment(horizontal='center', vertical='center')
-                        ws_t.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_export_t.columns))
-                        
-                        ws_t['A3'] = f"Actualizado a: {datetime.now().strftime('%d/%m/%Y')}"
-                        ws_t['A3'].font = Font(italic=True, color="555555", bold=True)
-                        ws_t.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_export_t.columns))
-
-                        header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                        header_font = Font(bold=True, color="000000")
-                        for col_num in range(1, len(df_export_t.columns) + 1):
-                            cell = ws_t.cell(row=4, column=col_num)
-                            cell.fill = header_fill
-                            cell.font = header_font
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                            
-                        ws_t.column_dimensions['A'].width = 12
-                        ws_t.column_dimensions['B'].width = 30
-                        for col_num in range(3, len(df_export_t.columns) + 1):
-                            ws_t.column_dimensions[get_column_letter(col_num)].width = 16
-                            
-                        for r_idx in range(5, len(df_export_t) + 5):
-                            for c_idx in range(1, len(df_export_t.columns) + 1):
-                                cell = ws_t.cell(row=r_idx, column=c_idx)
-                                if c_idx > len(cols_base): 
-                                    if cell.value != "" and cell.value is not None and cell.value != 0:
-                                        cell.number_format = '$#,##0'
-                                cell.alignment = Alignment(horizontal='left') 
-
-                    st.download_button(
-                        label="💾 DESCARGAR TARIFARIO MÁSTER VIP (EXCEL)", 
-                        data=buf_tarifas.getvalue(), 
-                        file_name=f"Tarifario_Oficial_MasterData_{datetime.now().strftime('%Y%m%d')}.xlsx", 
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                    
-                    try:
-                        df_melt = df_export_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_seleccionados, var_name='AÑO', value_name='TARIFA')
-                        df_melt['TARIFA'] = pd.to_numeric(df_melt['TARIFA'], errors='coerce').fillna(0)
-                        df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
-                        
-                        fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
-                        fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
-                        st.plotly_chart(fig_tarifas, use_container_width=True)
-                    except Exception: pass
-            else:
-                st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
+                    st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
 
         modo_historico_global = st.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO (Hectáreas 2017 - 2026 por Pista y Mes)", value=False)
 
