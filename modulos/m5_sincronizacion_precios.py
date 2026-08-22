@@ -4,17 +4,28 @@ import numpy as np
 import gspread
 import io
 import re
+from oauth2client.service_account import ServiceAccountCredentials
 
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
 @st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread():
-    """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+def obtener_cliente_gspread_unificado():
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
     try:
-        if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
@@ -39,74 +50,88 @@ def purificar_y_convertir_precio(valor_crudo):
         return 0.0
 
 # =================================================================
-# 🔌 MEMORIA EN CACHÉ ULTRARRÁPIDA (VECTORIZACIÓN PURA)
+# 🔌 MEMORIA EN CACHÉ CON FALLBACK A GOOGLE DRIVE (VELOCIDAD LUZ)
 # =================================================================
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_tarifario_maestro_cached(_supabase_client):
     """
-    Descarga Supabase y calcula vectorialmente todos los márgenes en milisegundos.
+    Intenta descargar desde Supabase. Si falla o no está conectado, 
+    recupera automáticamente el tarifario desde la pestaña Configuración de Drive.
     """
-    if not _supabase_client:
+    df = pd.DataFrame()
+    
+    # 1. Intento por Supabase
+    if _supabase_client:
+        try:
+            respuesta = _supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
+            if respuesta.data:
+                df = pd.DataFrame(respuesta.data)
+        except Exception:
+            df = pd.DataFrame()
+
+    # 2. Fallback Satelital a Google Drive si Supabase está fuera de línea
+    if df.empty:
+        gc = obtener_cliente_gspread_unificado()
+        if gc:
+            try:
+                sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
+                ws = sh.worksheet("Configuración")
+                datos = ws.get_all_values()
+                if len(datos) > 1:
+                    df_raw = pd.DataFrame(datos[1:], columns=datos[0])
+                    if len(df_raw.columns) > 10:
+                        df = df_raw.iloc[:, [8, 10]].copy()
+                        df.columns = ['PRODUCTO', 'COSTO']
+            except Exception:
+                return pd.DataFrame()
+
+    if df.empty or 'PRODUCTO' not in df.columns or 'COSTO' not in df.columns:
         return pd.DataFrame()
-    try:
-        respuesta = _supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
-        if not respuesta.data:
-            return pd.DataFrame()
-            
-        df = pd.DataFrame(respuesta.data)
-        if df.empty or 'PRODUCTO' not in df.columns or 'COSTO' not in df.columns:
-            return pd.DataFrame()
         
-        # Vectorización de limpieza
-        df['PRODUCTO'] = df['PRODUCTO'].astype(str).str.strip().str.upper()
-        mask_validos = (
-            df['PRODUCTO'].notna() & 
-            (df['PRODUCTO'] != "") & 
-            (df['PRODUCTO'] != "PRODUCTO") & 
-            (~df['PRODUCTO'].str.contains("INVENTARIO", na=False))
-        )
-        df = df[mask_validos].copy()
-        
-        # Conversión de precios en bloque
-        df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
-        df = df[df['COSTO BASE'] > 0].copy()
-        
-        if df.empty:
-            return pd.DataFrame()
-        
-        # 💥 CÁLCULO VECTORIAL INSTANTÁNEO DE MÁRGENES
-        df['TERCERO (+45.1%)'] = (df['COSTO BASE'] * 1.451).round(0)
-        df['AFILIADO (+16.4%)'] = (df['COSTO BASE'] * 1.164).round(0)
-        df['COOPERATIVA / SOCIO (+11.2%)'] = (df['COSTO BASE'] * 1.112).round(0)
-        df['ORGÁNICO (+1.1%)'] = (df['COSTO BASE'] * 1.011).round(0)
-        
-        cols = ["PRODUCTO", "COSTO BASE", "TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)"]
-        df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
-        return df_tarifario
-    except Exception:
+    # Vectorización y Limpieza
+    df['PRODUCTO'] = df['PRODUCTO'].astype(str).str.strip().str.upper()
+    mask_validos = (
+        df['PRODUCTO'].notna() & 
+        (df['PRODUCTO'] != "") & 
+        (df['PRODUCTO'] != "PRODUCTO") & 
+        (~df['PRODUCTO'].str.contains("INVENTARIO", na=False))
+    )
+    df = df[mask_validos].copy()
+    
+    df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
+    df = df[df['COSTO BASE'] > 0].copy()
+    
+    if df.empty:
         return pd.DataFrame()
+    
+    # CÁLCULO VECTORIAL INSTANTÁNEO DE MÁRGENES
+    df['TERCERO (+45.1%)'] = (df['COSTO BASE'] * 1.451).round(0)
+    df['AFILIADO (+16.4%)'] = (df['COSTO BASE'] * 1.164).round(0)
+    df['COOPERATIVA / SOCIO (+11.2%)'] = (df['COSTO BASE'] * 1.112).round(0)
+    df['ORGÁNICO (+1.1%)'] = (df['COSTO BASE'] * 1.011).round(0)
+    
+    cols = ["PRODUCTO", "COSTO BASE", "TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)"]
+    df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
+    return df_tarifario
 
 # =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
 # =================================================================
 
 def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
-    # 🎨 INYECCIÓN CSS VIP DE ALTA TECNOLOGÍA
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
+    div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
     .hud-tarifas { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
     .hud-tarifas-item { text-align: center; flex: 1; }
     .hud-tarifas-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
     .hud-tarifas-value { font-size: 22px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     
-    /* 💥 BORDE TÁCTICO OSCURO Y FONDO BLANCO EN INPUTS Y SELECTBOX */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input, 
-    div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] { 
+    div[data-testid="stSelectbox"] > div { 
         border: 2px solid #0d1b2a !important; 
         border-radius: 6px !important; 
         background-color: #ffffff !important;
@@ -114,7 +139,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         font-weight: 800 !important; 
     }
     
-    /* 📟 TERMINAL TÁCTICO DE COPIADO SAP (ALTA VELOCIDAD Y DISEÑO MATRIZ) */
     div[data-testid="stCodeBlock"] {
         border: 2px solid #d4af37 !important;
         border-radius: 10px !important;
@@ -140,15 +164,11 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
 
     st.markdown("<h1 class='titulo-principal'>Sincronización de Precios y Tarifas</h1>", unsafe_allow_html=True)
     
-    if supabase_client is None:
-        st.error("🚨 El enlace principal con Supabase no está inicializado.")
-        return
-
-    gc = inicializar_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
 
     # --- 🧮 SECCIÓN: TARIFARIO MAESTRO ---
     with st.container(border=True):
-        st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Computo de Perfiles)")
+        st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Cómputo de Perfiles)")
         
         col_t1, col_t2 = st.columns([3, 1])
         with col_t2:
@@ -157,7 +177,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 st.session_state.pop('df_tarifario', None)
                 st.rerun()
 
-        # ⚡ Recuperación en Caché Ultrarrápida
         if 'df_tarifario' not in st.session_state or st.session_state['df_tarifario'].empty:
             df_tarifario_cached = obtener_tarifario_maestro_cached(supabase_client)
             if not df_tarifario_cached.empty:
@@ -212,9 +231,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     st.write("")
                     incluir_nombres = st.toggle("🏷️ Incluir Nombres de Productos", value=False, key="toggle_inc_nombres")
 
-                # 📐 CÁLCULO DE ALINEACIÓN DE COLUMNA RECTA (MATRIZ)
                 if incluir_nombres:
-                    # Determinamos el tamaño del nombre más largo para fijar la columna derecha
                     max_len = max([len(str(p)) for p in df_t["PRODUCTO"]] + [35]) + 4
                     lista_textos = [f"{str(p).ljust(max_len)}│  {fmt_sap(v)}" for p, v in zip(df_t["PRODUCTO"], df_t[col_margen])]
                 else:
@@ -257,16 +274,16 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
                     st.markdown("<hr style='border:1px dashed #d4af37; margin-top:5px; margin-bottom:20px;'/>", unsafe_allow_html=True)
         else:
-            st.warning("⚠️ No se detectaron datos en el tarifario. Haga clic en 'Recargar Tarifario' para sincronizar con Supabase.")
+            st.warning("⚠️ No se detectaron datos en el tarifario. Haga clic en 'Recargar Tarifario' para sincronizar con la nube.")
 
-    # --- 🚀 SECCIÓN INFERIOR COMPLETA: OMEGA V12 ---
+    # --- 🚀 SECCIÓN INFERIOR: OMEGA V12 ---
     st.markdown("---")
     st.markdown("### 🚀 Sincronización Automática a la Macro (Omega V12)")
     
     with st.container(border=True):
         c_url1, c_url2 = st.columns(2)
         with c_url1:
-            st.text_input("🔗 1. Base de Origen Activa:", value="DATABASE: Supabase Cloud [PRECIOS_INSUMOS]", disabled=True)
+            st.text_input("🔗 1. Base de Origen Activa:", value="DATABASE: Supabase Cloud / Drive Fallback [PRECIOS_INSUMOS]", disabled=True)
         with c_url2:
             url_dest = st.text_input("🎯 2. URL de Sábana Destino (Google Sheets):", placeholder="Pegue el enlace completo aquí...")
         
@@ -350,7 +367,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     st.error("⚠️ Tarifario no disponible en memoria.")
                     return
                 try:
-                    with st.status("🕵️‍♂️ CONECTANDO CON CÉLULA SUPABASE Y DESTINO...", expanded=True) as status:
+                    with st.status("🕵️‍♂️ CONECTANDO CON CÉLULA DE PRECIOS Y DESTINO...", expanded=True) as status:
                         sh_dest = gc.open_by_url(url_dest)
                         ws_datos = sh_dest.worksheet("DATOS")
                         datos_dest = ws_datos.get_all_values(value_render_option='UNFORMATTED_VALUE')
