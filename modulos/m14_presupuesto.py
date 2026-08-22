@@ -10,18 +10,30 @@ from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-# --- 🔌 CONEXIÓN Y UTILIDADES ---
+# =================================================================
+# ⚙️ MOTOR DE CONEXIÓN UNIFICADO (V42 VIP)
+# =================================================================
 @st.cache_resource(show_spinner=False)
-def inicializar_cliente_gspread():
+def obtener_cliente_gspread_unificado():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
     try:
-        if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
-        if "gcp_credentials" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_credentials"]))
         return gspread.service_account(filename='credenciales.json')
-    except: 
+    except Exception:
         return None
 
+# =================================================================
+# 🛡️ UTILIDADES DE PURIFICACIÓN Y FORMATO
+# =================================================================
 def a_numero_limpio(val):
     try:
         if isinstance(val, (int, float)): return float(val)
@@ -96,56 +108,60 @@ def extraer_receta_rapida(coctel_sel, dict_bases, dict_aditivos_dosis, dict_fert
 
     return dict_prods
 
+# =================================================================
+# 💾 EXTRACCIÓN Y PREPROCESAMIENTO
+# =================================================================
 @st.cache_data(show_spinner=False, ttl=7200) 
 def descargar_y_masticar_bases():
-    gc = inicializar_cliente_gspread()
+    gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame(), {}, {}, {}, pd.DataFrame(), pd.DataFrame()
     
-    boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-    t1_vals = boveda.worksheet("TABLA 1").get_all_values()
-    mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
-    cfg_vals = boveda.worksheet("Configuración").get_all_values()
-    
-    df_t1 = pd.DataFrame(t1_vals[5:], columns=[str(c).upper().strip() for c in t1_vals[4]])
-    df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
-    df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
-    
-    col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
-    col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
-    col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
-    col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
-
-    if col_fecha and col_ha and col_pista_t1 and col_coctel:
-        df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
-        df_t1 = df_t1.dropna(subset=['FECHA_DT'])
-        df_t1['MES'] = df_t1['FECHA_DT'].dt.month
-        df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
-        df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
-        df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
-        df_t1['COCTEL_NOM'] = df_t1[col_coctel].astype(str).str.upper().str.strip()
-    
-    dict_bases = {}
-    dict_aditivos_dosis = {}
-    dict_fert = {}
-
-    if not df_mezclas.empty:
-        col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
-        for base_name in col_0_limpia.unique():
-            if base_name in ["NAN", "", "NONE"]: continue
-            rb = df_mezclas[col_0_limpia == base_name]
-            prods = {}
-            for _, r in rb.iterrows():
-                p = str(r.iloc[1]).strip().upper()
-                d = a_numero_limpio(r.iloc[2])
-                if d > 0 and p not in ['NAN', 'NONE', '']: prods[p] = d
-            dict_bases[base_name] = prods
+    try:
+        boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        t1_vals = boveda.worksheet("TABLA 1").get_all_values()
+        mz_vals = boveda.worksheet("DD_Mesclas").get_all_values()
+        cfg_vals = boveda.worksheet("Configuración").get_all_values()
         
-        for col_idx in range(len(df_mezclas.columns) - 1):
-            for row_idx in range(len(df_mezclas)):
-                val_name = str(df_mezclas.iloc[row_idx, col_idx]).strip().upper()
-                if val_name and val_name not in ['NAN', 'NONE', '']:
-                    val_dosis = a_numero_limpio(df_mezclas.iloc[row_idx, col_idx+1])
-                    if val_dosis > 0: dict_aditivos_dosis[val_name] = val_dosis
+        df_t1 = pd.DataFrame(t1_vals[5:], columns=[str(c).upper().strip() for c in t1_vals[4]])
+        df_mezclas = pd.DataFrame(mz_vals[1:], columns=[str(c).upper().strip() for c in mz_vals[0]])
+        df_cfg = pd.DataFrame(cfg_vals[1:], columns=[str(c).upper().strip() for c in cfg_vals[0]])
+        
+        col_fecha = next((c for c in df_t1.columns if 'FECHA' in c), 'FECHA')
+        col_ha = next((c for c in df_t1.columns if 'NETA' in c or 'FUMIG' in c or 'HECT' in c), None)
+        col_coctel = next((c for c in df_t1.columns if 'COCTEL' in c or 'CÓCTEL' in c or 'MEZCLA' in c), None)
+        col_pista_t1 = next((c for c in df_t1.columns if 'PISTA' in c or 'BASE' in c), None)
+
+        if col_fecha and col_ha and col_pista_t1 and col_coctel:
+            df_t1['FECHA_DT'] = df_t1[col_fecha].apply(procesar_fecha_pesada)
+            df_t1 = df_t1.dropna(subset=['FECHA_DT'])
+            df_t1['MES'] = df_t1['FECHA_DT'].dt.month
+            df_t1['AÑO'] = df_t1['FECHA_DT'].dt.year
+            df_t1['HA_CALCULO'] = df_t1[col_ha].apply(a_numero_limpio)
+            df_t1['PISTA_OPERATIVA'] = df_t1[col_pista_t1].astype(str).str.upper().str.strip()
+            df_t1['COCTEL_NOM'] = df_t1[col_coctel].astype(str).str.upper().str.strip()
+        
+        dict_bases = {}
+        dict_aditivos_dosis = {}
+        dict_fert = {}
+
+        if not df_mezclas.empty:
+            col_0_limpia = df_mezclas.iloc[:, 0].astype(str).str.upper().str.strip()
+            for base_name in col_0_limpia.unique():
+                if base_name in ["NAN", "", "NONE"]: continue
+                rb = df_mezclas[col_0_limpia == base_name]
+                prods = {}
+                for _, r in rb.iterrows():
+                    p = str(r.iloc[1]).strip().upper()
+                    d = a_numero_limpio(r.iloc[2])
+                    if d > 0 and p not in ['NAN', 'NONE', '']: prods[p] = d
+                dict_bases[base_name] = prods
+            
+            for col_idx in range(len(df_mezclas.columns) - 1):
+                for row_idx in range(len(df_mezclas)):
+                    val_name = str(df_mezclas.iloc[row_idx, col_idx]).strip().upper()
+                    if val_name and val_name not in ['NAN', 'NONE', '']:
+                        val_dosis = a_numero_limpio(df_mezclas.iloc[row_idx, col_idx+1])
+                        if val_dosis > 0: dict_aditivos_dosis[val_name] = val_dosis
 
         if len(df_mezclas.columns) > 13:
             for _, row in df_mezclas.iterrows():
@@ -154,48 +170,51 @@ def descargar_y_masticar_bases():
                 if f_s and f_n not in ["", "NAN", "NONE", "FERTILIZANTES", "SIGLAS"]:
                     dict_fert[f_s] = f_n
 
-    df_precios_master = pd.DataFrame()
-    try:
-        sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
-        precios_consolidados = []
-        for ws in sh_precios.worksheets():
-            datos_hoja = ws.get_all_values()
-            if not datos_hoja: continue
+        df_precios_master = pd.DataFrame()
+        try:
+            sh_precios = gc.open_by_url("https://docs.google.com/spreadsheets/d/1qZ4av-DH2oCJdgllBX27gdA2jEhT9bt2yv_sboORfSg/edit")
+            precios_consolidados = []
+            for ws in sh_precios.worksheets():
+                datos_hoja = ws.get_all_values()
+                if not datos_hoja: continue
+                
+                idx_header, col_anio, col_prod, col_precio_tipo = -1, -1, -1, -1
+                for i in range(min(10, len(datos_hoja))):
+                    fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
+                    if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
+                        idx_header = i
+                        col_anio = fila_upper.index('AÑO')
+                        col_prod = fila_upper.index('PRODUCTO')
+                        col_precio_tipo = next((idx for idx, val in enumerate(fila_upper) if 'PRECIO' in val), -1)
+                        break
+                
+                if idx_header != -1:
+                    for row in datos_hoja[idx_header+1:]:
+                        if col_precio_tipo != -1 and len(row) > col_precio_tipo:
+                            if "DOSIS" in str(row[col_precio_tipo]).upper(): continue
+                                
+                        if len(row) > max(col_anio, col_prod):
+                            anio_str = str(row[col_anio]).strip()
+                            str_prod = str(row[col_prod]).strip().upper()
+                            if anio_str.isdigit() and str_prod:
+                                col_inicio = max(col_anio, col_prod) + 1
+                                vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != ""]
+                                vals = [v for v in vals if v > 0]
+                                prom = sum(vals)/len(vals) if vals else 0.0
+                                if prom > 0:
+                                    precios_consolidados.append({
+                                        'AÑO': int(anio_str), 
+                                        'PRODUCTO': str_prod, 
+                                        'PROD_CLEAN': re.sub(r'[^\w]', '', str_prod), 
+                                        'PRECIO': prom
+                                    })
+            df_precios_master = pd.DataFrame(precios_consolidados)
+        except Exception: pass
             
-            idx_header, col_anio, col_prod, col_precio_tipo = -1, -1, -1, -1
-            for i in range(min(10, len(datos_hoja))):
-                fila_upper = [str(x).upper().strip() for x in datos_hoja[i]]
-                if 'AÑO' in fila_upper and 'PRODUCTO' in fila_upper:
-                    idx_header = i
-                    col_anio = fila_upper.index('AÑO')
-                    col_prod = fila_upper.index('PRODUCTO')
-                    col_precio_tipo = next((idx for idx, val in enumerate(fila_upper) if 'PRECIO' in val), -1)
-                    break
-            
-            if idx_header != -1:
-                for row in datos_hoja[idx_header+1:]:
-                    if col_precio_tipo != -1 and len(row) > col_precio_tipo:
-                        if "DOSIS" in str(row[col_precio_tipo]).upper(): continue
-                            
-                    if len(row) > max(col_anio, col_prod):
-                        anio_str = str(row[col_anio]).strip()
-                        str_prod = str(row[col_prod]).strip().upper()
-                        if anio_str.isdigit() and str_prod:
-                            col_inicio = max(col_anio, col_prod) + 1
-                            vals = [parsear_precio(v) for v in row[col_inicio:] if str(v).strip() != ""]
-                            vals = [v for v in vals if v > 0]
-                            prom = sum(vals)/len(vals) if vals else 0.0
-                            if prom > 0:
-                                precios_consolidados.append({
-                                    'AÑO': int(anio_str), 
-                                    'PRODUCTO': str_prod, 
-                                    'PROD_CLEAN': re.sub(r'[^\w]', '', str_prod), 
-                                    'PRECIO': prom
-                                })
-        df_precios_master = pd.DataFrame(precios_consolidados)
-    except: pass
-        
-    return df_t1, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master
+        return df_t1, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master
+    except Exception as e:
+        st.error(f"🚨 Error de Extracción: {e}")
+        return pd.DataFrame(), {}, {}, {}, pd.DataFrame(), pd.DataFrame()
 
 def extraer_precios_maestros(df_cfg):
     precios = {}
@@ -212,15 +231,17 @@ def extraer_precios_maestros(df_cfg):
         if p and p not in ["NAN", "NONE", ""]: precios[p] = c
     return precios
 
-# --- 🚀 EJECUCIÓN PRINCIPAL ---
+# =================================================================
+# 🚀 EJECUCIÓN PRINCIPAL DEL SIMULADOR
+# =================================================================
 def ejecutar(purificar_lote, extraer_numero):
-    
     VERDE_INTENSO = '#143521'
+    DORADO = '#d4af37'
     
     st.markdown(f"""
     <style>
-    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
-    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    .titulo-presupuesto {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
     
     .kpi-presupuesto {{ background-color: #0d1b2a; color: white; padding: 20px; border-radius: 10px; border-left: 6px solid #d4af37; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px; transition: transform 0.3s ease, box-shadow 0.3s ease;}}
     .kpi-presupuesto:hover {{ transform: translateY(-5px) scale(1.02); box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3); border: 1px solid #d4af37;}}
@@ -230,7 +251,6 @@ def ejecutar(purificar_lote, extraer_numero):
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
 
-    /* 🎯 ALINEACIÓN Y BORDES BLINDADOS V42 VIP */
     [data-testid="column"] {{
         display: flex !important;
         flex-direction: column !important;
@@ -238,45 +258,30 @@ def ejecutar(purificar_lote, extraer_numero):
         align-items: stretch !important;
     }}
 
-    div[data-testid="stSelectbox"] > div, 
-    div[data-testid="stSelectbox"] div[data-baseweb="select"], 
-    div[data-testid="stNumberInput"] > div, 
-    div[data-testid="stTextInput"] > div {{
-        background-color: #ffffff !important; 
-        border: 2px solid {VERDE_INTENSO} !important; 
-        border-radius: 8px !important; 
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
-        overflow: hidden !important;
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stNumberInput"] > div, div[data-testid="stTextInput"] > div {{
+        background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-    div[data-testid="stNumberInput"] div[data-baseweb="input"],
-    div[data-testid="stTextInput"] div[data-baseweb="input"] {{ 
-        background-color: transparent !important; 
-        border: none !important; 
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div, div[data-testid="stNumberInput"] div[data-baseweb="input"], div[data-testid="stTextInput"] div[data-baseweb="input"] {{ 
+        background-color: transparent !important; border: none !important; 
     }}
-    div[data-testid="stSelectbox"] *, 
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stTextInput"] input {{
-        color: #000000 !important; 
-        font-weight: bold !important; 
-    }}
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stTextInput"] input {{
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
+    div[data-testid="stSelectbox"] *, div[data-testid="stNumberInput"] input, div[data-testid="stTextInput"] input {{
+        color: #0d1b2a !important; font-weight: 900 !important; 
     }}
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
     </style>
     """, unsafe_allow_html=True)
 
     c_tit, c_btn = st.columns([3, 1])
-    c_tit.markdown("<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:#d4af37; font-size:16px;'>[V.GERENCIAL 42.1]</span></h1>", unsafe_allow_html=True)
+    c_tit.markdown(f"<h1 class='titulo-presupuesto'>💰 Simulador Estratégico <span style='color:{DORADO}; font-size:16px;'>[V.GERENCIAL 42.1]</span></h1>", unsafe_allow_html=True)
     
-    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True, key="btn_sync_m14_master_v48"):
+    # 🎯 INICIALIZACIÓN DE LA MEMORIA DE EDICIÓN PERMANENTE
+    if 'ediciones_usuario' not in st.session_state:
+        st.session_state['ediciones_usuario'] = {}
+
+    if c_btn.button("🧹 REINICIAR MEMORIA", type="primary", use_container_width=True):
         st.cache_data.clear()
         for key in list(st.session_state.keys()):
-            if 'lab_raw_data' in key or 'laboratorio_estrategico_v49' in key:
+            if key in ['lab_raw_data', 'ediciones_usuario', 'laboratorio_v49', 'total_inercial_base', 'anio_presupuesto_guardado']:
                 del st.session_state[key]
         st.toast("✅ Memoria de simulación purgada desde la raíz.", icon="🧹")
         st.rerun()
@@ -302,7 +307,6 @@ def ejecutar(purificar_lote, extraer_numero):
             st.markdown("<br>", unsafe_allow_html=True)
             btn_generar = st.button("🧬 1. EXTRAER BASE HISTÓRICA", type="primary", use_container_width=True)
 
-    # Lógica de Extracción de Base (Solo ocurre al presionar el botón)
     if btn_generar:
         with st.spinner("Compilando historia y cruzando precios en la Bóveda..."):
             df_t1_base, dict_bases, dict_aditivos_dosis, dict_fert, df_cfg, df_precios_master = descargar_y_masticar_bases()
@@ -310,6 +314,9 @@ def ejecutar(purificar_lote, extraer_numero):
             if df_t1_base.empty:
                 st.error("🚨 No se pudo establecer conexión con las Bóvedas de Datos.")
                 st.stop()
+
+            # Limpiar ediciones anteriores al generar nueva base
+            st.session_state['ediciones_usuario'] = {}
 
             df_t1 = df_t1_base.copy()
             dict_precios_backup = extraer_precios_maestros(df_cfg)
@@ -398,10 +405,9 @@ def ejecutar(purificar_lote, extraer_numero):
     if 'lab_raw_data' in st.session_state and st.session_state['lab_raw_data']:
         st.markdown("### 🧪 2. Variables Macroeconómicas y Laboratorio Interactivo")
         
-        # 🎯 ESTOS CONTROLES AHORA TIENEN EFECTO INMEDIATO SIN PRESIONAR BOTONES
         c_mac1, c_mac2 = st.columns(2)
-        frecuencia_vuelos = c_mac1.number_input("✈️ Ajuste de Frecuencia/Ciclos (%)", min_value=-80, max_value=300, value=0, step=5, help="Cambia este valor para ver el impacto en el volumen de químicos al instante.")
-        inflacion_sel = c_mac2.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=8.0, step=1.0, help="Cambia este valor para proyectar los precios al instante.")
+        frecuencia_vuelos = c_mac1.number_input("✈️ Ajuste de Frecuencia/Ciclos (%)", min_value=-80, max_value=300, value=0, step=5, help="Impacta el volumen de todos los químicos.")
+        inflacion_sel = c_mac2.number_input("💸 Inflación Anual Estimada (%)", min_value=0.0, max_value=50.0, value=8.0, step=1.0, help="Proyecta los precios históricos al año objetivo.")
 
         llave_editor = "laboratorio_v49"
 
@@ -409,7 +415,7 @@ def ejecutar(purificar_lote, extraer_numero):
         df_build = pd.DataFrame(st.session_state['lab_raw_data'])
         anio_presupuesto_actual = st.session_state.get('anio_presupuesto_guardado', datetime.now().year + 1)
         
-        # 2. Aplicar Macros Dinámicos
+        # 2. Aplicar Macros Dinámicos (Frecuencia e Inflación)
         factor_frec = 1 + (frecuencia_vuelos / 100.0)
         df_build['vol_sist_num'] = df_build['vol_base_num'] * factor_frec
         
@@ -419,7 +425,7 @@ def ejecutar(purificar_lote, extraer_numero):
             
         df_build['precio_sist_num'] = df_build.apply(calc_precio_inflado, axis=1)
 
-        # 3. Preparar Columnas UI
+        # 3. Preparar Columnas UI (Valores por Defecto)
         df_build['✅ Activo'] = True
         df_build['📦 Vol. Sist. (Base)'] = df_build['vol_sist_num']
         df_build['🎯 Ajuste Vol. (%)'] = 0.0
@@ -427,16 +433,22 @@ def ejecutar(purificar_lote, extraer_numero):
         df_build['📈 Precio Sist. (+Inflación)'] = df_build['precio_sist_num']
         df_build['🎯 Precio Irreal (Modificable)'] = df_build['precio_sist_num'].round(0)
 
-        # 4. Inyectar modificaciones manuales del usuario guardadas en sesión
+        # 🎯 4. CAPTURAR Y APLICAR EDICIONES PERMANENTES DEL USUARIO
         if llave_editor in st.session_state:
-            edits = st.session_state[llave_editor].get("edited_rows", {})
-            for r_idx_str, changes in edits.items():
+            nuevas_ediciones = st.session_state[llave_editor].get("edited_rows", {})
+            for r_idx_str, changes in nuevas_ediciones.items():
                 r_idx = int(r_idx_str)
-                for col, val in changes.items():
-                    if col in df_build.columns:
-                        df_build.loc[r_idx, col] = val
+                if r_idx not in st.session_state['ediciones_usuario']:
+                    st.session_state['ediciones_usuario'][r_idx] = {}
+                st.session_state['ediciones_usuario'][r_idx].update(changes)
 
-        # 5. Cálculos Finales
+        # Aplicamos la memoria guardada sobre el DataFrame antes de calcular los totales
+        for r_idx, changes in st.session_state['ediciones_usuario'].items():
+            for col, val in changes.items():
+                if col in df_build.columns:
+                    df_build.loc[r_idx, col] = val
+
+        # 5. Cálculos Finales con la data ya editada
         df_build['vol_final_num'] = df_build['📦 Vol. Sist. (Base)'] * (1 + pd.to_numeric(df_build['🎯 Ajuste Vol. (%)'], errors='coerce').fillna(0) / 100.0)
         df_build['vol_final_num'] = df_build.apply(lambda r: float(r['vol_final_num']) if r['✅ Activo'] else 0.0, axis=1)
         df_build['subtotal_num'] = df_build['vol_final_num'] * pd.to_numeric(df_build['🎯 Precio Irreal (Modificable)'], errors='coerce').fillna(0)
@@ -462,7 +474,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 "precio_base_num": None,
                 "vol_final_num": None,
                 "subtotal_num": None,
-                "✅ Activo": st.column_config.CheckboxColumn("Activo", help="Apaga para llevar a cero."),
+                "✅ Activo": st.column_config.CheckboxColumn("Activo"),
                 "🧪 Insumo Químico": st.column_config.TextColumn("Molécula / Insumo"),
                 "📦 Vol. Sist. (Base)": st.column_config.NumberColumn("📦 Vol. Sist. (Base)", format="%,.1f"),
                 "🎯 Ajuste Vol. (%)": st.column_config.NumberColumn("🎯 Ajuste Vol. (%)", format="%d %%", step=1.0),
@@ -488,14 +500,12 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.markdown("<br>", unsafe_allow_html=True) 
                 if st.button("Inyectar Molécula", type="secondary", use_container_width=True):
                     if nuevo_nombre:
-                        # 🎯 Ajuste Matemático Inverso: Para que al aplicar frecuencia en el render no se distorsione el valor que el usuario tipeó
                         vol_base_inyectado = float(nuevo_vol) / (1 + (frecuencia_vuelos / 100.0))
-                        
                         st.session_state['lab_raw_data'].append({
                             "🧪 Insumo Químico": nuevo_nombre.upper(),
                             "vol_base_num": vol_base_inyectado,
                             "precio_base_num": float(nuevo_precio),
-                            "anio_hist_match": anio_presupuesto_actual # Se inyecta a precio actual, no se le aplica inflación
+                            "anio_hist_match": anio_presupuesto_actual 
                         })
                         st.rerun()
 
@@ -505,10 +515,8 @@ def ejecutar(purificar_lote, extraer_numero):
         st.markdown("---")
         st.markdown("### 📊 3. Panel de Contraste Gerencial")
         
-        # El Inercial responde a la inflación y frecuencia actual, asumiendo 0 manipulación manual.
         total_inercial = (df_build['vol_sist_num'] * df_build['precio_sist_num']).sum()
         
-        # El Estratégico obedece a las filas activas y ajustes del editor.
         df_estrategico = df_editado[df_editado["✅ Activo"] == True].copy()
         total_estrategico = df_estrategico['subtotal_num'].sum()
         
