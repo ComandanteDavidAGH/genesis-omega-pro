@@ -272,18 +272,18 @@ def ejecutar(purificar_lote, extraer_numero):
             "CAÑO MOCHO": [10.7820, -74.1850],
             "LA CEIBA": [10.7350, -74.1620],
             "PALOMAR": [10.7210, -74.1150],
+            "FLORIDA": [10.7650, -74.1320],
             "SEVILLA": [10.7667, -74.1500],
             "GUACAMAYAL": [10.7292, -74.1594],
             "TUCURINCA": [10.5842, -74.1489],
-            "FUNDACION": [10.5208, -74.1833],
-            "FLORIDA": [10.7650, -74.1320]
+            "FUNDACION": [10.5208, -74.1833]
         }
 
-        # 🎯 ORDENAMIENTO LOGÍSTICO EXACTO NORTE -> SUR REQUERIDO
+        # 🎯 ORDENAMIENTO LOGÍSTICO REVISADO (FLORIDA UBICADA ENTRE PALOMAR Y SEVILLA)
         orden_logistico = [
             "PALOMINO", "BURITACA", "GUACHACA", "CIENAGA", "RIO FRIO", 
-            "ORIHUECA", "CAÑO MOCHO", "LA CEIBA", "PALOMAR", "SEVILLA", 
-            "GUACAMAYAL", "TUCURINCA", "FUNDACION"
+            "ORIHUECA", "CAÑO MOCHO", "LA CEIBA", "PALOMAR", "FLORIDA", 
+            "SEVILLA", "GUACAMAYAL", "TUCURINCA", "FUNDACION"
         ]
 
         st.markdown("---")
