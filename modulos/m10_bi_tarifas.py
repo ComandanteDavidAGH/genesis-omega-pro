@@ -375,6 +375,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
     
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
     [data-testid="column"] {{
         display: flex !important;
         flex-direction: column !important;
@@ -382,31 +383,45 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         align-items: stretch !important;
     }}
     
+    /* 🎯 REPARACIÓN DE BORDES: SELECTORES, FECHAS Y NÚMEROS (INCLUYE ÍCONOS Y BOTONES +/-) */
     div[data-testid="stSelectbox"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stDateInput"] input,
-    div[data-testid="stNumberInput"] input {{
-        border: 3px solid {VERDE_INTENSO} !important;
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stNumberInput"] > div {{
+        border: 2px solid {VERDE_INTENSO} !important;
         border-radius: 8px !important;
         background-color: #ffffff !important;
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+        overflow: hidden !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+    
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
         background-color: transparent !important;
         border: none !important;
     }}
+
     div[data-testid="stSelectbox"] *,
     div[data-testid="stDateInput"] input,
     div[data-testid="stNumberInput"] input {{
-        color: #000000 !important;
+        color: #0d1b2a !important;
         font-weight: 900 !important;
     }}
+    
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stNumberInput"] input {{
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }}
+
     div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
     }}
 
+    /* 🔍 EFECTO LUPA MAGNIFICADOR EN TODOS LOS GRÁFICOS DEL MÓDULO 10 */
     div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
         border-radius: 12px !important;
@@ -425,6 +440,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
+    # 💥 FUNCIÓN PARA GENERAR TARJETAS KPI ESTILO GALA VIP 💥
     def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
         delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
         return f"""
@@ -436,7 +452,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown(f"<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:{DORADO};'>(v42.0 - VIP)</span></h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 class='titulo-principal'>📊 Centro de Inteligencia Estratégica BI <span style='font-size:14px; color:{DORADO};'>(v41.0 - EJECUTIVO)</span></h1>", unsafe_allow_html=True)
     with c_sync:
         st.write("")
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
@@ -457,6 +473,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         for col_req in ['COSTO_MAESTRO', 'AVION_MAESTRO', 'DOMINIC_MAESTRO', 'AREA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO']:
             if col_req not in super_base_bi.columns: super_base_bi[col_req] = 0.0
 
+        # =================================================================
+        # 1. NORMALIZACIÓN QUIRÚRGICA SIN BUGS
+        # =================================================================
         super_base_bi['FINCA_MAESTRA'] = super_base_bi['FINCA_MAESTRA'].astype(str).str.strip().str.upper()
         super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_MAESTRO'].astype(str).str.strip().str.upper()
         super_base_bi['FECHA_DT'] = super_base_bi['FECHA_MAESTRA'].apply(procesar_fecha_pesada)
@@ -469,6 +488,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
+        # =================================================================
+        # 2. CANDADO ANTI-DUPLICIDAD
+        # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
             keep='last'
