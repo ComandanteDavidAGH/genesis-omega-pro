@@ -209,7 +209,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
         ws2 = writer.sheets["Detalle_Diario_Auditoria"]
 
         fill_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        font_header = Font(color="D4AF37", bold=True) # Navy and Gold
+        font_header = Font(color="D4AF37", bold=True)
         borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
                        top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
 
@@ -259,23 +259,54 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
     
+    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
+    [data-testid="column"] {{
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+    }}
+    
+    div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{
+        border: 3px solid #0d1b2a !important; 
+        border-radius: 8px !important; 
+        overflow: hidden !important; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
+    }}
+
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stDateInput"] input,
-    div[data-testid="stTextInput"] input {{
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stTextInput"] > div {{
         background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
+        border: 2px solid {VERDE_INTENSO} !important;
         border-radius: 6px !important;
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+        overflow: hidden !important;
     }}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{
+    
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stTextInput"] div[data-baseweb="input"] {{
         background-color: transparent !important;
         border: none !important;
     }}
-    div[data-testid="stSelectbox"] *, div[data-testid="stDateInput"] *, div[data-testid="stTextInput"] * {{
-        color: #000000 !important;
-        font-weight: bold !important;
+
+    div[data-testid="stSelectbox"] *,
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stTextInput"] input {{
+        color: #0d1b2a !important;
+        font-weight: 900 !important;
     }}
-    div[data-testid="stSelectbox"] label p, div[data-testid="stDateInput"] label p, div[data-testid="stTextInput"] label p {{
+    
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stTextInput"] input {{
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }}
+
+    div[data-testid="stMainBlockContainer"] label p {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
@@ -286,10 +317,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     c_t, c_btn = st.columns([3, 1])
     with c_t:
         st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (OS Unificada)</h1>", unsafe_allow_html=True)
-        st.caption("Consolidación Matemática y Proyección Gerencial con Formato Condicional VIP")
+        st.caption("Consolidación Matemática y Proyección Gerencial VIP (v42.0)")
     with c_btn:
         st.write("")
-        if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True):
+        if st.button("🔄 FORZAR RECARGA RAM", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
@@ -382,7 +413,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     with st.container(border=True):
         st.markdown("#### 🎛️ Filtros de Escenario Gerencial")
-        f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1.1, 1, 1.1, 1.5])
+        f1, f2, f3, f4 = st.columns([1, 1, 1.5, 1.5])
         
         fecha_ini = f1.date_input("📅 F. Inicial", value=min_date)
         fecha_fin = f2.date_input("📆 F. Final", value=max_date)
@@ -395,9 +426,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         else:
             lista_aviones_dinamica = lista_aviones_maestra
             
-        equipo_sel = f5.selectbox("✈️ Equipo Fijo", ["✈️ TODOS LOS EQUIPOS"] + lista_aviones_dinamica)
-        modo_calculo = f6.selectbox("🧮 Analizar Contra:", ["Venta Ideal (+Margen Inteligente)", "Costo Puro Operativo"])
-
         st.markdown("---")
         st.markdown("#### 🛩️ Gestor de Tarifas Base de Flota y Drones")
         
@@ -459,8 +487,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         mask_filtro = mask_filtro & (df_sim["Finca"] == finca_sel)
     if pista_sel != "🛣️ TODAS LAS PISTAS":
         mask_filtro = mask_filtro & (df_sim["Pista"] == pista_sel.replace("🛣️ ", ""))
-    if equipo_sel != "✈️ TODOS LOS EQUIPOS":
-        mask_filtro = mask_filtro & (df_sim["Equipo"] == equipo_sel)
 
     df_filtrado = df_sim[mask_filtro].copy().reset_index(drop=True)
 
@@ -491,7 +517,37 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
     # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY
+    # 🎯 AISLAMIENTO TOTAL: INTERRUPTOR MODO AUDITOR
+    # =================================================================
+    st.markdown("---")
+    ver_cebo = st.toggle("🩺 MODO AUDITOR TÉCNICO: Radiografía del Motor (Verificador de OS Unificadas)", value=False)
+    
+    if ver_cebo:
+        with st.container(border=True):
+            st.markdown("#### 🔍 Verificación Estricta de Órdenes de Servicio (OS)")
+            st.caption("Esta tabla técnica detalla cómo el sistema sumó y vinculó las fincas que compartían número de Orden para el prorrateo exacto. Útil para auditoría de tarifas base.")
+            
+            df_cebo = df_filtrado.groupby(["Nº ORDEN", "Fincas_En_La_OS", "Equipo", "Fecha Operación"]).agg(
+                Horas_Calculadas_OS=("Horas_OS_Total", "max"),
+                Suma_Hectareas_OS=("Ha_OS_Total", "max"),
+                Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
+            ).reset_index()
+            
+            col_cfg_cebo = {
+                "Nº ORDEN": st.column_config.TextColumn("🛰️ Nº ORDEN"),
+                "Fincas_En_La_OS": st.column_config.TextColumn("📍 FINCAS UNIFICADAS"),
+                "Equipo": st.column_config.TextColumn("🛩️ EQUIPO"),
+                "Fecha Operación": st.column_config.TextColumn("📅 FECHA"),
+                "Horas_Calculadas_OS": st.column_config.NumberColumn("⏱️ HORAS TOTALES OS", format="%.3f hrs"),
+                "Suma_Hectareas_OS": st.column_config.NumberColumn("🗺️ HECTÁREAS TOTALES OS", format="%.2f ha"),
+                "Tarifa_Ideal_Final_Ha": st.column_config.NumberColumn("🎯 TARIFA IDEAL UNIFICADA", format="$ %,.0f")
+            }
+
+            st.dataframe(df_cebo, use_container_width=True, hide_index=True, column_config=col_cfg_cebo)
+        st.stop() # 🛑 PARADA EN SECO: Aislamiento absoluto de la interfaz.
+
+    # =================================================================
+    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY (Si el Toggle está apagado)
     # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
@@ -510,7 +566,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # =================================================================
     # 💎 TARJETAS DE MANDO FINANCIERO
     # =================================================================
-    st.markdown("---")
     st.markdown("### 💎 Impacto Financiero de la Operación")
     
     t_real = df_agrupado["Total Real Facturado"].sum()
@@ -552,7 +607,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         elif val < 0: return 'color: #198754; font-weight: bold;'
         return 'color: #424242;'
 
-    # ESTILOS DE ENCABEZADO: Negrita, fondo sutil y subrayado dorado.
+    # ESTILOS DE ENCABEZADO
     header_styles = [{
         'selector': 'th',
         'props': [
@@ -588,42 +643,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     st.dataframe(estilo_visual, use_container_width=True, height=400, hide_index=True)
 
     # =================================================================
-    # 🪤 MODO AUDITOR TÉCNICO: RADIOGRAFÍA DEL MOTOR
-    # =================================================================
-    st.markdown("---")
-    ver_cebo = st.toggle("🩺 MODO AUDITOR TÉCNICO: Radiografía del Motor (Verificador de OS Unificadas)", value=False)
-    
-    if ver_cebo:
-        with st.container(border=True):
-            st.markdown("#### 🔍 Verificación Estricta de Órdenes de Servicio (OS)")
-            st.caption("Esta tabla técnica detalla cómo el sistema sumó y vinculó las fincas que compartían número de Orden para el prorrateo exacto. Útil para auditoría de tarifas base.")
-            
-            df_cebo = df_filtrado.groupby(["Nº ORDEN", "Fincas_En_La_OS", "Equipo", "Fecha Operación"]).agg(
-                Horas_Calculadas_OS=("Horas_OS_Total", "max"),
-                Suma_Hectareas_OS=("Ha_OS_Total", "max"),
-                Tarifa_Ideal_Final_Ha=("Tarifa Ideal Prom/Ha", "mean")
-            ).reset_index()
-            
-            col_cfg_cebo = {
-                "Nº ORDEN": st.column_config.TextColumn("🛰️ Nº ORDEN"),
-                "Fincas_En_La_OS": st.column_config.TextColumn("📍 FINCAS UNIFICADAS"),
-                "Equipo": st.column_config.TextColumn("🛩️ EQUIPO"),
-                "Fecha Operación": st.column_config.TextColumn("📅 FECHA"),
-                "Horas_Calculadas_OS": st.column_config.NumberColumn("⏱️ HORAS TOTALES OS", format="%.3f hrs"),
-                "Suma_Hectareas_OS": st.column_config.NumberColumn("🗺️ HECTÁREAS TOTALES OS", format="%.2f ha"),
-                "Tarifa_Ideal_Final_Ha": st.column_config.NumberColumn("🎯 TARIFA IDEAL UNIFICADA", format="$ %,.0f")
-            }
-
-            st.dataframe(df_cebo, use_container_width=True, hide_index=True, column_config=col_cfg_cebo)
-
-    # =================================================================
     # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
     # =================================================================
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
     df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
-    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"]).dt.strftime('%d/%m/%Y')
+    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"], dayfirst=True).dt.strftime('%d/%m/%Y')
 
     fig_tarifas = px.bar(
         df_graficos,
