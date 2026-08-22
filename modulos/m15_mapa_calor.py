@@ -222,6 +222,13 @@ def ejecutar(purificar_lote, extraer_numero):
     
     [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
     [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(39, 174, 96, 0.25) !important; z-index: 10; }}
+    
+    /* ESTILOS PARA LOS SELECTORES DE ESCENARIO */
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"] {{
+        background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    }}
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background-color: transparent !important; border: none !important; }}
+    div[data-testid="stSelectbox"] * {{ color: #0d1b2a !important; font-weight: 900 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -263,20 +270,11 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.rerun()
 
         coor_estimadas = {
-            "PALOMINO": [11.2442, -73.5623],
-            "BURITACA": [11.2420, -73.7650],
-            "GUACHACA": [11.2411, -73.8188],
-            "CIENAGA": [11.0070, -74.2478],
-            "RIO FRIO": [10.9000, -74.1667],
-            "ORIHUECA": [10.7483, -74.1542],
-            "CAÑO MOCHO": [10.7820, -74.1850],
-            "LA CEIBA": [10.7350, -74.1620],
-            "PALOMAR": [10.7210, -74.1150],
-            "FLORIDA": [10.7650, -74.1320],
-            "SEVILLA": [10.7667, -74.1500],
-            "GUACAMAYAL": [10.7292, -74.1594],
-            "TUCURINCA": [10.5842, -74.1489],
-            "FUNDACION": [10.5208, -74.1833]
+            "PALOMINO": [11.2442, -73.5623], "BURITACA": [11.2420, -73.7650], "GUACHACA": [11.2411, -73.8188],
+            "CIENAGA": [11.0070, -74.2478], "RIO FRIO": [10.9000, -74.1667], "ORIHUECA": [10.7483, -74.1542],
+            "CAÑO MOCHO": [10.7820, -74.1850], "LA CEIBA": [10.7350, -74.1620], "PALOMAR": [10.7210, -74.1150],
+            "FLORIDA": [10.7650, -74.1320], "SEVILLA": [10.7667, -74.1500], "GUACAMAYAL": [10.7292, -74.1594],
+            "TUCURINCA": [10.5842, -74.1489], "FUNDACION": [10.5208, -74.1833]
         }
 
         orden_logistico = [
@@ -285,30 +283,39 @@ def ejecutar(purificar_lote, extraer_numero):
             "SEVILLA", "GUACAMAYAL", "TUCURINCA", "FUNDACION"
         ]
 
-        # 🎯 MEJORA TÁCTICA: MODO AUTOCALIBRADO CON ESCENARIOS (LIMPIEZA DE PANTALLA)
+        # 🎯 MEJORA TÁCTICA: MODO AUTOCALIBRADO (ADIÓS A LOS SLIDERS POR DEFECTO)
+        st.markdown("---")
+        st.markdown("### 🌦️ 2. Calibración de Sensibilidad del Radar (Ajuste Tropical)")
+        st.caption("Los satélites globales subestiman las tormentas locales. Elija un escenario de corrección.")
+        
         escenario_sel = st.selectbox(
-            "⚙️ Escenario de Calibración Satelital:",
-            ["🤖 Autocalibrado Estándar (Recomendado por Defecto)", "🟢 Lectura Satelital Pura (Sin Ajuste - 1.0x)", "🔴 Escenario de Tormenta Convectiva Extrema"],
+            "⚙️ Escenario de Calibración Pluviométrica:",
+            [
+                "🤖 Autocalibrado Estándar (Recomendado)", 
+                "🟢 Lectura Satelital Pura (Sin Ajuste - 1.0x)", 
+                "🔴 Escenario de Tormenta Extrema"
+            ],
             index=0,
-            help="Seleccione el escenario sin necesidad de ajustar deslizadores numéricos."
+            help="Aplica factores automáticos de compensación para la Troncal Caribe y la Zona Bananera."
         )
 
-        # Asignación de factores según el escenario
+        # Asignación de factores "en la sombra"
         if escenario_sel == "🟢 Lectura Satelital Pura (Sin Ajuste - 1.0x)":
             factor_norte, factor_sur = 1.0, 1.0
-        elif escenario_sel == "🔴 Escenario de Tormenta Convectiva Extrema":
+        elif escenario_sel == "🔴 Escenario de Tormenta Extrema":
             factor_norte, factor_sur = 10.0, 6.0
-        else: # Autocalibrado por defecto
+        else: # Autocalibrado Estándar
             factor_norte, factor_sur = 6.0, 3.5
 
-        # Expander opcional por si el analista experto desea un ajuste fino
-        with st.expander("🛠️ Ajuste Fino Manual de Multiplicadores (Avanzado)"):
+        # Expander Opcional SOLO para expertos (por si alguien de verdad quiere usar barras)
+        with st.expander("🛠️ Ajuste Fino Manual (Solo Analistas Expertos)"):
             c_cal1, c_cal2 = st.columns(2)
             factor_norte = c_cal1.slider("🌊 Multiplicador Zona Norte (Caribe)", min_value=1.0, max_value=20.0, value=factor_norte, step=0.5)
             factor_sur = c_cal2.slider("🍌 Multiplicador Zona Sur (Bananera/Fundación)", min_value=1.0, max_value=20.0, value=factor_sur, step=0.5)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # 🎯 BOTÓN PRINCIPAL ACTUALIZADO
         if st.button("🚀 BARRIDO SATELITAL Y EJECUCIÓN GENERAL", type="primary", use_container_width=True):
             with st.spinner("Decodificando satélites y construyendo base pluviométrica..."):
                 
@@ -640,12 +647,8 @@ def ejecutar(purificar_lote, extraer_numero):
                         df_chart = df_clima_raw.sort_values("FECHA")
                         
                         fig_lluvia = px.area(
-                            df_chart, 
-                            x="FECHA", 
-                            y="LLUVIA (mm)", 
-                            facet_col="SECTOR", 
-                            facet_col_wrap=3, 
-                            color="SECTOR",
+                            df_chart, x="FECHA", y="LLUVIA (mm)", facet_col="SECTOR", 
+                            facet_col_wrap=3, color="SECTOR",
                             title="<b>Comportamiento de Lluvia por Sector (Paneles Independientes)</b>",
                             category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
                         )
@@ -653,11 +656,8 @@ def ejecutar(purificar_lote, extraer_numero):
                         fig_lluvia.for_each_yaxis(lambda yaxis: yaxis.update(matches=None, showticklabels=True))
                         
                         fig_lluvia.update_layout(
-                            plot_bgcolor='rgba(0,0,0,0)', 
-                            paper_bgcolor='rgba(0,0,0,0)', 
-                            height=800, 
-                            showlegend=False,
-                            margin=dict(t=50, b=20, l=10, r=10)
+                            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', 
+                            height=800, showlegend=False, margin=dict(t=50, b=20, l=10, r=10)
                         )
                         
                         fig_lluvia.for_each_annotation(lambda a: a.update(text=f"<b>{a.text.split('=')[-1]}</b>"))
