@@ -309,37 +309,61 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
 
 def ejecutar(supabase_client=None):
     VERDE_INTENSO = '#143521'
+    COLOR_NAVY = '#0d1b2a'
+    COLOR_DORADO = '#d4af37'
 
-    css_maestro = """
+    # 💥 INYECCIÓN DE ESTILOS VIP (Saneamiento visual para inputs y layout)
+    css_maestro = f"""
     <style>
-    .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid VERDE_HEX !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
-    .tarjeta-kpi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
-    .kpi-titulo { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-    .kpi-valor { font-size: 21px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
+    .titulo-mega {{ color: {COLOR_NAVY}; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}}
     
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {
+    /* Marcos limpios para Dataframes y DataEditor */
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {{ 
+        border: 2px solid {COLOR_NAVY} !important; 
+        border-radius: 8px !important; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.1); 
+        overflow: hidden !important; 
+    }}
+    
+    /* Tarjetas KPI de impacto */
+    .tarjeta-kpi {{ 
+        background: linear-gradient(135deg, {COLOR_NAVY} 0%, #1a365d 100%); 
+        border-left: 5px solid {COLOR_DORADO}; 
+        padding: 15px; 
+        border-radius: 8px; 
+        color: white; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.2); 
+        text-align: center; 
+        margin-bottom: 15px;
+    }}
+    .kpi-titulo {{ font-size: 11px; font-weight: bold; color: {COLOR_DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
+    .kpi-valor {{ font-size: 21px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
+    
+    /* Rediseño de Inputs (Adiós a las cajas pálidas) */
+    div[data-testid="stTextInput"] > div,
+    div[data-testid="stNumberInput"] > div,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {{
         background-color: #ffffff !important;
-        border: 3px solid VERDE_HEX !important;
+        border: 2px solid {COLOR_NAVY} !important;
         border-radius: 6px !important;
-    }
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+    }}
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{
         background-color: transparent !important;
         border: none !important;
-    }
-    div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stMultiSelect"] * {
-        color: #000000 !important;
+    }}
+    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stMultiSelect"] * {{
+        color: {COLOR_NAVY} !important;
         font-weight: bold !important;
-    }
-    div[data-testid="stMainBlockContainer"] label p {
-        color: #0d1b2a !important;
+    }}
+    
+    /* Etiquetas limpias */
+    div[data-testid="stMainBlockContainer"] label p {{
+        color: {COLOR_NAVY} !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
-    }
+    }}
     </style>
-    """.replace("VERDE_HEX", VERDE_INTENSO)
+    """
     
     st.markdown(css_maestro, unsafe_allow_html=True)
 
@@ -391,13 +415,13 @@ def ejecutar(supabase_client=None):
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
     df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
     
-    # 🎯 CONFIGURACIÓN CON 1000 FILAS PREASIGNADAS PARA PEGAR MASIVO DESDE EXCEL
+    # 💥 PISTA DE ATERRIZAJE EXPANDIDA A 1000 FILAS
     if 'm17_df_entrada_grid' not in st.session_state or 'DOMINICAL' not in st.session_state.m17_df_entrada_grid.columns:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": "", "DOMINICAL": False
         } for _ in range(1000)])
 
-    st.markdown("### 📥 1. Pista de Aterrizaje Segura")
+    st.markdown("### 📥 1. Pista de Aterrizaje Segura (1.000 Filas)")
     st.caption("📋 Selecciona tus columnas en Excel, haz Ctrl+C, párate en la primera celda de abajo y presiona **Ctrl+V**.")
     
     df_edited = st.data_editor(
