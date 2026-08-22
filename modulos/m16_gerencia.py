@@ -8,27 +8,35 @@ import re
 import io
 from datetime import datetime, date
 from oauth2client.service_account import ServiceAccountCredentials
-
-# 🛰️ ENLACES NATIVOS
-from modulos.utilidades import procesar_fecha_pesada
-from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =================================================================
-# 🔌 CONEXIÓN Y MOTORES DE LIMPIEZA FINANCIERA
+# ⚙️ CONSTANTES Y MOTOR DE CONEXIÓN UNIFICADO (V42 VIP)
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
+@st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
             return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    try:
         return gspread.service_account(filename='credenciales.json')
-    except:
+    except Exception:
         return None
 
-# 💥 TRANSLATOR PRO: Evita el colapso por puntos múltiples repetidos de SAP (Ej: 117.404.747)
+# =================================================================
+# 🛡️ UTILIDADES DE PURIFICACIÓN Y LIMPIEZA FINANCIERA
+# =================================================================
 def limpiar_tarifa_excel(val):
     if isinstance(val, (int, float)): return float(val)
     v = str(val).strip().replace("$", "").replace(" ", "").upper()
@@ -49,6 +57,17 @@ def limpiar_tarifa_excel(val):
     except:
         return 0.0
 
+def procesar_fecha_pesada(val):
+    if pd.isna(val) or str(val).strip() == "": return pd.NaT
+    s = str(val).strip()
+    if s.replace('.', '', 1).isdigit(): 
+        return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%m/%d/%Y'):
+        try: return pd.to_datetime(s, format=fmt)
+        except: pass
+    try: return pd.to_datetime(s, errors='coerce')
+    except: return pd.NaT
+
 def normalizar_a_fecha_pura(val):
     try:
         res_nativo = procesar_fecha_pesada(val)
@@ -57,17 +76,25 @@ def normalizar_a_fecha_pura(val):
         return pd.to_datetime(str(res_nativo)).date()
     except: return None
 
-@st.cache_data(show_spinner=False, ttl=60)
+# =================================================================
+# 💾 EXTRACCIÓN CACHEADA DE DATOS OPERATIVOS
+# =================================================================
+@st.cache_data(show_spinner=False, ttl=120)
 def cargar_datos_gerenciales():
     gc = obtener_cliente_gspread_unificado()
     if not gc: return pd.DataFrame()
     
     try:
-        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        boveda_act = gc.open_by_url(URL_BOVEDA_MAESTRA)
         datos_brutos = boveda_act.worksheet("TABLA 1").get_all_values()
         
         if len(datos_brutos) > 5:
-            columnas_t1 = ["OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"]
+            columnas_t1 = [
+                "OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", 
+                "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", 
+                "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", 
+                "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"
+            ]
             filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos[5:]]
             df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             
@@ -83,34 +110,31 @@ def cargar_datos_gerenciales():
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
-            # 💥 ESCUDO ANTI-OUTLIERS (SANEAMIENTO DE ERRORES DE DIGITACIÓN EN SAP)
-            # 1. Regla de Oro: Si digitan en cientos o decenas (ej: 65), se asume miles (65.000)
+            # Saneamiento de Errores de Digitación en SAP
             df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
             df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
-            
-            # 2. Tope Táctico: Si la tarifa de vuelo pura supera los 150.000 COP/Ha, es un error de SAP (pusieron el total). Lo topamos.
             df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: 75000 if x > 150000 else x)
             
             df['OPERADOR_DRON'] = df['HK'].astype(str).str.strip() + " - " + df['PISTA'].astype(str).str.strip()
             
             return df.dropna(subset=['FECHA_FILTRABLE'])
         return pd.DataFrame()
-    except: return pd.DataFrame()
+    except Exception: return pd.DataFrame()
 
 # =================================================================
 # ⚙️ MOTOR EXCEL PROFESIONAL (CON SEMAFORIZACIÓN)
 # =================================================================
-
 def generar_excel_maestro(df_total, df_vuelo):
     output = io.BytesIO()
-    
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_total.to_excel(writer, index=False, sheet_name='Facturación Total')
         df_vuelo.to_excel(writer, index=False, sheet_name='Tarifa Vuelo Pura')
         
         header_fill = PatternFill(start_color="1A365D", end_color="1A365D", fill_type="solid")
-        header_font = Font(color="FFFFFF", bold=True)
+        header_font = Font(color="D4AF37", bold=True)
         align_center = Alignment(horizontal='center', vertical='center')
+        borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
+                            top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
         
         font_rojo = Font(color="C00000", bold=True) 
         font_verde = Font(color="00B050", bold=True) 
@@ -118,17 +142,18 @@ def generar_excel_maestro(df_total, df_vuelo):
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
             
-            ws.column_dimensions['A'].width = 38
-            ws.column_dimensions['B'].width = 25
-            ws.column_dimensions['C'].width = 18
-            ws.column_dimensions['D'].width = 18
-            ws.column_dimensions['E'].width = 20
-            ws.column_dimensions['F'].width = 16
+            ws.column_dimensions['A'].width = 32
+            ws.column_dimensions['B'].width = 28
+            ws.column_dimensions['C'].width = 20
+            ws.column_dimensions['D'].width = 20
+            ws.column_dimensions['E'].width = 22
+            ws.column_dimensions['F'].width = 18
             
             for cell in ws[1]:
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = align_center
+                cell.border = borde_fino
                 
             for row in range(2, ws.max_row + 1):
                 ws[f'C{row}'].number_format = '"$"#,##0'
@@ -139,6 +164,9 @@ def generar_excel_maestro(df_total, df_vuelo):
                 
                 celda_dif.number_format = '"$"#,##0'
                 celda_efi.number_format = '0.0%' 
+                
+                for col_letter in ['A', 'B', 'C', 'D', 'E', 'F']:
+                    ws[f'{col_letter}{row}'].border = borde_fino
                 
                 if isinstance(celda_dif.value, (int, float)):
                     if celda_dif.value > 0:
@@ -153,48 +181,53 @@ def generar_excel_maestro(df_total, df_vuelo):
 # =================================================================
 # 👑 RENDERIZADO VISUAL EN PANTALLA
 # =================================================================
-
 def ejecutar(*args, **kwargs):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
 
-    st.header("", anchor="inicio_modulo")
-    
-    # 🚀 CEBO DE HARDENING INDUSTRIAL: Contorno grueso perimetral de 3px Verde de Marca e Inputs Opacos
     st.markdown(f"""
     <style>
-    h1 {{ color: #1a365d; font-family: Arial Black; border-bottom: 3px solid {DORADO}; }}
-    div[data-testid="stDataFrame"] {{ border: 2px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }}
+    .titulo-gerencial {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
     
-    /* Enmarcar selectores de fecha con contorno sólido de 3px color Verde Intenso */
-    div[data-testid="stDateInput"] input {{
-        background-color: #ffffff !important;
-        border: 3px solid {VERDE_INTENSO} !important;
-        border-radius: 6px !important;
-    }}
-    div[data-testid="stDateInput"] * {{
-        color: #000000 !important;
-        font-weight: bold !important;
-    }}
-    div[data-testid="stMainBlockContainer"] label p {{
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-    }}
+    [data-testid="column"] {{ display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }}
+    div[data-testid="stDataFrame"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
+    
+    div[data-testid="stDateInput"] input {{ background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 6px !important; }}
+    div[data-testid="stDateInput"] * {{ color: #000000 !important; font-weight: bold !important; }}
+    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
+    
+    div[data-testid="stTabs"] button[role="tab"] {{ font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }}
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {DORADO}; background-color: rgba(212, 175, 55, 0.1); }}
+    
+    [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
+    [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1>📊 Comparativo Financiero Detallado</h1>", unsafe_allow_html=True)
+    def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
+        delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
+        return f"""
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid {DORADO}; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: center;'>
+            <p style='font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
+            <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
+        </div>
+        """
 
-    with st.container(border=True):
-        st.markdown("#### 📅 Parámetros del Reporte")
-        c_f1, c_f2, c_f3 = st.columns([1, 1, 1])
-        fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
-        fecha_fin = c_f2.date_input("Hasta:", value=date(2026, 12, 31))
-        
-        if c_f3.button("🔄 Sincronizar Google Drive", use_container_width=True):
+    c_tit, c_sync = st.columns([3.5, 1.5])
+    with c_tit:
+        st.markdown("<h1 class='titulo-gerencial'>⚖️ Módulo 16: Comparativo Gerencial (Dron vs Avión)</h1>", unsafe_allow_html=True)
+        st.write("Análisis táctico de costos por hectárea, brecha de eficiencia y rendimiento financiero.")
+    with c_sync:
+        st.write("")
+        if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
+
+    with st.container(border=True):
+        st.markdown("#### 📅 Parámetros de Análisis")
+        c_f1, c_f2 = st.columns(2)
+        fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
+        fecha_fin = c_f2.date_input("Hasta:", value=date(2026, 12, 31))
 
     df_raw = cargar_datos_gerenciales()
     if df_raw.empty:
@@ -203,21 +236,15 @@ def ejecutar(*args, **kwargs):
 
     df_base = df_raw[(df_raw['FECHA_FILTRABLE'] >= fecha_inicio) & (df_raw['FECHA_FILTRABLE'] <= fecha_fin)].copy()
     if df_base.empty:
-        st.error(f"❌ No se encontraron registros de vuelo para el rango seleccionado.")
+        st.error("❌ No se encontraron registros de vuelo para el rango seleccionado.")
         return
 
-    # 💥 CORTAFUEGOS FINANCIERO: Saneamiento de Errores de Digitación en SAP
     def purificar_tarifa(val, tope_max, valor_reemplazo):
         if pd.isna(val): return 0.0
-        # 1. Regla de Oro: Si digitan en cientos (ej: 65), se asume miles (65.000)
-        if 0 < val < 2500: 
-            val = val * 1000
-        # 2. Tope Táctico: Si supera el máximo lógico (error de SAP), se corrige al valor estándar
-        if val > tope_max: 
-            return valor_reemplazo
+        if 0 < val < 2500: val = val * 1000
+        if val > tope_max: return valor_reemplazo
         return val
 
-    # Aplicamos el escudo a las columnas vitales ANTES de dividir la información
     df_base['COSTO_VUELO_HA'] = df_base['COSTO_VUELO_HA'].apply(lambda x: purificar_tarifa(x, 150000, 75000))
     df_base['COSTO_TOTAL_HA'] = df_base['COSTO_TOTAL_HA'].apply(lambda x: purificar_tarifa(x, 400000, 200000))
 
@@ -246,18 +273,21 @@ def ejecutar(*args, **kwargs):
         m_comp_t['Diferencia ($)'] = m_comp_t['AVIÓN'] - m_comp_t['DRONE']
         m_comp_t['Eficiencia (%)'] = m_comp_t['Diferencia ($)'] / m_comp_t['AVIÓN'] 
 
-    if not m_comp_t.empty and not m_comp_v.empty:
-        excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
-        st.download_button(
-            label="📥 DESCARGAR REPORTE GERENCIAL (EXCEL A COLOR)", 
-            data=excel_data, 
-            file_name=f"Reporte_Eficiencia_Detallado.xlsx", 
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True
-        )
+    # ==========================================================
+    # 💎 TARJETAS KPI DE IMPACTO DIRECTO
+    # ==========================================================
+    st.markdown("---")
+    if not m_comp_v.empty:
+        ahorro_prom_vuelo = m_comp_v['Diferencia ($)'].mean()
+        eficiencia_prom_vuelo = m_comp_v['Eficiencia (%)'].mean() * 100
+        fincas_comparadas = m_comp_v['FINCA'].nunique()
 
-    tab_vuelo, tab_total = st.tabs(["✈️ TARIFA DE VUELO PURA (Columna T)", "💰 FACTURACIÓN TOTAL OPERACIÓN"])
+        k1, k2, k3 = st.columns(3)
+        with k1: st.markdown(tarjeta_kpi("Fincas Cruzadas", f"{fincas_comparadas} Fincas", "Con Dron y Avión", "#d4af37"), unsafe_allow_html=True)
+        with k2: st.markdown(tarjeta_kpi("Brecha Promedio Vuelo", f"$ {ahorro_prom_vuelo:,.0f} /ha".replace(",", "."), "Ahorro Dron vs Avión", "#28a745" if ahorro_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
+        with k3: st.markdown(tarjeta_kpi("Eficiencia Financiera", f"{eficiencia_prom_vuelo:.1f}%", "vs Tarifa Avión", "#28a745" if eficiencia_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
+
+    tab_vuelo, tab_total = st.tabs(["✈️ Tarifa Vuelo Pura (Operativo)", "💰 Facturación Total Operación"])
 
     def formatear_pesos(val):
         if pd.isna(val) or val == 0: return "-"
@@ -272,24 +302,27 @@ def ejecutar(*args, **kwargs):
         return ''
 
     # ==========================================================
-    # PESTAÑA: TARIFA VUELO
+    # PESTAÑA 1: TARIFA VUELO PURA
     # ==========================================================
     with tab_vuelo:
-        st.success("🔬 Eficiencia dividida por Equipo de Dron (Sin promedios mezclados).")
+        st.success("🔬 Brecha de tarifa directa por Hectárea (Desglosado por Operación de Dron).")
         if not m_comp_v.empty:
             df_print_v = m_comp_v.copy()
             df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
             df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
-            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($ Freeman)']=df_print_v['Diferencia ($)'].apply(formatear_pesos)
+            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
             df_print_v['Eficiencia (%)'] = (df_print_v['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
 
-            st.dataframe(df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
+            st.dataframe(
+                df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), 
+                use_container_width=True, 
+                hide_index=True
+            )
             
-            # 💥 FIX MAESTRO DE ALTA GAMA: Identificadores únicos y legibles
+            # Gráfico Plotly
             df_print_v['X_UNIQUE'] = df_print_v['FINCA'].apply(lambda x: str(x)[:15] + '...' if len(str(x)) > 15 else str(x)) + " [" + df_print_v.index.astype(str) + "]"
             
             fig = go.Figure()
-            
             fig.add_trace(go.Bar(
                 x=df_print_v['X_UNIQUE'], 
                 y=m_comp_v['AVIÓN'], 
@@ -308,19 +341,18 @@ def ejecutar(*args, **kwargs):
                 hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
             ))
             
-            # 🚀 TOQUE GERENCIAL: Zoom dinámico y Minimapa de Navegación
-            # Calculamos mostrar máximo 15 barras iniciales para que siempre se vean premium
             vista_inicial = min(14.5, len(df_print_v) - 0.5) 
             
             fig.update_layout(
-                title="Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)", 
+                title="<b>Brecha Real de Tarifa Vuelo (Avión vs Dron Específico)</b>", 
                 barmode='group', 
                 plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
                 xaxis=dict(
                     tickangle=-90,
                     tickfont=dict(size=11),
-                    range=[-0.5, vista_inicial], # Zoom automático a las primeras fincas
-                    rangeslider=dict(visible=True, thickness=0.08, bgcolor="#e2e8f0"), # El Minimapa
+                    range=[-0.5, vista_inicial],
+                    rangeslider=dict(visible=True, thickness=0.08, bgcolor="#e2e8f0"),
                     type='category'
                 ),
                 yaxis=dict(
@@ -334,13 +366,13 @@ def ejecutar(*args, **kwargs):
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("📌 No hay datos cruzados en el rango.")
+            st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
     # ==========================================================
-    # PESTAÑA: COSTO TOTAL
+    # PESTAÑA 2: COSTO TOTAL FACTURADO
     # ==========================================================
     with tab_total:
-        st.info("📊 Impacto macro en presupuesto desglosado por Operador (Consolidado Completo)")
+        st.info("📊 Impacto macro en presupuesto desglosado por Operador (Consolidado Facturado).")
         if not m_comp_t.empty:
             df_print_t = m_comp_t.copy()
             df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
@@ -348,9 +380,26 @@ def ejecutar(*args, **kwargs):
             df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
             df_print_t['Eficiencia (%)'] = (df_print_t['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
 
-            st.dataframe(df_print_t.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), use_container_width=True, hide_index=True)
+            st.dataframe(
+                df_print_t.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), 
+                use_container_width=True, 
+                hide_index=True
+            )
         else:
-            st.warning("📌 No hay datos cruzados en el rango.")
+            st.warning("📌 No hay datos cruzados en el rango seleccionado.")
+
+    # Botón de Descarga Excel VIP
+    if not m_comp_t.empty and not m_comp_v.empty:
+        st.markdown("---")
+        excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
+        st.download_button(
+            label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (2 HOJAS CON SEMÁFORO)", 
+            data=excel_data, 
+            file_name=f"Reporte_Eficiencia_Avion_vs_Dron.xlsx", 
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+            type="primary",
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     pass
