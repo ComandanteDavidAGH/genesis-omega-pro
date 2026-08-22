@@ -71,19 +71,27 @@ def ejecutar(extraer_numero):
         font-family: 'Arial Black', sans-serif; 
     }
 
-    /* 🎯 ALINEACIÓN FLEXBOX SIMÉTRICA DE COLUMNAS (MÓDULO 2) */
+    /* 🎯 ALINEACIÓN Y SIMETRÍA BORDES Y ALTURAS EN MÓDULO 2 */
     [data-testid="column"] {
         display: flex !important;
         flex-direction: column !important;
-        justify-content: space-between !important;
+        justify-content: flex-start !important;
         align-items: stretch !important;
     }
 
     [data-testid="column"] > div {
-        width: 100% !important;
         display: flex !important;
         flex-direction: column !important;
-        flex: 1 !important;
+        flex: 1 1 auto !important;
+        justify-content: space-between !important;
+    }
+
+    /* UNIFICACIÓN DE ALTURA PARA TARJETAS VERDES Y CAJAS DE CARGA (125px) */
+    div[data-testid="stAlert"] {
+        min-height: 125px !important;
+        display: flex !important;
+        align-items: center !important;
+        margin-bottom: 10px !important;
     }
 
     div[data-testid="stFileUploader"] section {
@@ -91,7 +99,7 @@ def ejecutar(extraer_numero):
         border: 2px dashed #0d1b2a !important;
         border-radius: 8px !important;
         padding: 10px !important;
-        min-height: 110px !important;
+        min-height: 125px !important;
         display: flex !important;
         flex-direction: column !important;
         justify-content: center !important;
@@ -101,16 +109,20 @@ def ejecutar(extraer_numero):
 
     st.markdown("<h1 class='titulo-principal'>📥 Zona de Aterrizaje Facturación</h1>", unsafe_allow_html=True)
     
+    # Memoria de Sesión para las 3 Columnas
     if 'mem_sabana' not in st.session_state: st.session_state['mem_sabana'] = None
     if 'name_sabana' not in st.session_state: st.session_state['name_sabana'] = None
     if 'mem_pedidos' not in st.session_state: st.session_state['mem_pedidos'] = None
     if 'name_pedidos' not in st.session_state: st.session_state['name_pedidos'] = None
+    if 'mem_pistas' not in st.session_state: st.session_state['mem_pistas'] = []
+    if 'names_pistas' not in st.session_state: st.session_state['names_pistas'] = []
     
     if 'df_pistas' not in st.session_state: st.session_state['df_pistas'] = pd.DataFrame()
     if 'df_apoyo' not in st.session_state: st.session_state['df_apoyo'] = pd.DataFrame()
 
     c1, c2, c3 = st.columns(3)
     
+    # 📁 COLUMNA 1: SÁBANA SAP
     with c1:
         st.markdown("### 📁 1. Sábana SAP")
         if st.session_state['mem_sabana'] is None:
@@ -121,12 +133,12 @@ def ejecutar(extraer_numero):
                 st.rerun()
         else:
             st.success(f"✅ Sábana en memoria:\n**{st.session_state['name_sabana']}**")
-            st.markdown("<div style='margin-top: auto;'></div>", unsafe_allow_html=True)
             if st.button("🔄 Cambiar Sábana", use_container_width=True, key="btn_change_sab_m2"):
                 st.session_state['mem_sabana'] = None
                 st.session_state['name_sabana'] = None
                 st.rerun()
 
+    # 📝 COLUMNA 2: PEDIDOS SAP
     with c2:
         st.markdown("### 📝 2. Pedidos SAP")
         if st.session_state['mem_pedidos'] is None:
@@ -137,16 +149,29 @@ def ejecutar(extraer_numero):
                 st.rerun()
         else:
             st.success(f"✅ Pedidos en memoria:\n**{st.session_state['name_pedidos']}**")
-            st.markdown("<div style='margin-top: auto;'></div>", unsafe_allow_html=True)
             if st.button("🔄 Cambiar Pedidos", use_container_width=True, key="btn_change_ped_m2"):
                 st.session_state['mem_pedidos'] = None
                 st.session_state['name_pedidos'] = None
                 st.rerun()
 
+    # 🚀 COLUMNA 3: INFORMES PISTA (UNIFICADA)
     with c3:
         st.markdown("### 🚀 3. Informes Pista")
-        f_pistas = st.file_uploader("Reportes Reales", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pis")
+        if not st.session_state['mem_pistas']:
+            f_pistas_up = st.file_uploader("Reportes Reales", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key="pis")
+            if f_pistas_up:
+                st.session_state['mem_pistas'] = [{"name": f.name, "bytes": f.getvalue()} for f in f_pistas_up]
+                st.session_state['names_pistas'] = [f.name for f in f_pistas_up]
+                st.rerun()
+        else:
+            cant_arch = len(st.session_state['names_pistas'])
+            st.success(f"✅ Informes en memoria:\n**{cant_arch} Reporte(s) Pista**")
+            if st.button("🔄 Cambiar Informes", use_container_width=True, key="btn_change_pis_m2"):
+                st.session_state['mem_pistas'] = []
+                st.session_state['names_pistas'] = []
+                st.rerun()
 
+    # Reconstrucción de Bytes para el Procesamiento Maestro
     f_sabana = None
     if st.session_state['mem_sabana']:
         f_sabana = io.BytesIO(st.session_state['mem_sabana'])
@@ -156,6 +181,13 @@ def ejecutar(extraer_numero):
     if st.session_state['mem_pedidos']:
         f_pedidos = io.BytesIO(st.session_state['mem_pedidos'])
         f_pedidos.name = st.session_state['name_pedidos']
+
+    f_pistas = []
+    if st.session_state['mem_pistas']:
+        for p_dict in st.session_state['mem_pistas']:
+            b = io.BytesIO(p_dict["bytes"])
+            b.name = p_dict["name"]
+            f_pistas.append(b)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
