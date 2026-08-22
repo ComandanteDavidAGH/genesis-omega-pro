@@ -618,40 +618,39 @@ def ejecutar(purificar_lote, extraer_numero):
                         }
                     )
 
-                # 🎯 PESTAÑA HISTORIAL CON SELECTOR DE SECTOR Y GRÁFICO DE LÍNEAS / BARRAS LIMPIO
+                # 🎯 PESTAÑA HISTORIAL CON MODELO FACETADO DE PANELES INDEPENDIENTES (SMALL MULTIPLES)
                 with tab_clima:
-                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico 7D)")
+                    st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Paneles Independientes de Norte a Sur)")
                     
                     if not df_clima_raw.empty:
-                        # 🎯 RECURSO VIP: SELECTOR DE SECTOR PARA DESATOSIGAR EL GRÁFICO
-                        opciones_sectores_filtro = ["🌐 TODOS LOS SECTORES (Vista General - Líneas)"] + cols_presentes_ordenadas
-                        sec_grafico_sel = st.selectbox("📊 Filtro de Enfoque para la Gráfica:", opciones_sectores_filtro)
+                        # 🎯 MODELO FACETADO: Cada sector tiene su propio carril y su propia escala
+                        df_chart = df_clima_raw.sort_values("FECHA")
                         
-                        if sec_grafico_sel == "🌐 TODOS LOS SECTORES (Vista General - Líneas)":
-                            # Gráfico de Líneas Limpio para la vista general
-                            df_chart = df_clima_raw.sort_values("FECHA")
-                            fig_lluvia = px.line(
-                                df_chart, x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
-                                title="<b>Tendencia de Precipitación Diaria (Curva General)</b>",
-                                category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
-                            )
-                            fig_lluvia.update_traces(line=dict(width=2.5))
-                        else:
-                            # Gráfico de Barras Individual
-                            df_chart = df_clima_raw[df_clima_raw["SECTOR"] == sec_grafico_sel].sort_values("FECHA")
-                            fig_lluvia = px.bar(
-                                df_chart, x="FECHA", y="LLUVIA (mm)", 
-                                title=f"<b>Precipitación Diaria Detallada - Sector {sec_grafico_sel} (mm)</b>",
-                                color_discrete_sequence=["#27AE60"]
-                            )
-                            fig_lluvia.update_traces(marker_line_width=0)
-
-                        fig_lluvia.update_layout(
-                            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', 
-                            yaxis_title="Milímetros (mm)", xaxis_title="",
-                            legend_title="Sector (Ruta Logística)",
-                            xaxis=dict(rangeslider=dict(visible=True), type="date") # Range Slider para Zoom
+                        fig_lluvia = px.area(
+                            df_chart, 
+                            x="FECHA", 
+                            y="LLUVIA (mm)", 
+                            facet_col="SECTOR", 
+                            facet_col_wrap=3, # 3 columnas por fila para legibilidad perfecta
+                            color="SECTOR",
+                            title="<b>Comportamiento de Lluvia por Sector (Paneles Independientes)</b>",
+                            category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
                         )
+                        
+                        # Permitir que cada panel tenga su propia escala de Y para que un sector de 400mm no aplaste a uno de 20mm
+                        fig_lluvia.for_each_yaxis(lambda yaxis: yaxis.update(matches=None, showticklabels=True))
+                        
+                        fig_lluvia.update_layout(
+                            plot_bgcolor='rgba(0,0,0,0)', 
+                            paper_bgcolor='rgba(0,0,0,0)', 
+                            height=800, # Altura generosa para acomodar la cuadrícula
+                            showlegend=False,
+                            margin=dict(t=50, b=20, l=10, r=10)
+                        )
+                        
+                        # Limpiar títulos de las facetas para que se lean elegantes
+                        fig_lluvia.for_each_annotation(lambda a: a.update(text=f"<b>{a.text.split('=')[-1]}</b>"))
+                        
                         st.plotly_chart(fig_lluvia, use_container_width=True)
                         
                         cols_cfg_clima = {"FECHA": st.column_config.TextColumn("📅 FECHA")}
