@@ -12,10 +12,25 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =================================================================
-# ⚙️ CONSTANTES Y MOTOR DE CONEXIÓN UNIFICADO (V42 VIP)
+# ⚙️ CONSTANTES DE CONFIGURACIÓN CENTRALIZADAS
 # =================================================================
 URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
+# Topes de purificación financiera (Evita Magic Numbers dispersos)
+TOPE_MAX_COSTO_VUELO = 150000.0
+REEMPLAZO_ERROR_VUELO = 75000.0
+TOPE_MAX_COSTO_TOTAL = 400000.0
+REEMPLAZO_ERROR_TOTAL = 200000.0
+
+# Paleta de Colores Ejecutiva
+COLOR_NAVY = '#0d1b2a'
+COLOR_DORADO = '#d4af37'
+COLOR_VERDE = '#143521'
+COLOR_BORDER = '#cbd5e1'
+
+# =================================================================
+# ⚡ MOTOR DE CONEXIÓN UNIFICADO
+# =================================================================
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -35,7 +50,7 @@ def obtener_cliente_gspread_unificado():
         return None
 
 # =================================================================
-# 🛡️ UTILIDADES DE PURIFICACIÓN Y LIMPIEZA FINANCIERA
+# 🛡️ UTILIDADES Y LIMPIEZA
 # =================================================================
 def limpiar_tarifa_excel(val):
     if isinstance(val, (int, float)): return float(val)
@@ -85,7 +100,7 @@ def es_cooperativa(finca_nombre):
     return any(p in f_up for p in patrones_coop)
 
 # =================================================================
-# 💾 EXTRACCIÓN CACHEADA DE DATOS OPERATIVOS
+# 💾 EXTRACCIÓN DINÁMICA DE DATOS
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=120)
 def cargar_datos_gerenciales():
@@ -95,43 +110,61 @@ def cargar_datos_gerenciales():
     try:
         boveda_act = gc.open_by_url(URL_BOVEDA_MAESTRA)
         datos_brutos = boveda_act.worksheet("TABLA 1").get_all_values()
-        
-        if len(datos_brutos) > 5:
-            columnas_t1 = [
+        if not datos_brutos: return pd.DataFrame()
+
+        # Búsqueda dinámica de la fila de encabezados
+        idx_header = -1
+        for i in range(min(10, len(datos_brutos))):
+            fila_upper = [str(x).upper().strip() for x in datos_brutos[i]]
+            if "FINCA" in fila_upper and ("COSTO_HA" in fila_upper or "VALOR_FACTURAR" in fila_upper):
+                idx_header = i
+                headers = fila_upper
+                break
+
+        if idx_header == -1:
+            idx_header = 4
+            headers = [
                 "OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", 
                 "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", 
                 "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", 
                 "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"
             ]
-            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos[5:]]
-            df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
-            
-            df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
-            df['FECHA_FILTRABLE'] = df['FECHA'].apply(normalizar_a_fecha_pura)
-            
-            def clasificar_tec(row):
-                texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
-                if 'DRON' in texto or 'DR5' in texto: return 'DRONE'
-                return 'AVIÓN'
-            
-            df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
-            
-            # 🎯 CLASIFICADOR INTELIGENTE RENOMBRADO DESDE LA RAÍZ
-            df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVAS' if es_cooperativa(x) else 'ESPECIALES / PILOTOS')
-            
-            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
-            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
-            
-            # Saneamiento de Errores de Digitación en SAP
-            df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
-            df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
-            df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: 75000 if x > 150000 else x)
-            
-            df['OPERADOR_DRON'] = df['HK'].astype(str).str.strip() + " - " + df['PISTA'].astype(str).str.strip()
-            
-            return df.dropna(subset=['FECHA_FILTRABLE'])
+
+        filas_data = datos_brutos[idx_header + 1:]
+        df = pd.DataFrame(filas_data, columns=headers[:len(filas_data[0])] if filas_data else headers)
+        
+        # Mapeo flexible de columnas clave
+        col_finca = next((c for c in df.columns if 'FINCA' in c), 'FINCA')
+        col_fecha = next((c for c in df.columns if 'FECHA' in c), 'FECHA')
+        col_costo_ha = next((c for c in df.columns if 'COSTO_HA' in c or 'COSTO_VUELO' in c), 'COSTO_HA')
+        col_facturar = next((c for c in df.columns if 'VALOR_FACTURAR' in c or 'FACTURA' in c), 'VALOR_FACTURAR')
+        col_hk = next((c for c in df_t1_cols if 'HK' in c) if 'df_t1_cols' in locals() else 'HK', 'HK')
+        col_pista = next((c for c in df.columns if 'PISTA' in c), 'PISTA')
+
+        df['FINCA'] = df[col_finca].astype(str).str.strip().str.upper()
+        df['FECHA_FILTRABLE'] = df[col_fecha].apply(normalizar_a_fecha_pura)
+        
+        def clasificar_tec(row):
+            texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
+            if 'DRON' in texto or 'DR5' in texto: return 'DRONE'
+            return 'AVIÓN'
+        
+        df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
+        df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVAS' if es_cooperativa(x) else 'ESPECIALES / PILOTOS')
+        
+        df['COSTO_TOTAL_HA'] = df[col_facturar].apply(limpiar_tarifa_excel) if col_facturar in df.columns else 0.0
+        df['COSTO_VUELO_HA'] = df[col_costo_ha].apply(limpiar_tarifa_excel) if col_costo_ha in df.columns else 0.0
+        
+        # Saneamiento de Errores
+        df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
+        df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
+        df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: REEMPLAZO_ERROR_VUELO if x > TOPE_MAX_COSTO_VUELO else x)
+        
+        df['OPERADOR_DRON'] = df[col_hk].astype(str).str.strip() + " - " + df[col_pista].astype(str).str.strip()
+        
+        return df.dropna(subset=['FECHA_FILTRABLE'])
+    except Exception as e:
         return pd.DataFrame()
-    except Exception: return pd.DataFrame()
 
 # =================================================================
 # ⚙️ MOTOR EXCEL PROFESIONAL
@@ -153,9 +186,8 @@ def generar_excel_maestro(df_total, df_vuelo):
         
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
-            
             ws.column_dimensions['A'].width = 32
-            ws.column_dimensions['B'].width = 24  # Para "TIPO_ENTIDAD"
+            ws.column_dimensions['B'].width = 24
             ws.column_dimensions['C'].width = 28
             ws.column_dimensions['D'].width = 18
             ws.column_dimensions['E'].width = 18
@@ -174,7 +206,6 @@ def generar_excel_maestro(df_total, df_vuelo):
                 
                 celda_dif = ws[f'F{row}']
                 celda_efi = ws[f'G{row}']
-                
                 celda_dif.number_format = '"$"#,##0'
                 celda_efi.number_format = '0.0%' 
                 
@@ -192,99 +223,92 @@ def generar_excel_maestro(df_total, df_vuelo):
     return output.getvalue()
 
 def construir_grafico_comparativo(df_datos, titulo_grafico):
-    if df_datos.empty:
-        return None
+    if df_datos.empty: return None
         
     df_plot = df_datos.copy()
     df_plot['X_UNIQUE'] = df_plot['FINCA'].apply(lambda x: str(x)[:14] + '...' if len(str(x)) > 14 else str(x)) + " [" + df_plot.index.astype(str) + "]"
     
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=df_plot['X_UNIQUE'], 
-        y=df_plot['AVIÓN'], 
-        name='Avión', 
-        marker_color='#1a365d',
-        customdata=df_plot['FINCA'],
-        hovertemplate='<b>Finca:</b> %{customdata}<br><b>Avión:</b> $%{y:,.0f}<extra></extra>'
+        x=df_plot['X_UNIQUE'], y=df_plot['AVIÓN'], name='Avión', marker_color='#0d1b2a',
+        customdata=df_plot['FINCA'], hovertemplate='<b>Finca:</b> %{customdata}<br><b>Avión:</b> $%{y:,.0f}<extra></extra>'
     ))
     
     fig.add_trace(go.Bar(
-        x=df_plot['X_UNIQUE'], 
-        y=df_plot['DRONE'], 
-        name='Dron', 
-        marker_color='#d4af37',
-        customdata=df_plot['FINCA'],
-        hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
+        x=df_plot['X_UNIQUE'], y=df_plot['DRONE'], name='Dron', marker_color='#d4af37',
+        customdata=df_plot['FINCA'], hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
     ))
     
     vista_inicial = min(12.5, len(df_plot) - 0.5) 
     
     fig.update_layout(
-        title=f"<b>{titulo_grafico}</b>", 
-        barmode='group', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        paper_bgcolor='rgba(0,0,0,0)',
-        height=420,
+        title=f"<b>{titulo_grafico}</b>", barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', height=380,
         xaxis=dict(
-            tickangle=-90,
-            tickfont=dict(size=10),
+            tickangle=-90, tickfont=dict(size=10, color='#0d1b2a'),
             range=[-0.5, vista_inicial],
-            rangeslider=dict(visible=True, thickness=0.06, bgcolor="#e2e8f0"),
-            type='category'
+            rangeslider=dict(visible=True, thickness=0.05, bgcolor="#f1f5f9"), type='category'
         ),
-        yaxis=dict(
-            tickformat="$,.0f", 
-            title="Costo ($ COP / ha)", 
-            showgrid=True, 
-            gridcolor='rgba(200,200,200,0.2)'
-        ),
-        hovermode="closest",
-        margin=dict(b=10, t=40, l=10, r=10)
+        yaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)", showgrid=True, gridcolor='rgba(226, 232, 240, 0.8)'),
+        hovermode="closest", margin=dict(b=10, t=40, l=10, r=10)
     )
     return fig
 
 # =================================================================
-# 👑 RENDERIZADO VISUAL EN PANTALLA
+# 👑 RENDERIZADO VISUAL
 # =================================================================
 def ejecutar(*args, **kwargs):
-    VERDE_INTENSO = '#143521'
-    DORADO = '#d4af37'
 
+    # 🎯 CSS VIP: REDISEÑO COMPLETO DE INPUTS DE FECHA Y CONTENEDORES
     st.markdown(f"""
     <style>
-    .titulo-gerencial {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }}
+    .titulo-gerencial {{ color: #0d1b2a; border-bottom: 2px solid {COLOR_DORADO}; padding-bottom: 4px; font-weight: 900; letter-spacing: 0.5px; }}
     
-    [data-testid="column"] {{ display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }}
-    div[data-testid="stDataFrame"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
+    /* REDISEÑO DE SELECTORES DE FECHA (ELIMINA CAJAS PÁLIDAS) */
+    div[data-testid="stDateInput"] {{
+        background-color: transparent !important;
+    }}
+    div[data-testid="stDateInput"] > div {{
+        background-color: #ffffff !important;
+        border: 2px solid {COLOR_NAVY} !important;
+        border-radius: 8px !important;
+        box-shadow: 0px 2px 6px rgba(13, 27, 42, 0.08) !important;
+        padding: 2px 6px !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }}
+    div[data-testid="stDateInput"] > div:focus-within {{
+        border-color: {COLOR_DORADO} !important;
+        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.3) !important;
+    }}
+    div[data-testid="stDateInput"] input {{
+        color: #0d1b2a !important;
+        font-weight: 800 !important;
+        font-size: 14px !important;
+    }}
     
-    div[data-testid="stDateInput"] input {{ background-color: #ffffff !important; border: 2px solid {VERDE_INTENSO} !important; border-radius: 6px !important; }}
-    div[data-testid="stDateInput"] * {{ color: #000000 !important; font-weight: bold !important; }}
-    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }}
+    /* BORDES Y CAJAS LIMPIAS */
+    div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
+    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
     
-    div[data-testid="stTabs"] button[role="tab"] {{ font-family: 'Arial Black', sans-serif; font-size: 14px; color: #0d1b2a; }}
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {DORADO}; background-color: rgba(212, 175, 55, 0.1); }}
-    
-    [data-testid="stPlotlyChart"] {{ transition: transform 0.3s ease, box-shadow 0.3s ease !important; border-radius: 8px; }}
-    [data-testid="stPlotlyChart"]:hover {{ transform: translateY(-4px) scale(1.015) !important; box-shadow: 0 12px 25px rgba(212, 175, 55, 0.25) !important; z-index: 10; }}
+    div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: #0d1b2a; }}
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
     </style>
     """, unsafe_allow_html=True)
 
     def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
-        delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
+        delta_html = f"<span style='font-size: 13px; color: {color_delta}; margin-left: 6px; font-weight:bold;'>{delta_texto}</span>" if delta_texto else ""
         return f"""
-        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid {DORADO}; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: center;'>
-            <p style='font-size: 11px; font-weight: bold; color: {DORADO}; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
-            <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 4px solid {COLOR_DORADO}; padding: 12px 16px; border-radius: 8px; color: white; box-shadow: 0px 3px 8px rgba(0,0,0,0.1); margin-bottom: 15px;'>
+            <p style='font-size: 11px; font-weight: 800; color: {COLOR_DORADO}; text-transform: uppercase; margin:0 0 4px 0;'>{titulo}</p>
+            <p style='font-size: 20px; font-weight: 900; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
         </div>
         """
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h1 class='titulo-gerencial'>⚖️ Módulo 16: Comparativo Gerencial (Dron vs Avión)</h1>", unsafe_allow_html=True)
-        st.write("Análisis táctico de costos desglosado por Cooperativas vs Fincas Especiales y Piloto.")
+        st.markdown("<h2 class='titulo-gerencial'>⚖️ MÓDULO 16: COMPARATIVO GERENCIAL (DRON VS AVIÓN)</h2>", unsafe_allow_html=True)
+        st.caption("Análisis de costos y brecha de eficiencia: Cooperativas vs. Fincas Especiales y Lotes Piloto.")
     with c_sync:
         st.write("")
-        # 💥 BOTÓN CRÍTICO PARA LIMPIAR LA CACHÉ Y CARGAR LOS NUEVOS NOMBRES
         if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
@@ -304,15 +328,6 @@ def ejecutar(*args, **kwargs):
     if df_base.empty:
         st.error("❌ No se encontraron registros de vuelo para el rango seleccionado.")
         return
-
-    def purificar_tarifa(val, tope_max, valor_reemplazo):
-        if pd.isna(val): return 0.0
-        if 0 < val < 2500: val = val * 1000
-        if val > tope_max: return valor_reemplazo
-        return val
-
-    df_base['COSTO_VUELO_HA'] = df_base['COSTO_VUELO_HA'].apply(lambda x: purificar_tarifa(x, 150000, 75000))
-    df_base['COSTO_TOTAL_HA'] = df_base['COSTO_TOTAL_HA'].apply(lambda x: purificar_tarifa(x, 400000, 200000))
 
     df_aviones = df_base[df_base['TECNOLOGIA'] == 'AVIÓN'].copy()
     df_drones = df_base[df_base['TECNOLOGIA'] == 'DRONE'].copy()
@@ -369,10 +384,10 @@ def ejecutar(*args, **kwargs):
         return ''
 
     # ==========================================================
-    # PESTAÑA 1: TARIFA VUELO PURA (SEGMENTADA EN 2 GRÁFICOS)
+    # PESTAÑA 1: TARIFA VUELO PURA
     # ==========================================================
     with tab_vuelo:
-        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs Fincas Especiales / Pilotos.")
+        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs. Fincas Especiales y Lotes Piloto.")
         
         if not m_comp_v.empty:
             m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
@@ -414,10 +429,10 @@ def ejecutar(*args, **kwargs):
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
     # ==========================================================
-    # PESTAÑA 2: COSTO TOTAL FACTURADO (SEGMENTADA EN 2 GRÁFICOS)
+    # PESTAÑA 2: COSTO TOTAL FACTURADO
     # ==========================================================
     with tab_total:
-        st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs Fincas Especiales.")
+        st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs. Fincas Especiales.")
         
         if not m_comp_t.empty:
             m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
