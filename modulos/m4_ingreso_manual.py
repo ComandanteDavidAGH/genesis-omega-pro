@@ -11,13 +11,23 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =================================================================
 # ⚡ MOTORES DE CONEXIÓN Y ACCESO SATELITAL (ALTA VELOCIDAD)
 # =================================================================
+URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
 @st.cache_resource(show_spinner=False)
 def inicializar_cliente_gspread():
-    """ Centraliza la autenticación con Google Cloud una sola vez en RAM """
+    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
+    if "gcp_credentials" in st.secrets:
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
+            return gspread.authorize(creds)
+        except Exception: pass
     try:
-        if "gcp_service_account" in st.secrets:
-            return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
         return gspread.service_account(filename='credenciales.json')
     except Exception:
         return None
@@ -91,7 +101,7 @@ def cargar_memoria_referencias_m4_cached():
     gc = inicializar_cliente_gspread()
     if gc is not None:
         try:
-            boveda = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+            boveda = gc.open_by_url(URL_BOVEDA_MAESTRA)
             ws_t1 = boveda.worksheet("TABLA 1")
             
             memoria['col_os'] = ws_t1.col_values(1)
@@ -121,7 +131,7 @@ def obtener_vuelos_virtuales_cached():
     if not gc:
         return [], [], []
     try:
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
         datos_t1 = sh.worksheet("TABLA 1").get_all_values()
         datos_apoyo = sh.worksheet("TABLA DE APOYO2023").get_all_values()
         
@@ -184,7 +194,6 @@ def ejecutar(extraer_numero, purificar_lote):
         font-size: 16px !important;
     }
 
-    /* 🎯 1. CAMPOS DE TEXTO, NÚMEROS Y FECHA */
     div[data-testid="stTextInput"] div[data-baseweb="input"],
     div[data-testid="stNumberInput"] div[data-baseweb="input"],
     div[data-testid="stDateInput"] div[data-baseweb="input"] {
@@ -203,10 +212,6 @@ def ejecutar(extraer_numero, purificar_lote):
         border: none !important;
     }
 
-    /* ==================================================================
-       💥 IMPACTO DIRECTO AL CONTENEDOR INTERMEDIO DEL SELECTBOX
-       ================================================================== */
-    /* Target al contenedor donde residía el fondo gris */
     div[data-testid="stSelectbox"] > div {
         background-color: #ffffff !important;
         border: 2px solid #0d1b2a !important;
@@ -215,12 +220,10 @@ def ejecutar(extraer_numero, purificar_lote):
         overflow: hidden !important;
     }
 
-    /* Transparentar todas las sub-capas internas */
     div[data-testid="stSelectbox"] > div * {
         background-color: transparent !important;
     }
 
-    /* Estilo del texto e íconos internos */
     div[data-testid="stSelectbox"] span,
     div[data-testid="stSelectbox"] p {
         color: #0d1b2a !important;
@@ -233,7 +236,6 @@ def ejecutar(extraer_numero, purificar_lote):
         color: #0d1b2a !important;
     }
 
-    /* 🌟 ENFOQUE DORADO AL HACER CLIC */
     div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
     div[data-testid="stNumberInput"] div[data-baseweb="input"]:focus-within,
     div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within,
@@ -241,8 +243,6 @@ def ejecutar(extraer_numero, purificar_lote):
         border-color: #d4af37 !important;
         box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.8) !important;
     }
-
-    /* ================================================================== */
 
     .hud-legalizador {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%);
@@ -264,7 +264,7 @@ def ejecutar(extraer_numero, purificar_lote):
     tab1, tab2 = st.tabs(["📝 1. Ingreso OS Manual (Desde Cero)", "🔄 2. Legalizar Vuelos Virtuales (Automático)"])
 
     # -----------------------------------------------------------------
-    # PESTAÑA 1: INGRESO MANUAL ACELERADO (V3)
+    # PESTAÑA 1: INGRESO MANUAL ACELERADO
     # -----------------------------------------------------------------
     with tab1:
         st.subheader("Puesto de Control y Digitación Rápida")
@@ -388,9 +388,17 @@ def ejecutar(extraer_numero, purificar_lote):
                             })
                             
                         if filas_finales:
-                            boveda1 = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                            boveda1 = gc.open_by_url(URL_BOVEDA_MAESTRA)
                             hoja_maestra1 = boveda1.worksheet("TABLA 1")
-                            hoja_maestra1.append_rows(filas_finales, value_input_option='USER_ENTERED')
+                            
+                            # =========================================================
+                            # 🛡️ MEJORA V41: ESCRITURA SEGURO EN PRIMERA FILA LIBRE
+                            # =========================================================
+                            col_a = hoja_maestra1.col_values(1)
+                            f_libre = next((i + 1 for i in range(len(col_a) - 1, -1, -1) if str(col_a[i]).strip() != ""), 0) + 1
+                            if f_libre < 6: f_libre = 6
+                            
+                            hoja_maestra1.update(range_name=f"A{f_libre}", values=filas_finales, value_input_option='USER_ENTERED')
                             
                             if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                 try:
@@ -399,7 +407,7 @@ def ejecutar(extraer_numero, purificar_lote):
                                     pass
 
                             st.balloons()
-                            st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada con Cóctel y Fórmulas Automáticas.")
+                            st.success(f"🎯 ¡OPERACIÓN EXITOSA! OS {os_val} inyectada en fila {f_libre} con Cóctel y Fórmulas Automáticas.")
                             st.cache_data.clear()
                             st.rerun()
                                 
@@ -486,7 +494,7 @@ def ejecutar(extraer_numero, purificar_lote):
                 else:
                     try:
                         with st.spinner("Legalizando y respetando Fórmulas MAP de Excel..."):
-                            sh2 = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+                            sh2 = gc.open_by_url(URL_BOVEDA_MAESTRA)
                             ws_t1_2 = sh2.worksheet("TABLA 1")
                             
                             r_idx = int(vuelo_sel['fila_real'])
@@ -517,8 +525,17 @@ def ejecutar(extraer_numero, purificar_lote):
                                     "total_costo": float(nueva[18]), "tipo_mision": "LEGALIZADA", "origen_registro": str(vuelo_sel['os_virt'])
                                 })
 
-                            ws_t1_2.delete_rows(r_idx)
-                            ws_t1_2.insert_rows(Nuevas_Filas, r_idx, value_input_option='USER_ENTERED')
+                            # =========================================================
+                            # 🛡️ MEJORA V41: SOBRESCRITURA DE PRECISIÓN (SIN BORRAR FILAS)
+                            # =========================================================
+                            # 1. Sobrescribimos la fila virtual r_idx con la primera OS real
+                            ws_t1_2.update(range_name=f"A{r_idx}", values=[Nuevas_Filas[0]], value_input_option='USER_ENTERED')
+                            
+                            # 2. Si la finca se dividió en más de 1 OS, las adicionales se agregan al final seguro
+                            if len(Nuevas_Filas) > 1:
+                                col_a_virt = ws_t1_2.col_values(1)
+                                f_libre_virt = next((i + 1 for i in range(len(col_a_virt) - 1, -1, -1) if str(col_a_virt[i]).strip() != ""), 0) + 1
+                                ws_t1_2.update(range_name=f"A{f_libre_virt}", values=Nuevas_Filas[1:], value_input_option='USER_ENTERED')
                             
                             if 'supabase' in st.session_state and st.session_state['supabase'] is not None:
                                 try:
@@ -529,13 +546,13 @@ def ejecutar(extraer_numero, purificar_lote):
                                     pass
 
                             st.balloons()
-                            st.success("🎯 LEGALIZACIÓN PERFECTA. El registro virtual ha sido eliminado y reemplazado por misiones reales.")
+                            st.success("🎯 LEGALIZACIÓN PERFECTA. El registro virtual ha sido sobrescrito con éxito sin desplazar ni romper fórmulas de Excel.")
                             
                             st.session_state.pop('legalizador_rows', None)
                             st.cache_data.clear()
                             st.rerun()
                     except Exception as e: 
-                        st.error(f"🚨 Falla en el sistema de inserción de filas: {e}")
+                        st.error(f"🚨 Falla en el sistema de inyección de filas: {e}")
 
 if __name__ == "__main__":
     ejecutar(None, None)
