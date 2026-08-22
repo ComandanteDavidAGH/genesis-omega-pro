@@ -279,7 +279,6 @@ def ejecutar(purificar_lote, extraer_numero):
             "FUNDACION": [10.5208, -74.1833]
         }
 
-        # 🎯 ORDENAMIENTO LOGÍSTICO REVISADO (FLORIDA UBICADA ENTRE PALOMAR Y SEVILLA)
         orden_logistico = [
             "PALOMINO", "BURITACA", "GUACHACA", "CIENAGA", "RIO FRIO", 
             "ORIHUECA", "CAÑO MOCHO", "LA CEIBA", "PALOMAR", "FLORIDA", 
@@ -516,7 +515,7 @@ def ejecutar(purificar_lote, extraer_numero):
                 st.components.v1.html(mapa_magdalena._repr_html_(), height=650)
 
                 # ==================================================
-                # 📋 PANELES SEGMENTADOS (TABS) - INCLUYE TABLA MAESTRA
+                # 📋 PANELES SEGMENTADOS (TABS)
                 # ==================================================
                 st.markdown("<br>### 📋 Segmentación de Inteligencia Operativa", unsafe_allow_html=True)
                 
@@ -619,19 +618,39 @@ def ejecutar(purificar_lote, extraer_numero):
                         }
                     )
 
+                # 🎯 PESTAÑA HISTORIAL CON SELECTOR DE SECTOR Y GRÁFICO DE LÍNEAS / BARRAS LIMPIO
                 with tab_clima:
                     st.markdown("#### 🌧️ Registro Diario de Lluvias por Sector (Últimos 90 Días + Pronóstico 7D)")
                     
                     if not df_clima_raw.empty:
-                        fig_lluvia = px.bar(
-                            df_clima_raw.sort_values("FECHA"), x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
-                            barmode="group", title="<b>Precipitación Diaria Comparativa (mm)</b>",
-                            category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
-                        )
+                        # 🎯 RECURSO VIP: SELECTOR DE SECTOR PARA DESATOSIGAR EL GRÁFICO
+                        opciones_sectores_filtro = ["🌐 TODOS LOS SECTORES (Vista General - Líneas)"] + cols_presentes_ordenadas
+                        sec_grafico_sel = st.selectbox("📊 Filtro de Enfoque para la Gráfica:", opciones_sectores_filtro)
+                        
+                        if sec_grafico_sel == "🌐 TODOS LOS SECTORES (Vista General - Líneas)":
+                            # Gráfico de Líneas Limpio para la vista general
+                            df_chart = df_clima_raw.sort_values("FECHA")
+                            fig_lluvia = px.line(
+                                df_chart, x="FECHA", y="LLUVIA (mm)", color="SECTOR", 
+                                title="<b>Tendencia de Precipitación Diaria (Curva General)</b>",
+                                category_orders={"SECTOR": cols_presentes_ordenadas + cols_extra}
+                            )
+                            fig_lluvia.update_traces(line=dict(width=2.5))
+                        else:
+                            # Gráfico de Barras Individual
+                            df_chart = df_clima_raw[df_clima_raw["SECTOR"] == sec_grafico_sel].sort_values("FECHA")
+                            fig_lluvia = px.bar(
+                                df_chart, x="FECHA", y="LLUVIA (mm)", 
+                                title=f"<b>Precipitación Diaria Detallada - Sector {sec_grafico_sel} (mm)</b>",
+                                color_discrete_sequence=["#27AE60"]
+                            )
+                            fig_lluvia.update_traces(marker_line_width=0)
+
                         fig_lluvia.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', 
                             yaxis_title="Milímetros (mm)", xaxis_title="",
-                            legend_title="Ruta Logística"
+                            legend_title="Sector (Ruta Logística)",
+                            xaxis=dict(rangeslider=dict(visible=True), type="date") # Range Slider para Zoom
                         )
                         st.plotly_chart(fig_lluvia, use_container_width=True)
                         
@@ -642,7 +661,7 @@ def ejecutar(purificar_lote, extraer_numero):
                                 
                         st.dataframe(df_clima_pivot, use_container_width=True, hide_index=True, column_config=cols_cfg_clima)
                     else:
-                        st.warning("⚠️ No se encontraron datos de lluvia para los sectores operativos (La API no respondió correctamente).")
+                        st.warning("⚠️ No se encontraron datos de lluvia para los sectores operativos.")
 
                 # ==================================================
                 # 📥 EXPORTACIÓN MULTI-HOJA VIP
