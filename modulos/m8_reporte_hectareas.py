@@ -487,7 +487,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                             ws_t['A1'].font = Font(size=14, bold=True, color="FFFFFF")
                             ws_t['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                             ws_t['A1'].alignment = Alignment(horizontal='center', vertical='center')
-                            ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_export_t.columns))
+                            ws_t.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_export_t.columns))
                             
                             ws_t['A3'] = f"Actualizado a: {datetime.now().strftime('%d/%m/%Y')}"
                             ws_t['A3'].font = Font(italic=True, color="555555", bold=True)
