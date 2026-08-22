@@ -12,25 +12,14 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # =================================================================
-# ⚙️ CONSTANTES DE CONFIGURACIÓN CENTRALIZADAS
+# ⚙️ CONSTANTES Y MOTOR DE CONEXIÓN UNIFICADO
 # =================================================================
 URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
-# Topes de purificación financiera (Evita Magic Numbers dispersos)
-TOPE_MAX_COSTO_VUELO = 150000.0
-REEMPLAZO_ERROR_VUELO = 75000.0
-TOPE_MAX_COSTO_TOTAL = 400000.0
-REEMPLAZO_ERROR_TOTAL = 200000.0
-
-# Paleta de Colores Ejecutiva
 COLOR_NAVY = '#0d1b2a'
 COLOR_DORADO = '#d4af37'
 COLOR_VERDE = '#143521'
-COLOR_BORDER = '#cbd5e1'
 
-# =================================================================
-# ⚡ MOTOR DE CONEXIÓN UNIFICADO
-# =================================================================
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -50,7 +39,7 @@ def obtener_cliente_gspread_unificado():
         return None
 
 # =================================================================
-# 🛡️ UTILIDADES Y LIMPIEZA
+# 🛡️ UTILIDADES DE PURIFICACIÓN Y LIMPIEZA FINANCIERA
 # =================================================================
 def limpiar_tarifa_excel(val):
     if isinstance(val, (int, float)): return float(val)
@@ -100,7 +89,7 @@ def es_cooperativa(finca_nombre):
     return any(p in f_up for p in patrones_coop)
 
 # =================================================================
-# 💾 EXTRACCIÓN DINÁMICA DE DATOS
+# 💾 EXTRACCIÓN CACHEADA DE DATOS OPERATIVOS (ESTRUCTURA ESTÁNDAR)
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=120)
 def cargar_datos_gerenciales():
@@ -110,61 +99,41 @@ def cargar_datos_gerenciales():
     try:
         boveda_act = gc.open_by_url(URL_BOVEDA_MAESTRA)
         datos_brutos = boveda_act.worksheet("TABLA 1").get_all_values()
-        if not datos_brutos: return pd.DataFrame()
-
-        # Búsqueda dinámica de la fila de encabezados
-        idx_header = -1
-        for i in range(min(10, len(datos_brutos))):
-            fila_upper = [str(x).upper().strip() for x in datos_brutos[i]]
-            if "FINCA" in fila_upper and ("COSTO_HA" in fila_upper or "VALOR_FACTURAR" in fila_upper):
-                idx_header = i
-                headers = fila_upper
-                break
-
-        if idx_header == -1:
-            idx_header = 4
-            headers = [
+        
+        if len(datos_brutos) > 5:
+            columnas_t1 = [
                 "OS", "BLOQUE", "FINCA", "SECTOR", "AREA_BRUTA", "AREA_FUMIG", "COCTEL", 
                 "FECHA", "DIA", "SEMANA", "H_TOTAL", "GLN_HA", "VOL_TOTAL", "REND_HR", 
                 "REND_MIN", "PILOTO", "HK", "MODELO", "COSTO_AVION", "COSTO_HA", 
                 "DOMINICAL_HA", "COSTO_FINCA", "VALOR_FACTURAR", "PISTA"
             ]
-
-        filas_data = datos_brutos[idx_header + 1:]
-        df = pd.DataFrame(filas_data, columns=headers[:len(filas_data[0])] if filas_data else headers)
-        
-        # Mapeo flexible de columnas clave
-        col_finca = next((c for c in df.columns if 'FINCA' in c), 'FINCA')
-        col_fecha = next((c for c in df.columns if 'FECHA' in c), 'FECHA')
-        col_costo_ha = next((c for c in df.columns if 'COSTO_HA' in c or 'COSTO_VUELO' in c), 'COSTO_HA')
-        col_facturar = next((c for c in df.columns if 'VALOR_FACTURAR' in c or 'FACTURA' in c), 'VALOR_FACTURAR')
-        col_hk = next((c for c in df_t1_cols if 'HK' in c) if 'df_t1_cols' in locals() else 'HK', 'HK')
-        col_pista = next((c for c in df.columns if 'PISTA' in c), 'PISTA')
-
-        df['FINCA'] = df[col_finca].astype(str).str.strip().str.upper()
-        df['FECHA_FILTRABLE'] = df[col_fecha].apply(normalizar_a_fecha_pura)
-        
-        def clasificar_tec(row):
-            texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
-            if 'DRON' in texto or 'DR5' in texto: return 'DRONE'
-            return 'AVIÓN'
-        
-        df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
-        df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVAS' if es_cooperativa(x) else 'ESPECIALES / PILOTOS')
-        
-        df['COSTO_TOTAL_HA'] = df[col_facturar].apply(limpiar_tarifa_excel) if col_facturar in df.columns else 0.0
-        df['COSTO_VUELO_HA'] = df[col_costo_ha].apply(limpiar_tarifa_excel) if col_costo_ha in df.columns else 0.0
-        
-        # Saneamiento de Errores
-        df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
-        df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
-        df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: REEMPLAZO_ERROR_VUELO if x > TOPE_MAX_COSTO_VUELO else x)
-        
-        df['OPERADOR_DRON'] = df[col_hk].astype(str).str.strip() + " - " + df[col_pista].astype(str).str.strip()
-        
-        return df.dropna(subset=['FECHA_FILTRABLE'])
-    except Exception as e:
+            filas_limpias = [r + [""]*(len(columnas_t1) - len(r)) for r in datos_brutos[5:]]
+            df = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
+            
+            df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
+            df['FECHA_FILTRABLE'] = df['FECHA'].apply(normalizar_a_fecha_pura)
+            
+            def clasificar_tec(row):
+                texto = f"{str(row.get('PILOTO',''))} {str(row.get('HK',''))} {str(row.get('MODELO',''))}".upper()
+                if 'DRON' in texto or 'DR5' in texto: return 'DRONE'
+                return 'AVIÓN'
+            
+            df['TECNOLOGIA'] = df.apply(clasificar_tec, axis=1)
+            df['TIPO_ENTIDAD'] = df['FINCA'].apply(lambda x: 'COOPERATIVAS' if es_cooperativa(x) else 'ESPECIALES / PILOTOS')
+            
+            df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
+            df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
+            
+            # Saneamiento de Errores de Digitación
+            df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
+            df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
+            df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: 75000 if x > 150000 else x)
+            
+            df['OPERADOR_DRON'] = df['HK'].astype(str).str.strip() + " - " + df['PISTA'].astype(str).str.strip()
+            
+            return df.dropna(subset=['FECHA_FILTRABLE'])
         return pd.DataFrame()
+    except Exception: return pd.DataFrame()
 
 # =================================================================
 # ⚙️ MOTOR EXCEL PROFESIONAL
@@ -186,6 +155,7 @@ def generar_excel_maestro(df_total, df_vuelo):
         
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
+            
             ws.column_dimensions['A'].width = 32
             ws.column_dimensions['B'].width = 24
             ws.column_dimensions['C'].width = 28
@@ -206,6 +176,7 @@ def generar_excel_maestro(df_total, df_vuelo):
                 
                 celda_dif = ws[f'F{row}']
                 celda_efi = ws[f'G{row}']
+                
                 celda_dif.number_format = '"$"#,##0'
                 celda_efi.number_format = '0.0%' 
                 
@@ -258,12 +229,11 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
 # =================================================================
 def ejecutar(*args, **kwargs):
 
-    # 🎯 CSS VIP: REDISEÑO COMPLETO DE INPUTS DE FECHA Y CONTENEDORES
     st.markdown(f"""
     <style>
     .titulo-gerencial {{ color: #0d1b2a; border-bottom: 2px solid {COLOR_DORADO}; padding-bottom: 4px; font-weight: 900; letter-spacing: 0.5px; }}
     
-    /* REDISEÑO DE SELECTORES DE FECHA (ELIMINA CAJAS PÁLIDAS) */
+    /* REDISEÑO DE SELECTORES DE FECHA CON BORDE NÍTIDO */
     div[data-testid="stDateInput"] {{
         background-color: transparent !important;
     }}
@@ -273,11 +243,6 @@ def ejecutar(*args, **kwargs):
         border-radius: 8px !important;
         box-shadow: 0px 2px 6px rgba(13, 27, 42, 0.08) !important;
         padding: 2px 6px !important;
-        transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }}
-    div[data-testid="stDateInput"] > div:focus-within {{
-        border-color: {COLOR_DORADO} !important;
-        box-shadow: 0px 0px 8px rgba(212, 175, 55, 0.3) !important;
     }}
     div[data-testid="stDateInput"] input {{
         color: #0d1b2a !important;
@@ -285,7 +250,6 @@ def ejecutar(*args, **kwargs):
         font-size: 14px !important;
     }}
     
-    /* BORDES Y CAJAS LIMPIAS */
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
     
