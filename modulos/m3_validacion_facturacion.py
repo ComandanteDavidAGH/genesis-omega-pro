@@ -380,14 +380,36 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
-    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; overflow: hidden !important; }
-    div[data-testid="stDateInput"] > div { border: 3px solid #143521 !important; border-radius: 8px !important; background-color: #ffffff !important; overflow: hidden !important; }
+    
+    /* 🛡️ REGLA CORREGIDA PARA TABLA TIPO EXCEL (PERMITE TABULACIÓN FLUIDA) */
+    div[data-testid="stDataFrame"] { 
+        border: 3px solid #143521 !important; 
+        border-radius: 8px !important; 
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; 
+        overflow: hidden !important; 
+    }
+    
+    div[data-testid="stDataEditor"] { 
+        border: 3px solid #143521 !important; 
+        border-radius: 8px !important; 
+        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important;
+    }
+
+    /* Forzar que el lienzo de edición retenga la tecla TAB nativa de Excel */
+    div[data-testid="stDataEditor"] canvas {
+        outline: none !important;
+    }
+    div[data-testid="stDataEditor"] :focus {
+        border-color: #d4af37 !important;
+    }
+
+    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
+    div[data-testid="stDateInput"] > div { border: 3px solid #143521 !important; border-radius: 8px !important; background-color: #ffffff !important; }
     div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: none !important; box-shadow: none !important; font-weight: bold !important; color: #000000 !important; background-color: transparent !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] * { color: #000000 !important; font-weight: bold !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
-    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; overflow: hidden !important; padding: 2px 5px !important; }
+    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; padding: 2px 5px !important; }
     div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
     </style>
     """, unsafe_allow_html=True)
