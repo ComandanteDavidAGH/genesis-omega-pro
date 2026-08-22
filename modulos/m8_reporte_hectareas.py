@@ -427,11 +427,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
 
         st.markdown("### 🎛️ Centro de Comando y Filtros")
 
-        # =========================================================
-        # 🎯 MEJORA VIP: SELECTORES DE MODO ESTRICTAMENTE EXCLUSIVOS
-        # =========================================================
-        st.info("💡 **MODOS DE VISUALIZACIÓN:** Seleccione un modo exclusivo para analizar la información sin superposiciones.")
-        
         c_tog1, c_tog2 = st.columns(2)
         ver_boveda_tarifas = c_tog1.toggle("🏦 ACTIVAR BÓVEDA DE TARIFAS MAESTRAS", value=False, key="toggle_boveda_tarifas_m8")
         modo_historico_global = c_tog2.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO", value=False, key="toggle_macro_m8", disabled=ver_boveda_tarifas)
@@ -541,7 +536,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 else:
                     st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
             
-            st.stop() # 🛑 DETIENE LA EJECUCIÓN AQUÍ PARA GARANTIZAR INDEPENDENCIA TOTAL
+            st.stop()
 
         # ---------------------------------------------------------
         # 🕰️ MODO 2: VISOR MACRO-HISTÓRICO
@@ -802,8 +797,12 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 )
                 g2.plotly_chart(fig_bar, use_container_width=True)
 
+                # =========================================================
+                # 💎 REDISEÑO VIP DEL RANKING DE AERONAVES (TABLA EJECUTIVA)
+                # =========================================================
                 st.markdown("---")
                 st.markdown("##### 🏆 Ranking: Impacto de Costos por Aeronave (Facturación a la Empresa)")
+                
                 df_hk = df_filt.groupby(['HK']).agg(
                     MISIONES=('HK', 'count'),
                     HECTAREAS=('AREA_NUM', 'sum'),
@@ -811,18 +810,38 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     HA_CON_COSTO=('HA_CON_COSTO', 'sum')
                 ).reset_index()
                 
-                df_hk['TARIFA_PROM ($/ha)'] = np.where(df_hk['HA_CON_COSTO'] > 0, df_hk['COSTO_TOTAL'] / df_hk['HA_CON_COSTO'], 0)
-                df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False)
+                df_hk['TARIFA_PROM'] = np.where(df_hk['HA_CON_COSTO'] > 0, df_hk['COSTO_TOTAL'] / df_hk['HA_CON_COSTO'], 0)
+                df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False).reset_index(drop=True)
                 
+                # Renderizado con encabezados limpios y formatters nativos de Streamlit
                 st.dataframe(
-                    df_hk[['HK', 'MISIONES', 'HECTAREAS', 'COSTO_TOTAL', 'TARIFA_PROM ($/ha)']].style.format({
-                        'MISIONES': lambda x: f"{x:,.0f}".replace(",", "."),
-                        'HECTAREAS': fmt_latino,
-                        'COSTO_TOTAL': fmt_dinero,
-                        'TARIFA_PROM ($/ha)': fmt_dinero
-                    }).bar(subset=['COSTO_TOTAL'], color='#28a745', vmin=0)
-                      .bar(subset=['HECTAREAS'], color='#5c88b0', vmin=0),
-                    use_container_width=True, hide_index=True
+                    df_hk[['HK', 'MISIONES', 'HECTAREAS', 'COSTO_TOTAL', 'TARIFA_PROM']],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "HK": st.column_config.TextColumn(
+                            "🛩️ MATRÍCULA / HK",
+                            help="Matrícula o identificador único de la aeronave o dron"
+                        ),
+                        "MISIONES": st.column_config.NumberColumn(
+                            "🛰️ MISIONES",
+                            format="%d"
+                        ),
+                        "HECTAREAS": st.column_config.NumberColumn(
+                            "🗺️ HECTÁREAS NETAS",
+                            format="%.2f ha"
+                        ),
+                        "COSTO_TOTAL": st.column_config.ProgressColumn(
+                            "💰 FACTURACIÓN TOTAL ($)",
+                            format="$ %,.0f",
+                            min_value=0,
+                            max_value=float(df_hk['COSTO_TOTAL'].max()) if not df_hk.empty else 100
+                        ),
+                        "TARIFA_PROM": st.column_config.NumberColumn(
+                            "📊 TARIFA PROM. ($/HA)",
+                            format="$ %,.0f"
+                        )
+                    }
                 )
 
             elif vista_seleccionada == "📊 Resumen Gerencial":
