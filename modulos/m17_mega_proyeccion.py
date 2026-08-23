@@ -88,7 +88,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
         try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         except: pass
         
-        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS
+        # 🛸 EXTRACCIÓN HÍBRIDA DE SIGLAS (SUPABASE FIRST)
         if _supabase_client:
             try:
                 res = _supabase_client.table("DICCIONARIO_SIGLAS").select("*").execute()
@@ -141,7 +141,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. EXTRAER TABLA 1 
+        # 3. EXTRAER TABLA 1 (CON RECARGOS HISTÓRICOS)
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -208,26 +208,7 @@ def limpiar_numero(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 FILTRO DE FECHAS BLINDADO ANTI-CHOQUES
-def fecha_segura_en_rango(fecha_texto, f_ini, f_fin):
-    if not fecha_texto or pd.isna(fecha_texto) or str(fecha_texto).strip() == "": 
-        return False
-    s = str(fecha_texto).strip().replace('.', '-').replace('/', '-')
-    try:
-        d = pd.to_datetime(s, dayfirst=True).date()
-        return f_ini <= d <= f_fin
-    except:
-        pass
-    try:
-        res = procesar_fecha_pesada(fecha_texto)
-        if isinstance(res, (datetime, pd.Timestamp)): d = res.date()
-        elif isinstance(res, date): d = res
-        else: d = pd.to_datetime(str(res)).date()
-        return f_ini <= d <= f_fin
-    except:
-        return False
-
-def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
+def calcular_historicos_finca(finca_usuario, df_t1):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0, 0.0
     
@@ -241,15 +222,15 @@ def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
     if df_finca.empty: 
         return 45000.0, 0.0 
         
-    df_evaluar = df_finca
+    año_actual = str(datetime.now().year)
+    año_corto = año_actual[-2:]
     
+    df_evaluar = df_finca
     if 'FECHA_CLEAN' in df_finca.columns:
-        # APLICACIÓN DE FILTRO SEGURO BASADO EN SELECTORES
-        mask_fechas = df_finca['FECHA_CLEAN'].apply(lambda x: fecha_segura_en_rango(x, fecha_inicio, fecha_fin))
-        df_finca_fechas = df_finca[mask_fechas]
-        
-        if not df_finca_fechas.empty and not df_finca_fechas[df_finca_fechas['VAL_COSTO_HA'] > 1000].empty:
-            df_evaluar = df_finca_fechas
+        mask_año = df_finca['FECHA_CLEAN'].str.contains(año_actual, na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"/{año_corto}", na=False) | df_finca['FECHA_CLEAN'].str.endswith(f"-{año_corto}", na=False)
+        df_finca_año = df_finca[mask_año]
+        if not df_finca_año.empty and not df_finca_año[df_finca_año['VAL_COSTO_HA'] > 1000].empty:
+            df_evaluar = df_finca_año
             
     prom_vuelo = 45000.0
     prom_recargo = 0.0
@@ -259,6 +240,7 @@ def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
         prom_vuelo = float(df_valid_costos['VAL_COSTO_HA'].mean())
         if pd.isna(prom_vuelo): prom_vuelo = 45000.0
 
+    # 💥 FILTRO FORENSE: Calcula el promedio SOLO entre los vuelos que sí tuvieron recargo (>100 pesos)
     if 'VAL_RECARGO_HA' in df_evaluar.columns:
         df_recargos_validos = df_evaluar[df_evaluar['VAL_RECARGO_HA'] > 100]
         if not df_recargos_validos.empty:
@@ -328,60 +310,38 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
 
 def ejecutar(supabase_client=None):
     VERDE_INTENSO = '#143521'
-    COLOR_NAVY = '#0d1b2a'
-    COLOR_DORADO = '#d4af37'
 
-    css_maestro = f"""
+    # 💥 BLOQUE CSS SANEADO
+    css_maestro = """
     <style>
-    .titulo-mega {{ color: {COLOR_NAVY}; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}}
+    .titulo-mega { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; margin-bottom: 15px;}
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid VERDE_HEX !important; border-radius: 8px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); overflow: hidden !important; }
+    .tarjeta-kpi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); text-align: center; margin-bottom: 15px;}
+    .kpi-titulo { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
+    .kpi-valor { font-size: 21px; font-family: 'Arial Black'; margin: 5px 0 0 0; }
     
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] {{ 
-        border: 2px solid {COLOR_NAVY} !important; 
-        border-radius: 8px !important; 
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.1); 
-        overflow: hidden !important; 
-    }}
-    
-    .tarjeta-kpi {{ 
-        background: linear-gradient(135deg, {COLOR_NAVY} 0%, #1a365d 100%); 
-        border-left: 5px solid {COLOR_DORADO}; 
-        padding: 15px; 
-        border-radius: 8px; 
-        color: white; 
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.2); 
-        text-align: center; 
-        margin-bottom: 15px;
-    }}
-    .kpi-titulo {{ font-size: 11px; font-weight: bold; color: {COLOR_DORADO}; text-transform: uppercase; margin:0; letter-spacing: 1px; }}
-    .kpi-valor {{ font-size: 21px; font-family: 'Arial Black'; margin: 5px 0 0 0; }}
-    
-    div[data-testid="stTextInput"] > div,
-    div[data-testid="stNumberInput"] > div,
-    div[data-testid="stDateInput"] > div,
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {{
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] {
         background-color: #ffffff !important;
-        border: 2px solid {COLOR_NAVY} !important;
+        border: 3px solid VERDE_HEX !important;
         border-radius: 6px !important;
-    }}
-    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{
+    }
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
         background-color: transparent !important;
         border: none !important;
-    }}
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input, 
-    div[data-testid="stDateInput"] input, 
-    div[data-testid="stMultiSelect"] * {{
-        color: {COLOR_NAVY} !important;
+    }
+    div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stMultiSelect"] * {
+        color: #000000 !important;
         font-weight: bold !important;
-    }}
-    
-    div[data-testid="stMainBlockContainer"] label p {{
-        color: {COLOR_NAVY} !important;
+    }
+    div[data-testid="stMainBlockContainer"] label p {
+        color: #0d1b2a !important;
         font-weight: 800 !important;
         text-transform: uppercase !important;
-    }}
+    }
     </style>
-    """
+    """.replace("VERDE_HEX", VERDE_INTENSO)
     
     st.markdown(css_maestro, unsafe_allow_html=True)
 
@@ -433,12 +393,13 @@ def ejecutar(supabase_client=None):
     df_precios = st.session_state.get('m17_prec', pd.DataFrame())
     df_t1 = st.session_state.get('m17_t1', pd.DataFrame())
     
+    # 💥 NUEVA COLUMNA EN LA MEMORIA DE LA GRILLA
     if 'm17_df_entrada_grid' not in st.session_state or 'DOMINICAL' not in st.session_state.m17_df_entrada_grid.columns:
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{
             "FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": "", "DOMINICAL": False
-        } for _ in range(1000)])
+        } for _ in range(500)])
 
-    st.markdown("### 📥 1. Pista de Aterrizaje Segura (1.000 Filas)")
+    st.markdown("### 📥 1. Pista de Aterrizaje Segura")
     st.caption("📋 Selecciona tus columnas en Excel, haz Ctrl+C, párate en la primera celda de abajo y presiona **Ctrl+V**.")
     
     df_edited = st.data_editor(
@@ -453,19 +414,15 @@ def ejecutar(supabase_client=None):
             "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
             "DIAS CICLO": st.column_config.TextColumn("Días Ciclo"),
             "PRECIO VUELO": st.column_config.TextColumn("Precio Vuelo Manual (Opcional)"),
-            "DOMINICAL": st.column_config.CheckboxColumn("¿Dom/Fest?", default=False),
+            "DOMINICAL": st.column_config.CheckboxColumn("¿Dom/Fest?", default=False), # 💥 EL INTERRUPTOR TÁCTICO
         }
     )
 
     st.markdown("---")
-    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Base Histórica")
-    
-    c_f1, c_f2, c_r1, c_r2 = st.columns(4)
-    hoy_st = date.today()
-    fecha_base_inicio = c_f1.date_input("📅 Rango Histórico (Desde)", value=date(hoy_st.year, 1, 1))
-    fecha_base_fin = c_f2.date_input("📅 Rango Histórico (Hasta)", value=date(hoy_st.year, 12, 31), min_value=fecha_base_inicio)
-    inflacion_proyectada = c_r1.number_input("📈 Inflación a Proyectar (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
-    colchon_dias = c_r2.number_input("🛡️ Colchón de Días Ciclo", min_value=0, max_value=30, value=0, step=1)
+    st.markdown("### ⚙️ 2. Parámetros de Riesgo y Proyección")
+    col_r1, col_r2 = st.columns(2)
+    inflacion_proyectada = col_r1.number_input("📈 Inflación Global Proyectada (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+    colchon_dias = col_r2.number_input("🛡️ Colchón de Días Ciclo (Sumar a todas)", min_value=0, max_value=30, value=0, step=1)
 
     factor_inflacion = 1 + (inflacion_proyectada / 100)
 
@@ -490,8 +447,7 @@ def ejecutar(supabase_client=None):
                 resultados = []
                 log_volumetrico = {}
 
-                # ⚡ ACELERADOR DE BUCLE PARA 1000 FILAS
-                for row in df_valid.to_dict('records'):
+                for idx, row in df_valid.iterrows():
                     finca_n = str(row['FINCA']).strip().upper()
                     ha_num = limpiar_numero(row['HECTAREAS'])
                     coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
@@ -499,11 +455,9 @@ def ejecutar(supabase_client=None):
                     fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
                     coctel_combinado = f"{coctel_n} {fert_n}".strip()
 
-                    dias_c = max(0, int(round(limpiar_numero(row["DIAS CICLO"])))) + int(colchon_dias)
+                    dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
                     precio_vuelo_manual = limpiar_numero(row['PRECIO VUELO'])
-                    
-                    valor_dominical = row.get("DOMINICAL", False)
-                    aplica_dominical = (valor_dominical is True or str(valor_dominical).strip().upper() in {"TRUE", "VERDADERO", "SI", "SÍ", "1"})
+                    aplica_dominical = bool(row.get('DOMINICAL', False)) # 💥 CAPTURAR EL ESTADO DEL INTERRUPTOR
 
                     if ha_num == 0 and not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
@@ -512,21 +466,23 @@ def ejecutar(supabase_client=None):
 
                     if ha_num <= 0: continue
 
-                    precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1, fecha_base_inicio, fecha_base_fin)
+                    # 💥 MÁQUINA DEL TIEMPO (AHORA PURIFICADA)
+                    precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1)
 
                     if precio_vuelo_manual == 0:
                         precio_vuelo_final = precio_vuelo_historico
                     else:
                         precio_vuelo_final = precio_vuelo_manual
 
+                    # APLICAR INFLACIÓN AL VUELO
                     precio_vuelo_final = precio_vuelo_final * factor_inflacion
                     
+                    # 💥 APLICAR INFLACIÓN AL RECARGO SOLO SI EL INTERRUPTOR ESTÁ PRENDIDO
                     if aplica_dominical:
                         recargo_final_ha = recargo_historico * factor_inflacion
                     else:
                         recargo_final_ha = 0.0
 
-                    # LÓGICA DE ST 100% ORIGINAL
                     tipo_prod = "TERCERO"
                     if not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
@@ -588,6 +544,7 @@ def ejecutar(supabase_client=None):
                     costo_vuelo_fila = 0.0 if pd.isna(costo_vuelo_fila) else float(costo_vuelo_fila)
                     costo_recargo_fila = 0.0 if pd.isna(costo_recargo_fila) else float(costo_recargo_fila)
 
+                    # 💥 GRAN TOTAL INCLUYE EL RECARGO
                     gran_total = math.floor(costo_mezcla_fila + costo_st_fila + costo_vuelo_fila + costo_recargo_fila + 0.5)
                     costo_ha = math.floor((gran_total / ha_num) + 0.5) if ha_num > 0 else 0
 
@@ -601,12 +558,13 @@ def ejecutar(supabase_client=None):
 
                 df_resultados_final = pd.DataFrame(resultados)
                 
+                # 💥 ORDENAMIENTO ALFABÉTICO MANTENIDO 💥
                 if not df_resultados_final.empty:
                     df_resultados_final = df_resultados_final.sort_values(by="FINCA", ascending=True).reset_index(drop=True)
 
                 st.session_state.m17_resultados = df_resultados_final
                 st.session_state.m17_volumetria = log_volumetrico
-                st.success("✅ Proyección completada exitosamente. Fechas y parámetros de riesgo aplicados.")
+                st.success("✅ Proyección completada exitosamente. Recargos aplicados bajo control táctico.")
 
     if 'm17_resultados' in st.session_state and not st.session_state.m17_resultados.empty:
         st.markdown("---")
@@ -713,14 +671,8 @@ def ejecutar(supabase_client=None):
                 
                 column_headers = {}
                 for col_idx in range(1, max_c + 1):
-                    letra_columna = openpyxl.utils.get_column_letter(col_idx)
+                    ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = 20
                     header_val = ws.cell(row=1, column=col_idx).value
-                    valores_columna = [
-                        ws.cell(row=r, column=col_idx).value
-                        for r in range(1, min(max_r, 200) + 1)
-                    ]
-                    ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 2
-                    ws.column_dimensions[letra_columna].width = min(max(ancho, 14), 35)
                     column_headers[col_idx] = str(header_val).upper() if header_val else ""
 
                 for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
