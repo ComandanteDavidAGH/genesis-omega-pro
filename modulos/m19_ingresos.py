@@ -4,7 +4,6 @@ import gspread
 from datetime import datetime, timedelta, date
 import re
 import io
-from difflib import get_close_matches
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -40,7 +39,7 @@ def obtener_datos_bovedas():
         return datos_ing, datos_dicc, datos_tras, titulo_tras, None
     except Exception as e: return None, None, None, None, str(e)
 
-# --- 🔍 RASTREADOR DE MATERIALES ---
+# --- 🔍 RASTREADOR DE MATERIALES 100% ESTRICTO ---
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
     if not gc: return {"ERROR": "Sin conexión a los servidores de Google."}
@@ -61,15 +60,12 @@ def extraer_mapeo_materiales():
     except Exception as e: 
         return {"ERROR": str(e)}
 
+# 💥 BÚSQUEDA EXACTA: Cero aproximaciones permitidas
 def buscar_codigo_material(producto_nombre, mapeo):
     if "ERROR" in mapeo: return "S/N"
     prod_clean = re.sub(r'\s+', ' ', str(producto_nombre).strip().upper())
     if not prod_clean or not mapeo: return "S/N"
     if prod_clean in mapeo: return mapeo[prod_clean]
-    for desc, cod in mapeo.items():
-        if prod_clean in desc or desc in prod_clean: return cod
-    matches = get_close_matches(prod_clean, list(mapeo.keys()), n=1, cutoff=0.6)
-    if matches: return mapeo[matches[0]]
     return "S/N"
 
 # 💥 RADAR CRONOLÓGICO Y ANTI-FALLOS
@@ -209,20 +205,20 @@ def ejecutar():
         for p in productos_precio_sap: lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
             
         cache_mapeo = {}
+        
+        # 💥 TOLERANCIA CERO: Mapeo exacto de nombres de productos
         def estandarizar_y_marcar_inteligente(prod):
             p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
             if p_clean in ["", "NONE", "NAN", "NAT", "<NA>"]: return ""
             if p_clean in cache_mapeo: return cache_mapeo[p_clean]
-            resultado = ""
-            if p_clean in lista_autorizada: resultado = p_clean
+            
+            # Si el nombre es idéntico a la base oficial, lo acepta.
+            if p_clean in lista_autorizada: 
+                resultado = p_clean
             else:
-                posibles = [o for o in lista_autorizada if (p_clean in o) or (o in p_clean)]
-                if posibles:
-                    posibles.sort(key=lambda x: abs(len(x) - len(p_clean)))
-                    resultado = posibles[0]
-                else:
-                    matches = get_close_matches(p_clean, list(lista_autorizada), n=1, cutoff=0.65)
-                    resultado = matches[0] if matches else f"{p_clean} 🛑 [OBSOLETO]"
+                # Si no es exacto, lo marca sin piedad. NO INTENTA ADIVINAR.
+                resultado = f"{p_clean} 🛑 [NO RECONOCIDO]"
+                
             cache_mapeo[p_clean] = resultado
             return resultado
 
@@ -700,6 +696,8 @@ def ejecutar():
                 df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
 
                 st.markdown("<br>", unsafe_allow_html=True)
+                
+                # 💥 EJECUCIÓN BATCH PARA EDICIONES MASIVAS
                 if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
                     cambios_actualizacion = []
                     eliminaciones = []
@@ -729,29 +727,38 @@ def ejecutar():
                                             cambios_actualizacion.append({'fila': fila_excel, 'col_idx': idx_cols[col], 'nuevo': val_inyectar})
                     
                     if cambios_actualizacion or eliminaciones:
-                        cambios_exitosos = False
                         gc_temp = inicializar_cliente_gspread()
                         sh_temp = gc_temp.open_by_url(URL_SHEET_INGRESOS)
                         ws_write_ing = sh_temp.worksheets()[0]
                         
-                        with st.spinner(f"Enviando {len(cambios_actualizacion)} modificaciones y {len(eliminaciones)} eliminaciones..."):
-                            for act in cambios_actualizacion:
-                                try: 
-                                    ws_write_ing.update_cell(act['fila'], act['col_idx'], act['nuevo'])
-                                    cambios_exitosos = True
-                                except Exception as e: st.error(f"Error al actualizar fila {act['fila']}: {e}")
-                                        
-                            if eliminaciones:
-                                for eli in sorted(eliminaciones, reverse=True):
-                                    try: ws_write_ing.delete_row(eli); cambios_exitosos = True
-                                    except AttributeError:
-                                        try: ws_write_ing.delete_rows(eli); cambios_exitosos = True
-                                        except Exception as e: st.error(f"Error fatal API Google. Fila {eli}. {e}")
-                                    except Exception as e: st.error(f"Error al eliminar fila {eli}. {e}")
+                        with st.spinner(f"Sincronizando la nube con un solo paquete de datos..."):
+                            try:
+                                # 💥 BATCH UPDATE PARA EDICIONES: Crea una lista de celdas y actualiza de un solo golpe.
+                                if cambios_actualizacion:
+                                    celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion]
+                                    ws_write_ing.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
+                                
+                                # 💥 BATCH UPDATE PARA ELIMINACIONES: Petición JSON a Google para no hacer viajes redundantes.
+                                if eliminaciones:
+                                    eliminaciones = sorted(list(set(eliminaciones)), reverse=True)
+                                    peticiones_borrado = []
+                                    for eli in eliminaciones:
+                                        peticiones_borrado.append({
+                                            "deleteDimension": {
+                                                "range": {
+                                                    "sheetId": ws_write_ing.id,
+                                                    "dimension": "ROWS",
+                                                    "startIndex": eli - 1, # Google API usa índice base 0
+                                                    "endIndex": eli
+                                                }
+                                            }
+                                        })
+                                    sh_temp.batch_update({"requests": peticiones_borrado})
                                     
-                        if cambios_exitosos:
-                            st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente.")
-                            st.cache_data.clear(); st.rerun()
+                                st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente en una sola operación maestra.")
+                                st.cache_data.clear(); st.rerun()
+                            except Exception as e:
+                                st.error(f"🚨 Error crítico en la sincronización masiva: {e}")
                     else: st.info("No se detectaron cambios ni órdenes de eliminación.")
 
                 st.markdown("---")
@@ -916,7 +923,7 @@ def ejecutar():
                         lote_seleccionado = st.selectbox("📦 Seleccione el Lote", lotes_disp, key=f"t_lote_sel_{fk_t}")
                         t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
                     else:
-                        st.warning("⚠️ Sábana sin procesar o sin saldo. (Súbela arriba o usa el Módulo 2).")
+                        st.warning("⚠️ Sábana sin procesar o sin saldo.")
                         t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
@@ -1049,25 +1056,38 @@ def ejecutar():
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
 
             st.markdown("<br>", unsafe_allow_html=True)
+            
+            # 💥 EJECUCIÓN BATCH PARA ELIMINACIÓN DE TRASLADOS
             if st.button("💾 EJECUTAR ELIMINACIÓN DE TRASLADOS EN DRIVE", type="primary", key="btn_del_traslados"):
                 eliminaciones = [int(df_traslados_vista.iloc[i]['FILA_EXCEL']) for i in range(len(df_traslados_vista)) if "ELIMINAR REGISTRO" in str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()]
 
                 if eliminaciones:
-                    cambios_exitosos = False
-                    gc_temp = inicializar_cliente_gspread()
-                    sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                    ws_t = sh_temp.worksheet(titulo_ws_traslados)
-
-                    for eli in sorted(eliminaciones, reverse=True):
-                        try: ws_t.delete_row(eli); cambios_exitosos = True
-                        except AttributeError:
-                            try: ws_t.delete_rows(eli); cambios_exitosos = True
-                            except Exception as e: st.error(f"Error API Fila {eli}: {e}")
-                        except Exception as e: st.error(f"Error al eliminar fila {eli}: {e}")
-
-                    if cambios_exitosos:
-                        st.success("✅ ¡Objetivo neutralizado! El traslado ha sido borrado del sistema.")
-                        st.cache_data.clear(); st.rerun()
+                    with st.spinner("Eliminando registros de traslados en modo Batch (Cero bloqueos)..."):
+                        try:
+                            gc_temp = inicializar_cliente_gspread()
+                            sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
+                            ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                            
+                            # Batch Request JSON nativo a la API de Google Sheets
+                            eliminaciones = sorted(list(set(eliminaciones)), reverse=True)
+                            peticiones_borrado = []
+                            for eli in eliminaciones:
+                                peticiones_borrado.append({
+                                    "deleteDimension": {
+                                        "range": {
+                                            "sheetId": ws_t.id,
+                                            "dimension": "ROWS",
+                                            "startIndex": eli - 1, # Base 0 index
+                                            "endIndex": eli
+                                        }
+                                    }
+                                })
+                            sh_temp.batch_update({"requests": peticiones_borrado})
+                            
+                            st.success("✅ ¡Objetivo neutralizado! Los traslados han sido borrados del sistema mediante un solo barrido masivo.")
+                            st.cache_data.clear(); st.rerun()
+                        except Exception as e:
+                            st.error(f"🚨 Error crítico al ejecutar borrado masivo: {e}")
         else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
