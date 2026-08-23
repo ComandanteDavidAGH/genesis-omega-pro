@@ -667,7 +667,18 @@ def ejecutar(supabase_client=None):
         t_mx = df_filtro['Costo Mezcla ($)'].sum()
         t_gr = df_filtro['RESULTADO TOTAL ($)'].sum()
 
-        c1, c2, c3, c4, c5 = st.columns(5)
+        # Fila 1: Tres columnas
+c1, c2, c3 = st.columns(3)
+with c1: ... # Servicio Técnico
+with c2: ... # Vuelo
+with c3: ... # Recargos
+
+st.markdown("<br>", unsafe_allow_html=True) # Pequeño espacio para que no se peguen
+
+# Fila 2: Dos columnas amplias y centradas
+c4, c5 = st.columns(2)
+with c4: ... # Total Mezcla
+with c5: ... # GRAN TOTAL
         with c1: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>👨‍🔬 Total Serv. Tec</p><p class='kpi-valor'>$ {formato_latino(t_st, 0)}</p></div>", unsafe_allow_html=True)
         with c2: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>✈️ Total Vuelo</p><p class='kpi-valor'>$ {formato_latino(t_vu, 0)}</p></div>", unsafe_allow_html=True)
         with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>⚠️ Total Recargos</p><p class='kpi-valor'>$ {formato_latino(t_re, 0)}</p></div>", unsafe_allow_html=True)
