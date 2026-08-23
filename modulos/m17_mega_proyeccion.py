@@ -141,7 +141,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
             df_precios = pd.DataFrame(precios_consolidados)
         except: pass
 
-        # 3. EXTRAER TABLA 1
+        # 3. EXTRAER TABLA 1 
         try:
             t1_raw = boveda_recetas.worksheet("TABLA 1").get_all_values()
             if t1_raw:
@@ -208,7 +208,7 @@ def limpiar_numero(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 FILTRO DE FECHAS BLINDADO ANTI-CHOQUES (NUNCA ROMPE LA APP)
+# 💥 FILTRO DE FECHAS BLINDADO ANTI-CHOQUES
 def fecha_segura_en_rango(fecha_texto, f_ini, f_fin):
     if not fecha_texto or pd.isna(fecha_texto) or str(fecha_texto).strip() == "": 
         return False
@@ -227,7 +227,7 @@ def fecha_segura_en_rango(fecha_texto, f_ini, f_fin):
     except:
         return False
 
-def calcular_historicos_finca(finca_usuario, df_t1, f_ini, f_fin):
+def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
         return 45000.0, 0.0
     
@@ -242,12 +242,12 @@ def calcular_historicos_finca(finca_usuario, df_t1, f_ini, f_fin):
         return 45000.0, 0.0 
         
     df_evaluar = df_finca
+    
     if 'FECHA_CLEAN' in df_finca.columns:
         # APLICACIÓN DE FILTRO SEGURO BASADO EN SELECTORES
-        mask_fechas = df_finca['FECHA_CLEAN'].apply(lambda x: fecha_segura_en_rango(x, f_ini, f_fin))
+        mask_fechas = df_finca['FECHA_CLEAN'].apply(lambda x: fecha_segura_en_rango(x, fecha_inicio, fecha_fin))
         df_finca_fechas = df_finca[mask_fechas]
         
-        # Si el filtro encuentra vuelos dentro del rango, los evalúa. Si no encuentra nada, evalúa todo el historial para no dejarlo en 0.
         if not df_finca_fechas.empty and not df_finca_fechas[df_finca_fechas['VAL_COSTO_HA'] > 1000].empty:
             df_evaluar = df_finca_fechas
             
@@ -463,7 +463,7 @@ def ejecutar(supabase_client=None):
     c_f1, c_f2, c_r1, c_r2 = st.columns(4)
     hoy_st = date.today()
     fecha_base_inicio = c_f1.date_input("📅 Rango Histórico (Desde)", value=date(hoy_st.year, 1, 1))
-    fecha_base_fin = c_f2.date_input("📅 Rango Histórico (Hasta)", value=date(hoy_st.year, 12, 31))
+    fecha_base_fin = c_f2.date_input("📅 Rango Histórico (Hasta)", value=date(hoy_st.year, 12, 31), min_value=fecha_base_inicio)
     inflacion_proyectada = c_r1.number_input("📈 Inflación a Proyectar (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
     colchon_dias = c_r2.number_input("🛡️ Colchón de Días Ciclo", min_value=0, max_value=30, value=0, step=1)
 
@@ -490,7 +490,8 @@ def ejecutar(supabase_client=None):
                 resultados = []
                 log_volumetrico = {}
 
-                for idx, row in df_valid.iterrows():
+                # ⚡ ACELERADOR DE BUCLE PARA 1000 FILAS
+                for row in df_valid.to_dict('records'):
                     finca_n = str(row['FINCA']).strip().upper()
                     ha_num = limpiar_numero(row['HECTAREAS'])
                     coctel_n = str(row['COCTEL']).strip().upper() if pd.notna(row['COCTEL']) else ""
@@ -498,9 +499,11 @@ def ejecutar(supabase_client=None):
                     fert_n = str(row.get('FERTILIZANTE', '')).strip().upper() if pd.notna(row.get('FERTILIZANTE')) and str(row.get('FERTILIZANTE')).strip().upper() != "NONE" else ""
                     coctel_combinado = f"{coctel_n} {fert_n}".strip()
 
-                    dias_c = int(limpiar_numero(row['DIAS CICLO'])) + colchon_dias
+                    dias_c = max(0, int(round(limpiar_numero(row["DIAS CICLO"])))) + int(colchon_dias)
                     precio_vuelo_manual = limpiar_numero(row['PRECIO VUELO'])
-                    aplica_dominical = bool(row.get('DOMINICAL', False))
+                    
+                    valor_dominical = row.get("DOMINICAL", False)
+                    aplica_dominical = (valor_dominical is True or str(valor_dominical).strip().upper() in {"TRUE", "VERDADERO", "SI", "SÍ", "1"})
 
                     if ha_num == 0 and not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
@@ -509,7 +512,6 @@ def ejecutar(supabase_client=None):
 
                     if ha_num <= 0: continue
 
-                    # 💥 SE APLICA EL FILTRO DE FECHAS AL VUELO Y RECARGO
                     precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1, fecha_base_inicio, fecha_base_fin)
 
                     if precio_vuelo_manual == 0:
@@ -524,6 +526,7 @@ def ejecutar(supabase_client=None):
                     else:
                         recargo_final_ha = 0.0
 
+                    # LÓGICA DE ST 100% ORIGINAL
                     tipo_prod = "TERCERO"
                     if not df_t2.empty:
                         match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_n]
@@ -710,8 +713,14 @@ def ejecutar(supabase_client=None):
                 
                 column_headers = {}
                 for col_idx in range(1, max_c + 1):
-                    ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = 20
+                    letra_columna = openpyxl.utils.get_column_letter(col_idx)
                     header_val = ws.cell(row=1, column=col_idx).value
+                    valores_columna = [
+                        ws.cell(row=r, column=col_idx).value
+                        for r in range(1, min(max_r, 200) + 1)
+                    ]
+                    ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 2
+                    ws.column_dimensions[letra_columna].width = min(max(ancho, 14), 35)
                     column_headers[col_idx] = str(header_val).upper() if header_val else ""
 
                 for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
