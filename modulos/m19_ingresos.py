@@ -141,7 +141,7 @@ def ejecutar():
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
-    # 💥 REPARACIÓN CSS: SELECTORES CON BORDES EXACTOS
+    # 💥 REPARACIÓN CSS: SELECTORES CON BORDES FORZADOS EXACTOS
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
@@ -175,15 +175,19 @@ def ejecutar():
         box-shadow: none !important;
     }
     
-    /* 💥 CAJAS EXTERNAS: SELECTORES DROPDOWN */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-        background-color: #ffffff !important; 
+    /* 💥 CAJAS EXTERNAS: SELECTORES DROPDOWN FORZADOS AL 100% */
+    div[data-baseweb="select"] {
         border: 2px solid #0d1b2a !important; 
         border-radius: 6px !important; 
+        background-color: #ffffff !important; 
     }
     
-    /* COLOR DEL TEXTO EN LOS SELECTORES */
-    div[data-testid="stSelectbox"] * { 
+    div[data-baseweb="select"] > div {
+        border: none !important; 
+        background-color: transparent !important; 
+    }
+    
+    div[data-baseweb="select"] * { 
         color: #0d1b2a !important; 
         font-weight: 900 !important; 
     }
@@ -654,7 +658,8 @@ def ejecutar():
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
-                f_col1, f_col2 = st.columns([1.5, 1])
+                
+                f_col1, f_col2 = st.columns(2)
                 filtro_seleccionado = f_col1.selectbox("🛡️ Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)", "❌ Solo Anulados SAP"])
                 
                 lista_productos_tabla = ["TODOS"] + sorted(list(set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""]))) if col_producto else ["TODOS"]
