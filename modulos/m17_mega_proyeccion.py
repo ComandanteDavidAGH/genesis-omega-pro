@@ -115,7 +115,6 @@ def parsear_fecha_sap(fecha_str):
     except (ValueError, TypeError):
         return normalizar_a_fecha_pura(fecha_str)
 
-
 @st.cache_data(show_spinner=False, ttl=60)
 def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
     gc = obtener_cliente_gspread_unificado()
@@ -528,7 +527,8 @@ def ejecutar(supabase_client=None):
     hoy_st = date.today()
     
     fecha_base_inicio = c_f1.date_input("📅 Rango Histórico (Desde)", value=date(hoy_st.year, 1, 1))
-    fecha_base_fin = c_f2.date_input("📅 Rango Histórico (Hasta)", value=date(hoy_st.year, 12, 31))
+    # Candado dinámico: no permite escoger una fecha final anterior a la inicial
+    fecha_base_fin = c_f2.date_input("📅 Rango Histórico (Hasta)", value=date(hoy_st.year, 12, 31), min_value=fecha_base_inicio)
     
     inflacion_proyectada = c_r1.number_input("📈 Inflación a Proyectar (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
     colchon_dias = c_r2.number_input("🛡️ Colchón de Días Ciclo", min_value=0, max_value=30, value=0, step=1)
@@ -568,7 +568,8 @@ def ejecutar(supabase_client=None):
                         lambda x: re.sub(r"[^A-Z0-9]", "", x)
                     )
 
-                for idx, row in df_valid.iterrows():
+                # ⚡ ACELERADOR DE BUCLE: Sustituimos iterrows() por to_dict('records')
+                for row in df_valid.to_dict('records'):
                     finca_n = str(row['FINCA']).strip().upper()
                     finca_n_clean = re.sub(r'[^A-Z0-9]', '', finca_n)
                     
