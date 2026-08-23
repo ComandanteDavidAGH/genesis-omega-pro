@@ -16,6 +16,33 @@ from modulos.utilidades import procesar_fecha_pesada
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
 # =================================================================
+# ⚙️ REGLAS DE NEGOCIO Y CONFIGURACIÓN ESTRATÉGICA
+# =================================================================
+TARIFA_VUELO_DEFAULT = 45000.0
+
+REGLAS_FINANCIERAS = {
+    "TERCERO":     {"M_MEZCLA": 1.451, "ST_BASE": 1583.0, "M_VUELO": 1.451},
+    "AFILIADO":    {"M_MEZCLA": 1.164, "ST_BASE": 1510.0, "M_VUELO": 1.164},
+    "COOPERATIVA": {"M_MEZCLA": 1.112, "ST_BASE": 1510.0, "M_VUELO": 1.164},
+    "ORGANICO":    {"M_MEZCLA": 1.011, "ST_BASE": 1337.0, "M_VUELO": 1.011},
+    "DEFAULT":     {"M_MEZCLA": 1.112, "ST_BASE": 1337.0, "M_VUELO": 1.112}
+}
+
+FALLBACK_FERTILIZANTES = {
+    "ZN": "ZINTRAC X LITRO SV",
+    "BT": "BANATREL SC",
+    "NM": "NATURAMIN WSP",
+    "QM": "QUELAMIX",
+    "ZT": "ZITRON"
+}
+
+DOSIS_ACONDICIONADOR_ALTA = 0.06
+DOSIS_ACONDICIONADOR_BAJA = 0.02
+DOSIS_IMBIOSIL_ALTA = 1.5
+DOSIS_IMBIOSIL_BAJA = 1.0
+DOSIS_SPRAYFIX_ORG = 0.2
+
+# =================================================================
 # 🔌 CONEXIÓN Y MOTORES DE FORMATO REGIONAL BLINDADOS
 # =================================================================
 
@@ -68,6 +95,14 @@ def normalizar_a_fecha_pura(val):
         if isinstance(res_nativo, date): return res_nativo
         return pd.to_datetime(str(res_nativo)).date()
     except: return None
+
+def parsear_fecha_sap(fecha_str):
+    try:
+        if fecha_str is None or pd.isna(fecha_str) or not str(fecha_str).strip(): return None
+    except: pass
+    s = str(fecha_str).strip().replace("_", "-").replace("/", "-").replace(".", "-")
+    try: return pd.to_datetime(s, dayfirst=True, errors="raise").date()
+    except: return normalizar_a_fecha_pura(fecha_str)
 
 @st.cache_data(show_spinner=False, ttl=60)
 def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
@@ -179,7 +214,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
     return df_mezclas, df_conf, df_dicc, df_t2, df_precios, df_t1
 
 # =================================================================
-# 🧠 MOTORES DE LÓGICA 100% ORIGINAL (RESPETA DECIMALES)
+# 🧠 MOTORES DE LÓGICA 100% ORIGINAL
 # =================================================================
 
 def limpiar_numero(val):
@@ -191,28 +226,15 @@ def limpiar_numero(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-def fecha_segura_en_rango(fecha_texto, f_ini, f_fin):
-    if not fecha_texto or pd.isna(fecha_texto) or str(fecha_texto).strip() == "": return False
-    s = str(fecha_texto).strip().replace('.', '-').replace('/', '-')
-    try:
-        d = pd.to_datetime(s, dayfirst=True).date()
-        return f_ini <= d <= f_fin
-    except: pass
-    try:
-        res = procesar_fecha_pesada(fecha_texto)
-        if isinstance(res, (datetime, pd.Timestamp)): return f_ini <= res.date() <= f_fin
-        elif isinstance(res, date): return f_ini <= res <= f_fin
-        else: return f_ini <= pd.to_datetime(str(res)).date() <= f_fin
-    except: return False
-
-# ⚡ MOTORES ACELERADOS POR DICCIONARIO (Misma matemática, 100x más rápido)
 def calcular_historicos_finca_rapido(finca_n_clean, dict_t1, fecha_inicio, fecha_fin):
     df_finca = dict_t1.get(finca_n_clean, pd.DataFrame())
     if df_finca.empty: return 45000.0, 0.0 
         
     df_evaluar = df_finca
-    if 'FECHA_CLEAN' in df_finca.columns:
-        mask_fechas = df_finca['FECHA_CLEAN'].apply(lambda x: fecha_segura_en_rango(x, fecha_inicio, fecha_fin))
+    
+    # 💥 FILTRO DE FECHAS ULTRA-RÁPIDO (Se procesó antes del bucle)
+    if 'FECHA_PURA' in df_finca.columns:
+        mask_fechas = (df_finca['FECHA_PURA'] >= fecha_inicio) & (df_finca['FECHA_PURA'] <= fecha_fin)
         df_finca_fechas = df_finca[mask_fechas]
         if not df_finca_fechas.empty and not df_finca_fechas[df_finca_fechas['VAL_COSTO_HA'] > 1000].empty:
             df_evaluar = df_finca_fechas
@@ -259,21 +281,66 @@ def extraer_receta_mega_rapida(coctel_sel, finca_sel_clean, dict_mezclas, dict_d
             p_ad, d_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper(), limpiar_numero(m_s.iloc[0]['DOSIS'])
             if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']: dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
 
-    fert_fallback = {"ZN": "ZINTRAC X LITRO SV", "BT": "BANATREL SC", "NM": "NATURAMIN WSP", "QM": "QUELAMIX", "ZT": "ZITRON"}
     for ad in aditivos:
-        if ad in fert_fallback:
-            p_fall = fert_fallback[ad]
+        if ad in FALLBACK_FERTILIZANTES:
+            p_fall = FALLBACK_FERTILIZANTES[ad]
             if not any(p_fall in k for k in dict_prods.keys()):
                 d_fall = fallback_mezclas_dosis.get(p_fall, 0.5) 
                 dict_prods[p_fall] = dict_prods.get(p_fall, 0.0) + d_fall
 
     for p in list(dict_prods.keys()):
-        if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-        elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = 1.5 if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else 1.0
+        if "ACONDICIONADOR" in p: dict_prods[p] = DOSIS_ACONDICIONADOR_ALTA if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else DOSIS_ACONDICIONADOR_BAJA
+        elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = DOSIS_IMBIOSIL_ALTA if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else DOSIS_IMBIOSIL_BAJA
         if es_organico and "ADHERENTE" in p: del dict_prods[p]
-    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = 0.2
+    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = DOSIS_SPRAYFIX_ORG
     
     return dict_prods
+
+# 💥 GENERADOR DE EXCEL CON CACHÉ (Evita que la pantalla se congele al usar filtros)
+@st.cache_data(show_spinner=False)
+def generar_excel_gerencial(df_filtro, df_resumen_finca, df_insumos_raw):
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False)
+        df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
+        if not df_insumos_raw.empty:
+            df_insumos_raw[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False)
+        
+        workbook = writer.book
+        borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+
+        for sheet_name in workbook.sheetnames:
+            ws = workbook[sheet_name]
+            ws.sheet_view.showGridLines = False
+            max_r, max_c = ws.max_row, ws.max_column
+            column_headers = {}
+            
+            for col_idx in range(1, max_c + 1):
+                letra_columna = openpyxl.utils.get_column_letter(col_idx)
+                header_val = ws.cell(row=1, column=col_idx).value
+                valores_columna = [ws.cell(row=r, column=col_idx).value for r in range(1, min(max_r, 50) + 1)]
+                ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 2
+                ws.column_dimensions[letra_columna].width = min(max(ancho, 14), 35)
+                column_headers[col_idx] = str(header_val).upper() if header_val else ""
+
+            for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
+                for cell in row:
+                    cell.border = borde
+                    if cell.row == 1:
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    else:
+                        cell.alignment = Alignment(vertical='center')
+                        col_name = column_headers.get(cell.column, "")
+                        if isinstance(cell.value, (int, float)):
+                            if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name or "RECARGO" in col_name:
+                                cell.number_format = '"$" #,##0' 
+                            elif "HECTAREAS" in col_name or "VOLUMEN" in col_name:
+                                cell.number_format = '#,##0.0'
+    return buffer.getvalue()
 
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
@@ -363,7 +430,12 @@ def ejecutar(supabase_client=None):
         else:
             with st.spinner("⚡ Compilando Motores de Memoria (Hyper-Speed)..."):
                 
-                # 💥 DICCIONARIOS DE MEMORIA CACHÉ PARA VELOCIDAD EXTREMA
+                # 💥 ACELERADOR 1: PARSEAR FECHAS DE SAP UNA SOLA VEZ
+                if not df_t1.empty and 'FECHA_CLEAN' in df_t1.columns:
+                    if 'FECHA_PURA' not in df_t1.columns:
+                        df_t1['FECHA_PURA'] = df_t1['FECHA_CLEAN'].apply(parsear_fecha_sap)
+
+                # 💥 ACELERADOR 2: DICCIONARIOS EN RAM
                 dict_t1 = dict(tuple(df_t1.groupby('F_CLEAN'))) if not df_t1.empty and 'F_CLEAN' in df_t1.columns else {}
                 
                 dict_t2 = {}
@@ -405,7 +477,7 @@ def ejecutar(supabase_client=None):
                                 val = limpiar_numero(r.iloc[col_idx+1])
                                 if val > 0: fallback_mezclas_dosis[p_name] = val
 
-            with st.spinner("Procesando matriz financiera..."):
+            with st.spinner("Calculando proyección (Velocidad Nativa)..."):
                 resultados = []
                 log_volumetrico = {}
 
@@ -435,7 +507,6 @@ def ejecutar(supabase_client=None):
                     precio_vuelo_final = precio_vuelo_final * factor_inflacion
                     recargo_final_ha = (recargo_historico * factor_inflacion) if aplica_dominical else 0.0
 
-                    # REGLAS MATEMÁTICAS 100% ORIGINALES QUEMADAS 
                     tipo_prod = "TERCERO"
                     if not match_f.empty: 
                         tipo_prod = str(match_f.iloc[0].iloc[col_prod_idx]).strip().upper() if len(match_f.columns) > col_prod_idx else "TERCERO"
@@ -507,7 +578,7 @@ def ejecutar(supabase_client=None):
 
                 st.session_state.m17_resultados = df_resultados_final
                 st.session_state.m17_volumetria = log_volumetrico
-                st.success("✅ Proyección completada con Exactitud Matemática. Filtros y Acelerador de Memoria aplicados.")
+                st.success("✅ Proyección completada (Ultra-Speed).")
 
     if 'm17_resultados' in st.session_state and not st.session_state.m17_resultados.empty:
         st.markdown("---")
@@ -567,63 +638,28 @@ def ejecutar(supabase_client=None):
             else: st.info("No hay datos para resumir.")
 
         with tab3:
+            df_insumos_raw = pd.DataFrame()
             if cons_vol_agrupado:
-                df_insumos = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
-                df_insumos["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos["VOLUMEN ESTIMADO"].apply(lambda x: formato_latino(x, 1))
+                df_insumos_raw = pd.DataFrame(list(cons_vol_agrupado.items()), columns=["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]).sort_values("VOLUMEN ESTIMADO", ascending=False)
+                df_insumos_vista = df_insumos_raw.copy()
+                df_insumos_vista["📦 VOLUMEN ESTIMADO (L/Kg)"] = df_insumos_vista["VOLUMEN ESTIMADO"].apply(lambda x: formato_latino(x, 1))
                 
                 c_tbl, c_grf = st.columns([1, 1.2])
-                with c_tbl: st.dataframe(df_insumos[["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]], use_container_width=True, hide_index=True)
+                with c_tbl: st.dataframe(df_insumos_vista[["🧪 PRODUCTO", "📦 VOLUMEN ESTIMADO (L/Kg)"]], use_container_width=True, hide_index=True)
                 with c_grf:
-                    df_grafica = df_insumos.head(15).copy()
-                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="VOLUMEN ESTIMADO", text="📦 VOLUMEN ESTIMADO (L/Kg)", orientation='h', color="VOLUMEN ESTIMADO", color_continuous_scale="GnBu", title=f"Top 15 Insumos Proyectados")
-                    fig.update_traces(textposition='outside', textfont_size=12)
+                    df_grafica = df_insumos_raw.head(15).copy()
+                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="VOLUMEN ESTIMADO", text="VOLUMEN ESTIMADO", orientation='h', color="VOLUMEN ESTIMADO", color_continuous_scale="GnBu", title=f"Top 15 Insumos Proyectados")
+                    fig.update_traces(texttemplate='%{text:,.1f}', textposition='outside', textfont_size=12)
                     fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', margin=dict(r=100))
                     st.plotly_chart(fig, use_container_width=True)
             else: st.info("No hay datos de insumos químicos para las fincas seleccionadas.")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        buffer = io.BytesIO()
         
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False)
-            df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
-            if cons_vol_agrupado: df_insumos[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False)
-            
-            workbook = writer.book
-            borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-            header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-            header_font = Font(color="FFFFFF", bold=True)
-
-            for sheet_name in workbook.sheetnames:
-                ws = workbook[sheet_name]
-                ws.sheet_view.showGridLines = False
-                max_r, max_c = ws.max_row, ws.max_column
-                column_headers = {}
-                for col_idx in range(1, max_c + 1):
-                    letra_columna = openpyxl.utils.get_column_letter(col_idx)
-                    header_val = ws.cell(row=1, column=col_idx).value
-                    valores_columna = [ws.cell(row=r, column=col_idx).value for r in range(1, min(max_r, 200) + 1)]
-                    ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 2
-                    ws.column_dimensions[letra_columna].width = min(max(ancho, 14), 35)
-                    column_headers[col_idx] = str(header_val).upper() if header_val else ""
-
-                for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
-                    for cell in row:
-                        cell.border = borde
-                        if cell.row == 1:
-                            cell.fill = header_fill
-                            cell.font = header_font
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        else:
-                            cell.alignment = Alignment(vertical='center')
-                            col_name = column_headers.get(cell.column, "")
-                            if isinstance(cell.value, (int, float)):
-                                if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name or "RECARGO" in col_name:
-                                    cell.number_format = '"$" #,##0' 
-                                elif "HECTAREAS" in col_name or "VOLUMEN" in col_name:
-                                    cell.number_format = '#,##0.0'
-
-        st.download_button(label="💾 DESCARGAR REPORTE GERENCIAL (EXCEL)", data=buffer.getvalue(), file_name=f"MegaProyeccion_Operativa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        # 💥 GENERAR EXCEL DESDE CACHÉ EN MILISEGUNDOS
+        excel_data = generar_excel_gerencial(df_filtro, df_resumen_finca, df_insumos_raw if cons_vol_agrupado else pd.DataFrame())
+        
+        st.download_button(label="💾 DESCARGAR REPORTE GERENCIAL (EXCEL)", data=excel_data, file_name=f"MegaProyeccion_Operativa_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
 if __name__ == "__main__":
     pass
