@@ -141,7 +141,7 @@ def ejecutar():
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
-    # 💥 CSS RECONSTRUIDO: BORDES UNIFICADOS Y LIMPIOS 💥
+    # 💥 REPARACIÓN CSS: SELECTORES CON BORDES EXACTOS
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
@@ -155,15 +155,16 @@ def ejecutar():
     div[data-testid="stExpander"] summary p { color: #d4af37 !important; font-family: 'Arial Black', sans-serif !important; font-size: 15px !important; text-transform: uppercase !important; margin: 0 !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
     
-    /* 💥 SOLUCIÓN VISUAL: Bordes envolventes para TODO tipo de input */
+    /* 💥 CAJAS EXTERNAS: TEXTO, NÚMEROS Y FECHAS */
     div[data-testid="stTextInput"] > div, 
     div[data-testid="stNumberInput"] > div, 
-    div[data-testid="stDateInput"] > div, 
-    div[data-baseweb="select"] { 
+    div[data-testid="stDateInput"] > div { 
         background-color: #ffffff !important; 
         border: 2px solid #0d1b2a !important; 
         border-radius: 6px !important; 
     }
+    
+    /* INTERIORES TRANSPARENTES PARA NO DUPLICAR BORDES */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input, 
     div[data-testid="stDateInput"] input { 
@@ -173,11 +174,19 @@ def ejecutar():
         background-color: transparent !important; 
         box-shadow: none !important;
     }
-    div[data-baseweb="select"] > div {
-        background-color: transparent !important;
-        border: none !important;
+    
+    /* 💥 CAJAS EXTERNAS: SELECTORES DROPDOWN */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        background-color: #ffffff !important; 
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 6px !important; 
     }
-    div[data-baseweb="select"] * { color: #0d1b2a !important; font-weight: 900 !important; }
+    
+    /* COLOR DEL TEXTO EN LOS SELECTORES */
+    div[data-testid="stSelectbox"] * { 
+        color: #0d1b2a !important; 
+        font-weight: 900 !important; 
+    }
     
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
     div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
@@ -645,9 +654,7 @@ def ejecutar():
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
-                
-                # 💥 REPARACIÓN VISUAL: DE RADIO BUTTONS A SELECTBOX (Simetría perfecta)
-                f_col1, f_col2 = st.columns(2)
+                f_col1, f_col2 = st.columns([1.5, 1])
                 filtro_seleccionado = f_col1.selectbox("🛡️ Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)", "❌ Solo Anulados SAP"])
                 
                 lista_productos_tabla = ["TODOS"] + sorted(list(set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""]))) if col_producto else ["TODOS"]
@@ -717,7 +724,6 @@ def ejecutar():
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # 💥 EJECUCIÓN BATCH PARA EDICIONES MASIVAS
                 if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
                     cambios_actualizacion = []
                     eliminaciones = []
