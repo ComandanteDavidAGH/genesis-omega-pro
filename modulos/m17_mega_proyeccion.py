@@ -16,6 +16,38 @@ from modulos.utilidades import procesar_fecha_pesada
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
 # =================================================================
+# ⚙️ REGLAS DE NEGOCIO Y CONFIGURACIÓN ESTRATÉGICA (MODIFICABLES)
+# =================================================================
+# Si cambian las políticas financieras, modificar únicamente estos valores.
+
+TARIFA_VUELO_DEFAULT = 45000.0
+
+# Formato: "TIPO_PRODUCTOR": {"M_MEZCLA": Multiplicador, "ST_BASE": Tarifa, "M_VUELO": Multiplicador}
+REGLAS_FINANCIERAS = {
+    "TERCERO":     {"M_MEZCLA": 1.451, "ST_BASE": 1583.0, "M_VUELO": 1.451},
+    "AFILIADO":    {"M_MEZCLA": 1.164, "ST_BASE": 1510.0, "M_VUELO": 1.164},
+    "COOPERATIVA": {"M_MEZCLA": 1.112, "ST_BASE": 1510.0, "M_VUELO": 1.164},
+    "ORGANICO":    {"M_MEZCLA": 1.011, "ST_BASE": 1337.0, "M_VUELO": 1.011},
+    "DEFAULT":     {"M_MEZCLA": 1.112, "ST_BASE": 1337.0, "M_VUELO": 1.112}
+}
+
+# Diccionario de Fertilizantes de Respaldo (Fallback)
+FALLBACK_FERTILIZANTES = {
+    "ZN": "ZINTRAC X LITRO SV",
+    "BT": "BANATREL SC",
+    "NM": "NATURAMIN WSP",
+    "QM": "QUELAMIX",
+    "ZT": "ZITRON"
+}
+
+# Dosis operativas de aditivos por defecto (Litros/Kilos por Ha)
+DOSIS_ACONDICIONADOR_ALTA = 0.06
+DOSIS_ACONDICIONADOR_BAJA = 0.02
+DOSIS_IMBIOSIL_ALTA = 1.5
+DOSIS_IMBIOSIL_BAJA = 1.0
+DOSIS_SPRAYFIX_ORG = 0.2
+
+# =================================================================
 # 🔌 CONEXIÓN Y MOTORES DE FORMATO REGIONAL BLINDADOS
 # =================================================================
 
@@ -69,6 +101,20 @@ def normalizar_a_fecha_pura(val):
         return pd.to_datetime(str(res_nativo)).date()
     except: return None
 
+# 💥 Traductor Anti-Errores para fechas de SAP (Formato dd.mm.yy o similar)
+def parsear_fecha_sap(fecha_str):
+    """Normaliza fechas de SAP y formatos comunes a date."""
+    try:
+        if fecha_str is None or pd.isna(fecha_str) or not str(fecha_str).strip():
+            return None
+    except (TypeError, ValueError):
+        pass
+    s = str(fecha_str).strip().replace("_", "-").replace("/", "-").replace(".", "-")
+    try:
+        return pd.to_datetime(s, dayfirst=True, errors="raise").date()
+    except (ValueError, TypeError):
+        return normalizar_a_fecha_pura(fecha_str)
+
 @st.cache_data(show_spinner=False, ttl=60)
 def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
     gc = obtener_cliente_gspread_unificado()
@@ -95,16 +141,14 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
                 if res.data:
                     df_dicc = pd.DataFrame(res.data)
                     df_dicc.columns = [str(c).upper().strip() for c in df_dicc.columns]
-            except:
-                pass
+            except: pass
 
         if df_dicc.empty:
             try: 
                 dicc_raw = boveda_recetas.worksheet("DICCIONARIO_SIGLAS").get_all_values()
                 if dicc_raw:
                     df_dicc = pd.DataFrame(dicc_raw[1:], columns=[str(c).upper().strip() for c in dicc_raw[0]])
-            except: 
-                pass
+            except: pass
         
         try: 
             t2_raw = boveda_recetas.worksheet("TABLA 2").get_all_values()
@@ -188,6 +232,7 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
 
                     if col_fecha:
                         df_t1['FECHA_CLEAN'] = df_t1[col_fecha].astype(str).str.strip()
+                        df_t1['FECHA_PURA'] = df_t1['FECHA_CLEAN'].apply(parsear_fecha_sap)
         except: pass
                             
     except Exception as e: 
@@ -200,36 +245,46 @@ def cargar_bases_m17(url_boveda, url_precios, _supabase_client=None):
 # =================================================================
 
 def limpiar_numero(val):
+    """Convierte números con formatos colombianos/latinos a float de forma segura."""
+    if val is None:
+        return 0.0
     try:
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).strip().replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
-        return float(v) if v else 0.0
-    except: return 0.0
-
-# 💥 FILTRO DE FECHAS BLINDADO (No se rompe con SAP)
-def fecha_segura_en_rango(fecha_texto, f_ini, f_fin):
-    if not fecha_texto or pd.isna(fecha_texto) or str(fecha_texto).strip() == "": 
-        return False
-    s = str(fecha_texto).strip().replace('.', '-').replace('/', '-')
-    try:
-        d = pd.to_datetime(s, dayfirst=True).date()
-        return f_ini <= d <= f_fin
-    except:
+        if pd.isna(val):
+            return 0.0
+    except (TypeError, ValueError):
         pass
+    if isinstance(val, (int, float, np.integer, np.floating)):
+        return float(val)
     try:
-        res = procesar_fecha_pesada(fecha_texto)
-        if isinstance(res, (datetime, pd.Timestamp)): d = res.date()
-        elif isinstance(res, date): d = res
-        else: d = pd.to_datetime(str(res)).date()
-        return f_ini <= d <= f_fin
-    except:
-        return False
+        v = str(val).strip().replace("$", "").replace(" ", "")
+        if not v or v.upper() in {"NAN", "NONE", "-", "N/A"}:
+            return 0.0
+        v = re.sub(r"[^\d,.-]", "", v)
+        if not v:
+            return 0.0
+        if "," in v and "." in v:
+            if v.rfind(",") > v.rfind("."):
+                v = v.replace(".", "").replace(",", ".")
+            else:
+                v = v.replace(",", "")
+        elif "," in v:
+            partes = v.split(",")
+            if len(partes[-1]) <= 2:
+                v = v.replace(".", "").replace(",", ".")
+            else:
+                v = v.replace(",", "")
+        elif "." in v:
+            partes = v.split(".")
+            if len(partes) > 2 or len(partes[-1]) == 3:
+                v = v.replace(".", "")
+        return float(v)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
     if df_t1 is None or df_t1.empty or 'VAL_COSTO_HA' not in df_t1.columns or 'F_CLEAN' not in df_t1.columns: 
-        return 45000.0, 0.0
+        return TARIFA_VUELO_DEFAULT, 0.0
     
     finca_buscada = re.sub(r'[^A-Z0-9]', '', str(finca_usuario).upper().strip())
     df_finca = df_t1[df_t1['F_CLEAN'] == finca_buscada]
@@ -239,26 +294,24 @@ def calcular_historicos_finca(finca_usuario, df_t1, fecha_inicio, fecha_fin):
         df_finca = df_t1[match_inicial]
     
     if df_finca.empty: 
-        return 45000.0, 0.0 
+        return TARIFA_VUELO_DEFAULT, 0.0 
         
     df_evaluar = df_finca
     
-    if 'FECHA_CLEAN' in df_finca.columns:
-        # APLICACIÓN TÁCTICA DEL FILTRO DE FECHAS
-        mask_fechas = df_finca['FECHA_CLEAN'].apply(lambda x: fecha_segura_en_rango(x, fecha_inicio, fecha_fin))
+    # FILTRO POR SELECTOR DE FECHAS (Precisión Absoluta)
+    if 'FECHA_PURA' in df_finca.columns:
+        mask_fechas = (df_finca['FECHA_PURA'] >= fecha_inicio) & (df_finca['FECHA_PURA'] <= fecha_fin)
         df_finca_fechas = df_finca[mask_fechas]
-        
-        # Solo lo aplica si el filtro de fechas sí arroja registros de vuelo válidos
         if not df_finca_fechas.empty and not df_finca_fechas[df_finca_fechas['VAL_COSTO_HA'] > 1000].empty:
             df_evaluar = df_finca_fechas
             
-    prom_vuelo = 45000.0
+    prom_vuelo = TARIFA_VUELO_DEFAULT
     prom_recargo = 0.0
             
     df_valid_costos = df_evaluar[df_evaluar['VAL_COSTO_HA'] > 1000]
     if not df_valid_costos.empty:
         prom_vuelo = float(df_valid_costos['VAL_COSTO_HA'].mean())
-        if pd.isna(prom_vuelo): prom_vuelo = 45000.0
+        if pd.isna(prom_vuelo): prom_vuelo = TARIFA_VUELO_DEFAULT
 
     if 'VAL_RECARGO_HA' in df_evaluar.columns:
         df_recargos_validos = df_evaluar[df_evaluar['VAL_RECARGO_HA'] > 100]
@@ -277,7 +330,6 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
     dict_prods = {}
     es_organico = False
     
-    # 💥 REGEX IMPLACABLE PARA CRUCE PERFECTO EN TABLA 2
     finca_sel_clean = re.sub(r'[^A-Z0-9]', '', str(finca_sel).upper())
 
     try:
@@ -304,10 +356,9 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 p_ad, d_ad = str(m_s.iloc[0]['PRODUCTO']).strip().upper(), limpiar_numero(m_s.iloc[0]['DOSIS'])
                 if d_ad > 0 and p_ad not in ['NAN', 'NONE', '']: dict_prods[p_ad] = dict_prods.get(p_ad, 0.0) + d_ad
 
-    fert_fallback = {"ZN": "ZINTRAC X LITRO SV", "BT": "BANATREL SC", "NM": "NATURAMIN WSP", "QM": "QUELAMIX", "ZT": "ZITRON"}
     for ad in aditivos:
-        if ad in fert_fallback:
-            p_fall = fert_fallback[ad]
+        if ad in FALLBACK_FERTILIZANTES:
+            p_fall = FALLBACK_FERTILIZANTES[ad]
             if not any(p_fall in k for k in dict_prods.keys()):
                 d_fall = 0.5 
                 if not df_mezclas.empty:
@@ -321,10 +372,16 @@ def extraer_receta_mega(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2):
                 dict_prods[p_fall] = dict_prods.get(p_fall, 0.0) + d_fall
 
     for p in list(dict_prods.keys()):
-        if "ACONDICIONADOR" in p: dict_prods[p] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-        elif "IMBIOSIL" in p.replace(" ", ""): dict_prods[p] = 1.5 if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else 1.0
-        if es_organico and "ADHERENTE" in p: del dict_prods[p]
-    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): dict_prods["SPRAYFIX"] = 0.2
+        if "ACONDICIONADOR" in p: 
+            dict_prods[p] = DOSIS_ACONDICIONADOR_ALTA if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else DOSIS_ACONDICIONADOR_BAJA
+        elif "IMBIOSIL" in p.replace(" ", ""): 
+            dict_prods[p] = DOSIS_IMBIOSIL_ALTA if base_coctel.startswith("IN") or "IMBIOSIL" in base_coctel else DOSIS_IMBIOSIL_BAJA
+        
+        if es_organico and "ADHERENTE" in p: 
+            del dict_prods[p]
+            
+    if es_organico and not any("SPRAYFIX" in k for k in dict_prods.keys()): 
+        dict_prods["SPRAYFIX"] = DOSIS_SPRAYFIX_ORG
     
     return dict_prods
 
@@ -470,6 +527,7 @@ def ejecutar(supabase_client=None):
     hoy_st = date.today()
     
     fecha_base_inicio = c_f1.date_input("📅 Rango Histórico (Desde)", value=date(hoy_st.year, 1, 1))
+    # Candado dinámico: no permite escoger una fecha final anterior a la inicial
     fecha_base_fin = c_f2.date_input("📅 Rango Histórico (Hasta)", value=date(hoy_st.year, 12, 31), min_value=fecha_base_inicio)
     
     inflacion_proyectada = c_r1.number_input("📈 Inflación a Proyectar (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
@@ -504,14 +562,12 @@ def ejecutar(supabase_client=None):
                 resultados = []
                 log_volumetrico = {}
 
-                # LIMPIEZA DE TABLA 2 PREVIA PARA OPTIMIZAR
                 df_t2_clean = pd.Series(dtype="object")
                 if not df_t2.empty:
                     df_t2_clean = df_t2.iloc[:, 0].astype(str).str.upper().apply(
                         lambda x: re.sub(r"[^A-Z0-9]", "", x)
                     )
 
-                # ⚡ ACELERADOR DE BUCLE (to_dict reemplaza a iterrows)
                 for row in df_valid.to_dict('records'):
                     finca_n = str(row['FINCA']).strip().upper()
                     finca_n_clean = re.sub(r'[^A-Z0-9]', '', finca_n)
@@ -524,7 +580,6 @@ def ejecutar(supabase_client=None):
 
                     dias_c = max(0, int(round(limpiar_numero(row["DIAS CICLO"])))) + int(colchon_dias)
                     precio_vuelo_manual = limpiar_numero(row["PRECIO VUELO"])
-                    
                     valor_dominical = row.get("DOMINICAL", False)
                     aplica_dominical = (
                         valor_dominical is True
@@ -538,7 +593,6 @@ def ejecutar(supabase_client=None):
 
                     if ha_num <= 0: continue
 
-                    # 💥 FILTRO DE FECHAS SEGURO Y PROTEGIDO CONTRA ERRORES DE SAP
                     precio_vuelo_historico, recargo_historico = calcular_historicos_finca(finca_n, df_t1, fecha_base_inicio, fecha_base_fin)
 
                     if precio_vuelo_manual == 0:
@@ -553,7 +607,6 @@ def ejecutar(supabase_client=None):
                     else:
                         recargo_final_ha = 0.0
 
-                    # 💥 EXTRACCIÓN EXACTA DEL SERVICIO TÉCNICO (CON LIMPIEZA REGEX INTELIGENTE)
                     tipo_prod = "TERCERO"
                     if not df_t2.empty:
                         match_f = df_t2[df_t2_clean == finca_n_clean]
@@ -562,8 +615,9 @@ def ejecutar(supabase_client=None):
                     
                     if "COOP" in finca_n or "EMPREBANCOOP" in finca_n: tipo_prod = "COOPERATIVA"
 
-                    # REGLAS MATEMÁTICAS ORIGINALES 100% BLINDADAS
-                    mult_m, st_base, mult_v = 1.112, 1337.0, 1.112
+                    cfg = REGLAS_FINANCIERAS.get("DEFAULT")
+                    mult_m, st_base, mult_v = cfg["M_MEZCLA"], cfg["ST_BASE"], cfg["M_VUELO"]
+                    
                     if not df_conf.empty:
                         match_cfg = df_conf[df_conf.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_prod]
                         if not match_cfg.empty:
@@ -572,17 +626,12 @@ def ejecutar(supabase_client=None):
                             mult_v = limpiar_numero(match_cfg.iloc[0].iloc[6])
                     
                     if mult_m == 0 or st_base == 0:
-                        if tipo_prod == "TERCERO": mult_m, st_base, mult_v = 1.451, 1583.0, 1.451
-                        elif tipo_prod == "AFILIADO": mult_m, st_base, mult_v = 1.164, 1510.0, 1.164
-                        elif tipo_prod == "COOPERATIVA": mult_m, st_base, mult_v = 1.112, 1510.0, 1.164
-                        elif tipo_prod == "ORGANICO": mult_m, st_base, mult_v = 1.011, 1337.0, 1.011
-                        else: mult_m, st_base, mult_v = 1.112, 1337.0, 1.112 
+                        cfg_fb = REGLAS_FINANCIERAS.get(tipo_prod, REGLAS_FINANCIERAS["DEFAULT"])
+                        mult_m, st_base, mult_v = cfg_fb["M_MEZCLA"], cfg_fb["ST_BASE"], cfg_fb["M_VUELO"]
 
                     st_base = st_base * factor_inflacion
 
                     costo_mezcla_fila = 0.0
-                    
-                    # 💥 CÁLCULO DE MEZCLA FIEL A LA LÓGICA ORIGINAL PARA EVITAR INFLAR COSTOS
                     c_p_i, c_c_i = 8, 9
                     if not df_conf.empty:
                         for i in range(min(5, len(df_conf))):
@@ -667,23 +716,20 @@ def ejecutar(supabase_client=None):
         t_mx = df_filtro['Costo Mezcla ($)'].sum()
         t_gr = df_filtro['RESULTADO TOTAL ($)'].sum()
 
-        # Fila 1: Tres columnas
-c1, c2, c3 = st.columns(3)
-with c1: ... # Servicio Técnico
-with c2: ... # Vuelo
-with c3: ... # Recargos
+        # 💥 REDISEÑO TÁCTICO: 3 ARRIBA Y 2 ABAJO (CON ESPACIOS IRROMPIBLES EN EL $)
+        
+        # Fila 1: Tres métricas base
+        c1, c2, c3 = st.columns(3)
+        with c1: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>👨‍🔬 Total Serv. Tec</p><p class='kpi-valor'>$&nbsp;{formato_latino(t_st, 0)}</p></div>", unsafe_allow_html=True)
+        with c2: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>✈️ Total Vuelo</p><p class='kpi-valor'>$&nbsp;{formato_latino(t_vu, 0)}</p></div>", unsafe_allow_html=True)
+        with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>⚠️ Total Recargos</p><p class='kpi-valor'>$&nbsp;{formato_latino(t_re, 0)}</p></div>", unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True) # Pequeño espacio para que no se peguen
+        st.markdown("<br>", unsafe_allow_html=True)
 
-# Fila 2: Dos columnas amplias y centradas
-c4, c5 = st.columns(2)
-with c4: ... # Total Mezcla
-with c5: ... # GRAN TOTAL
-        with c1: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>👨‍🔬 Total Serv. Tec</p><p class='kpi-valor'>$ {formato_latino(t_st, 0)}</p></div>", unsafe_allow_html=True)
-        with c2: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>✈️ Total Vuelo</p><p class='kpi-valor'>$ {formato_latino(t_vu, 0)}</p></div>", unsafe_allow_html=True)
-        with c3: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>⚠️ Total Recargos</p><p class='kpi-valor'>$ {formato_latino(t_re, 0)}</p></div>", unsafe_allow_html=True)
-        with c4: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$ {formato_latino(t_mx, 0)}</p></div>", unsafe_allow_html=True)
-        with c5: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$ {formato_latino(t_gr, 0)}</p></div>", unsafe_allow_html=True)
+        # Fila 2: Dos métricas pesadas (Centradas y amplias)
+        c4, c5 = st.columns(2)
+        with c4: st.markdown(f"<div class='tarjeta-kpi'><p class='kpi-titulo'>🧪 Total Mezcla</p><p class='kpi-valor'>$&nbsp;{formato_latino(t_mx, 0)}</p></div>", unsafe_allow_html=True)
+        with c5: st.markdown(f"<div class='tarjeta-kpi' style='border-left: 5px solid #00ff00;'><p class='kpi-titulo' style='color:#00ff00;'>🔥 GRAN TOTAL</p><p class='kpi-valor'>$&nbsp;{formato_latino(t_gr, 0)}</p></div>", unsafe_allow_html=True)
 
         df_resumen_finca = df_filtro.groupby('FINCA', as_index=False)[
             ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Recargo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']
