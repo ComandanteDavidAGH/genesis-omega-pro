@@ -140,6 +140,8 @@ def ejecutar():
     def limpiar_campos_traslados(): st.session_state['form_key_m19_traslados'] += 1
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
+    
+    # 💥 CSS RECONSTRUIDO: BORDES UNIFICADOS Y LIMPIOS 💥
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
@@ -147,20 +149,41 @@ def ejecutar():
     .kpi-rojo { border-left-color: #dc3545; } .kpi-amarillo { border-left-color: #ffc107; } .kpi-verde { border-left-color: #28a745; } .kpi-azul { border-left-color: #2F75B5; }
     .kpi-titulo { font-weight: bold; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; color: #a0aec0; }
     .kpi-valor { font-size: 28px; font-weight: 900; margin: 0; color: white; }
+    
     div[data-testid="stExpander"] { border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; margin-bottom: 20px !important; }
     div[data-testid="stExpander"] summary { background-color: #0d1b2a !important; border-radius: 6px 6px 0px 0px !important; padding: 10px 15px !important; }
     div[data-testid="stExpander"] summary p { color: #d4af37 !important; font-family: 'Arial Black', sans-serif !important; font-size: 15px !important; text-transform: uppercase !important; margin: 0 !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 900 !important; text-transform: uppercase !important; font-size: 13px !important; }
-    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: 2px solid #0d1b2a !important; border-radius: 6px !important; color: #000000 !important; font-weight: 900 !important; background-color: #ffffff !important; }
-    div[data-testid="stSelectbox"] > div:last-child { border: 2px solid #0d1b2a !important; border-radius: 6px !important; background-color: #ffffff !important; }
-    div[data-testid="stSelectbox"] > div:last-child * { color: #000000 !important; font-weight: 900 !important; }
+    
+    /* 💥 SOLUCIÓN VISUAL: Bordes envolventes para TODO tipo de input */
+    div[data-testid="stTextInput"] > div, 
+    div[data-testid="stNumberInput"] > div, 
+    div[data-testid="stDateInput"] > div, 
+    div[data-baseweb="select"] { 
+        background-color: #ffffff !important; 
+        border: 2px solid #0d1b2a !important; 
+        border-radius: 6px !important; 
+    }
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input, 
+    div[data-testid="stDateInput"] input { 
+        color: #0d1b2a !important; 
+        font-weight: 900 !important; 
+        border: none !important; 
+        background-color: transparent !important; 
+        box-shadow: none !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    div[data-baseweb="select"] * { color: #0d1b2a !important; font-weight: 900 !important; }
+    
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 6px 15px rgba(0,0,0,0.15) !important; background-color: #ffffff !important; }
     div[data-testid="stTabs"] button[role="tab"] { font-family: 'Arial Black', sans-serif; font-size: 14px; text-transform: uppercase; color: #0d1b2a; }
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] { border-bottom-color: #d4af37; background-color: rgba(212, 175, 55, 0.1); }
     .btn-ascensor { display: block; width: 100%; text-align: center; background-color: #15283c; color: #d4af37 !important; padding: 12px; border-radius: 8px; text-decoration: none !important; font-weight: 900; border: 2px solid #d4af37; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); transition: all 0.3s ease; }
     .btn-ascensor:hover { background-color: #0d1b2a; box-shadow: 0px 0px 10px rgba(212, 175, 55, 0.8); }
-    
-    /* ESTILO PARA ALERTA DE ANULACIÓN */
     .banner-anulacion { background-color: #721c24; color: #ffffff; padding: 12px; border-radius: 8px; border-left: 6px solid #f5c6cb; font-weight: bold; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
@@ -206,17 +229,14 @@ def ejecutar():
             
         cache_mapeo = {}
         
-        # 💥 TOLERANCIA CERO: Mapeo exacto de nombres de productos
         def estandarizar_y_marcar_inteligente(prod):
             p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
             if p_clean in ["", "NONE", "NAN", "NAT", "<NA>"]: return ""
             if p_clean in cache_mapeo: return cache_mapeo[p_clean]
             
-            # Si el nombre es idéntico a la base oficial, lo acepta.
             if p_clean in lista_autorizada: 
                 resultado = p_clean
             else:
-                # Si no es exacto, lo marca sin piedad. NO INTENTA ADIVINAR.
                 resultado = f"{p_clean} 🛑 [NO RECONOCIDO]"
                 
             cache_mapeo[p_clean] = resultado
@@ -327,7 +347,6 @@ def ejecutar():
                     es_nuevo_producto = c_tog1.toggle("✨ Ingresar un Producto Totalmente NUEVO")
                     modificar_prov = False
                     
-                    # 💥 MODO ANULACIÓN SAP OBLIGATORIO Y PARÁMETROS 💥
                     st.markdown("<hr style='margin: 5px 0px 15px 0px; border: 1px dashed #d4af37;'>", unsafe_allow_html=True)
                     es_anulacion_sap = st.toggle("🔴 REGISTRAR ANULACIÓN / DEVOLUCIÓN DE INGRESO (SAP)", help="Activa este interruptor para registrar el Consecutivo de Anulación oficial generado por SAP.")
 
@@ -408,7 +427,6 @@ def ejecutar():
                     
                     fk = st.session_state['form_key_m19']
                     
-                    # 💥 MODO DINÁMICO: ANULACIÓN VS INGRESO NORMAL 💥
                     if es_anulacion_sap:
                         f8, f9, f10, f11 = st.columns(4)
                         n_consecutivo_anulacion = f8.text_input("🔢 CONSECUTIVO ANULACIÓN SAP *", placeholder="Ej: 5000799557", key=f"in_anul_sap_{fk}")
@@ -627,8 +645,10 @@ def ejecutar():
                 st.markdown("---")
                 st.markdown("<div id='seccion-auditoria'></div>", unsafe_allow_html=True)
                 st.markdown("### 🔍 Escáner de Auditoría (Filtros)")
-                f_col1, f_col2 = st.columns([1.5, 1])
-                filtro_seleccionado = f_col1.radio("Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)", "❌ Solo Anulados SAP"], horizontal=True)
+                
+                # 💥 REPARACIÓN VISUAL: DE RADIO BUTTONS A SELECTBOX (Simetría perfecta)
+                f_col1, f_col2 = st.columns(2)
+                filtro_seleccionado = f_col1.selectbox("🛡️ Estado Operativo:", ["🌐 Mostrar Todos", "✅ Solo Vigentes", "🚨 Solo Vencidos", "⚠️ Por Vencer (90 Días)", "❌ Solo Anulados SAP"])
                 
                 lista_productos_tabla = ["TODOS"] + sorted(list(set([str(x).strip().upper() for x in df[col_producto].dropna() if str(x).strip() != ""]))) if col_producto else ["TODOS"]
                 producto_filtro = f_col2.selectbox("🧪 Filtrar por Producto:", lista_productos_tabla)
@@ -733,12 +753,10 @@ def ejecutar():
                         
                         with st.spinner(f"Sincronizando la nube con un solo paquete de datos..."):
                             try:
-                                # 💥 BATCH UPDATE PARA EDICIONES: Crea una lista de celdas y actualiza de un solo golpe.
                                 if cambios_actualizacion:
                                     celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion]
                                     ws_write_ing.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
                                 
-                                # 💥 BATCH UPDATE PARA ELIMINACIONES: Petición JSON a Google para no hacer viajes redundantes.
                                 if eliminaciones:
                                     eliminaciones = sorted(list(set(eliminaciones)), reverse=True)
                                     peticiones_borrado = []
@@ -748,7 +766,7 @@ def ejecutar():
                                                 "range": {
                                                     "sheetId": ws_write_ing.id,
                                                     "dimension": "ROWS",
-                                                    "startIndex": eli - 1, # Google API usa índice base 0
+                                                    "startIndex": eli - 1, 
                                                     "endIndex": eli
                                                 }
                                             }
@@ -1068,7 +1086,6 @@ def ejecutar():
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
                             ws_t = sh_temp.worksheet(titulo_ws_traslados)
                             
-                            # Batch Request JSON nativo a la API de Google Sheets
                             eliminaciones = sorted(list(set(eliminaciones)), reverse=True)
                             peticiones_borrado = []
                             for eli in eliminaciones:
@@ -1077,7 +1094,7 @@ def ejecutar():
                                         "range": {
                                             "sheetId": ws_t.id,
                                             "dimension": "ROWS",
-                                            "startIndex": eli - 1, # Base 0 index
+                                            "startIndex": eli - 1, 
                                             "endIndex": eli
                                         }
                                     }
