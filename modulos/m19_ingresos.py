@@ -60,7 +60,6 @@ def extraer_mapeo_materiales():
     except Exception as e: 
         return {"ERROR": str(e)}
 
-# 💥 BÚSQUEDA EXACTA: Cero aproximaciones permitidas
 def buscar_codigo_material(producto_nombre, mapeo):
     if "ERROR" in mapeo: return "S/N"
     prod_clean = re.sub(r'\s+', ' ', str(producto_nombre).strip().upper())
@@ -68,7 +67,6 @@ def buscar_codigo_material(producto_nombre, mapeo):
     if prod_clean in mapeo: return mapeo[prod_clean]
     return "S/N"
 
-# 💥 RADAR CRONOLÓGICO Y ANTI-FALLOS
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
@@ -141,7 +139,7 @@ def ejecutar():
 
     st.markdown("<div id='inicio-modulo-19'></div>", unsafe_allow_html=True)
     
-    # 💥 REPARACIÓN CSS: SELECTORES CON BORDES FORZADOS EXACTOS
+    # 💥 EL CEBO CSS: Atacamos todos los wrappers de inputs y selects
     st.markdown("""
     <style>
     .titulo-mod { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; text-transform: uppercase; }
@@ -175,19 +173,22 @@ def ejecutar():
         box-shadow: none !important;
     }
     
-    /* 💥 CAJAS EXTERNAS: SELECTORES DROPDOWN FORZADOS AL 100% */
-    div[data-baseweb="select"] {
+    /* 💥 EL CEBO AGRESIVO PARA LOS SELECTORES (DROPDOWNS) */
+    div[data-testid="stSelectbox"] > div > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
         border: 2px solid #0d1b2a !important; 
         border-radius: 6px !important; 
         background-color: #ffffff !important; 
     }
     
-    div[data-baseweb="select"] > div {
-        border: none !important; 
-        background-color: transparent !important; 
+    /* ELIMINA CUALQUIER BORDE INTERNO FANTASMA EN SELECTORES */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        border: none !important;
+        background-color: transparent !important;
     }
     
-    div[data-baseweb="select"] * { 
+    /* COLOR DEL TEXTO EN LOS SELECTORES */
+    div[data-testid="stSelectbox"] * { 
         color: #0d1b2a !important; 
         font-weight: 900 !important; 
     }
