@@ -501,7 +501,23 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if 0 < v < 2500: return v * 1000
             return v
             
-        super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
+        # =================================================================
+        # 🛡️ BLINDAJE HISTÓRICO: IGNORAR FÓRMULAS DE EXCEL
+        # Leemos el COSTO_TOTAL (columna dura inyectada por M3) en lugar
+        # del VALOR_FACTURAR (que recalcula en vivo en Sheets).
+        # =================================================================
+        def calcular_costo_congelado(r):
+            if r.get('ORIGEN_BI') == 'ACTUAL':
+                total_duro = sanear_valores_sap(r.get('COSTO_TOTAL', 0))
+                area = limpiar_area(r.get('AREA_NUM', 1))
+                if area > 0:
+                    return total_duro / area
+                return 0.0
+            else:
+                return sanear_valores_sap(r.get('COSTO_MAESTRO', 0))
+
+        super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_congelado, axis=1)
+        
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
