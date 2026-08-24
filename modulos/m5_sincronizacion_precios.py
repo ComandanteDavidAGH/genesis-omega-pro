@@ -53,9 +53,9 @@ def purificar_y_convertir_precio(valor_crudo):
         return 0.0
 
 # =================================================================
-# 📊 EXPORTADOR EXCEL PREMIUM: FORMATO VERTICAL GERENCIAL
+# 📊 EXPORTADOR EXCEL PREMIUM: FORMATO VERTICAL GERENCIAL + DOSIS
 # =================================================================
-def generar_excel_gerencial(df_comp):
+def generar_excel_gerencial(df_comp, dosis_dict):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         start_row = 3
@@ -74,7 +74,7 @@ def generar_excel_gerencial(df_comp):
 
         # --- ESTILOS DE TABLA ---
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        header_font = Font(color="D4AF37", bold=True, size=11)
+        header_font = Font(color="FFFFFF", bold=True, size=11)
         borde_fino = Border(left=Side(style='thin', color='000000'), right=Side(style='thin', color='000000'),
                             top=Side(style='thin', color='000000'), bottom=Side(style='thin', color='000000'))
         
@@ -83,12 +83,26 @@ def generar_excel_gerencial(df_comp):
 
         for col_num, col_name in enumerate(df_comp.columns, 1):
             col_letter = openpyxl.utils.get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = 22
+            ws.column_dimensions[col_letter].width = 24
             
-            # Formato Encabezados (AHORA TODOS CON FONDO OSCURO Y LETRA DORADA)
+            # --- 🎯 AGREGAR DOSIS EN LA FILA 3 (JUSTO ARRIBA DEL ENCABEZADO) ---
+            for prod, dose in dosis_dict.items():
+                if f"🧪 {prod}" == col_name:
+                    cell_dose = ws.cell(row=start_row, column=col_num)
+                    cell_dose.value = f"⚖️ Dosis: {dose:.2f} L/Kg/Ha"
+                    cell_dose.font = Font(name="Arial", size=10, bold=True, color="0D1B2A")
+                    cell_dose.fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+                    cell_dose.alignment = Alignment(horizontal='center', vertical='center')
+                    cell_dose.border = borde_fino
+            
+            # Formato Encabezados (TODOS CON FONDO OSCURO Y LETRA DORADA EN EXCEL)
             cell_header = ws.cell(row=header_row, column=col_num)
             cell_header.fill = header_fill
-            cell_header.font = header_font
+            if "DIF" in str(col_name) and "%" in str(col_name):
+                cell_header.font = Font(color="D4AF37", bold=True, size=11)
+            else:
+                cell_header.font = Font(color="FFFFFF", bold=True, size=11)
+                
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             cell_header.border = borde_fino
             
@@ -399,7 +413,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
 
                     df_excel_export = pd.DataFrame(filas_excel)
 
-                    # 🎯 RENDERIZADOR DATA FRAME STREAMLIT
                     st.markdown("##### 📊 2. Cuadro Comparativo (Vista Estructurada)")
                     
                     # Configuración de columnas para Streamlit
@@ -437,7 +450,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     )
                     
                     # Botón de Descarga Excel
-                    excel_data = generar_excel_gerencial(df_excel_export)
+                    excel_data = generar_excel_gerencial(df_excel_export, dosis_dict)
                     st.download_button(
                         label="📥 DESCARGAR MODELO GERENCIAL (EXCEL VIP)", 
                         data=excel_data, 
