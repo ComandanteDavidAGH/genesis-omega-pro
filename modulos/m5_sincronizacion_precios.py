@@ -228,9 +228,15 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             df_t = st.session_state['df_tarifario']
             cols_dinamicas = st.session_state.get('opciones_cols_m5', [])
             
+            # 🛡️ ESCUDO ANTI-MEMORIA FANTASMA: Si viene de una caché vieja, forzamos recarga
+            if not cols_dinamicas or len(cols_dinamicas) < 2:
+                df_t, cols_dinamicas = obtener_tarifario_maestro_cached(supabase_client)
+                st.session_state['df_tarifario'] = df_t
+                st.session_state['opciones_cols_m5'] = cols_dinamicas
+            
             total_quimicos_tarifados = len(df_t)
-            costo_maximo_comercial = df_t[cols_dinamicas[1]].max() # El TERCERO suele ser la columna 1
-            costo_medio_base = df_t['COSTO BASE'].mean()
+            costo_maximo_comercial = df_t[cols_dinamicas[1]].max() if len(cols_dinamicas) > 1 else 0
+            costo_medio_base = df_t['COSTO BASE'].mean() if 'COSTO BASE' in df_t.columns else 0
             
             st.markdown(f"""
             <div class="hud-tarifas">
@@ -264,10 +270,11 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 
                 c_cop1, c_cop2 = st.columns([2, 1])
                 with c_cop1:
-                    # Las opciones invertidas para que aparezcan de mayor a menor y el costo base al final
+                    # Protección por si la lista sigue vacía por error de red
+                    lista_opciones = list(reversed(cols_dinamicas)) if cols_dinamicas else ["COSTO BASE"]
                     col_margen = st.selectbox(
                         "Seleccione el Perfil de Productor:", 
-                        list(reversed(cols_dinamicas)),
+                        lista_opciones,
                         key="sb_perfil_copia"
                     )
                 with c_cop2:
