@@ -344,6 +344,9 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         use_container_width=True, 
                         hide_index=True,
                         column_config={
+                            "🧪 PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO"),
+                            "⚖️ DOSIS/HA": st.column_config.NumberColumn("⚖️ DOSIS/HA", format="%.2f"),
+                            "🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL"),
                             "📉 COSTO BASE/HA": st.column_config.NumberColumn("📉 COSTO BASE/HA", format="$ %d"),
                             "📈 PRECIO VENTA/HA": st.column_config.NumberColumn("📈 PRECIO VENTA/HA", format="$ %d"),
                             "💰 UTILIDAD NETA/HA": st.column_config.NumberColumn("💰 UTILIDAD NETA/HA", format="$ %d"),
