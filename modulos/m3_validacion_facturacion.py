@@ -246,9 +246,9 @@ def extraer_datos_boveda():
     return df_t1, df_t2, dict_tarifas_conf
 
 # =================================================================
-# 🛩️ MOTOR DEL SIMULADOR PRINCIPAL
+# 🛩️ MOTOR DEL SIMULADOR PRINCIPAL (FIRMA DE ENTRADA CORREGIDA)
 # =================================================================
-def ejecutar(procesar_fecha_pesada, extraer_numero):
+def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
     hora_oficial_col = obtener_hora_colombia()
