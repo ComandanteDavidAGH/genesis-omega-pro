@@ -80,9 +80,9 @@ def generar_excel_gerencial(df_comp):
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.border = borde_fino
                 cell.alignment = Alignment(vertical='center')
-                if "Venta" in str(col_name) or "Ganancia" in str(col_name) or "Costo" in str(col_name):
+                if any(k in str(col_name) for k in ["Venta", "Ganancia", "Costo", "Diferencia ($)"]):
                     cell.number_format = '"$" #,##0'
-                elif "%" in str(col_name) or "Margen" in str(col_name):
+                elif "%" in str(col_name) or "Margen" in str(col_name) or "Diferencia (%)" in str(col_name):
                     cell.number_format = '0.00 "%"'
                     
     return buffer.getvalue()
@@ -141,7 +141,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
         except Exception: pass
 
     if df.empty or 'PRODUCTO' not in df.columns or 'COSTO' not in df.columns:
-        return pd.DataFrame(), []
+        return pd.DataFrame(), [], {}
         
     df['PRODUCTO'] = df['PRODUCTO'].astype(str).str.strip().str.upper()
     mask_validos = (df['PRODUCTO'].notna() & (df['PRODUCTO'] != "") & (df['PRODUCTO'] != "PRODUCTO") & (~df['PRODUCTO'].str.contains("INVENTARIO", na=False)))
@@ -150,7 +150,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
     df = df[df['COSTO BASE'] > 0].copy()
     
-    if df.empty: return pd.DataFrame(), []
+    if df.empty: return pd.DataFrame(), [], {}
     
     def fmt_pct(factor): return round((factor - 1.0) * 100, 2)
     
@@ -167,7 +167,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     cols = ["PRODUCTO", "COSTO BASE", col_ter, col_afi, col_soc, col_org]
     df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
     
-    return df_tarifario, cols[1:]
+    return df_tarifario, cols[1:], margenes
 
 # =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
@@ -207,22 +207,26 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 st.cache_data.clear()
                 st.session_state.pop('df_tarifario', None)
                 st.session_state.pop('opciones_cols_m5', None)
+                st.session_state.pop('dict_margenes_m5', None)
                 st.rerun()
 
         if 'df_tarifario' not in st.session_state or st.session_state['df_tarifario'].empty:
-            df_tarifario_cached, opciones_cols = obtener_tarifario_maestro_cached(supabase_client)
+            df_tarifario_cached, opciones_cols, dict_m = obtener_tarifario_maestro_cached(supabase_client)
             if not df_tarifario_cached.empty:
                 st.session_state['df_tarifario'] = df_tarifario_cached
                 st.session_state['opciones_cols_m5'] = opciones_cols
+                st.session_state['dict_margenes_m5'] = dict_m
 
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
             cols_dinamicas = st.session_state.get('opciones_cols_m5', [])
+            dict_m = st.session_state.get('dict_margenes_m5', {})
             
             if not cols_dinamicas or len(cols_dinamicas) < 2:
-                df_t, cols_dinamicas = obtener_tarifario_maestro_cached(supabase_client)
+                df_t, cols_dinamicas, dict_m = obtener_tarifario_maestro_cached(supabase_client)
                 st.session_state['df_tarifario'] = df_t
                 st.session_state['opciones_cols_m5'] = cols_dinamicas
+                st.session_state['dict_margenes_m5'] = dict_m
             
             total_quimicos_tarifados = len(df_t)
             costo_maximo_comercial = df_t[cols_dinamicas[1]].max() if len(cols_dinamicas) > 1 else 0
@@ -245,7 +249,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             </div>
             """.replace(",", "."), unsafe_allow_html=True)
             
-            # ¡RECUPERAMOS LAS 4 PESTAÑAS!
             t1, t2, t3, t4 = st.tabs([
                 "💰 Visor General del Arsenal", 
                 "📋 Copia Masiva (Por Margen)", 
@@ -282,12 +285,12 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 st.code("\n".join(lista_textos), language="text")
                     
             with t3:
-                st.markdown("#### 🎯 Análisis Gerencial: Rentabilidad y Margen por Hectárea")
-                st.info("💡 **SIMULADOR DE UTILIDAD:** Seleccione los insumos y defina la Dosis exacta por Hectárea. El sistema mostrará la diferencia en dinero y porcentaje entre cada tipo de productor.")
+                st.markdown("#### 🎯 Análisis Comparativo Gerencial por Dosis y Perfil Comercial")
+                st.info("💡 **MATRIZ GERENCIAL:** Seleccione 2 o más productos para habilitar el análisis de **Diferencia en Pesos ($)** y **Diferencia Porcentual (%)** por dosis aplicada.")
                 
                 opciones_productos = df_t["PRODUCTO"].tolist()
                 prods_sel = st.multiselect(
-                    "🔍 Seleccione los Productos a Analizar:", 
+                    "🔍 Seleccione los Productos a Comparar (El primero servirá de Base):", 
                     options=opciones_productos,
                     default=[opciones_productos[0]] if opciones_productos else []
                 )
@@ -309,57 +312,85 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     dosis_dict = dict(zip(df_dosis["PRODUCTO"], df_dosis["DOSIS (L/Kg/Ha)"]))
                     
-                    st.markdown("##### 📊 2. Matriz Comparativa de Rentabilidad (Perfiles vs Productos)")
+                    st.markdown("##### 📊 2. Matriz Comparativa Estratégica")
                     
-                    perfiles = []
-                    # Invertimos para que salga TERCERO de primero, luego AFILIADO, etc.
-                    for c in reversed(cols_dinamicas[1:]):
-                        perfil_limpio = str(c).split("(+")[0].strip()
-                        perfiles.append((c, perfil_limpio))
+                    # Mapa de perfiles y factores de porcentaje
+                    mapa_perfiles = [
+                        ("TERCERO", cols_dinamicas[1], dict_m.get("TERCERO", 1.451)),
+                        ("AFILIADO", cols_dinamicas[2], dict_m.get("AFILIADO", 1.164)),
+                        ("COOP/SOCIO", cols_dinamicas[3], dict_m.get("COOPERATIVA / SOCIO", 1.112)),
+                        ("ORGÁNICO", cols_dinamicas[4], dict_m.get("ORGANICO", 1.011))
+                    ]
+                    
+                    prod_base = prods_sel[0]
+                    dosis_base_p1 = dosis_dict.get(prod_base, 1.0)
+                    datos_p1 = df_t[df_t["PRODUCTO"] == prod_base].iloc[0]
+                    costo_base_p1_ha = datos_p1["COSTO BASE"] * dosis_base_p1
                     
                     filas_gerenciales = []
-                    for col_margen, perfil_nombre in perfiles:
-                        fila = {"🤝 PERFIL COMERCIAL": perfil_nombre}
-                        for prod_sel in prods_sel:
-                            datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
-                            dosis = dosis_dict.get(prod_sel, 1.0)
-                            costo_base_ha = datos_prod["COSTO BASE"] * dosis
-                            precio_venta_ha = datos_prod[col_margen] * dosis
-                            utilidad_dinero = precio_venta_ha - costo_base_ha
-                            utilidad_pct = (utilidad_dinero / costo_base_ha * 100) if costo_base_ha > 0 else 0
-                            
-                            fila[f"🏷️ {prod_sel} (Venta/Ha)"] = precio_venta_ha
-                            fila[f"💰 {prod_sel} (Ganancia)"] = utilidad_dinero
-                            fila[f"🚀 {prod_sel} (Margen %)"] = utilidad_pct
+                    for perfil_nombre, col_margen, factor_mult in mapa_perfiles:
+                        pct_margen = round((factor_mult - 1.0) * 100, 2)
                         
+                        precio_p1_ha = datos_p1[col_margen] * dosis_base_p1
+                        ganancia_p1_ha = precio_p1_ha - costo_base_p1_ha
+                        
+                        fila = {
+                            "🤝 PERFIL COMERCIAL": perfil_nombre,
+                            "📊 MARGEN AL PRODUCTOR (%)": pct_margen,
+                            f"📉 {prod_base} (Costo Base/Ha)": costo_base_p1_ha,
+                            f"🏷️ {prod_base} (Venta/Ha)": precio_p1_ha,
+                            f"💰 {prod_base} (Ganancia/Ha)": ganancia_p1_ha
+                        }
+                        
+                        # Si hay un segundo producto o más, comparamos contra el primero
+                        for prod_comparar in prods_sel[1:]:
+                            dosis_p2 = dosis_dict.get(prod_comparar, 1.0)
+                            datos_p2 = df_t[df_t["PRODUCTO"] == prod_comparar].iloc[0]
+                            costo_base_p2_ha = datos_p2["COSTO BASE"] * dosis_p2
+                            precio_p2_ha = datos_p2[col_margen] * dosis_p2
+                            ganancia_p2_ha = precio_p2_ha - costo_base_p2_ha
+                            
+                            dif_pesos = precio_p2_ha - precio_p1_ha
+                            dif_pct = ((precio_p2_ha - precio_p1_ha) / precio_p1_ha * 100) if precio_p1_ha > 0 else 0.0
+                            
+                            fila[f"📉 {prod_comparar} (Costo Base/Ha)"] = costo_base_p2_ha
+                            fila[f"🏷️ {prod_comparar} (Venta/Ha)"] = precio_p2_ha
+                            fila[f"💰 {prod_comparar} (Ganancia/Ha)"] = ganancia_p2_ha
+                            fila[f"⚖️ Dif. ($) ({prod_comparar} vs {prod_base})"] = dif_pesos
+                            fila[f"📈 Dif. (%) ({prod_comparar} vs {prod_base})"] = dif_pct
+
                         filas_gerenciales.append(fila)
                     
                     df_gerencial = pd.DataFrame(filas_gerenciales)
                     
-                    # CONFIGURACIÓN DINÁMICA DE COLUMNAS
-                    col_config = {"🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL", width="medium")}
-                    for prod_sel in prods_sel:
-                        col_config[f"🏷️ {prod_sel} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_sel} (Venta/Ha)", format="$ %d")
-                        col_config[f"💰 {prod_sel} (Ganancia)"] = st.column_config.NumberColumn(f"💰 {prod_sel} (Ganancia)", format="$ %d")
-                        col_config[f"🚀 {prod_sel} (Margen %)"] = st.column_config.NumberColumn(f"🚀 {prod_sel} (Margen %)", format="%.2f %%")
-
-                    # ESTILOS DINÁMICOS
-                    def colorear_utilidad(val):
-                        if isinstance(val, (int, float)):
-                            if val > 30: return 'color: #27AE60; font-weight: bold;'
-                            if val > 15: return 'color: #2980B9; font-weight: bold;'
-                            if val > 0: return 'color: #F1C40F; font-weight: bold;'
-                            return 'color: #E74C3C; font-weight: bold;'
-                        return ''
+                    # CONFIGURACIÓN DE NOMBRES Y FORMATOS DE COLUMNAS
+                    col_config = {
+                        "🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL", width="small"),
+                        "📊 MARGEN AL PRODUCTOR (%)": st.column_config.NumberColumn("📊 MARGEN AL PRODUCTOR", format="%.2f %%")
+                    }
                     
-                    def colorear_ganancia(val):
-                        if isinstance(val, (int, float)) and val > 0: return 'color: #27AE60; font-weight: bold;'
+                    col_config[f"📉 {prod_base} (Costo Base/Ha)"] = st.column_config.NumberColumn(f"📉 {prod_base} (Costo/Ha)", format="$ %d")
+                    col_config[f"🏷️ {prod_base} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_base} (Venta/Ha)", format="$ %d")
+                    col_config[f"💰 {prod_base} (Ganancia/Ha)"] = st.column_config.NumberColumn(f"💰 {prod_base} (Ganancia/Ha)", format="$ %d")
+
+                    for prod_comparar in prods_sel[1:]:
+                        col_config[f"📉 {prod_comparar} (Costo Base/Ha)"] = st.column_config.NumberColumn(f"📉 {prod_comparar} (Costo/Ha)", format="$ %d")
+                        col_config[f"🏷️ {prod_comparar} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_comparar} (Venta/Ha)", format="$ %d")
+                        col_config[f"💰 {prod_comparar} (Ganancia/Ha)"] = st.column_config.NumberColumn(f"💰 {prod_comparar} (Ganancia/Ha)", format="$ %d")
+                        col_config[f"⚖️ Dif. ($) ({prod_comparar} vs {prod_base})"] = st.column_config.NumberColumn(f"⚖️ Dif ($) vs {prod_base}", format="$ %d")
+                        col_config[f"📈 Dif. (%) ({prod_comparar} vs {prod_base})"] = st.column_config.NumberColumn(f"📈 Dif (%) vs {prod_base}", format="%.2f %%")
+
+                    # ESTILOS DINÁMICOS POR COLOR
+                    def colorear_diferencia_pesos(val):
+                        if isinstance(val, (int, float)):
+                            if val > 0: return 'color: #27AE60; font-weight: bold;'
+                            if val < 0: return 'color: #E74C3C; font-weight: bold;'
                         return ''
 
                     style_map = df_gerencial.style
-                    for prod_sel in prods_sel:
-                        style_map = style_map.map(colorear_ganancia, subset=[f"💰 {prod_sel} (Ganancia)"])
-                        style_map = style_map.map(colorear_utilidad, subset=[f"🚀 {prod_sel} (Margen %)"])
+                    for prod_comparar in prods_sel[1:]:
+                        style_map = style_map.map(colorear_diferencia_pesos, subset=[f"⚖️ Dif. ($) ({prod_comparar} vs {prod_base})"])
+                        style_map = style_map.map(colorear_diferencia_pesos, subset=[f"📈 Dif. (%) ({prod_comparar} vs {prod_base})"])
                         
                     st.dataframe(style_map, use_container_width=True, hide_index=True, column_config=col_config)
                     
