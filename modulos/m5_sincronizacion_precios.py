@@ -74,7 +74,7 @@ def generar_excel_gerencial(df_comp):
 
         # --- ESTILOS DE TABLA ---
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        header_font = Font(color="FFFFFF", bold=True, size=11)
+        header_font = Font(color="D4AF37", bold=True, size=11)
         borde_fino = Border(left=Side(style='thin', color='000000'), right=Side(style='thin', color='000000'),
                             top=Side(style='thin', color='000000'), bottom=Side(style='thin', color='000000'))
         
@@ -85,15 +85,10 @@ def generar_excel_gerencial(df_comp):
             col_letter = openpyxl.utils.get_column_letter(col_num)
             ws.column_dimensions[col_letter].width = 22
             
-            # Formato Encabezados
+            # Formato Encabezados (AHORA TODOS CON FONDO OSCURO Y LETRA DORADA)
             cell_header = ws.cell(row=header_row, column=col_num)
-            if "DIF" in str(col_name) and "%" in str(col_name):
-                cell_header.fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                cell_header.font = Font(color="D4AF37", bold=True, size=11)
-            else:
-                cell_header.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-                cell_header.font = Font(color="000000", bold=True, size=11)
-                
+            cell_header.fill = header_fill
+            cell_header.font = header_font
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             cell_header.border = borde_fino
             
