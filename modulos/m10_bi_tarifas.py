@@ -133,7 +133,6 @@ def acortar_fecha(txt):
 # 🎨 UTILIDADES DE INTERFAZ Y EXPORTACIÓN VIP
 # =================================================================
 def color_variacion(val):
-    """ Colorea rojo si > 0 (sobrecosto), verde si < 0 (ahorro) """
     try:
         if val > 0: return 'color: #ff4b4b; font-weight: bold;'
         elif val < 0: return 'color: #28a745; font-weight: bold;'
@@ -142,13 +141,11 @@ def color_variacion(val):
         return ''
 
 def generar_excel_vip(df, sheet_name="Reporte"):
-    """ Genera un archivo Excel real (.xlsx) con formatos numéricos nativos y estilo VIP """
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name=sheet_name, index=False)
         ws = writer.sheets[sheet_name]
         
-        # Estilo de Cabeceras
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         header_font = Font(color="D4AF37", bold=True)
         borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
@@ -160,7 +157,6 @@ def generar_excel_vip(df, sheet_name="Reporte"):
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = borde_fino
             
-        # Formatos Numéricos y Ancho de Columnas
         for col in ws.columns:
             max_length = 0
             col_letter = col[0].column_letter
@@ -174,10 +170,8 @@ def generar_excel_vip(df, sheet_name="Reporte"):
                     cell.border = borde_fino
                     if isinstance(cell.value, (int, float)):
                         col_name = str(ws[col_letter + '1'].value).upper()
-                        # Si la columna trata sobre dinero
                         if "COSTO" in col_name or "$" in col_name or "P. PROM" in col_name or "TARIFA" in col_name or "VARIACIÓN" in col_name:
                             cell.number_format = '"$" #,##0'
-                        # Si la columna trata sobre litros o dosis
                         elif "DOSIS" in col_name or "GLN" in col_name or "VOLUMEN" in col_name or "HECT" in col_name:
                             cell.number_format = '#,##0.00'
                             
@@ -383,7 +377,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         align-items: stretch !important;
     }}
     
-    /* 🎯 REPARACIÓN DE BORDES: SELECTORES, FECHAS Y NÚMEROS (INCLUYE ÍCONOS Y BOTONES +/-) */
+    /* 🎯 REPARACIÓN DE BORDES */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stDateInput"] > div,
     div[data-testid="stNumberInput"] > div {{
@@ -421,7 +415,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         text-transform: uppercase !important;
     }}
 
-    /* 🔍 EFECTO LUPA MAGNIFICADOR EN TODOS LOS GRÁFICOS DEL MÓDULO 10 */
     div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
         border-radius: 12px !important;
@@ -440,7 +433,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    # 💥 FUNCIÓN PARA GENERAR TARJETAS KPI ESTILO GALA VIP 💥
     def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
         delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
         return f"""
@@ -488,9 +480,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
-        # =================================================================
-        # 2. CANDADO ANTI-DUPLICIDAD
-        # =================================================================
         super_base_bi = super_base_bi.drop_duplicates(
             subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
             keep='last'
@@ -502,30 +491,24 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             return v
             
         # =================================================================
-        # 🛡️ BLINDAJE HISTÓRICO: IGNORAR FÓRMULAS DE EXCEL
-        # Leemos el COSTO_TOTAL (columna dura inyectada por M3) en lugar
-        # del VALOR_FACTURAR (que recalcula en vivo en Sheets).
+        # 🛡️ BLINDAJE MATEMÁTICO DE PRECIOS: PROMEDIO PONDERADO
+        # Definimos que VALOR_FACTURAR es la tarifa unitaria en Google Sheets.
         # =================================================================
-        def calcular_costo_congelado(r):
-            if r.get('ORIGEN_BI') == 'ACTUAL':
-                total_duro = sanear_valores_sap(r.get('COSTO_TOTAL', 0))
-                area = limpiar_area(r.get('AREA_NUM', 1))
-                if area > 0:
-                    return total_duro / area
-                return 0.0
-            else:
-                return sanear_valores_sap(r.get('COSTO_MAESTRO', 0))
-
-        super_base_bi['COSTO_NUM'] = super_base_bi.apply(calcular_costo_congelado, axis=1)
+        super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
         
+        # Filtramos para no arrastrar ceros que dañen el cálculo histórico
+        valid_history = super_base_bi[super_base_bi['COSTO_NUM'] > 0]
+        costo_medio_historico = 0
+        if not valid_history.empty and valid_history['AREA_NUM'].sum() > 0:
+            costo_medio_historico = (valid_history['COSTO_NUM'] * valid_history['AREA_NUM']).sum() / valid_history['AREA_NUM'].sum()
+
         super_base_bi['AVION_NUM'] = super_base_bi['AVION_MAESTRO'].apply(sanear_valores_sap) + super_base_bi['DOMINIC_MAESTRO'].apply(sanear_valores_sap)
 
         total_ha_historicas = super_base_bi['AREA_NUM'].sum()
-        costo_medio_historico = super_base_bi[super_base_bi['COSTO_NUM'] > 0]['COSTO_NUM'].mean()
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
         hb1, hb2, hb3 = st.columns(3)
-        with hb1: st.markdown(tarjeta_kpi("Área Histórica Cubierta", f"✈️ {total_ha_historicas:,.1f} Ha"), unsafe_allow_html=True)
+        with hb1: st.markdown(tarjeta_kpi("Área Histórica Cubierta", f"🚜 {total_ha_historicas:,.1f} Ha"), unsafe_allow_html=True)
         with hb2: st.markdown(tarjeta_kpi("Costo Medio Consolidado", f"💰 $ {formato_latino(costo_medio_historico, 0)}"), unsafe_allow_html=True)
         with hb3: st.markdown(tarjeta_kpi("Órdenes de Servicio Auditadas", f"🛰️ {total_ordenes_auditadas:,} OS"), unsafe_allow_html=True)
 
@@ -535,7 +518,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist()) if col_modelo else ["TODOS"]
         
         f1, f2 = st.columns(2)
-        # 🎯 AJUSTE: 'index=1' fuerza a seleccionar la primera finca real, saltándose "TODAS" (que es el index 0)
         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp, index=1 if len(fincas_disp) > 1 else 0)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
@@ -577,11 +559,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
                 df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
+        # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros)
+        def calcular_costo_ponderado(df_rango):
+            df_valido = df_rango[df_rango['COSTO_NUM'] > 0]
+            if df_valido.empty or df_valido['AREA_NUM'].sum() == 0: return 0.0
+            return (df_valido['COSTO_NUM'] * df_valido['AREA_NUM']).sum() / df_valido['AREA_NUM'].sum()
+
         df_area_a, df_area_b = df_periodo_a.copy(), df_periodo_b.copy()
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
-        costo_a = df_periodo_a['COSTO_NUM'].mean() if not df_periodo_a.empty else 0
-        costo_b = df_periodo_b['COSTO_NUM'].mean() if not df_periodo_b.empty else 0
+        costo_a = calcular_costo_ponderado(df_periodo_a)
+        costo_b = calcular_costo_ponderado(df_periodo_b)
         
         st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
         
@@ -593,7 +581,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("#### 🗺️ Volumen Operativo (Hectáreas Aplicadas)")
             h1, h2 = st.columns(2)
             h1.markdown(tarjeta_kpi("Total Hectáreas", f"{formato_latino(area_b, 1)} Ha"), unsafe_allow_html=True)
-            h2.markdown(tarjeta_kpi("Total Inversión Estimada", f"$ {formato_latino(costo_b * area_b, 0)}"), unsafe_allow_html=True)
+            total_inversion = (df_periodo_b['COSTO_NUM'] * df_periodo_b['AREA_NUM']).sum()
+            h2.markdown(tarjeta_kpi("Total Inversión Billed", f"$ {formato_latino(total_inversion, 0)}"), unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.info("ℹ️ **MODO AUDITORÍA AISLADA:** Mostrando información absoluta del rango seleccionado.")
@@ -606,10 +595,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             st.markdown("---")
             st.markdown("### 🧬 Análisis de Causa Raíz: Tendencia Operativa")
-            if not df_periodo_b.empty:
-                df_tendencia = df_periodo_b.copy()
-                df_tendencia['FECHA_FORMAT'] = df_tendencia['FECHA_DT'].dt.strftime('%d/%m/%Y')
-                tendencia_agrupa = df_tendencia.groupby('FECHA_FORMAT', sort=False)['COSTO_NUM'].mean().reset_index()
+            df_tendencia_b = df_periodo_b[df_periodo_b['COSTO_NUM'] > 0].copy()
+            if not df_tendencia_b.empty:
+                df_tendencia_b['FECHA_FORMAT'] = df_tendencia_b['FECHA_DT'].dt.strftime('%d/%m/%Y')
+                
+                # Promedio Ponderado para Tendencia
+                tendencia_agrupa = df_tendencia_b.groupby('FECHA_FORMAT', sort=False).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
                 tendencia_agrupa['FECHA_REAL'] = pd.to_datetime(tendencia_agrupa['FECHA_FORMAT'], format='%d/%m/%Y')
                 tendencia_agrupa = tendencia_agrupa.sort_values('FECHA_REAL')
                 
@@ -624,17 +615,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 )
                 if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
                 fig_tendencia.update_traces(
-                    line=dict(width=3.5), 
-                    marker=dict(size=9), 
-                    texttemplate="$ %{y:,.0f}", 
-                    textposition="top center",
-                    textfont=dict(size=12, family="Arial Black", color="#0d1b2a")
+                    line=dict(width=3.5), marker=dict(size=9), texttemplate="$ %{y:,.0f}", textposition="top center", textfont=dict(size=12, family="Arial Black", color="#0d1b2a")
                 )
                 st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
             
-            # CÁLCULOS PONDERADOS EXACTOS
+            # CÁLCULOS PONDERADOS DIRECTOS Y FIABLES
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
             costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
             vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
@@ -651,35 +638,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             with tab_unit:
                 fig_unit = go.Figure(data=[
-                    go.Bar(
-                        name='Costo Avión / Ha', 
-                        x=['Periodo Seleccionado'], 
-                        y=[vuelo_b], 
-                        marker_color='#2F75B5', 
-                        text=[fmt_cop_vertical(vuelo_b)], 
-                        textposition='auto', 
-                        textfont=dict(color='white', size=13, family='Arial Black')
-                    ),
-                    go.Bar(
-                        name='Costo Insumos / Ha', 
-                        x=['Periodo Seleccionado'], 
-                        y=[insumos_b], 
-                        marker_color='#27AE60', 
-                        text=[fmt_cop_vertical(insumos_b)], 
-                        textposition='inside', 
-                        textfont=dict(color='white', size=14, family='Arial Black')
-                    )
+                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=13, family='Arial Black')),
+                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
                 ])
-                
-                fig_unit.update_layout(
-                    barmode='stack', 
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='#ffffff',
-                    yaxis_title="Valor COP / Ha", 
-                    hovermode="closest",
-                    margin=dict(t=30, b=30, l=40, r=40)
-                )
-                
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=30, b=30, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             with tab_glob:
@@ -687,13 +649,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')),
                     go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
-                fig_glob.update_layout(
-                    barmode='stack', 
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='#ffffff', 
-                    yaxis_title="Valor Total COP", 
-                    hovermode="closest"
-                )
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest")
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -702,23 +658,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if col_coctel:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("#### 📋 Desglose Operativo: Cócteles Aplicados")
-                df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
-                df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
-                agg_dict = {'COSTO_NUM': 'mean', 'AREA_NUM': 'sum'}
-                if col_gln: df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+                df_per_b_v = df_periodo_b[df_periodo_b['COSTO_NUM'] > 0].copy()
+                df_per_b_v.loc[:, col_coctel] = df_per_b_v[col_coctel].astype(str).str.strip().str.upper()
+                df_per_b_v['TOTAL_DINERO'] = df_per_b_v['COSTO_NUM'] * df_per_b_v['AREA_NUM']
                 
-                g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+                agg_dict = {'TOTAL_DINERO': 'sum', 'AREA_NUM': 'sum'}
+                if col_gln: df_per_b_v[col_gln] = pd.to_numeric(df_per_b_v[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+                
+                g_b = df_per_b_v.groupby(col_coctel).agg(agg_dict).reset_index()
+                g_b['COSTO_NUM'] = g_b['TOTAL_DINERO'] / g_b['AREA_NUM']
+                
                 dicc_renombres = {col_coctel: 'CÓCTEL APLICADO', 'COSTO_NUM': 'Costo Promedio/Ha', 'AREA_NUM': 'Total Hectáreas'}
                 if col_gln: dicc_renombres[col_gln] = 'Gln/Ha Promedio'
                 g_b.rename(columns=dicc_renombres, inplace=True)
                 
                 df_vista = g_b.copy()
-                
-                col_cfg = {
-                    "CÓCTEL APLICADO": st.column_config.TextColumn("🧪 CÓCTEL APLICADO"),
-                    "Costo Promedio/Ha": st.column_config.NumberColumn("💰 Costo Promedio/Ha", format="$ %,.0f"),
-                    "Total Hectáreas": st.column_config.NumberColumn("🗺️ Total Hectáreas", format="%,.1f"),
-                }
+                col_cfg = {"CÓCTEL APLICADO": st.column_config.TextColumn("🧪 CÓCTEL APLICADO"), "Costo Promedio/Ha": st.column_config.NumberColumn("💰 Costo Promedio/Ha", format="$ %,.0f"), "Total Hectáreas": st.column_config.NumberColumn("🗺️ Total Hectáreas", format="%,.1f")}
                 if col_gln: col_cfg["Gln/Ha Promedio"] = st.column_config.NumberColumn("💧 Gln/Ha Promedio", format="%.2f")
                 
                 st.dataframe(df_vista, use_container_width=True, hide_index=True, column_config=col_cfg)
@@ -765,15 +720,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("---")
             st.markdown("### 🧬 Análisis de Causa Raíz: Atribución de Variaciones")
             df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
+            df_tendencia = df_tendencia[df_tendencia['COSTO_NUM'] > 0]
             if not df_tendencia.empty:
                 if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'])['COSTO_NUM'].mean().reset_index()
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES']).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
                     tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                     tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                     titulo_x = "Meses Operativos"
                 else:
                     df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'])['COSTO_NUM'].mean().reset_index()
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA']).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
                     tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                     tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                     titulo_x = f"Días Operativos ({etiq_periodo})"
@@ -782,25 +738,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
                 fig_tendencia.update_layout(
                     yaxis_title="Costo Promedio ($ COP / Ha)", 
-                    xaxis_title=titulo_x, 
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='#ffffff',
-                    hovermode="x unified",
+                    xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', hovermode="x unified",
                     font=dict(family="Arial Black", size=12, color="#0d1b2a")
                 )
                 if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
-                fig_tendencia.update_traces(
-                    line=dict(width=3.5), 
-                    marker=dict(size=9), 
-                    texttemplate="$ %{y:,.0f}", 
-                    textposition="top center", 
-                    textfont=dict(size=12, family="Arial Black", color="#0d1b2a")
-                )
+                fig_tendencia.update_traces(line=dict(width=3.5), marker=dict(size=9), texttemplate="$ %{y:,.0f}", textposition="top center", textfont=dict(size=12, family="Arial Black", color="#0d1b2a"))
                 st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
             
-            # CÁLCULOS PONDERADOS DIRECTOS Y FIABLES
+            # CÁLCULOS PONDERADOS EXACTOS
             vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
             vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
             costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
@@ -812,63 +759,28 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
             
             categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
-            
             def fmt_cop_vertical(val):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 except: return str(val)
             
             st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
-
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
-            
             with tab_unit:
                 fig_unit = go.Figure(data=[
-                    go.Bar(
-                        name='Costo Avión / Ha', 
-                        x=categorias, 
-                        y=[vuelo_a, vuelo_b], 
-                        marker_color='#2F75B5', 
-                        text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], 
-                        textposition='auto', 
-                        textfont=dict(color='white', size=12, family='Arial Black')
-                    ), 
-                    go.Bar(
-                        name='Costo Insumos / Ha', 
-                        x=categorias, 
-                        y=[insumos_a, insumos_b], 
-                        marker_color='#27AE60', 
-                        text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], 
-                        textposition='inside', 
-                        textfont=dict(color='white', size=13, family='Arial Black')
-                    )
+                    go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=12, family='Arial Black')), 
+                    go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=13, family='Arial Black'))
                 ])
-
-                fig_unit.update_layout(
-                    barmode='stack', 
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='#ffffff',
-                    yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest",
-                    margin=dict(t=40, b=40, l=40, r=40)
-                )
-                
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=40, b=40, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             with tab_glob:
                 insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
                 insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-                
                 fig_glob = go.Figure(data=[
                     go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')), 
                     go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
                 ])
-                fig_glob.update_layout(
-                    barmode='stack', 
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='#ffffff', 
-                    yaxis_title="Valor Total COP", 
-                    separators=",.", 
-                    hovermode="closest"
-                )
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest")
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
             
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -877,16 +789,25 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if col_coctel:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("#### 📋 Desglose Operativo: Cócteles y Variación")
-                df_periodo_a.loc[:, col_coctel] = df_periodo_a[col_coctel].astype(str).str.strip().str.upper()
-                df_periodo_b.loc[:, col_coctel] = df_periodo_b[col_coctel].astype(str).str.strip().str.upper()
-                df_periodo_a['COSTO_NUM'] = pd.to_numeric(df_periodo_a['COSTO_NUM'], errors='coerce').fillna(0)
-                df_periodo_b['COSTO_NUM'] = pd.to_numeric(df_periodo_b['COSTO_NUM'], errors='coerce').fillna(0)
                 
-                agg_dict = {'COSTO_NUM': 'mean'}
-                if col_gln: df_periodo_a[col_gln] = pd.to_numeric(df_periodo_a[col_gln], errors='coerce').fillna(0); df_periodo_b[col_gln] = pd.to_numeric(df_periodo_b[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+                df_pa_v = df_periodo_a[df_periodo_a['COSTO_NUM'] > 0].copy()
+                df_pb_v = df_periodo_b[df_periodo_b['COSTO_NUM'] > 0].copy()
                 
-                g_a = df_periodo_a.groupby(col_coctel).agg(agg_dict).reset_index()
-                g_b = df_periodo_b.groupby(col_coctel).agg(agg_dict).reset_index()
+                df_pa_v.loc[:, col_coctel] = df_pa_v[col_coctel].astype(str).str.strip().str.upper()
+                df_pb_v.loc[:, col_coctel] = df_pb_v[col_coctel].astype(str).str.strip().str.upper()
+                
+                df_pa_v['TOTAL_DINERO'] = df_pa_v['COSTO_NUM'] * df_pa_v['AREA_NUM']
+                df_pb_v['TOTAL_DINERO'] = df_pb_v['COSTO_NUM'] * df_pb_v['AREA_NUM']
+                
+                agg_dict = {'TOTAL_DINERO': 'sum', 'AREA_NUM': 'sum'}
+                if col_gln: df_pa_v[col_gln] = pd.to_numeric(df_pa_v[col_gln], errors='coerce').fillna(0); df_pb_v[col_gln] = pd.to_numeric(df_pb_v[col_gln], errors='coerce').fillna(0); agg_dict[col_gln] = 'mean'
+                
+                g_a = df_pa_v.groupby(col_coctel).agg(agg_dict).reset_index()
+                g_a['COSTO_NUM'] = g_a['TOTAL_DINERO'] / g_a['AREA_NUM']
+                
+                g_b = df_pb_v.groupby(col_coctel).agg(agg_dict).reset_index()
+                g_b['COSTO_NUM'] = g_b['TOTAL_DINERO'] / g_b['AREA_NUM']
+                
                 tabla_autopsia = pd.merge(g_a, g_b, on=col_coctel, how='outer', suffixes=('_BASE', '_ACTUAL')).fillna(0)
                 tabla_autopsia['Variación ($)'] = tabla_autopsia['COSTO_NUM_ACTUAL'] - tabla_autopsia['COSTO_NUM_BASE']
                 nombre_base, nombre_comp = f'Costo/Ha ({año_base})', f'Costo/Ha ({año_comp})'
@@ -895,7 +816,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 if col_gln: dicc_renombres[f'{col_gln}_BASE'] = f'Gln/Ha ({año_base})'; dicc_renombres[f'{col_gln}_ACTUAL'] = f'Gln/Ha ({año_comp})'
                 tabla_autopsia.rename(columns=dicc_renombres, inplace=True)
                 
-                # 💎 TABLA EJECUTIVA CÓCTELES
                 col_cfg = {
                     dicc_renombres[col_coctel]: st.column_config.TextColumn("🧪 " + dicc_renombres[col_coctel]),
                     dicc_renombres['COSTO_NUM_BASE']: st.column_config.NumberColumn("💰 " + dicc_renombres['COSTO_NUM_BASE'], format="$ %,.0f"),
@@ -906,12 +826,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     col_cfg[dicc_renombres[f'{col_gln}_BASE']] = st.column_config.NumberColumn("💧 " + dicc_renombres[f'{col_gln}_BASE'], format="%.2f")
                     col_cfg[dicc_renombres[f'{col_gln}_ACTUAL']] = st.column_config.NumberColumn("💧 " + dicc_renombres[f'{col_gln}_ACTUAL'], format="%.2f")
 
-                st.dataframe(
-                    tabla_autopsia.style.map(color_variacion, subset=['Variación ($)']), 
-                    use_container_width=True, 
-                    hide_index=True, 
-                    column_config=col_cfg
-                )
+                st.dataframe(tabla_autopsia.style.map(color_variacion, subset=['Variación ($)']), use_container_width=True, hide_index=True, column_config=col_cfg)
                 
                 excel_n1 = generar_excel_vip(tabla_autopsia, "Variacion_Cocteles")
                 st.download_button(label="📄 Exportar Variación de Cócteles (Excel VIP)", data=excel_n1, file_name="Variacion_Cocteles.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n1")
@@ -944,34 +859,20 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         costo_total_a += costo_ha_a; costo_total_b += costo_ha_b
                         
                         matriz_mol.append({
-                            "INSUMO QUÍMICO": prod, 
-                            "DOSIS/HA": dosis, 
-                            f"P. Prom. ({año_base})": precio_a, 
-                            f"P. Prom. ({año_comp})": precio_b, 
-                            f"Costo/Ha ({año_base})": costo_ha_a, 
-                            f"Costo/Ha ({año_comp})": costo_ha_b, 
-                            "Variación ($)": costo_ha_b - costo_ha_a
+                            "INSUMO QUÍMICO": prod, "DOSIS/HA": dosis, f"P. Prom. ({año_base})": precio_a, f"P. Prom. ({año_comp})": precio_b, 
+                            f"Costo/Ha ({año_base})": costo_ha_a, f"Costo/Ha ({año_comp})": costo_ha_b, "Variación ($)": costo_ha_b - costo_ha_a
                         })
 
                     df_vista_mol = pd.DataFrame(matriz_mol).sort_values('Variación ($)', ascending=False)
                     
-                    # 💎 TABLA EJECUTIVA RECETAS
                     col_cfg_mol = {
-                        "INSUMO QUÍMICO": st.column_config.TextColumn("📦 INSUMO QUÍMICO"),
-                        "DOSIS/HA": st.column_config.NumberColumn("⚖️ DOSIS/HA", format="%.3f"),
-                        f"P. Prom. ({año_base})": st.column_config.NumberColumn(f"🏷️ P. Prom. ({año_base})", format="$ %,.0f"),
-                        f"P. Prom. ({año_comp})": st.column_config.NumberColumn(f"🏷️ P. Prom. ({año_comp})", format="$ %,.0f"),
-                        f"Costo/Ha ({año_base})": st.column_config.NumberColumn(f"💰 Costo/Ha ({año_base})", format="$ %,.0f"),
-                        f"Costo/Ha ({año_comp})": st.column_config.NumberColumn(f"💰 Costo/Ha ({año_comp})", format="$ %,.0f"),
+                        "INSUMO QUÍMICO": st.column_config.TextColumn("📦 INSUMO QUÍMICO"), "DOSIS/HA": st.column_config.NumberColumn("⚖️ DOSIS/HA", format="%.3f"),
+                        f"P. Prom. ({año_base})": st.column_config.NumberColumn(f"🏷️ P. Prom. ({año_base})", format="$ %,.0f"), f"P. Prom. ({año_comp})": st.column_config.NumberColumn(f"🏷️ P. Prom. ({año_comp})", format="$ %,.0f"),
+                        f"Costo/Ha ({año_base})": st.column_config.NumberColumn(f"💰 Costo/Ha ({año_base})", format="$ %,.0f"), f"Costo/Ha ({año_comp})": st.column_config.NumberColumn(f"💰 Costo/Ha ({año_comp})", format="$ %,.0f"),
                         "Variación ($)": st.column_config.NumberColumn("📈 Variación ($)", format="$ %,.0f")
                     }
                     
-                    st.dataframe(
-                        df_vista_mol.style.map(color_variacion, subset=['Variación ($)']), 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config=col_cfg_mol
-                    )
+                    st.dataframe(df_vista_mol.style.map(color_variacion, subset=['Variación ($)']), use_container_width=True, hide_index=True, column_config=col_cfg_mol)
                     
                     excel_n2 = generar_excel_vip(df_vista_mol, "Receta_vs_Año")
                     st.download_button(label="📄 Exportar Receta vs Año (Excel VIP)", data=excel_n2, file_name=f"Comparativo_{coctel_sel}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n2")
@@ -994,17 +895,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         inv_fecha_fin = c_inv2.date_input("📅 Fecha Final (Inventario):", value=datetime.now().date(), key="inv_f_fin_pista")
         
         col_pista_inv = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
-        if col_pista_inv:
-            pistas_inv_disp = ["TODAS"] + sorted(super_base_bi[col_pista_inv].dropna().astype(str).str.upper().unique().tolist())
-        else:
-            pistas_inv_disp = ["TODAS"]
+        if col_pista_inv: pistas_inv_disp = ["TODAS"] + sorted(super_base_bi[col_pista_inv].dropna().astype(str).str.upper().unique().tolist())
+        else: pistas_inv_disp = ["TODAS"]
             
         pista_inv_sel = c_inv3.selectbox("📍 Filtrar por Base / Pista:", pistas_inv_disp, key="pista_inv_sel_key")
         
         df_inventario = super_base_bi.copy()
         df_inventario = df_inventario[(df_inventario['FECHA_DT'].dt.date >= inv_fecha_inicio) & (df_inventario['FECHA_DT'].dt.date <= inv_fecha_fin)]
-        if col_pista_inv and pista_inv_sel != "TODAS":
-            df_inventario = df_inventario[df_inventario[col_pista_inv].astype(str).str.upper().str.strip() == pista_inv_sel.strip()]
+        if col_pista_inv and pista_inv_sel != "TODAS": df_inventario = df_inventario[df_inventario[col_pista_inv].astype(str).str.upper().str.strip() == pista_inv_sel.strip()]
             
         area_inv = df_inventario['AREA_NUM'].sum() if not df_inventario.empty else 0.0
 
@@ -1016,13 +914,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             with st.spinner("Desglosando matrices químicas por Pista..."):
                 try:
                     df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
+                    if df_m.empty: st.cache_data.clear(); df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
                     
-                    if df_m.empty:
-                        st.cache_data.clear()
-                        df_m, df_c, df_d, df_p, df_t2_b = cargar_boveda_recetas_y_precios()
-                    
-                    if df_m.empty:
-                        st.error("🚨 ENLACE SATELITAL ROTO: No se pudo leer la pestaña 'DD_Mesclas' desde Google Drive.")
+                    if df_m.empty: st.error("🚨 ENLACE SATELITAL ROTO: No se pudo leer la pestaña 'DD_Mesclas' desde Google Drive.")
                     else:
                         resumen_ha = df_inventario.groupby(c_coctel)['AREA_NUM'].sum().reset_index()
                         consumo_log = {}
@@ -1045,74 +939,29 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                             if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
                                 df_vista = df_log.sort_values(by="🧪 PRODUCTO", ascending=True).copy()
-                                
                                 c1, c2 = st.columns([1, 1.2])
                                 with c1: 
-                                    # 💎 TABLA EJECUTIVA LOGÍSTICA
-                                    st.dataframe(
-                                        df_vista, 
-                                        use_container_width=True, 
-                                        hide_index=True,
-                                        column_config={
-                                            "🧪 PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO"),
-                                            "📦 VOLUMEN ESTIMADO (L/Kg)": st.column_config.NumberColumn("📦 VOLUMEN ESTIMADO (L/Kg)", format="%,.1f")
-                                        }
-                                    )
+                                    st.dataframe(df_vista, use_container_width=True, hide_index=True, column_config={"🧪 PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO"), "📦 VOLUMEN ESTIMADO (L/Kg)": st.column_config.NumberColumn("📦 VOLUMEN ESTIMADO (L/Kg)", format="%,.1f")})
                                     excel_n3 = generar_excel_vip(df_log, "Consumo_Volumetrico")
                                     st.download_button(label="📊 Exportar Consumo Volumétrico (Excel VIP)", data=excel_n3, file_name=f"Consumo_Volumetrico_{pista_inv_sel}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n3")
                                 with c2:
                                     df_grafica = df_log.sort_values(by="📦 VOLUMEN ESTIMADO (L/Kg)", ascending=False).head(15).copy()
-                                    
                                     def formatear_numero_latino(val):
-                                        try:
-                                            s = "{:,.1f}".format(float(val))
-                                            return s.replace(",", "X").replace(".", ",").replace("X", ".")
+                                        try: return "{:,.1f}".format(float(val)).replace(",", "X").replace(".", ",").replace("X", ".")
                                         except: return str(val)
                                     df_grafica['ETIQUETA_LATINA'] = df_grafica["📦 VOLUMEN ESTIMADO (L/Kg)"].apply(formatear_numero_latino)
-                                    
-                                    fig = px.bar(
-                                        df_grafica, 
-                                        y="🧪 PRODUCTO", 
-                                        x="📦 VOLUMEN ESTIMADO (L/Kg)", 
-                                        text="ETIQUETA_LATINA", 
-                                        orientation='h', 
-                                        color="📦 VOLUMEN ESTIMADO (L/Kg)", 
-                                        color_continuous_scale="GnBu", 
-                                        title=f"Top 15 Insumos - Pista: {pista_inv_sel}"
-                                    )
-                                    fig.update_traces(
-                                        textposition='outside', 
-                                        textfont=dict(size=11, family="Arial Black", color="#0d1b2a")
-                                    )
-                                    fig.update_layout(
-                                        yaxis={'categoryorder':'total ascending'}, 
-                                        plot_bgcolor='rgba(0,0,0,0)', 
-                                        paper_bgcolor='#ffffff',
-                                        margin=dict(l=180, r=80, t=40, b=40), 
-                                        separators=",.", 
-                                        hovermode="closest"
-                                    )
+                                    fig = px.bar(df_grafica, y="🧪 PRODUCTO", x="📦 VOLUMEN ESTIMADO (L/Kg)", text="ETIQUETA_LATINA", orientation='h', color="📦 VOLUMEN ESTIMADO (L/Kg)", color_continuous_scale="GnBu", title=f"Top 15 Insumos - Pista: {pista_inv_sel}")
+                                    fig.update_traces(textposition='outside', textfont=dict(size=11, family="Arial Black", color="#0d1b2a"))
+                                    fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', margin=dict(l=180, r=80, t=40, b=40), separators=",.", hovermode="closest")
                                     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                             else:
                                 vol_especifico = consumo_log[insumo_filtrado]
-                                try:
-                                    s = "{:,.1f}".format(float(vol_especifico))
-                                    vol_formateado = s.replace(",", "X").replace(".", ",").replace("X", ".")
+                                try: vol_formateado = "{:,.1f}".format(float(vol_especifico)).replace(",", "X").replace(".", ",").replace("X", ".")
                                 except: vol_formateado = str(vol_especifico)
-                                
-                                st.markdown(f"""
-                                <div style='background-color:#0d1b2a; padding:25px; border-radius:10px; border-left:8px solid #27AE60; text-align:center;'>
-                                    <h4 style='color:#27AE60; margin:0; text-transform: uppercase;'>CONSUMO TOTAL EN EL PERIODO ({pista_inv_sel})</h4>
-                                    <h1 style='color:white; margin:10px 0; font-size: 45px;'>{vol_formateado}</h1>
-                                    <p style='color:#d4af37; margin:0; font-size:18px;'>Litros o Kilos teóricos de {insumo_filtrado}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match con las recetas de DD_Mesclas.")
-                except Exception as e:
-                    st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
-        else:
-            st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Fechas/Pista).")
+                                st.markdown(f"<div style='background-color:#0d1b2a; padding:25px; border-radius:10px; border-left:8px solid #27AE60; text-align:center;'><h4 style='color:#27AE60; margin:0; text-transform: uppercase;'>CONSUMO TOTAL EN EL PERIODO ({pista_inv_sel})</h4><h1 style='color:white; margin:10px 0; font-size: 45px;'>{vol_formateado}</h1><p style='color:#d4af37; margin:0; font-size:18px;'>Litros o Kilos teóricos de {insumo_filtrado}</p></div>", unsafe_allow_html=True)
+                        else: st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match con las recetas de DD_Mesclas.")
+                except Exception as e: st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
+        else: st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Fechas/Pista).")
             
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
@@ -1160,10 +1009,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         if row['AREA_NUM'] > 0:
                             t_act_red = red_excel(tarita_unitaria_actual)
-                            if tarita_unitaria_actual > 0:
-                                t_nue_red = red_excel((tarita_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
-                            else:
-                                t_nue_red = 0
+                            if tarita_unitaria_actual > 0: t_nue_red = red_excel((tarita_unitaria_actual / (1 + (margen_actual / 100))) * (1 + (margen_nuevo / 100)))
+                            else: t_nue_red = 0
                                 
                             matriz_simulacion.append({
                                 "Nº OS": os_val, "FECHA": row['FECHA_DT'].strftime('%d/%m/%Y'), "SEMANA": int((row['FECHA_DT'] + pd.Timedelta(days=2)).isocalendar()[1]),
@@ -1183,7 +1030,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         k3.markdown(tarjeta_kpi("⚖️ Dinero Real en Juego", f"$ {formato_latino(abs(df_resultados['DIFERENCIA ($)'].sum()), 0)}", f"{'↗' if df_resultados['DIFERENCIA ($)'].sum() > 0 else '↘' if df_resultados['DIFERENCIA ($)'].sum() < 0 else '='} $ {formato_latino(abs(df_resultados['DIFERENCIA ($)'].sum()), 0)}", "#ff4b4b" if df_resultados['DIFERENCIA ($)'].sum() < 0 else "#28a745"), unsafe_allow_html=True)
 
                         tab_resumen, tab_detalle = st.tabs(["📊 Resumen", "📋 Desglose"])
-                        
                         def color_diferencia(val):
                             try:
                                 if val > 0: return 'color: #ff4b4b; font-weight: bold;'
@@ -1192,85 +1038,40 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             except: return ''
                             
                         with tab_resumen:
-                            st.dataframe(
-                                df_semanal.style.map(color_diferencia, subset=['DIFERENCIA ($)']), 
-                                use_container_width=True, 
-                                hide_index=True,
-                                column_config={
-                                    "SEMANA": st.column_config.NumberColumn("📅 SEMANA", format="%d"),
-                                    "HECTÁREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f"),
-                                    "TOTAL ACTUAL ($)": st.column_config.NumberColumn(f"💰 ACTUAL ({margen_actual}%)", format="$ %,.0f"),
-                                    "NUEVO TOTAL ($)": st.column_config.NumberColumn(f"🚀 NUEVO ({margen_nuevo}%)", format="$ %,.0f"),
-                                    "DIFERENCIA ($)": st.column_config.NumberColumn("⚖️ DIFERENCIA", format="$ %,.0f")
-                                }
-                            )
+                            st.dataframe(df_semanal.style.map(color_diferencia, subset=['DIFERENCIA ($)']), use_container_width=True, hide_index=True, column_config={"SEMANA": st.column_config.NumberColumn("📅 SEMANA", format="%d"), "HECTÁREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f"), "TOTAL ACTUAL ($)": st.column_config.NumberColumn(f"💰 ACTUAL ({margen_actual}%)", format="$ %,.0f"), "NUEVO TOTAL ($)": st.column_config.NumberColumn(f"🚀 NUEVO ({margen_nuevo}%)", format="$ %,.0f"), "DIFERENCIA ($)": st.column_config.NumberColumn("⚖️ DIFERENCIA", format="$ %,.0f")})
                         with tab_detalle:
-                            st.dataframe(
-                                df_resultados.style.map(color_diferencia, subset=['DIFERENCIA ($)']), 
-                                use_container_width=True, 
-                                hide_index=True,
-                                column_config={
-                                    "Nº OS": st.column_config.TextColumn("🛰️ Nº OS"),
-                                    "FECHA": st.column_config.TextColumn("📅 FECHA"),
-                                    "SEMANA": st.column_config.NumberColumn("SEMANA", format="%d"),
-                                    "FINCA": st.column_config.TextColumn("📍 FINCA"),
-                                    "PISTA": st.column_config.TextColumn("🛫 PISTA"),
-                                    "HECTÁREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f"),
-                                    f"TARIFA ACTUAL / Ha ({margen_actual}%)": st.column_config.NumberColumn(f"🏷️ Tarifa Act.", format="$ %,.0f"),
-                                    f"NUEVA TARIFA / Ha ({margen_nuevo}%)": st.column_config.NumberColumn(f"🏷️ Tarifa Nue.", format="$ %,.0f"),
-                                    "TOTAL ACTUAL ($)": st.column_config.NumberColumn("💰 TOTAL ACTUAL", format="$ %,.0f"),
-                                    "NUEVO TOTAL ($)": st.column_config.NumberColumn("🚀 NUEVO TOTAL", format="$ %,.0f"),
-                                    "DIFERENCIA ($)": st.column_config.NumberColumn("⚖️ DIFERENCIA", format="$ %,.0f")
-                                }
-                            )
+                            st.dataframe(df_resultados.style.map(color_diferencia, subset=['DIFERENCIA ($)']), use_container_width=True, hide_index=True, column_config={"Nº OS": st.column_config.TextColumn("🛰️ Nº OS"), "FECHA": st.column_config.TextColumn("📅 FECHA"), "SEMANA": st.column_config.NumberColumn("SEMANA", format="%d"), "FINCA": st.column_config.TextColumn("📍 FINCA"), "PISTA": st.column_config.TextColumn("🛫 PISTA"), "HECTÁREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f"), f"TARIFA ACTUAL / Ha ({margen_actual}%)": st.column_config.NumberColumn(f"🏷️ Tarifa Act.", format="$ %,.0f"), f"NUEVA TARIFA / Ha ({margen_nuevo}%)": st.column_config.NumberColumn(f"🏷️ Tarifa Nue.", format="$ %,.0f"), "TOTAL ACTUAL ($)": st.column_config.NumberColumn("💰 TOTAL ACTUAL", format="$ %,.0f"), "NUEVO TOTAL ($)": st.column_config.NumberColumn("🚀 NUEVO TOTAL", format="$ %,.0f"), "DIFERENCIA ($)": st.column_config.NumberColumn("⚖️ DIFERENCIA", format="$ %,.0f")})
                             
                         buffer_sim = io.BytesIO()
                         with pd.ExcelWriter(buffer_sim, engine='openpyxl') as writer:
                             df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
                             df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
-                            
                             workbook = writer.book
                             borde_fino = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
                             fondo_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
                             fuente_header = Font(color="FFFFFF", bold=True, size=11)
-                            
                             for sheet_name in ['Resumen_Semanal', 'Detalle_OS']:
                                 ws = writer.sheets[sheet_name]
                                 ws.sheet_view.showGridLines = False
                                 max_row = ws.max_row
                                 max_col = ws.max_column
-                                
                                 for col_idx in range(1, max_col + 1):
                                     letra = openpyxl.utils.get_column_letter(col_idx)
                                     ws.column_dimensions[letra].width = 20
-                                
                                 for row in ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
                                     for cell in row:
                                         cell.border = borde_fino
                                         if cell.row == 1:
-                                            cell.fill = fondo_header
-                                            cell.font = fuente_header
-                                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                                            cell.fill = fondo_header; cell.font = fuente_header; cell.alignment = Alignment(horizontal='center', vertical='center')
                                         else:
-                                            cell.alignment = Alignment(vertical='center')
-                                            col_name = str(ws.cell(row=1, column=cell.column).value).upper()
+                                            cell.alignment = Alignment(vertical='center'); col_name = str(ws.cell(row=1, column=cell.column).value).upper()
                                             if isinstance(cell.value, (int, float)):
-                                                if "TOTAL" in col_name or "DIFERENCIA" in col_name or "TARIFA" in col_name:
-                                                    cell.number_format = '"$" #,##0' 
-                                                elif "HECT" in col_name:
-                                                    cell.number_format = '#,##0.00' 
-                                                elif "SEMANA" in col_name:
-                                                    cell.number_format = '0' 
-                                                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                                                if "TOTAL" in col_name or "DIFERENCIA" in col_name or "TARIFA" in col_name: cell.number_format = '"$" #,##0' 
+                                                elif "HECT" in col_name: cell.number_format = '#,##0.00' 
+                                                elif "SEMANA" in col_name: cell.number_format = '0'; cell.alignment = Alignment(horizontal='center', vertical='center')
 
                         st.markdown("<br>", unsafe_allow_html=True)
-                        st.download_button(
-                            label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL VIP)",
-                            data=buffer_sim.getvalue(),
-                            file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
+                        st.download_button(label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL VIP)", data=buffer_sim.getvalue(), file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
