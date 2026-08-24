@@ -53,12 +53,11 @@ def purificar_y_convertir_precio(valor_crudo):
         return 0.0
 
 # =================================================================
-# 📊 EXPORTADOR EXCEL PREMIUM CON TÍTULO EN HOJA (GERENCIA)
+# 📊 EXPORTADOR EXCEL PREMIUM CON FORMATO COLORIMÉTRICO (GERENCIA)
 # =================================================================
 def generar_excel_gerencial(df_comp):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        # Desplazamos la tabla a partir de la fila 4 (startrow=3)
         start_row = 3
         df_comp.to_excel(writer, sheet_name='Rentabilidad_Gerencial', index=False, startrow=start_row)
         ws = writer.sheets['Rentabilidad_Gerencial']
@@ -79,29 +78,46 @@ def generar_excel_gerencial(df_comp):
         borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
                             top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
         
-        header_row = start_row + 1 # Fila 4
-        data_start_row = header_row + 1 # Fila 5
+        header_row = start_row + 1
+        data_start_row = header_row + 1
+
+        font_rojo = Font(name="Arial", size=10, bold=True, color="E74C3C")
+        font_verde = Font(name="Arial", size=10, bold=True, color="27AE60")
+        font_normal = Font(name="Arial", size=10)
 
         for col_num, col_name in enumerate(df_comp.columns, 1):
             col_letter = openpyxl.utils.get_column_letter(col_num)
             ws.column_dimensions[col_letter].width = 25
             
-            # Formato de Encabezados (Fila 4)
+            # Encabezados
             cell_header = ws.cell(row=header_row, column=col_num)
             cell_header.fill = header_fill
             cell_header.font = header_font
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             cell_header.border = borde_fino
             
-            # Formato de Datos (Fila 5 en adelante)
+            # Datos
             for row_num in range(data_start_row, len(df_comp) + data_start_row):
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.border = borde_fino
                 cell.alignment = Alignment(vertical='center')
-                if any(k in str(col_name) for k in ["Venta", "Ganancia", "Costo", "Dif. Venta ($)", "Dif. Ganancia ($)"]):
-                    cell.number_format = '"$" #,##0'
-                elif "%" in str(col_name) or "Margen" in str(col_name) or "Dif." in str(col_name):
-                    cell.number_format = '0.00 "%"'
+                
+                val = cell.value
+                if isinstance(val, (int, float)):
+                    # 🎯 APLICACIÓN DE COLORES DE FUENTE Y FORMATO NATIVO DE EXCEL CON [Red]
+                    if val < 0:
+                        cell.font = font_rojo
+                    elif val > 0 and any(k in str(col_name) for k in ["Ganancia", "Dif."]):
+                        cell.font = font_verde
+                    else:
+                        cell.font = font_normal
+
+                    if any(k in str(col_name) for k in ["Venta", "Ganancia", "Costo", "Dif. Venta ($)", "Dif. Ganancia ($)"]):
+                        cell.number_format = '"$" #,##0;[Red]("-" "$" #,##0);"-"'
+                    elif "%" in str(col_name) or "Margen" in str(col_name) or "Dif." in str(col_name):
+                        cell.number_format = '0.00 "%";[Red]-0.00 "%";"0.00 %"'
+                else:
+                    cell.font = font_normal
                     
     return buffer.getvalue()
 
