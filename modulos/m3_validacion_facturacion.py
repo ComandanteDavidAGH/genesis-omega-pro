@@ -176,7 +176,6 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
         extraer_fechas_motor(df_hist)
         
         if fechas_encontradas:
-            # 🎯 CORRECCIÓN: Restar .date() con .date() para asegurar que la hora no genere descuadres
             fecha_vuelo_date = fecha_vuelo if isinstance(fecha_vuelo, date) else pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
             if fechas_validas:
@@ -400,7 +399,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
     hoy_colombia_date = hora_oficial_col.date()
 
     PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
-    PISTAS_DISPONIBLES_MATRIZ = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
+    PISTAS_DISPONIBLES_MATRIZ_BASE = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
 
     def sync_pistas(src, tgt):
         st.session_state[tgt] = st.session_state[src]
@@ -426,6 +425,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
+
+    # --- EXTRACCIÓN DINÁMICA DE PISTAS DESDE LA MATRIZ ---
+    pistas_matriz_tarifa = []
+    if not df_tarifas_maestras.empty:
+        pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+    
+    pistas_disponibles_final = []
+    for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ_BASE:
+        if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE", ""]:
+            pistas_disponibles_final.append(p)
 
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
@@ -558,14 +567,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
                 val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
                 if val_celda.isdigit() and len(val_celda) >= 7: num_pedido = val_celda; break
 
-        lista_pistas_validas = PISTAS_VALIDAS
         pista_detectada, ha_dosis_detectada, match_ped = "PLUC", 0.0, pd.DataFrame()
 
         if not df_ped.empty and num_pedido != "S/N":
             match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
             if not match_ped.empty:
                 texto_pedido = match_ped.to_string().upper()
-                for p_val in lista_pistas_validas:
+                for p_val in PISTAS_VALIDAS:
                     if p_val in texto_pedido: pista_detectada = p_val; break
                 col_ha = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
                 col_mat = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()][0]
@@ -603,8 +611,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
             if not mision_solo_dron:
                 st.markdown("##### 🛣️ Parámetros Terrestres (Aviones)")
                 r2c1, r2c2, r2c3 = st.columns(3)
-                pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
-                pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
+                pista_sugerida = next((p for p in PISTAS_VALIDAS if p in pista_detectada), "PLUC")
+                pista_sel = r2c1.selectbox("Pista Base", PISTAS_VALIDAS, index=PISTAS_VALIDAS.index(pista_sugerida), key=f"pi_{casilla_key}")
                 opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
                 recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=1 if pista_sel == "PDIV" else 0, key=f"rl_{casilla_key}")
                 if recargo_lista == "Otro Valor Manual...": recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
@@ -667,7 +675,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
             if bot_key_real not in st.session_state: st.session_state[bot_key_real] = st.session_state[top_key_real]
 
             c_p1, _ = st.columns([1.5, 2.5])
-            pista_matriz_maestra = c_p1.selectbox("Pista Base SAP", PISTAS_DISPONIBLES_MATRIZ, key=top_key_real, on_change=sync_pistas, args=(top_key_real, bot_key_real))
+            pista_matriz_maestra = c_p1.selectbox("Pista Base SAP", pistas_disponibles_final, key=top_key_real, on_change=sync_pistas, args=(top_key_real, bot_key_real))
             
             st.markdown("---")
             costo_mezcla_total = 0.0
