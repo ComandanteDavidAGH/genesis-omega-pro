@@ -525,7 +525,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
 
         hb1, hb2, hb3 = st.columns(3)
-        with hb1: st.markdown(tarjeta_kpi("Área Histórica Cubierta", f"🚜 {total_ha_historicas:,.1f} Ha"), unsafe_allow_html=True)
+        with hb1: st.markdown(tarjeta_kpi("Área Histórica Cubierta", f"✈️ {total_ha_historicas:,.1f} Ha"), unsafe_allow_html=True)
         with hb2: st.markdown(tarjeta_kpi("Costo Medio Consolidado", f"💰 $ {formato_latino(costo_medio_historico, 0)}"), unsafe_allow_html=True)
         with hb3: st.markdown(tarjeta_kpi("Órdenes de Servicio Auditadas", f"🛰️ {total_ordenes_auditadas:,} OS"), unsafe_allow_html=True)
 
