@@ -845,12 +845,11 @@ def ejecutar():
             col_espacio_t, col_limpiar_t = st.columns([3, 1])
             col_limpiar_t.button("🧹 VACIAR CASILLAS", on_click=limpiar_campos_traslados, key="btn_limpiar_traslados", use_container_width=True)
 
-            t1, t2, t3 = st.columns(3)
+            t1, t2 = st.columns(2)
             fk_t = st.session_state['form_key_m19_traslados']
             t_fecha = t2.date_input("🗓️ Fecha de Traslado", value=hoy_colombia, key=f"t_fecha_{fk_t}")
             semana_traslado = t_fecha.isocalendar()[1]
             t_semana = t1.text_input("📅 Semana del Año", value=str(semana_traslado), disabled=True, key=f"t_semana_{fk_t}")
-            t_consecutivo = t3.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
 
             st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
             
@@ -961,16 +960,27 @@ def ejecutar():
             lote_final_print = t_lote_origen
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
+                
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_cons, _ = st.columns(2)
+            t_consecutivo = col_cons.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
 
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"]:
-                cpt_mat, cpt1, cpt2_o, cpt2_d, cpt3, cpt4 = st.columns(6)
+                cpt_mat, cpt2_o, cpt2_d, cpt1, cpt3, cpt4 = st.columns(6)
                 with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
-                with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
                 with cpt2_o: st.caption("📦 L. ORIGEN"); st.code(t_lote_origen if t_lote_origen else "...", language="text")
                 with cpt2_d: st.caption("📦 L. DESTINO"); st.code(t_lote_nuevo.strip() if t_lote_nuevo.strip() else "...", language="text")
+                with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
+                with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
+                with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
+            else:
+                cpt_mat, cpt2, cpt1, cpt3, cpt4 = st.columns(5)
+                with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
+                with cpt2: st.caption("📦 LOTE"); st.code(lote_final_print if lote_final_print else "...", language="text")
+                with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
                 with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
                 with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
             else:
