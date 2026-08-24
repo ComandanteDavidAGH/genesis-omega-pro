@@ -535,7 +535,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         modelos_disp = ["TODOS"] + sorted(super_base_bi[col_modelo].unique().tolist()) if col_modelo else ["TODOS"]
         
         f1, f2 = st.columns(2)
-        finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp)
+        # 🎯 AJUSTE: 'index=1' fuerza a seleccionar la primera finca real, saltándose "TODAS" (que es el index 0)
+        finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp, index=1 if len(fincas_disp) > 1 else 0)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
         t1, t2, t3, t4 = st.columns(4)
