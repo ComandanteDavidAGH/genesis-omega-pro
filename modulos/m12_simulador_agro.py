@@ -132,13 +132,14 @@ def formato_latino(numero, decimales=0):
         return "0"
 
 # =================================================================
-# 📦 EXTRACCIÓN DE DATOS BLINDADA
+# 📦 EXTRACCIÓN DE DATOS BLINDADA E INTEGRACIÓN DE CONFIGURACIÓN
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=600)
 def extraer_datos_boveda():
     gc = obtener_cliente_gspread_unificado()
     df_t1, df_t2 = pd.DataFrame(), pd.DataFrame()
-    if not gc: return df_t1, df_t2
+    dict_tarifas_conf = {}
+    if not gc: return df_t1, df_t2, dict_tarifas_conf
     
     try:
         boveda = gc.open_by_url(URL_BOVEDA_MAESTRA)
@@ -162,10 +163,23 @@ def extraer_datos_boveda():
             t2 = boveda.worksheet(nombre_t2).get_all_values()
             df_t2 = pd.DataFrame(t2[1:], columns=t2[0]) if len(t2)>1 else pd.DataFrame()
         except Exception: pass
+
+        # 🎯 CONEXIÓN EN VIVO A PESTAÑA CONFIGURACIÓN PARA TARIFAS DE FLOTA
+        try:
+            if "Configuración" in [ws.title for ws in boveda.worksheets()]:
+                conf_data = boveda.worksheet("Configuración").get_all_values()
+                if len(conf_data) > 1:
+                    df_conf = pd.DataFrame(conf_data[1:], columns=conf_data[0])
+                    for _, row in df_conf.iterrows():
+                        key_eq = str(row.iloc[0]).strip().upper()
+                        val_m = limpiar_moneda(row.iloc[1]) if len(row) > 1 else 0.0
+                        if key_eq and val_m > 0:
+                            dict_tarifas_conf[key_eq] = val_m
+        except Exception: pass
         
     except Exception: pass
     
-    return df_t1, df_t2
+    return df_t1, df_t2, dict_tarifas_conf
 
 # =================================================================
 # 💾 EXPORTADOR EXCEL MULTI-HOJA GERENCIAL
@@ -259,7 +273,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
     
-    /* 🎯 ALINEACIÓN FLEXBOX VERTICAL SIMÉTRICA V41 */
     [data-testid="column"] {{
         display: flex !important;
         flex-direction: column !important;
@@ -274,7 +287,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important;
     }}
 
-    /* 🎯 REPARACIÓN DE BORDES: SELECTORES, FECHAS Y NÚMEROS */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stDateInput"] > div,
     div[data-testid="stNumberInput"] > div,
@@ -318,15 +330,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     </style>
     """, unsafe_allow_html=True)
 
-    def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
-        delta_html = f"<span style='font-size: 14px; color: {color_delta}; margin-left: 8px; vertical-align: middle; padding: 2px 6px; border-radius: 4px; background-color: rgba(255,255,255,0.1);'>{delta_texto}</span>" if delta_texto else ""
-        return f"""
-        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 20px; height: 100%; min-height: 85px; display: flex; flex-direction: column; justify-content: center;'>
-            <p style='font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px;'>{titulo}</p>
-            <p style='font-size: 22px; font-family: "Arial Black", sans-serif; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
-        </div>
-        """
-
     c_t, c_btn = st.columns([3, 1])
     with c_t:
         st.markdown("<h1 class='titulo-simulador'>🛩️ Simulador Financiero Libre (OS Unificada)</h1>", unsafe_allow_html=True)
@@ -338,7 +341,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             st.rerun()
 
     with st.spinner("📥 Extrayendo y purificando matriz desde Google Sheets..."):
-        df_base, df_t2_raw = extraer_datos_boveda()
+        df_base, df_t2_raw, dict_tarifas_conf = extraer_datos_boveda()
 
     if df_base.empty:
         st.error("🚨 Error de enlace: TABLA 1 no contiene registros o está desconectada.")
@@ -420,6 +423,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "DRONE DATAROT": 84427.0, "DRONE GENESYS": 71280.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0
     }
 
+    # Sincronización dinámica desde pestaña Configuración si existe
+    if dict_tarifas_conf:
+        for k_conf, v_conf in dict_tarifas_conf.items():
+            if k_conf in tarifas_base_oficiales:
+                tarifas_base_oficiales[k_conf] = v_conf
+
     for k, v in tarifas_base_oficiales.items():
         if k not in st.session_state.tarifas_simulador:
             st.session_state.tarifas_simulador[k] = float(v)
@@ -440,7 +449,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             lista_aviones_dinamica = lista_aviones_maestra
             
         st.markdown("---")
-        st.markdown("#### 🛩️ Gestor de Tarifas Base de Flota y Drones")
+        st.markdown("#### 🛩️ Gestor de Tarifas Base de Flota y Drones (Conexión Dinámica)")
         
         equipos_a_mostrar = [av for av in lista_aviones_dinamica if av != "✈️ TODOS LOS EQUIPOS"]
         if not equipos_a_mostrar:
@@ -468,9 +477,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
         tarifas_aviones = st.session_state.tarifas_simulador
 
-    # =================================================================
-    # 🧠 MOTOR DE CONSOLIDACIÓN UNIFICADO POR ORDEN DE SERVICIO (OS)
-    # =================================================================
     def consolidar_os(df):
         records = []
         for orden, sub_df in df.groupby("Nº ORDEN"):
@@ -494,7 +500,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     df_os_resumen = consolidar_os(df_sim)
 
-    # 🛡️ FILTRADO DE PANTALLA
     mask_filtro = (df_sim["Fecha_DT"].dt.date >= fecha_ini) & (df_sim["Fecha_DT"].dt.date <= fecha_fin)
     if finca_sel != "🌍 TODAS LAS FINCAS":
         mask_filtro = mask_filtro & (df_sim["Finca"] == finca_sel)
@@ -507,7 +512,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         st.warning("📭 No hay vuelos registrados con esos criterios de búsqueda.")
         return
 
-    # Inyectamos el Consolidado a las filas filtradas
     df_filtrado = df_filtrado.merge(df_os_resumen, on="Nº ORDEN", how="left")
 
     df_filtrado["Tarifa_Aplicada"] = df_filtrado["Equipo"].map(tarifas_aviones)
@@ -515,7 +519,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Semana"] = df_filtrado["Fecha_DT"].dt.isocalendar().week.apply(lambda x: f"Semana {x:02d}")
     df_filtrado["Total Real Facturado"] = df_filtrado["CobroReal"] * df_filtrado["Hectareas"]
 
-    # FÓRMULA MAESTRA
     def calcular_tarifa_ideal_unificada(row):
         tarifa_hora = float(row["Tarifa_Aplicada"]) if pd.notna(row["Tarifa_Aplicada"]) else 0.0
         ha_totales_os = float(row["Ha_OS_Total"]) if (pd.notna(row["Ha_OS_Total"]) and row["Ha_OS_Total"] > 0) else float(row["Hectareas"])
@@ -529,16 +532,13 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_filtrado["Total Simulado Ideal"] = df_filtrado["Tarifa Ideal Prom/Ha"] * df_filtrado["Hectareas"]
     df_filtrado["Lucro Cesante"] = df_filtrado["Total Simulado Ideal"] - df_filtrado["Total Real Facturado"]
 
-    # =================================================================
-    # 🎯 AISLAMIENTO TOTAL: INTERRUPTOR MODO AUDITOR
-    # =================================================================
     st.markdown("---")
     ver_cebo = st.toggle("🩺 MODO AUDITOR TÉCNICO: Radiografía del Motor (Verificador de OS Unificadas)", value=False)
     
     if ver_cebo:
         with st.container(border=True):
             st.markdown("#### 🔍 Verificación Estricta de Órdenes de Servicio (OS)")
-            st.caption("Esta tabla técnica detalla cómo el sistema sumó y vinculó las fincas que compartían número de Orden para el prorrateo exacto. Útil para auditoría de tarifas base.")
+            st.caption("Esta tabla técnica detalla cómo el sistema sumó y vinculó las fincas que compartían número de Orden para el prorrateo exacto.")
             
             df_cebo = df_filtrado.groupby(["Nº ORDEN", "Fincas_En_La_OS", "Equipo", "Fecha Operación"]).agg(
                 Horas_Calculadas_OS=("Horas_OS_Total", "max"),
@@ -559,9 +559,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
             st.dataframe(df_cebo, use_container_width=True, hide_index=True, column_config=col_cfg_cebo)
         st.stop() 
 
-    # =================================================================
-    # 📊 AGRUPACIÓN Y CONSOLIDACIÓN PARA DISPLAY 
-    # =================================================================
     df_agrupado = df_filtrado.groupby(["Fecha Operación", "Semana", "Pista", "Finca", "Equipo"]).agg({
         "Hectareas": "sum",
         "Total Real Facturado": "sum",
@@ -576,9 +573,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     df_agrupado = df_agrupado[["Fecha Operación", "Semana", "Pista", "Finca", "Equipo", "Hectareas", "Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha", "Brecha por Ha", "Total Real Facturado", "Total Simulado Ideal", "Lucro Cesante"]]
     df_agrupado = df_agrupado.sort_values(by=["Finca", "Fecha Operación"]).reset_index(drop=True)
 
-    # =================================================================
-    # 💎 TARJETAS DE MANDO FINANCIERO
-    # =================================================================
     st.markdown("### 💎 Impacto Financiero de la Operación")
     
     t_real = df_agrupado["Total Real Facturado"].sum()
@@ -606,14 +600,9 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     """
     st.markdown(html_cards, unsafe_allow_html=True)
 
-    # =================================================================
-    # 📊 VISOR EN PANTALLA CRONOLÓGICO Y FILTRABLE 
-    # =================================================================
     st.markdown("### 📋 Resumen Detallado y Auditoría Financiera")
     
     df_visual = df_agrupado.copy()
-    
-    # 🎯 CORRECCIÓN: Evita el error "dayfirst=True" dando el formato estricto
     df_visual["Fecha Operación"] = pd.to_datetime(df_visual["Fecha Operación"], format='%Y-%m-%d', errors='coerce').dt.strftime('%d/%m/%Y')
 
     def color_fuga(val):
@@ -645,15 +634,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         column_config=col_cfg
     )
 
-    # =================================================================
-    # 📈 DASHBOARD ANALÍTICO DE TENDENCIAS
-    # =================================================================
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
     df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
-    
-    # 🎯 CORRECCIÓN APLICADA AQUÍ TAMBIÉN
     df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"], format='%Y-%m-%d', errors='coerce').dt.strftime('%d/%m/%Y')
 
     fig_tarifas = px.bar(
@@ -706,9 +690,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     )
     st.plotly_chart(fig_lucro, use_container_width=True)
 
-    # =================================================================
-    # 📤 DESCARGA GERENCIAL DE EXCEL MULTI-HOJA COMPLETO
-    # =================================================================
     st.markdown("---")
     st.markdown("### 📤 Exportar Datos Consolidados Autorizados")
 
@@ -722,7 +703,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         use_container_width=True
     )
 
-    st.success("🏁 Proceso completado. La interfaz opera con Formato Gerencial Dinámico.")
+    st.success("🏁 Proceso completado. La interfaz opera con Formato Gerencial Dinámico y conexión activa a Configuración.")
 
 if __name__ == "__main__":
     pass
