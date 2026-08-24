@@ -55,69 +55,75 @@ def purificar_y_convertir_precio(valor_crudo):
 # =================================================================
 # 📊 EXPORTADOR EXCEL PREMIUM CON FORMATO COLORIMÉTRICO (GERENCIA)
 # =================================================================
-def generar_excel_gerencial(df_comp):
+def generar_excel_gerencial(df_abs, df_deltas):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         start_row = 3
-        df_comp.to_excel(writer, sheet_name='Rentabilidad_Gerencial', index=False, startrow=start_row)
-        ws = writer.sheets['Rentabilidad_Gerencial']
-
-        # --- DIBUJAR TÍTULO Y FECHA DENTRO DEL EXCEL ---
-        ws.cell(row=1, column=1, value="REPORTE GERENCIAL: MATRIZ DE RENTABILIDAD Y COMPARATIVO DE MÁRGENES")
-        cell_titulo = ws.cell(row=1, column=1)
-        cell_titulo.font = Font(name="Arial", size=14, bold=True, color="0D1B2A")
-
-        fecha_actual = datetime.now().strftime('%d/%m/%Y %H:%M')
-        ws.cell(row=2, column=1, value=f"Génesis Omega Pro | Auditoría Financiera Generada el: {fecha_actual}")
-        cell_sub = ws.cell(row=2, column=1)
-        cell_sub.font = Font(name="Arial", size=10, italic=True, color="555555")
-
-        # --- ESTILOS DE TABLA ---
-        header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        header_font = Font(color="D4AF37", bold=True, size=11)
-        borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
-                            top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+        df_abs.to_excel(writer, sheet_name='Rentabilidad_Gerencial', index=False, startrow=start_row)
         
-        header_row = start_row + 1
-        data_start_row = header_row + 1
+        # Guardamos ambas tablas en pestañas limpias en Excel
+        if not df_deltas.empty:
+            df_deltas.to_excel(writer, sheet_name='Brechas_Comparativas', index=False, startrow=start_row)
 
-        font_rojo = Font(name="Arial", size=10, bold=True, color="E74C3C")
-        font_verde = Font(name="Arial", size=10, bold=True, color="27AE60")
-        font_normal = Font(name="Arial", size=10)
+        for sheet_name, df_data in [('Rentabilidad_Gerencial', df_abs), ('Brechas_Comparativas', df_deltas)]:
+            if df_data.empty: continue
+            ws = writer.sheets[sheet_name]
 
-        for col_num, col_name in enumerate(df_comp.columns, 1):
-            col_letter = openpyxl.utils.get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = 25
+            # --- DIBUJAR TÍTULO Y FECHA DENTRO DEL EXCEL ---
+            ws.cell(row=1, column=1, value=f"REPORTE GERENCIAL: {sheet_name.replace('_', ' ').upper()}")
+            cell_titulo = ws.cell(row=1, column=1)
+            cell_titulo.font = Font(name="Arial", size=14, bold=True, color="0D1B2A")
+
+            fecha_actual = datetime.now().strftime('%d/%m/%Y %H:%M')
+            ws.cell(row=2, column=1, value=f"Génesis Omega Pro | Auditoría Financiera Generada el: {fecha_actual}")
+            cell_sub = ws.cell(row=2, column=1)
+            cell_sub.font = Font(name="Arial", size=10, italic=True, color="555555")
+
+            # --- ESTILOS DE TABLA ---
+            header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+            header_font = Font(color="D4AF37", bold=True, size=11)
+            borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
+                                top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
             
-            # Encabezados
-            cell_header = ws.cell(row=header_row, column=col_num)
-            cell_header.fill = header_fill
-            cell_header.font = header_font
-            cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-            cell_header.border = borde_fino
-            
-            # Datos
-            for row_num in range(data_start_row, len(df_comp) + data_start_row):
-                cell = ws.cell(row=row_num, column=col_num)
-                cell.border = borde_fino
-                cell.alignment = Alignment(vertical='center')
+            header_row = start_row + 1
+            data_start_row = header_row + 1
+
+            font_rojo = Font(name="Arial", size=10, bold=True, color="E74C3C")
+            font_verde = Font(name="Arial", size=10, bold=True, color="27AE60")
+            font_normal = Font(name="Arial", size=10)
+
+            for col_num, col_name in enumerate(df_data.columns, 1):
+                col_letter = openpyxl.utils.get_column_letter(col_num)
+                ws.column_dimensions[col_letter].width = 25
                 
-                val = cell.value
-                if isinstance(val, (int, float)):
-                    # 🎯 APLICACIÓN DE COLORES DE FUENTE Y FORMATO NATIVO DE EXCEL CON [Red]
-                    if val < 0:
-                        cell.font = font_rojo
-                    elif val > 0 and any(k in str(col_name) for k in ["Ganancia", "Dif."]):
-                        cell.font = font_verde
+                # Encabezados
+                cell_header = ws.cell(row=header_row, column=col_num)
+                cell_header.fill = header_fill
+                cell_header.font = header_font
+                cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell_header.border = borde_fino
+                
+                # Datos
+                for row_num in range(data_start_row, len(df_data) + data_start_row):
+                    cell = ws.cell(row=row_num, column=col_num)
+                    cell.border = borde_fino
+                    cell.alignment = Alignment(vertical='center')
+                    
+                    val = cell.value
+                    if isinstance(val, (int, float)):
+                        if val < 0:
+                            cell.font = font_rojo
+                        elif val > 0 and any(k in str(col_name) for k in ["Ganancia", "Dif."]):
+                            cell.font = font_verde
+                        else:
+                            cell.font = font_normal
+
+                        if "%" in str(col_name) or "Margen" in str(col_name) or "Dif. Venta (%)" in str(col_name) or "Dif. Ganancia (%)" in str(col_name):
+                            cell.number_format = '0.00 "%";[Red]-0.00 "%";"0.00 %"'
+                        else:
+                            cell.number_format = '"$" #,##0;[Red]("-" "$" #,##0);"-"'
                     else:
                         cell.font = font_normal
-
-                    if any(k in str(col_name) for k in ["Venta", "Ganancia", "Costo", "Dif. Venta ($)", "Dif. Ganancia ($)"]):
-                        cell.number_format = '"$" #,##0;[Red]("-" "$" #,##0);"-"'
-                    elif "%" in str(col_name) or "Margen" in str(col_name) or "Dif." in str(col_name):
-                        cell.number_format = '0.00 "%";[Red]-0.00 "%";"0.00 %"'
-                else:
-                    cell.font = font_normal
                     
     return buffer.getvalue()
 
@@ -320,7 +326,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
             with t3:
                 st.markdown("#### 🎯 Análisis Comparativo Gerencial por Dosis y Perfil Comercial")
-                st.info("💡 **MATRIZ GERENCIAL:** Seleccione 2 o más productos para habilitar el análisis de **Diferencia en Pesos ($)** y **Diferencia Porcentual (%)** por dosis aplicada.")
+                st.info("💡 **DISEÑO TÁCTICO COMPACTO:** La información está estructurada en 2 vistas ligeras para evitar tablas horizontales infinitas.")
                 
                 opciones_productos = df_t["PRODUCTO"].tolist()
                 prods_sel = st.multiselect(
@@ -331,7 +337,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 
                 if prods_sel:
                     st.markdown("##### ⚖️ 1. Definir Dosis (L/Kg por Hectárea)")
-                    
                     df_dosis_base = pd.DataFrame({"PRODUCTO": prods_sel, "DOSIS (L/Kg/Ha)": [1.0] * len(prods_sel)})
                     
                     df_dosis = st.data_editor(
@@ -346,98 +351,116 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     dosis_dict = dict(zip(df_dosis["PRODUCTO"], df_dosis["DOSIS (L/Kg/Ha)"]))
                     
-                    st.markdown("#### 📋 TABLA GERENCIAL: MATRIZ DE RENTABILIDAD, UTILIDADES Y DIFERENCIAS EN PESOS Y %")
-                    st.caption("🔍 Muestra el impacto financiero real cruzando perfiles comerciales y dosis por hectárea.")
-                    
                     mapa_perfiles = [
                         ("TERCERO", cols_dinamicas[1], dict_m.get("TERCERO", 1.451)),
                         ("AFILIADO", cols_dinamicas[2], dict_m.get("AFILIADO", 1.164)),
                         ("COOP/SOCIO", cols_dinamicas[3], dict_m.get("COOPERATIVA / SOCIO", 1.112)),
                         ("ORGÁNICO", cols_dinamicas[4], dict_m.get("ORGANICO", 1.011))
                     ]
-                    
-                    prod_base = prods_sel[0]
-                    dosis_base_p1 = dosis_dict.get(prod_base, 1.0)
-                    datos_p1 = df_t[df_t["PRODUCTO"] == prod_base].iloc[0]
-                    costo_base_p1_ha = datos_p1["COSTO BASE"] * dosis_base_p1
-                    
-                    filas_gerenciales = []
+
+                    # --- MATRIZ 1: VALORES ABSOLUTOS POR PRODUCTO (COMPACTA) ---
+                    st.markdown("#### 📊 1. Valores Absolutos por Producto y Perfil")
+                    filas_absolutas = []
                     for perfil_nombre, col_margen, factor_mult in mapa_perfiles:
                         pct_margen = round((factor_mult - 1.0) * 100, 2)
-                        
-                        precio_p1_ha = datos_p1[col_margen] * dosis_base_p1
-                        ganancia_p1_ha = precio_p1_ha - costo_base_p1_ha
-                        
-                        fila = {
-                            "🤝 PERFIL COMERCIAL": perfil_nombre,
-                            "📊 MARGEN AL PRODUCTOR (%)": pct_margen,
-                            f"📉 {prod_base} (Costo/Ha)": costo_base_p1_ha,
-                            f"🏷️ {prod_base} (Venta/Ha)": precio_p1_ha,
-                            f"💰 {prod_base} (Ganancia/Ha)": ganancia_p1_ha
-                        }
-                        
-                        for prod_comparar in prods_sel[1:]:
-                            dosis_p2 = dosis_dict.get(prod_comparar, 1.0)
-                            datos_p2 = df_t[df_t["PRODUCTO"] == prod_comparar].iloc[0]
-                            costo_base_p2_ha = datos_p2["COSTO BASE"] * dosis_p2
-                            precio_p2_ha = datos_p2[col_margen] * dosis_p2
-                            ganancia_p2_ha = precio_p2_ha - costo_base_p2_ha
+                        for prod_item in prods_sel:
+                            dosis = dosis_dict.get(prod_item, 1.0)
+                            datos_p = df_t[df_t["PRODUCTO"] == prod_item].iloc[0]
+                            costo_base_ha = datos_p["COSTO BASE"] * dosis
+                            precio_venta_ha = datos_p[col_margen] * dosis
+                            ganancia_ha = precio_venta_ha - costo_base_ha
                             
-                            menor_venta = min(precio_p1_ha, precio_p2_ha)
-                            mayor_venta = max(precio_p1_ha, precio_p2_ha)
-                            dif_venta_pesos = menor_venta - mayor_venta
-                            dif_venta_pct = (dif_venta_pesos / mayor_venta * 100) if mayor_venta > 0 else 0.0
-
-                            menor_ganancia = min(ganancia_p1_ha, ganancia_p2_ha)
-                            mayor_ganancia = max(ganancia_p1_ha, ganancia_p2_ha)
-                            dif_ganancia_pesos = menor_ganancia - mayor_ganancia
-                            dif_ganancia_pct = (dif_ganancia_pesos / mayor_ganancia * 100) if mayor_ganancia > 0 else 0.0
-                            
-                            fila[f"📉 {prod_comparar} (Costo/Ha)"] = costo_base_p2_ha
-                            fila[f"🏷️ {prod_comparar} (Venta/Ha)"] = precio_p2_ha
-                            fila[f"💰 {prod_comparar} (Ganancia/Ha)"] = ganancia_p2_ha
-                            fila[f"⚖️ Dif. Venta ($) [{prod_comparar} vs {prod_base}]"] = dif_venta_pesos
-                            fila[f"📈 Dif. Venta (%) [{prod_comparar} vs {prod_base}]"] = dif_venta_pct
-                            fila[f"💵 Dif. Ganancia ($) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pesos
-                            fila[f"📊 Dif. Ganancia (%) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pct
-
-                        filas_gerenciales.append(fila)
+                            filas_absolutas.append({
+                                "🤝 PERFIL": perfil_nombre,
+                                "📊 MARGEN %": pct_margen,
+                                "🧪 PRODUCTO": prod_item,
+                                "📉 COSTO BASE/HA": costo_base_ha,
+                                "🏷️ VENTA/HA": precio_venta_ha,
+                                "💰 GANANCIA/HA": ganancia_ha
+                            })
                     
-                    df_gerencial = pd.DataFrame(filas_gerenciales)
+                    df_abs = pd.DataFrame(filas_absolutas)
                     
-                    col_config = {
-                        "🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL", width="small"),
-                        "📊 MARGEN AL PRODUCTOR (%)": st.column_config.NumberColumn("📊 MARGEN AL PRODUCTOR", format="%.2f %%"),
-                        f"📉 {prod_base} (Costo/Ha)": st.column_config.NumberColumn(f"📉 {prod_base} (Costo/Ha)", format="$ %d"),
-                        f"🏷️ {prod_base} (Venta/Ha)": st.column_config.NumberColumn(f"🏷️ {prod_base} (Venta/Ha)", format="$ %d"),
-                        f"💰 {prod_base} (Ganancia/Ha)": st.column_config.NumberColumn(f"💰 {prod_base} (Ganancia/Ha)", format="$ %d")
+                    col_cfg_abs = {
+                        "🤝 PERFIL": st.column_config.TextColumn("🤝 PERFIL"),
+                        "📊 MARGEN %": st.column_config.NumberColumn("📊 MARGEN %", format="%.2f %%"),
+                        "🧪 PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO"),
+                        "📉 COSTO BASE/HA": st.column_config.NumberColumn("📉 COSTO BASE/HA", format="$ %d"),
+                        "🏷️ VENTA/HA": st.column_config.NumberColumn("🏷️ VENTA/HA", format="$ %d"),
+                        "💰 GANANCIA/HA": st.column_config.NumberColumn("💰 GANANCIA/HA", format="$ %d")
                     }
-
-                    for prod_comparar in prods_sel[1:]:
-                        col_config[f"📉 {prod_comparar} (Costo/Ha)"] = st.column_config.NumberColumn(f"📉 {prod_comparar} (Costo/Ha)", format="$ %d")
-                        col_config[f"🏷️ {prod_comparar} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_comparar} (Venta/Ha)", format="$ %d")
-                        col_config[f"💰 {prod_comparar} (Ganancia/Ha)"] = st.column_config.NumberColumn(f"💰 {prod_comparar} (Ganancia/Ha)", format="$ %d")
-                        col_config[f"⚖️ Dif. Venta ($) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"⚖️ Dif Venta ($)", format="$ %d")
-                        col_config[f"📈 Dif. Venta (%) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"📈 Dif Venta (%)", format="%.2f %%")
-                        col_config[f"💵 Dif. Ganancia ($) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"💵 Dif Ganancia ($)", format="$ %d")
-                        col_config[f"📊 Dif. Ganancia (%) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"📊 Dif Ganancia (%)", format="%.2f %%")
-
-                    def colorear_diferencia(val):
-                        if isinstance(val, (int, float)):
-                            if val > 0: return 'color: #27AE60; font-weight: bold;'
-                            if val < 0: return 'color: #E74C3C; font-weight: bold;'
-                        return ''
-
-                    style_map = df_gerencial.style
-                    for col in df_gerencial.columns:
-                        if "Dif." in col:
-                            style_map = style_map.map(colorear_diferencia, subset=[col])
-                        
-                    st.dataframe(style_map, use_container_width=True, hide_index=True, column_config=col_config)
                     
-                    excel_data = generar_excel_gerencial(df_gerencial)
+                    st.dataframe(df_abs, use_container_width=True, hide_index=True, column_config=col_cfg_abs)
+
+                    # --- MATRIZ 2: BRECHA COMPARATIVA Y COSTO DE OPORTUNIDAD (SOLO SI HAY 2+ PRODUCTOS) ---
+                    df_deltas = pd.DataFrame()
+                    if len(prods_sel) > 1:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        prod_base = prods_sel[0]
+                        dosis_base_p1 = dosis_dict.get(prod_base, 1.0)
+                        datos_p1 = df_t[df_t["PRODUCTO"] == prod_base].iloc[0]
+                        costo_base_p1_ha = datos_p1["COSTO BASE"] * dosis_base_p1
+                        
+                        st.markdown(f"#### ⚖️ 2. Cuadro Comparativo Directo (vs Producto Base: `{prod_base}`)")
+                        
+                        filas_brechas = []
+                        for perfil_nombre, col_margen, factor_mult in mapa_perfiles:
+                            precio_p1_ha = datos_p1[col_margen] * dosis_base_p1
+                            ganancia_p1_ha = precio_p1_ha - costo_base_p1_ha
+                            
+                            for prod_comparar in prods_sel[1:]:
+                                dosis_p2 = dosis_dict.get(prod_comparar, 1.0)
+                                datos_p2 = df_t[df_t["PRODUCTO"] == prod_comparar].iloc[0]
+                                costo_base_p2_ha = datos_p2["COSTO BASE"] * dosis_p2
+                                precio_p2_ha = datos_p2[col_margen] * dosis_p2
+                                ganancia_p2_ha = precio_p2_ha - costo_base_p2_ha
+                                
+                                menor_venta = min(precio_p1_ha, precio_p2_ha)
+                                mayor_venta = max(precio_p1_ha, precio_p2_ha)
+                                dif_venta_pesos = menor_venta - mayor_venta
+                                dif_venta_pct = (dif_venta_pesos / mayor_venta * 100) if mayor_venta > 0 else 0.0
+
+                                menor_ganancia = min(ganancia_p1_ha, ganancia_p2_ha)
+                                mayor_ganancia = max(ganancia_p1_ha, ganancia_p2_ha)
+                                dif_ganancia_pesos = menor_ganancia - mayor_ganancia
+                                dif_ganancia_pct = (dif_ganancia_pesos / mayor_ganancia * 100) if mayor_ganancia > 0 else 0.0
+                                
+                                filas_brechas.append({
+                                    "🤝 PERFIL": perfil_nombre,
+                                    "🧪 COMPARACIÓN": f"{prod_comparar} vs {prod_base}",
+                                    "⚖️ DIF. VENTA ($)": dif_venta_pesos,
+                                    "📈 DIF. VENTA (%)": dif_venta_pct,
+                                    "💵 DIF. GANANCIA ($)": dif_ganancia_pesos,
+                                    "📊 DIF. GANANCIA (%)": dif_ganancia_pct
+                                })
+                        
+                        df_deltas = pd.DataFrame(filas_brechas)
+                        
+                        col_cfg_deltas = {
+                            "🤝 PERFIL": st.column_config.TextColumn("🤝 PERFIL"),
+                            "🧪 COMPARACIÓN": st.column_config.TextColumn("🧪 COMPARACIÓN"),
+                            "⚖️ DIF. VENTA ($)": st.column_config.NumberColumn("⚖️ DIF. VENTA ($)", format="$ %d"),
+                            "📈 DIF. VENTA (%)": st.column_config.NumberColumn("📈 DIF. VENTA (%)", format="%.2f %%"),
+                            "💵 DIF. GANANCIA ($)": st.column_config.NumberColumn("💵 DIF. GANANCIA ($)", format="$ %d"),
+                            "📊 DIF. GANANCIA (%)": st.column_config.NumberColumn("📊 DIF. GANANCIA (%)", format="%.2f %%")
+                        }
+
+                        def colorear_diferencia(val):
+                            if isinstance(val, (int, float)):
+                                if val < 0: return 'color: #E74C3C; font-weight: bold;'
+                                if val > 0: return 'color: #27AE60; font-weight: bold;'
+                            return ''
+
+                        style_deltas = df_deltas.style
+                        for col in df_deltas.columns:
+                            if "DIF." in col:
+                                style_deltas = style_deltas.map(colorear_diferencia, subset=[col])
+                            
+                        st.dataframe(style_deltas, use_container_width=True, hide_index=True, column_config=col_cfg_deltas)
+
+                    excel_data = generar_excel_gerencial(df_abs, df_deltas)
                     st.download_button(
-                        label="📥 DESCARGAR REPORTE GERENCIAL (EXCEL VIP)", 
+                        label="📥 DESCARGAR REPORTE GERENCIAL (EXCEL VIP - 2 HOJAS)", 
                         data=excel_data, 
                         file_name=f"Reporte_Rentabilidad_{datetime.now().strftime('%Y%m%d')}.xlsx", 
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
