@@ -377,7 +377,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         align-items: stretch !important;
     }}
     
-    /* 🎯 REPARACIÓN DE BORDES */
+    /* 🎯 REPARACIÓN DE BORDES: SELECTORES, FECHAS Y NÚMEROS */
     div[data-testid="stSelectbox"] > div,
     div[data-testid="stDateInput"] > div,
     div[data-testid="stNumberInput"] > div {{
@@ -415,6 +415,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         text-transform: uppercase !important;
     }}
 
+    /* 🔍 EFECTO LUPA MAGNIFICADOR EN TODOS LOS GRÁFICOS DEL MÓDULO 10 */
     div[data-testid="stPlotlyChart"] {{
         transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease !important;
         border-radius: 12px !important;
@@ -490,10 +491,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if 0 < v < 2500: return v * 1000
             return v
             
-        # =================================================================
-        # 🛡️ BLINDAJE MATEMÁTICO DE PRECIOS: PROMEDIO PONDERADO
-        # Definimos que VALOR_FACTURAR es la tarifa unitaria en Google Sheets.
-        # =================================================================
         super_base_bi['COSTO_NUM'] = super_base_bi.apply(lambda r: sanear_valores_sap(r.get('VALOR_FACTURAR', 0)) if r.get('ORIGEN_BI') == 'ACTUAL' else sanear_valores_sap(r.get('COSTO_MAESTRO', 0)), axis=1)
         
         # Filtramos para no arrastrar ceros que dañen el cálculo histórico
@@ -673,8 +670,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 g_b.rename(columns=dicc_renombres, inplace=True)
                 
                 df_vista = g_b.copy()
-                col_cfg = {"CÓCTEL APLICADO": st.column_config.TextColumn("🧪 CÓCTEL APLICADO"), "Costo Promedio/Ha": st.column_config.NumberColumn("💰 Costo Promedio/Ha", format="$ %,.0f"), "Total Hectáreas": st.column_config.NumberColumn("🗺️ Total Hectáreas", format="%,.1f")}
+                
+                col_cfg = {
+                    "CÓCTEL APLICADO": st.column_config.TextColumn("🧪 CÓCTEL APLICADO"),
+                    "Costo Promedio/Ha": st.column_config.NumberColumn("💰 Costo Promedio/Ha", format="$ %,.0f"),
+                    "Total Hectáreas": st.column_config.NumberColumn("🗺️ Total Hectáreas", format="%,.1f"),
+                }
                 if col_gln: col_cfg["Gln/Ha Promedio"] = st.column_config.NumberColumn("💧 Gln/Ha Promedio", format="%.2f")
+                
+                # ¡FILTRO DE PRECISIÓN VIP! Dejamos solo las columnas elegidas en el cfg
+                columnas_finales = list(col_cfg.keys())
+                df_vista = df_vista[columnas_finales]
                 
                 st.dataframe(df_vista, use_container_width=True, hide_index=True, column_config=col_cfg)
                 
@@ -825,6 +831,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 if col_gln:
                     col_cfg[dicc_renombres[f'{col_gln}_BASE']] = st.column_config.NumberColumn("💧 " + dicc_renombres[f'{col_gln}_BASE'], format="%.2f")
                     col_cfg[dicc_renombres[f'{col_gln}_ACTUAL']] = st.column_config.NumberColumn("💧 " + dicc_renombres[f'{col_gln}_ACTUAL'], format="%.2f")
+
+                # ¡FILTRO DE PRECISIÓN VIP! Dejamos solo las columnas elegidas en el cfg
+                columnas_finales_comparativo = list(col_cfg.keys())
+                tabla_autopsia = tabla_autopsia[columnas_finales_comparativo]
 
                 st.dataframe(tabla_autopsia.style.map(color_variacion, subset=['Variación ($)']), use_container_width=True, hide_index=True, column_config=col_cfg)
                 
