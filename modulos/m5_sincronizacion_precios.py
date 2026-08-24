@@ -80,12 +80,10 @@ def generar_excel_gerencial(df_comp):
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.border = borde_fino
                 cell.alignment = Alignment(vertical='center')
-                if "HA" in col_name and "DOSIS" not in col_name and "%" not in col_name:
+                if "Venta" in str(col_name) or "Ganancia" in str(col_name) or "Costo" in str(col_name):
                     cell.number_format = '"$" #,##0'
-                elif "%" in col_name:
+                elif "%" in str(col_name) or "Margen" in str(col_name):
                     cell.number_format = '0.00 "%"'
-                elif "DOSIS" in col_name:
-                    cell.number_format = '#,##0.00'
                     
     return buffer.getvalue()
 
@@ -247,7 +245,13 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             </div>
             """.replace(",", "."), unsafe_allow_html=True)
             
-            t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Comparativo Gerencial (Utilidad/Ha)"])
+            # ¡RECUPERAMOS LAS 4 PESTAÑAS!
+            t1, t2, t3, t4 = st.tabs([
+                "💰 Visor General del Arsenal", 
+                "📋 Copia Masiva (Por Margen)", 
+                "🎯 Comparativo Gerencial (Utilidad/Ha)",
+                "🔍 Consulta Multi-Producto"
+            ])
             
             with t1:
                 st.markdown("#### Matriz de Costos y Márgenes Oficiales")
@@ -279,7 +283,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
             with t3:
                 st.markdown("#### 🎯 Análisis Gerencial: Rentabilidad y Margen por Hectárea")
-                st.info("💡 **SIMULADOR DE UTILIDAD:** Seleccione los insumos y defina la Dosis exacta por Hectárea. El sistema calculará la utilidad neta y el % de rentabilidad para cada perfil comercial cruzado.")
+                st.info("💡 **SIMULADOR DE UTILIDAD:** Seleccione los insumos y defina la Dosis exacta por Hectárea. El sistema mostrará la diferencia en dinero y porcentaje entre cada tipo de productor.")
                 
                 opciones_productos = df_t["PRODUCTO"].tolist()
                 prods_sel = st.multiselect(
@@ -305,54 +309,59 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     dosis_dict = dict(zip(df_dosis["PRODUCTO"], df_dosis["DOSIS (L/Kg/Ha)"]))
                     
-                    st.markdown("##### 📊 2. Matriz de Rentabilidad Financiera")
+                    st.markdown("##### 📊 2. Matriz Comparativa de Rentabilidad (Perfiles vs Productos)")
                     
-                    matriz_gerencial = []
-                    for prod_sel in prods_sel:
-                        datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
-                        dosis = dosis_dict.get(prod_sel, 1.0)
-                        costo_base_ha = datos_prod["COSTO BASE"] * dosis
-                        
-                        for col_margen in cols_dinamicas[1:]:
+                    perfiles = []
+                    # Invertimos para que salga TERCERO de primero, luego AFILIADO, etc.
+                    for c in reversed(cols_dinamicas[1:]):
+                        perfil_limpio = str(c).split("(+")[0].strip()
+                        perfiles.append((c, perfil_limpio))
+                    
+                    filas_gerenciales = []
+                    for col_margen, perfil_nombre in perfiles:
+                        fila = {"🤝 PERFIL COMERCIAL": perfil_nombre}
+                        for prod_sel in prods_sel:
+                            datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
+                            dosis = dosis_dict.get(prod_sel, 1.0)
+                            costo_base_ha = datos_prod["COSTO BASE"] * dosis
                             precio_venta_ha = datos_prod[col_margen] * dosis
                             utilidad_dinero = precio_venta_ha - costo_base_ha
                             utilidad_pct = (utilidad_dinero / costo_base_ha * 100) if costo_base_ha > 0 else 0
                             
-                            perfil = str(col_margen).split("(+")[0].strip()
-                            
-                            matriz_gerencial.append({
-                                "🧪 PRODUCTO": prod_sel,
-                                "⚖️ DOSIS/HA": dosis,
-                                "🤝 PERFIL COMERCIAL": perfil,
-                                "📉 COSTO BASE/HA": costo_base_ha,
-                                "📈 PRECIO VENTA/HA": precio_venta_ha,
-                                "💰 UTILIDAD NETA/HA": utilidad_dinero,
-                                "🚀 MARGEN (%)": utilidad_pct
-                            })
-                    
-                    df_gerencial = pd.DataFrame(matriz_gerencial)
-                    
-                    def colorear_utilidad(val):
-                        if val > 30: return 'color: #27AE60; font-weight: bold;'
-                        if val > 15: return 'color: #2980B9; font-weight: bold;'
-                        if val > 0: return 'color: #F1C40F; font-weight: bold;'
-                        return 'color: #E74C3C; font-weight: bold;'
+                            fila[f"🏷️ {prod_sel} (Venta/Ha)"] = precio_venta_ha
+                            fila[f"💰 {prod_sel} (Ganancia)"] = utilidad_dinero
+                            fila[f"🚀 {prod_sel} (Margen %)"] = utilidad_pct
                         
-                    st.dataframe(
-                        df_gerencial.style.map(lambda x: 'color: #27AE60; font-weight: bold;' if x > 0 else '', subset=['💰 UTILIDAD NETA/HA'])
-                                        .map(colorear_utilidad, subset=['🚀 MARGEN (%)']),
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "🧪 PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO"),
-                            "⚖️ DOSIS/HA": st.column_config.NumberColumn("⚖️ DOSIS/HA", format="%.2f"),
-                            "🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL"),
-                            "📉 COSTO BASE/HA": st.column_config.NumberColumn("📉 COSTO BASE/HA", format="$ %d"),
-                            "📈 PRECIO VENTA/HA": st.column_config.NumberColumn("📈 PRECIO VENTA/HA", format="$ %d"),
-                            "💰 UTILIDAD NETA/HA": st.column_config.NumberColumn("💰 UTILIDAD NETA/HA", format="$ %d"),
-                            "🚀 MARGEN (%)": st.column_config.NumberColumn("🚀 MARGEN (%)", format="%.2f %%"),
-                        }
-                    )
+                        filas_gerenciales.append(fila)
+                    
+                    df_gerencial = pd.DataFrame(filas_gerenciales)
+                    
+                    # CONFIGURACIÓN DINÁMICA DE COLUMNAS
+                    col_config = {"🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL", width="medium")}
+                    for prod_sel in prods_sel:
+                        col_config[f"🏷️ {prod_sel} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_sel} (Venta/Ha)", format="$ %d")
+                        col_config[f"💰 {prod_sel} (Ganancia)"] = st.column_config.NumberColumn(f"💰 {prod_sel} (Ganancia)", format="$ %d")
+                        col_config[f"🚀 {prod_sel} (Margen %)"] = st.column_config.NumberColumn(f"🚀 {prod_sel} (Margen %)", format="%.2f %%")
+
+                    # ESTILOS DINÁMICOS
+                    def colorear_utilidad(val):
+                        if isinstance(val, (int, float)):
+                            if val > 30: return 'color: #27AE60; font-weight: bold;'
+                            if val > 15: return 'color: #2980B9; font-weight: bold;'
+                            if val > 0: return 'color: #F1C40F; font-weight: bold;'
+                            return 'color: #E74C3C; font-weight: bold;'
+                        return ''
+                    
+                    def colorear_ganancia(val):
+                        if isinstance(val, (int, float)) and val > 0: return 'color: #27AE60; font-weight: bold;'
+                        return ''
+
+                    style_map = df_gerencial.style
+                    for prod_sel in prods_sel:
+                        style_map = style_map.map(colorear_ganancia, subset=[f"💰 {prod_sel} (Ganancia)"])
+                        style_map = style_map.map(colorear_utilidad, subset=[f"🚀 {prod_sel} (Margen %)"])
+                        
+                    st.dataframe(style_map, use_container_width=True, hide_index=True, column_config=col_config)
                     
                     excel_data = generar_excel_gerencial(df_gerencial)
                     st.download_button(
@@ -363,6 +372,42 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         use_container_width=True,
                         type="primary"
                     )
+
+            with t4:
+                st.markdown("#### Búsqueda Rápida de Costos y Márgenes")
+                opciones_productos_t4 = df_t["PRODUCTO"].tolist()
+                prods_sel_t4 = st.multiselect(
+                    "🔍 Seleccione uno o varios Productos para consultar rápidamente:", 
+                    options=opciones_productos_t4,
+                    default=[opciones_productos_t4[0]] if opciones_productos_t4 else [],
+                    key="multiselect_tab4_rapida"
+                )
+                
+                for prod_sel in prods_sel_t4:
+                    datos_prod = df_t[df_t["PRODUCTO"] == prod_sel].iloc[0]
+                    
+                    st.markdown(f"#### 🧪 Arsenal: `{prod_sel}`")
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    caja_titulo = "height: 45px; display: flex; align-items: flex-end; margin-bottom: 5px;"
+                    estilo_etiqueta = "font-size: 11px; font-weight: 900; color: #0d1b2a; margin: 0; line-height: 1.2;"
+                    
+                    with c1: 
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[0]]))
+                    with c2: 
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[4]]))
+                    with c3: 
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[3]]))
+                    with c4: 
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[2]]))
+                    with c5: 
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[1]]))
+                    st.markdown("<hr style='border:1px dashed #d4af37; margin-top:5px; margin-bottom:20px;'/>", unsafe_allow_html=True)
+
         else:
             st.warning("⚠️ No se detectaron datos en el tarifario. Haga clic en 'Recargar Tarifario' para sincronizar con la nube.")
 
