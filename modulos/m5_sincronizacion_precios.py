@@ -312,7 +312,9 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     dosis_dict = dict(zip(df_dosis["PRODUCTO"], df_dosis["DOSIS (L/Kg/Ha)"]))
                     
-                    st.markdown("##### 📊 2. Matriz Comparativa Estratégica")
+                    # 🎯 TÍTULO OFICIAL Y VISIBLE DE LA TABLA GERENCIAL
+                    st.markdown("#### 📋 TABLA GERENCIAL: MATRIZ DE RENTABILIDAD, UTILIDADES Y DIFERENCIAS EN PESOS Y %")
+                    st.caption("🔍 Muestra el impacto financiero real cruzando perfiles comerciales y dosis por hectárea. El cálculo de diferencias resta el menor menos el mayor.")
                     
                     mapa_perfiles = [
                         ("TERCERO", cols_dinamicas[1], dict_m.get("TERCERO", 1.451)),
