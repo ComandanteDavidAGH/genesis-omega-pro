@@ -16,7 +16,6 @@ URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F
 
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
-    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" in st.secrets:
         try:
@@ -74,25 +73,26 @@ def generar_excel_gerencial(df_comp):
 
         # --- ESTILOS DE TABLA ---
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        header_font = Font(color="D4AF37", bold=True, size=11)
-        borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
-                            top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+        header_font = Font(color="FFFFFF", bold=True, size=11)
+        borde_fino = Border(left=Side(style='thin', color='000000'), right=Side(style='thin', color='000000'),
+                            top=Side(style='thin', color='000000'), bottom=Side(style='thin', color='000000'))
         
-        font_rojo = Font(name="Arial", size=11, bold=True, color="E74C3C")
-        font_normal = Font(name="Arial", size=11)
-        font_bold = Font(name="Arial", size=11, bold=True)
-
         header_row = start_row + 1
         data_start_row = header_row + 1
 
         for col_num, col_name in enumerate(df_comp.columns, 1):
             col_letter = openpyxl.utils.get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = 28
+            ws.column_dimensions[col_letter].width = 25
             
             # Formato Encabezados
             cell_header = ws.cell(row=header_row, column=col_num)
-            cell_header.fill = header_fill
-            cell_header.font = header_font
+            if "DIF. GANANCIA (%)" in str(col_name):
+                cell_header.fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                cell_header.font = Font(color="D4AF37", bold=True, size=11)
+            else:
+                cell_header.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+                cell_header.font = Font(color="000000", bold=True, size=11)
+                
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             cell_header.border = borde_fino
             
@@ -100,26 +100,22 @@ def generar_excel_gerencial(df_comp):
             for row_num in range(data_start_row, len(df_comp) + data_start_row):
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.border = borde_fino
-                # 🎯 CLAVE: Permitir salto de línea en todas las celdas
+                
+                # Habilitar salto de línea para simular el apilado vertical
                 cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='left')
                 
-                val = cell.value
+                val_str = str(cell.value)
                 if col_num == 1:
-                    cell.font = font_bold
-                    cell.alignment = Alignment(vertical='center', horizontal='left')
-                elif isinstance(val, (int, float)):
-                    if "DIF" in str(col_name) and "$" in str(col_name):
-                        cell.number_format = '"$" #,##0;[Red]("-" "$" #,##0);"-"'
-                        if val < 0: cell.font = font_rojo
-                        else: cell.font = font_bold
-                        cell.alignment = Alignment(vertical='center', horizontal='center')
-                    elif "DIF" in str(col_name) and "%" in str(col_name):
-                        cell.number_format = '0.00 "%";[Red]-0.00 "%";"0.00 %"'
-                        if val < 0: cell.font = font_rojo
-                        else: cell.font = font_bold
-                        cell.alignment = Alignment(vertical='center', horizontal='center')
+                    cell.font = Font(name="Arial", size=11, bold=True)
+                elif "DIF" in str(col_name):
+                    cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='center')
+                    # Detectar si hay signos negativos para colorear de rojo
+                    if "-$" in val_str or "-0" in val_str or "-1" in val_str or "-2" in val_str or "-3" in val_str or "-4" in val_str or "-5" in val_str or "-6" in val_str or "-7" in val_str or "-8" in val_str or "-9" in val_str:
+                        cell.font = Font(name="Arial", size=11, bold=True, color="E74C3C")
+                    else:
+                        cell.font = Font(name="Arial", size=11, bold=True, color="27AE60")
                 else:
-                    cell.font = font_normal
+                    cell.font = Font(name="Arial", size=11)
 
     return buffer.getvalue()
 
@@ -206,7 +202,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     return df_tarifario, cols[1:], margenes
 
 # =================================================================
-# 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
+# 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS
 # =================================================================
 
 def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_seguro):
@@ -321,19 +317,18 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 st.code("\n".join(lista_textos), language="text")
                     
             with t3:
-                st.markdown("#### 🎯 Análisis Comparativo Gerencial por Dosis y Perfil Comercial")
-                st.info("💡 **DISEÑO EJECUTIVO:** Modelo vertical condensado. Analiza la tríada (Costo/Venta/Ganancia) en un solo bloque y resalta automáticamente la pérdida o ganancia frente al producto principal.")
+                st.markdown("#### 🎯 Análisis Comparativo Gerencial (Modelo Apilado Excel)")
+                st.info("💡 **MODELO VERTICAL:** Visualización exacta a su plantilla de Excel. El Costo, Venta y Ganancia se apilan por producto en cada perfil.")
                 
                 opciones_productos = df_t["PRODUCTO"].tolist()
                 prods_sel = st.multiselect(
-                    "🔍 Seleccione los Productos a Comparar (El primero servirá de Base):", 
+                    "🔍 Seleccione los Productos a Comparar (El primero es la Base):", 
                     options=opciones_productos,
                     default=[opciones_productos[0]] if opciones_productos else []
                 )
                 
                 if prods_sel:
                     st.markdown("##### ⚖️ 1. Definir Dosis (L/Kg por Hectárea)")
-                    
                     df_dosis_base = pd.DataFrame({"PRODUCTO": prods_sel, "DOSIS (L/Kg/Ha)": [1.0] * len(prods_sel)})
                     
                     df_dosis = st.data_editor(
@@ -348,8 +343,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     dosis_dict = dict(zip(df_dosis["PRODUCTO"], df_dosis["DOSIS (L/Kg/Ha)"]))
                     
-                    st.markdown("##### 📊 2. Matriz Gerencial de Rentabilidad y Deltas")
-                    
                     mapa_perfiles = [
                         ("TERCERO", cols_dinamicas[1]),
                         ("AFILIADO", cols_dinamicas[2]),
@@ -358,111 +351,123 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     ]
                     
                     prod_base = prods_sel[0]
-                    dosis_base_p1 = dosis_dict.get(prod_base, 1.0)
-                    datos_p1 = df_t[df_t["PRODUCTO"] == prod_base].iloc[0]
-                    costo_base_p1_ha = datos_p1["COSTO BASE"] * dosis_base_p1
-                    
-                    # Estructura para el HTML y para Excel
                     filas_html = []
                     filas_excel = []
                     
                     for perfil_nombre, col_margen in mapa_perfiles:
-                        precio_p1_ha = datos_p1[col_margen] * dosis_base_p1
-                        ganancia_p1_ha = precio_p1_ha - costo_base_p1_ha
+                        # Datos Producto 1 (Base)
+                        datos_p1 = df_t[df_t["PRODUCTO"] == prod_base].iloc[0]
+                        dosis_p1 = dosis_dict.get(prod_base, 1.0)
+                        c_p1 = datos_p1["COSTO BASE"] * dosis_p1
+                        v_p1 = datos_p1[col_margen] * dosis_p1
+                        g_p1 = v_p1 - c_p1
                         
-                        # Guardamos datos crudos de este perfil para operar
-                        fila_data = {"PERFIL": perfil_nombre}
+                        # Guardado para HTML
+                        fila_data = {"PERFIL": perfil_nombre, f"{prod_base}_C": c_p1, f"{prod_base}_V": v_p1, f"{prod_base}_G": g_p1}
                         
-                        # Procesar producto base
-                        fila_data[f"{prod_base}_C"] = costo_base_p1_ha
-                        fila_data[f"{prod_base}_V"] = precio_p1_ha
-                        fila_data[f"{prod_base}_G"] = ganancia_p1_ha
+                        # Guardado para Excel
+                        str_base = f"Costo: $ {c_p1:,.0f}\nVenta: $ {v_p1:,.0f}\nGanancia: $ {g_p1:,.0f}".replace(",", ".")
+                        fila_ex = {"PERFIL": perfil_nombre, f"{prod_base}": str_base}
                         
-                        # Estructura de Excel
-                        fila_ex = {"🤝 PERFIL": perfil_nombre}
-                        str_base = f"Costo: $ {costo_base_p1_ha:,.0f}\nVenta: $ {precio_p1_ha:,.0f}\nGanancia: $ {ganancia_p1_ha:,.0f}".replace(",", ".")
-                        fila_ex[f"🧪 {prod_base}"] = str_base
-                        
-                        for prod_comparar in prods_sel[1:]:
-                            dosis_p2 = dosis_dict.get(prod_comparar, 1.0)
-                            datos_p2 = df_t[df_t["PRODUCTO"] == prod_comparar].iloc[0]
-                            costo_base_p2_ha = datos_p2["COSTO BASE"] * dosis_p2
-                            precio_p2_ha = datos_p2[col_margen] * dosis_p2
-                            ganancia_p2_ha = precio_p2_ha - costo_base_p2_ha
+                        # Datos Comparativos
+                        for prod_comp in prods_sel[1:]:
+                            datos_p2 = df_t[df_t["PRODUCTO"] == prod_comp].iloc[0]
+                            dosis_p2 = dosis_dict.get(prod_comp, 1.0)
+                            c_p2 = datos_p2["COSTO BASE"] * dosis_p2
+                            v_p2 = datos_p2[col_margen] * dosis_p2
+                            g_p2 = v_p2 - c_p2
                             
-                            menor_ganancia = min(ganancia_p1_ha, ganancia_p2_ha)
-                            mayor_ganancia = max(ganancia_p1_ha, ganancia_p2_ha)
-                            dif_ganancia_pesos = menor_ganancia - mayor_ganancia
-                            dif_ganancia_pct = (dif_ganancia_pesos / mayor_ganancia * 100) if mayor_ganancia > 0 else 0.0
+                            dif_v = min(v_p1, v_p2) - max(v_p1, v_p2)
+                            dif_g = min(g_p1, g_p2) - max(g_p1, g_p2)
+                            dif_g_pct = (dif_g / max(g_p1, g_p2) * 100) if max(g_p1, g_p2) > 0 else 0.0
                             
-                            fila_data[f"{prod_comparar}_C"] = costo_base_p2_ha
-                            fila_data[f"{prod_comparar}_V"] = precio_p2_ha
-                            fila_data[f"{prod_comparar}_G"] = ganancia_p2_ha
-                            fila_data[f"DIF_P_{prod_comparar}"] = dif_ganancia_pesos
-                            fila_data[f"DIF_PCT_{prod_comparar}"] = dif_ganancia_pct
+                            fila_data[f"{prod_comp}_C"] = c_p2
+                            fila_data[f"{prod_comp}_V"] = v_p2
+                            fila_data[f"{prod_comp}_G"] = g_p2
+                            fila_data[f"DIF_V_{prod_comp}"] = dif_v
+                            fila_data[f"DIF_G_{prod_comp}"] = dif_g
+                            fila_data[f"DIF_G_PCT_{prod_comp}"] = dif_g_pct
                             
-                            str_comp = f"Costo: $ {costo_base_p2_ha:,.0f}\nVenta: $ {precio_p2_ha:,.0f}\nGanancia: $ {ganancia_p2_ha:,.0f}".replace(",", ".")
-                            fila_ex[f"🧪 {prod_comparar}"] = str_comp
-                            fila_ex[f"⚖️ DIF. GANANCIA ($) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pesos
-                            fila_ex[f"📊 DIF. GANANCIA (%) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pct
+                            str_comp = f"Costo: $ {c_p2:,.0f}\nVenta: $ {v_p2:,.0f}\nGanancia: $ {g_p2:,.0f}".replace(",", ".")
+                            fila_ex[f"{prod_comp}"] = str_comp
+                            
+                            # Formato idéntico a la imagen (se resta c-b \n -$ venta \n -$ ganancia)
+                            str_dif = f"se resta c-b\n$ {dif_v:,.0f}\n$ {dif_g:,.0f}".replace(",", ".")
+                            str_dif_pct = f"\n\n{dif_g_pct:,.2f} %".replace(",", ".")
+                            
+                            fila_ex[f"DIF. GANANCIA"] = str_dif
+                            fila_ex[f"DIF. GANANCIA (%)"] = str_dif_pct
 
                         filas_html.append(fila_data)
                         filas_excel.append(fila_ex)
-                    
-                    df_excel_export = pd.DataFrame(filas_excel)
 
-                    # 🎯 CONSTRUCCIÓN DE LA TABLA HTML VIP (Para renderizado en pantalla)
-                    html_table = f"""
-                    <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-family: 'Arial', sans-serif; background-color: #ffffff; border: 2px solid #0d1b2a; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);">
+                    # 🎯 RENDERIZADOR HTML PERSONALIZADO (Idéntico al Excel)
+                    st.markdown("##### 📊 2. Cuadro Comparativo (Vista Ejecutiva)")
+                    
+                    html = """
+                    <div style='overflow-x: auto;'>
+                    <table style='width: 100%; border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; font-size: 14px; border: 1px solid #000; background-color: #ffffff;'>
                         <thead>
-                            <tr style="background-color: #0d1b2a; color: #d4af37; text-transform: uppercase;">
-                                <th style="padding: 15px; border: 1px solid #c0c0c0; text-align: left;">🤝 PERFIL</th>
+                            <tr>
+                                <th style='padding: 10px; border: 1px solid #000; background-color: #ffffff; color: #000000;'>PERFIL</th>
                     """
-                    for prod in prods_sel:
-                        html_table += f"<th style='padding: 15px; border: 1px solid #c0c0c0; text-align: left;'>🧪 {prod}</th>"
-                    for prod_comp in prods_sel[1:]:
-                        html_table += f"<th style='padding: 15px; border: 1px solid #c0c0c0; text-align: center;'>⚖️ DIF. GANANCIA<br><span style='font-size: 10px; color: #a0aec0;'>({prod_comp} vs {prod_base})</span></th>"
-                        html_table += f"<th style='padding: 15px; border: 1px solid #c0c0c0; text-align: center;'>📊 DIF. GANANCIA (%)</th>"
-                    html_table += "</tr></thead><tbody>"
+                    for p in prods_sel:
+                        html += f"<th style='padding: 10px; border: 1px solid #000; background-color: #ffffff; color: #000000; text-align: center;'>{p}</th>"
+                    if len(prods_sel) > 1:
+                        html += "<th style='padding: 10px; border: 1px solid #000; background-color: #ffffff; color: #000000; text-align: center;'>DIF. GANANCIA</th>"
+                        html += "<th style='padding: 10px; border: 1px solid #000; background-color: #0d1b2a; color: #d4af37; text-align: center;'>DIF. GANANCIA (%)</th>"
+                    html += "</tr></thead><tbody>"
 
                     for row in filas_html:
-                        html_table += "<tr>"
-                        html_table += f"<td style='padding: 15px; border: 1px solid #c0c0c0; font-weight: bold; color: #0d1b2a; vertical-align: middle;'>{row['PERFIL']}</td>"
+                        html += f"<tr><td style='padding: 10px; border: 1px solid #000; font-weight: bold; vertical-align: top;'>{row['PERFIL']}</td>"
                         
-                        for prod in prods_sel:
-                            c = row[f"{prod}_C"]
-                            v = row[f"{prod}_V"]
-                            g = row[f"{prod}_G"]
-                            html_table += f"""
-                            <td style='padding: 15px; border: 1px solid #c0c0c0; vertical-align: middle; font-size: 14px;'>
-                                <div style='color: #555555; margin-bottom: 3px;'>Costo: $ {c:,.0f}</div>
-                                <div style='color: #555555; margin-bottom: 6px;'>Venta: $ {v:,.0f}</div>
-                                <div style='color: #1a365d; font-weight: 900; font-size: 15px;'>Ganancia: $ {g:,.0f}</div>
+                        for p in prods_sel:
+                            c, v, g = row[f"{p}_C"], row[f"{p}_V"], row[f"{p}_G"]
+                            html += f"""
+                            <td style='padding: 10px; border: 1px solid #000; vertical-align: top; line-height: 1.6;'>
+                                <div>Costo: $ {c:,.0f}</div>
+                                <div>Venta: $ {v:,.0f}</div>
+                                <div><b>Ganancia: $ {g:,.0f}</b></div>
                             </td>
                             """.replace(",", ".")
                             
-                        for prod_comp in prods_sel[1:]:
-                            d_p = row[f"DIF_P_{prod_comp}"]
-                            d_pct = row[f"DIF_PCT_{prod_comp}"]
-                            color = "#E74C3C" if d_p < 0 else "#27AE60"
-                            html_table += f"<td style='padding: 15px; border: 1px solid #c0c0c0; vertical-align: middle; text-align: center; color: {color}; font-weight: 900; font-size: 15px;'>$ {d_p:,.0f}</td>".replace(",", ".")
-                            html_table += f"<td style='padding: 15px; border: 1px solid #c0c0c0; vertical-align: middle; text-align: center; color: {color}; font-weight: 900; font-size: 15px;'>{d_pct:,.2f} %</td>".replace(",", ".")
-                        
-                        html_table += "</tr>"
+                        if len(prods_sel) > 1:
+                            p_comp = prods_sel[1]
+                            dv = row[f"DIF_V_{p_comp}"]
+                            dg = row[f"DIF_G_{p_comp}"]
+                            d_pct = row[f"DIF_G_PCT_{p_comp}"]
+                            
+                            color_dv = "#E74C3C" if dv < 0 else "#27AE60"
+                            color_dg = "#E74C3C" if dg < 0 else "#27AE60"
+                            
+                            html += f"""
+                            <td style='padding: 10px; border: 1px solid #000; vertical-align: top; text-align: center; line-height: 1.6;'>
+                                <div>se resta c-b</div>
+                                <div style='color: {color_dv}; font-weight: bold;'>$ {dv:,.0f}</div>
+                                <div style='color: {color_dg}; font-weight: bold;'>$ {dg:,.0f}</div>
+                            </td>
+                            """.replace(",", ".")
+                            
+                            html += f"""
+                            <td style='padding: 10px; border: 1px solid #000; vertical-align: top; text-align: center; line-height: 1.6;'>
+                                <div><br></div>
+                                <div><br></div>
+                                <div style='color: {color_dg}; font-weight: bold;'>{d_pct:,.2f} %</div>
+                            </td>
+                            """.replace(",", ".")
+                            
+                        html += "</tr>"
+                    html += "</tbody></table></div><br>"
                     
-                    html_table += "</tbody></table></div>"
-                    
-                    # Mostrar la tabla HTML en Streamlit
-                    st.markdown(html_table, unsafe_allow_html=True)
-                    st.write("")
-                    
-                    # Botón de Descarga Excel
+                    st.markdown(html, unsafe_allow_html=True)
+
+                    df_excel_export = pd.DataFrame(filas_excel)
                     excel_data = generar_excel_gerencial(df_excel_export)
+                    
                     st.download_button(
-                        label="📥 DESCARGAR REPORTE GERENCIAL (EXCEL VIP)", 
+                        label="📥 DESCARGAR MODELO GERENCIAL (EXCEL)", 
                         data=excel_data, 
-                        file_name=f"Reporte_Rentabilidad_{datetime.now().strftime('%Y%m%d')}.xlsx", 
+                        file_name=f"Comparativo_Vertical_{datetime.now().strftime('%Y%m%d')}.xlsx", 
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                         use_container_width=True,
                         type="primary"
