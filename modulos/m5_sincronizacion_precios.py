@@ -53,30 +53,48 @@ def purificar_y_convertir_precio(valor_crudo):
         return 0.0
 
 # =================================================================
-# 📊 EXPORTADOR EXCEL PREMIUM (GERENCIA)
+# 📊 EXPORTADOR EXCEL PREMIUM CON TÍTULO EN HOJA (GERENCIA)
 # =================================================================
 def generar_excel_gerencial(df_comp):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_comp.to_excel(writer, sheet_name='Rentabilidad_Gerencial', index=False)
+        # Desplazamos la tabla a partir de la fila 4 (startrow=3)
+        start_row = 3
+        df_comp.to_excel(writer, sheet_name='Rentabilidad_Gerencial', index=False, startrow=start_row)
         ws = writer.sheets['Rentabilidad_Gerencial']
 
+        # --- DIBUJAR TÍTULO Y FECHA DENTRO DEL EXCEL ---
+        ws.cell(row=1, column=1, value="REPORTE GERENCIAL: MATRIZ DE RENTABILIDAD Y COMPARATIVO DE MÁRGENES")
+        cell_titulo = ws.cell(row=1, column=1)
+        cell_titulo.font = Font(name="Arial", size=14, bold=True, color="0D1B2A")
+
+        fecha_actual = datetime.now().strftime('%d/%m/%Y %H:%M')
+        ws.cell(row=2, column=1, value=f"Génesis Omega Pro | Auditoría Financiera Generada el: {fecha_actual}")
+        cell_sub = ws.cell(row=2, column=1)
+        cell_sub.font = Font(name="Arial", size=10, italic=True, color="555555")
+
+        # --- ESTILOS DE TABLA ---
         header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         header_font = Font(color="D4AF37", bold=True, size=11)
         borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
                             top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
         
+        header_row = start_row + 1 # Fila 4
+        data_start_row = header_row + 1 # Fila 5
+
         for col_num, col_name in enumerate(df_comp.columns, 1):
             col_letter = openpyxl.utils.get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = 24
+            ws.column_dimensions[col_letter].width = 25
             
-            cell_header = ws.cell(row=1, column=col_num)
+            # Formato de Encabezados (Fila 4)
+            cell_header = ws.cell(row=header_row, column=col_num)
             cell_header.fill = header_fill
             cell_header.font = header_font
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             cell_header.border = borde_fino
             
-            for row_num in range(2, len(df_comp) + 2):
+            # Formato de Datos (Fila 5 en adelante)
+            for row_num in range(data_start_row, len(df_comp) + data_start_row):
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.border = borde_fino
                 cell.alignment = Alignment(vertical='center')
@@ -312,9 +330,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     dosis_dict = dict(zip(df_dosis["PRODUCTO"], df_dosis["DOSIS (L/Kg/Ha)"]))
                     
-                    # 🎯 TÍTULO OFICIAL Y VISIBLE DE LA TABLA GERENCIAL
                     st.markdown("#### 📋 TABLA GERENCIAL: MATRIZ DE RENTABILIDAD, UTILIDADES Y DIFERENCIAS EN PESOS Y %")
-                    st.caption("🔍 Muestra el impacto financiero real cruzando perfiles comerciales y dosis por hectárea. El cálculo de diferencias resta el menor menos el mayor.")
+                    st.caption("🔍 Muestra el impacto financiero real cruzando perfiles comerciales y dosis por hectárea.")
                     
                     mapa_perfiles = [
                         ("TERCERO", cols_dinamicas[1], dict_m.get("TERCERO", 1.451)),
