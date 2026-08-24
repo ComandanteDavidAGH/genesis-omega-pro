@@ -50,18 +50,17 @@ def purificar_y_convertir_precio(valor_crudo):
         return 0.0
 
 # =================================================================
-# 🔌 MEMORIA EN CACHÉ CON FALLBACK A GOOGLE DRIVE (VELOCIDAD LUZ)
+# 🔌 MEMORIA DINÁMICA DE MÁRGENES Y TARIFAS
 # =================================================================
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_tarifario_maestro_cached(_supabase_client):
     """
-    Intenta descargar desde Supabase. Si falla o no está conectado, 
-    recupera automáticamente el tarifario desde la pestaña Configuración de Drive.
+    Descarga precios de Supabase y MÁRGENES COMERCIALES en vivo desde Drive.
     """
     df = pd.DataFrame()
     
-    # 1. Intento por Supabase
+    # 1. Intento por Supabase para precios base
     if _supabase_client:
         try:
             respuesta = _supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
@@ -70,24 +69,56 @@ def obtener_tarifario_maestro_cached(_supabase_client):
         except Exception:
             df = pd.DataFrame()
 
-    # 2. Fallback Satelital a Google Drive si Supabase está fuera de línea
-    if df.empty:
-        gc = obtener_cliente_gspread_unificado()
-        if gc:
-            try:
-                sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
-                ws = sh.worksheet("Configuración")
-                datos = ws.get_all_values()
-                if len(datos) > 1:
-                    df_raw = pd.DataFrame(datos[1:], columns=datos[0])
-                    if len(df_raw.columns) > 10:
-                        df = df_raw.iloc[:, [8, 10]].copy()
-                        df.columns = ['PRODUCTO', 'COSTO']
-            except Exception:
-                return pd.DataFrame()
+    # Diccionario base de márgenes de emergencia
+    margenes = {"TERCERO": 1.451, "AFILIADO": 1.164, "COOPERATIVA / SOCIO": 1.112, "ORGANICO": 1.011}
+    
+    # 2. Conexión a Drive para extraer márgenes comerciales ACTUALIZADOS
+    gc = obtener_cliente_gspread_unificado()
+    if gc:
+        try:
+            sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
+            ws = sh.worksheet("Configuración")
+            datos = ws.get_all_values()
+            
+            if len(datos) > 1:
+                df_raw = pd.DataFrame(datos[1:], columns=datos[0])
+                
+                # Función segura para extraer el factor (1.xxx) sin importar comas o puntos
+                def parse_mult(v_str):
+                    try:
+                        v = str(v_str).strip().replace(",", ".")
+                        if "%" in v: return 1 + (float(v.replace("%", "")) / 100.0)
+                        vf = float(v)
+                        if 1.0 <= vf <= 2.0: return vf
+                        if 1000 <= vf <= 2000: return vf / 1000.0 # Por si lee "1112" en lugar de "1.112"
+                    except: pass
+                    return 0.0
+
+                # Escaneo de tabla de grupos
+                for idx, row in df_raw.iterrows():
+                    grupo = str(row.iloc[0]).strip().upper()
+                    if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
+                        factor = 0.0
+                        for c in range(1, 4):
+                            f_val = parse_mult(row.iloc[c])
+                            if f_val > 1.0:
+                                factor = f_val
+                                break
+                        if factor > 0:
+                            if grupo in ["SOCIO", "COOPERATIVA"]: margenes["COOPERATIVA / SOCIO"] = factor
+                            elif grupo == "TERCERO": margenes["TERCERO"] = factor
+                            elif grupo == "AFILIADO": margenes["AFILIADO"] = factor
+                            elif grupo == "ORGANICO": margenes["ORGANICO"] = factor
+                
+                # Fallback de precios si Supabase está fuera de línea
+                if df.empty and len(df_raw.columns) > 10:
+                    df = df_raw.iloc[:, [8, 10]].copy()
+                    df.columns = ['PRODUCTO', 'COSTO']
+        except Exception:
+            pass
 
     if df.empty or 'PRODUCTO' not in df.columns or 'COSTO' not in df.columns:
-        return pd.DataFrame()
+        return pd.DataFrame(), []
         
     # Vectorización y Limpieza
     df['PRODUCTO'] = df['PRODUCTO'].astype(str).str.strip().str.upper()
@@ -103,17 +134,26 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     df = df[df['COSTO BASE'] > 0].copy()
     
     if df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     
-    # CÁLCULO VECTORIAL INSTANTÁNEO DE MÁRGENES
-    df['TERCERO (+45.1%)'] = (df['COSTO BASE'] * 1.451).round(0)
-    df['AFILIADO (+16.4%)'] = (df['COSTO BASE'] * 1.164).round(0)
-    df['COOPERATIVA / SOCIO (+11.2%)'] = (df['COSTO BASE'] * 1.112).round(0)
-    df['ORGÁNICO (+1.1%)'] = (df['COSTO BASE'] * 1.011).round(0)
+    def fmt_pct(factor): return round((factor - 1.0) * 100, 2)
     
-    cols = ["PRODUCTO", "COSTO BASE", "TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)"]
+    # Nombres de columnas dinámicos según el Excel
+    col_ter = f"TERCERO (+{fmt_pct(margenes['TERCERO'])}%)"
+    col_afi = f"AFILIADO (+{fmt_pct(margenes['AFILIADO'])}%)"
+    col_soc = f"COOP/SOCIO (+{fmt_pct(margenes['COOPERATIVA / SOCIO'])}%)"
+    col_org = f"ORGÁNICO (+{fmt_pct(margenes['ORGANICO'])}%)"
+
+    # CÁLCULO VECTORIAL DE MÁRGENES VINCULADO AL EXCEL
+    df[col_ter] = (df['COSTO BASE'] * margenes['TERCERO']).round(0)
+    df[col_afi] = (df['COSTO BASE'] * margenes['AFILIADO']).round(0)
+    df[col_soc] = (df['COSTO BASE'] * margenes['COOPERATIVA / SOCIO']).round(0)
+    df[col_org] = (df['COSTO BASE'] * margenes['ORGANICO']).round(0)
+    
+    cols = ["PRODUCTO", "COSTO BASE", col_ter, col_afi, col_soc, col_org]
     df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
-    return df_tarifario
+    
+    return df_tarifario, cols[1:]
 
 # =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS Y MACRO OMEGA V12
@@ -175,18 +215,21 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             if st.button("🔄 RECARGAR TARIFARIO", use_container_width=True, type="secondary"):
                 st.cache_data.clear()
                 st.session_state.pop('df_tarifario', None)
+                st.session_state.pop('opciones_cols_m5', None)
                 st.rerun()
 
         if 'df_tarifario' not in st.session_state or st.session_state['df_tarifario'].empty:
-            df_tarifario_cached = obtener_tarifario_maestro_cached(supabase_client)
+            df_tarifario_cached, opciones_cols = obtener_tarifario_maestro_cached(supabase_client)
             if not df_tarifario_cached.empty:
                 st.session_state['df_tarifario'] = df_tarifario_cached
+                st.session_state['opciones_cols_m5'] = opciones_cols
 
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
+            cols_dinamicas = st.session_state.get('opciones_cols_m5', [])
             
             total_quimicos_tarifados = len(df_t)
-            costo_maximo_comercial = df_t['TERCERO (+45.1%)'].max()
+            costo_maximo_comercial = df_t[cols_dinamicas[1]].max() # El TERCERO suele ser la columna 1
             costo_medio_base = df_t['COSTO BASE'].mean()
             
             st.markdown(f"""
@@ -204,7 +247,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     <p class="hud-tarifas-value">📈 $ {costo_maximo_comercial:,.0f}</p>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """.replace(",", "."), unsafe_allow_html=True)
             
             t1, t2, t3 = st.tabs(["💰 Visor General del Arsenal", "📋 Copia Masiva (Por Margen)", "🎯 Consulta Multi-Producto"])
             
@@ -221,9 +264,10 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                 
                 c_cop1, c_cop2 = st.columns([2, 1])
                 with c_cop1:
+                    # Las opciones invertidas para que aparezcan de mayor a menor y el costo base al final
                     col_margen = st.selectbox(
                         "Seleccione el Perfil de Productor:", 
-                        ["TERCERO (+45.1%)", "AFILIADO (+16.4%)", "COOPERATIVA / SOCIO (+11.2%)", "ORGÁNICO (+1.1%)", "COSTO BASE"],
+                        list(reversed(cols_dinamicas)),
                         key="sb_perfil_copia"
                     )
                 with c_cop2:
@@ -259,19 +303,19 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     with c1: 
                         st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏷️ COSTO BASE</p></div>", unsafe_allow_html=True)
-                        st.code(fmt_sap(datos_prod["COSTO BASE"]))
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[0]]))
                     with c2: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO<br>(+1.1%)</p></div>", unsafe_allow_html=True)
-                        st.code(fmt_sap(datos_prod["ORGÁNICO (+1.1%)"]))
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🌱 ORGÁNICO<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[4]]))
                     with c3: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP<br>(+11.2%)</p></div>", unsafe_allow_html=True)
-                        st.code(fmt_sap(datos_prod["COOPERATIVA / SOCIO (+11.2%)"]))
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🤝 SOCIO/COOP<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[3]]))
                     with c4: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO<br>(+16.4%)</p></div>", unsafe_allow_html=True)
-                        st.code(fmt_sap(datos_prod["AFILIADO (+16.4%)"]))
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>🏢 AFILIADO<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[2]]))
                     with c5: 
-                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO<br>(+45.1%)</p></div>", unsafe_allow_html=True)
-                        st.code(fmt_sap(datos_prod["TERCERO (+45.1%)"]))
+                        st.markdown(f"<div style='{caja_titulo}'><p style='{estilo_etiqueta}'>👤 TERCERO<br></p></div>", unsafe_allow_html=True)
+                        st.code(fmt_sap(datos_prod[cols_dinamicas[1]]))
                     st.markdown("<hr style='border:1px dashed #d4af37; margin-top:5px; margin-bottom:20px;'/>", unsafe_allow_html=True)
         else:
             st.warning("⚠️ No se detectaron datos en el tarifario. Haga clic en 'Recargar Tarifario' para sincronizar con la nube.")
