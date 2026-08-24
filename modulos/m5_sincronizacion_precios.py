@@ -337,12 +337,12 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                         fila = {
                             "🤝 PERFIL COMERCIAL": perfil_nombre,
                             "📊 MARGEN AL PRODUCTOR (%)": pct_margen,
-                            f"📉 {prod_base} (Costo Base/Ha)": costo_base_p1_ha,
+                            f"📉 {prod_base} (Costo/Ha)": costo_base_p1_ha,
                             f"🏷️ {prod_base} (Venta/Ha)": precio_p1_ha,
                             f"💰 {prod_base} (Ganancia/Ha)": ganancia_p1_ha
                         }
                         
-                        # Si hay un segundo producto o más, comparamos contra el primero
+                        # Comparación dinámica entre productos seleccionados
                         for prod_comparar in prods_sel[1:]:
                             dosis_p2 = dosis_dict.get(prod_comparar, 1.0)
                             datos_p2 = df_t[df_t["PRODUCTO"] == prod_comparar].iloc[0]
@@ -350,14 +350,26 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             precio_p2_ha = datos_p2[col_margen] * dosis_p2
                             ganancia_p2_ha = precio_p2_ha - costo_base_p2_ha
                             
-                            dif_pesos = precio_p2_ha - precio_p1_ha
-                            dif_pct = ((precio_p2_ha - precio_p1_ha) / precio_p1_ha * 100) if precio_p1_ha > 0 else 0.0
+                            # 🎯 Regla del Menor menos el Mayor
+                            menor_venta = min(precio_p1_ha, precio_p2_ha)
+                            mayor_venta = max(precio_p1_ha, precio_p2_ha)
+                            dif_venta_pesos = menor_venta - mayor_venta
+                            dif_venta_pct = (dif_venta_pesos / mayor_venta * 100) if mayor_venta > 0 else 0.0
+
+                            menor_ganancia = min(ganancia_p1_ha, ganancia_p2_ha)
+                            mayor_ganancia = max(ganancia_p1_ha, ganancia_p2_ha)
+                            dif_ganancia_pesos = menor_ganancia - mayor_ganancia
+                            dif_ganancia_pct = (dif_ganancia_pesos / mayor_ganancia * 100) if mayor_ganancia > 0 else 0.0
                             
-                            fila[f"📉 {prod_comparar} (Costo Base/Ha)"] = costo_base_p2_ha
+                            fila[f"📉 {prod_comparar} (Costo/Ha)"] = costo_base_p2_ha
                             fila[f"🏷️ {prod_comparar} (Venta/Ha)"] = precio_p2_ha
                             fila[f"💰 {prod_comparar} (Ganancia/Ha)"] = ganancia_p2_ha
-                            fila[f"⚖️ Dif. ($) ({prod_comparar} vs {prod_base})"] = dif_pesos
-                            fila[f"📈 Dif. (%) ({prod_comparar} vs {prod_base})"] = dif_pct
+                            
+                            # Encabezados explícitos nombrando a ambos productos
+                            fila[f"⚖️ Dif. Venta ($) [{prod_comparar} vs {prod_base}]"] = dif_venta_pesos
+                            fila[f"📈 Dif. Venta (%) [{prod_comparar} vs {prod_base}]"] = dif_venta_pct
+                            fila[f"💵 Dif. Ganancia ($) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pesos
+                            fila[f"📊 Dif. Ganancia (%) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pct
 
                         filas_gerenciales.append(fila)
                     
