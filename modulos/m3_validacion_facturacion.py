@@ -4,14 +4,13 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import gspread
+import requests
 import io
 import re
 import math
+import json
 from datetime import datetime, timedelta, date
 from oauth2client.service_account import ServiceAccountCredentials
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 # =================================================================
 # ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
@@ -102,24 +101,6 @@ def parsear_fecha_robusta(val):
         return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
     except Exception: 
         return pd.NaT
-
-def purificar_datos_vuelo(eq_raw, pista_raw):
-    eq = str(eq_raw).upper()
-    p = str(pista_raw).upper()
-    if "DRON" in eq or "DRONE" in eq:
-        if "DATAROT" in eq or "PLUC" in p: return "DRONE DATAROT", "PLUC"
-        if "NORTE" in eq or "PDIV" in p: return "DRONE NORTE", "PDIV"
-        if "AVIL" in eq or "TEHO" in p: return "DRONE AVIL", "TEHO"
-        if "GENESYS" in eq or "LUCI" in p: return "DRONE GENESYS", "LUCI"
-        return "DRONE GENESYS", "LUCI" 
-    if "TRUSH" in eq or "THRUS" in eq or "OMANDER" in eq: return "THRUS SR2", "AEROPENORT"
-    if "PAWNEE" in eq or "BRAVO" in eq or "PIPER PA 36" in eq: return "PIPER PA 36-375", "AEROPENORT"
-    if "AIR TRACTOR" in eq or "TRACTOR" in eq or "TOR" in eq: return "AIR TRACTOR", "FUMIGARAY"
-    if "CESSNA" in eq or "PIPER PA 25" in eq:
-        if "ASA" in p or "ASA" in eq: return "CESSNA ASA", "ASA"
-        if "FUMIGARAY" in p or "FUMIGARAY" in eq: return "CESSNA FUMIGARAY", "FUMIGARAY"
-        return "CESSNA O PIPER PA 25", "AEROPENORT"
-    return "IGNORAR", "IGNORAR"
 
 def formato_latino(numero, decimales=0):
     if pd.isna(numero) or numero is None: return "0"
@@ -362,7 +343,7 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                     if char.isdigit(): d_receta_esperada = float(char); break
             elif "IMBIOSIL" in p_receta: d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
                 
-            for k_sap, d_sap in sap_dict_pista.items():
+            for k_sap, d_sap in sap_dict_pista.keys():
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
                     error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15)
@@ -398,7 +379,7 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
     return coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA", dosis_oficiales_coctel
 
 # =================================================================
-# 👑 PROCESAMIENTO PRINCIPAL MÓDULO 3 (FIRMA CORREGIDA Y UNIFICADA)
+# 👑 PROCESAMIENTO PRINCIPAL MÓDULO 3 (COMPLETO HASTA EL FINAL)
 # =================================================================
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
     hora_oficial_col = obtener_hora_colombia()
@@ -467,7 +448,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
                 except Exception: pass
 
-        # 🎯 FILA DE 3 COLUMNAS: FINCA, REFERENCIA PEDIDO/INFORME, FECHA DE VUELO
         c_finca, c_pedido, c_fecha = st.columns([2, 2, 1.3])
         if 'fecha_sim_mem' not in st.session_state: st.session_state.fecha_sim_mem = hoy_colombia_date
 
@@ -503,7 +483,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
         vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
         lista_origenes = vuegos_informe['ORIGEN'].unique().tolist() if not vuegos_informe.empty else []
         
-        # 📄 CASILLA DE REFERENCIA PEDIDO/INFORME RESTAURADA
         vuelo_ref = c_pedido.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
         if 'vuelo_ref_anterior' not in st.session_state: st.session_state.vuelo_ref_anterior = vuelo_ref
@@ -520,6 +499,27 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
         casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
         llave_sistema = f"sys_limpio_v2_{casilla_key}"
         llave_cobro = f"cob_limpio_v2_{casilla_key}"
+
+        mult_material, tarifa_serv_tec_base, mult_avion_base = 1.112, 1337.0, 1.112
+        df_ped = st.session_state.get('df_pedidos', pd.DataFrame())
+        df_sab = st.session_state.get('df_sabana', pd.DataFrame())
+        df_cfg = st.session_state.get('df_config_base', pd.DataFrame())
+        
+        finca_limpia = re.sub(r'\s+', ' ', str(finca_sel)).strip().upper()
+        tipo_productor, tipo_de_tope_finca = "REVISAR FINCA", "SIN TOPE"
+        
+        match_t2 = df_t2[df_t2.iloc[:, 0].astype(str).apply(lambda x: re.sub(r'\s+', ' ', str(x)).strip().upper()) == finca_limpia]
+        if not match_t2.empty:
+            tipo_productor = str(match_t2.iloc[0].iloc[col_prod_idx_op]).strip().upper() if len(match_t2.columns) > col_prod_idx_op else "TERCERO"
+            tipo_de_tope_finca = str(match_t2.iloc[0].iloc[col_tope_idx_op]).strip().upper() if len(match_t2.columns) > col_tope_idx_op else "SIN TOPE"
+
+        if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia: tipo_productor = "COOPERATIVA"
+        if not df_cfg.empty:
+            match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
+            if not match_cfg.empty:
+                mult_material = limpiar_moneda(match_cfg.iloc[0].iloc[3])
+                tarifa_serv_tec_base = limpiar_moneda(match_cfg.iloc[0].iloc[4])
+                mult_avion_base = limpiar_moneda(match_cfg.iloc[0].iloc[6])
 
         if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
         if 'fecha_operacion_anterior' not in st.session_state: st.session_state.fecha_operacion_anterior = fecha_operacion
@@ -541,17 +541,129 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
 
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
-            
+            c_sup1, c_sup2 = st.columns([3, 1])
+            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+            mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             with r1c1:
                 st.number_input("📅 CICLO (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
             with r1c2:
-                st.number_input("⏳ CICLO (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
+                d_ciclo_factura = st.number_input("⏳ CICLO (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
             with r1c3:
-                st.number_input("🧪 HA DOSIS (TOTAL 459)", value=float(ha_dosis_detectada), key=f"ha_dosis_{casilla_key}")
+                ha_dosis_final = st.number_input("🧪 HA DOSIS (TOTAL 459)", value=float(ha_dosis_detectada), key=f"ha_dosis_{casilla_key}")
             with r1c4:
-                st.markdown("<div style='margin-top:25px;'></div>", unsafe_allow_html=True)
-                st.caption("🔒 Ciclos Verificados en Tiempo Real")
+                multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
+                multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+                interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
+
+            recargo_final = 0.0
+            pista_sel = "PLUC"
+            if not mision_solo_dron:
+                st.markdown("##### 🛣️ Parámetros Terrestres (Aviones)")
+                r2c1, r2c2, r2c3 = st.columns(3)
+                pista_sel = r2c1.selectbox("Pista Base", PISTAS_VALIDAS, index=0, key=f"pi_{casilla_key}")
+                opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
+                recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=1 if pista_sel == "PDIV" else 0, key=f"rl_{casilla_key}")
+                if recargo_lista == "Otro Valor Manual...": recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
+                else: recargo_final = float(recargo_lista.split(" ")[0])
+
+            tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
+            val_tope = dict_topes_pista.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
+
+            with st.container(border=True):
+                st.markdown("#### ✈️ Hangar de Despliegue")
+                costo_total_vuegos, costo_neto_vuelo_total, total_ha_cobro_escuadron, horometro_final_avion = 0.0, 0.0, 0.0, 0.0
+
+                if mision_solo_dron:
+                    st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
+                    df_drones_def = pd.DataFrame([{"Drone": "DRONE DATAROT", "Hectáreas": ha_dosis_final}])
+                    escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+                    for _, row in escuadron_drones.iterrows():
+                        dr_sel, ha_dr = row.get("Drone"), row.get("Hectáreas")
+                        if pd.isna(dr_sel) or ha_dr is None or float(ha_dr) <= 0: continue
+                        ha_dr = float(ha_dr)
+                        total_ha_cobro_escuadron += ha_dr
+                        tarifa_dron_neta = dict_drones.get(dr_sel, 0)
+                        costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
+                        costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final 
+                else:
+                    c_av, c_dr = st.columns(2)
+                    with c_av: 
+                        st.markdown("##### 🛩️ Base Aviones")
+                        df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": ha_dosis_final, "Horómetro": 0.38}])
+                        escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+                    with c_dr:
+                        st.markdown("##### 🛸 Base Drones (Apoyo)")
+                        df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
+                        escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+
+                    for index, row in escuadron_aviones.iterrows():
+                        av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
+                        if pd.isna(av_sel) or ha_av is None or horo is None or float(ha_av) <= 0: continue
+                        ha_av, horo = float(ha_av), float(horo)
+                        total_ha_cobro_escuadron += ha_av
+                        horometro_final_avion += horo  
+                        tarifa_base_ha = (dict_aviones.get(av_sel, 0) * horo) / ha_av if ha_av > 0 else 0
+                        tarifa_base_tope = tarifa_base_ha if pista_sel == "PDIV" else min(tarifa_base_ha, val_tope)
+                        costo_neto_vuelo_total += (tarifa_base_tope * ha_av) 
+                        costo_total_vuegos += ((tarifa_base_tope + recargo_final) * ha_av) * multi_aviones_final 
+
+            st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
+            top_key_real = f"top_pista_real_{casilla_key}"
+            bot_key_real = f"bot_pista_real_{casilla_key}"
+
+            if top_key_real not in st.session_state: st.session_state[top_key_real] = pista_sel
+            if bot_key_real not in st.session_state: st.session_state[bot_key_real] = st.session_state[top_key_real]
+
+            c_p1, _ = st.columns([1.5, 2.5])
+            pista_matriz_maestra = c_p1.selectbox("Pista Base SAP", PISTAS_DISPONIBLES_MATRIZ, key=top_key_real, on_change=sync_pistas, args=(top_key_real, bot_key_real))
+            
+            st.markdown("---")
+            costo_mezcla_total = 0.0
+
+            from decimal import Decimal, ROUND_HALF_UP
+            def sap_round(n): 
+                n_limpio = round(float(n), 4)
+                return int(Decimal(str(n_limpio)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+            unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
+            unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
+            
+            subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
+            subtotal_vuelo_finca = sap_round(unitario_vuelo * ha_dosis_final)
+            
+            gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
+            costo_por_ha = sap_round(gran_total / ha_dosis_final) if ha_dosis_final > 0 else 0
+
+            st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
+            c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
+            with c_sap1: st.caption("👨‍🔬 UNITARIO ST (459)"); st.code(fmt_sap(unitario_st), language="text")
+            with c_sap2: st.caption("✈️ UNITARIO Vuelo (429)"); st.code(fmt_sap(unitario_vuelo), language="text")
+            with c_sap3: st.caption("🧪 TOTAL Mezcla"); st.code(fmt_sap(costo_mezcla_total), language="text")
+            with c_sap4: st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
+
+            html_totales = f"""
+            <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px; align-items: stretch;">
+                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
+                    <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
+                    <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_st_finca)}</h3>
+                </div>
+                <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
+                    <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
+                    <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_vuelo_finca)}</h3>
+                </div>
+                <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
+                    <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
+                    <h2 style="margin:0; color: white; font-weight: 900; user-select: all;">$ {gran_total:,.0f}</h2>
+                </div>
+            </div>
+            """.replace(",", ".")
+            st.markdown(html_totales, unsafe_allow_html=True)
+
+            if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
+                st.balloons()
+                st.success("✅ OPERACIÓN REGISTRADA EXITOSAMENTE Y SINCRONIZADA.")
 
 if __name__ == "__main__":
     pass
