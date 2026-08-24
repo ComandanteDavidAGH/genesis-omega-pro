@@ -943,6 +943,13 @@ def ejecutar():
                     else:
                         st.warning("⚠️ SAP no reporta otros lotes aquí.")
                         t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
+                
+                # 🎯 EL CONSECUTIVO AHORA RELLENA EL HUECO IZQUIERDO
+                st.markdown("<div style='margin-top: 2px;'></div>", unsafe_allow_html=True)
+                t_consecutivo = st.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
+                    else:
+                        st.warning("⚠️ SAP no reporta otros lotes aquí.")
+                        t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
             
             with tr5:
                 opcion_metodo = st.selectbox("⚙️ Origen del Lote", ["📋 ELEGIR DE LA LISTA SAP", "✍️ ESCRIBIR MANUALMENTE"], key=f"metodo_lote_{fk_t}")
@@ -960,10 +967,6 @@ def ejecutar():
             lote_final_print = t_lote_origen
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
-                
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_cons, _ = st.columns(2)
-            t_consecutivo = col_cons.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
