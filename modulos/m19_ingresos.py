@@ -872,6 +872,7 @@ def ejecutar():
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
+            # --- 1. PRIMERA FILA: OBSERVACIÓN Y MÉTODO ---
             tr4, tr5 = st.columns(2)
             opciones_obs = ["SIN NOVEDAD", "ANULACIÓN", "TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES", "OTRO"]
             t_observacion_sel = tr4.selectbox("📝 Observación", opciones_obs, key=f"t_obs_sel_{fk_t}")
@@ -881,6 +882,9 @@ def ejecutar():
             else: 
                 t_observacion = t_observacion_sel
 
+            opcion_metodo = tr5.selectbox("⚙️ Origen del Lote", ["📋 ELEGIR DE LA LISTA SAP", "✍️ ESCRIBIR MANUALMENTE"], key=f"metodo_lote_{fk_t}")
+
+            # --- (LÓGICA DE LA SÁBANA SAP INTACTA) ---
             lotes_disp = []
             df_sabana_memoria = st.session_state.get('mem_sabana')
             if not isinstance(df_sabana_memoria, pd.DataFrame):
@@ -932,8 +936,10 @@ def ejecutar():
 
             lotes_disp = list(dict.fromkeys(lotes_disp))
 
+            # --- 2. SEGUNDA FILA: COMBOS INTERMEDIOS Y ALERTAS ---
+            tr6, tr7 = st.columns(2)
             t_lote_nuevo = ""
-            with tr4:
+            with tr6:
                 if t_observacion_sel == "TRANSFORMACIÓN DE LOTE":
                     t_lote_nuevo = st.text_input("🔄 NUEVO LOTE (Crear Manual):", help="Digite el número del lote resultante.", key=f"t_lote_nuevo_{fk_t}")
                 elif t_observacion_sel == "AJUSTE ENTRE LOTES":
@@ -943,20 +949,24 @@ def ejecutar():
                     else:
                         st.warning("⚠️ SAP no reporta otros lotes aquí.")
                         t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
-                
-                # 🎯 EL CONSECUTIVO AHORA RELLENA EL HUECO IZQUIERDO PERFECTAMENTE
-                st.markdown("<div style='margin-top: 2px;'></div>", unsafe_allow_html=True)
-                t_consecutivo = st.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
             
-            with tr5:
-                opcion_metodo = st.selectbox("⚙️ Origen del Lote", ["📋 ELEGIR DE LA LISTA SAP", "✍️ ESCRIBIR MANUALMENTE"], key=f"metodo_lote_{fk_t}")
-                
+            t_lote_origen = ""
+            with tr7:
                 if opcion_metodo == "📋 ELEGIR DE LA LISTA SAP":
                     if lotes_disp:
                         lote_seleccionado = st.selectbox("📦 Seleccione el Lote", lotes_disp, key=f"t_lote_sel_{fk_t}")
                         t_lote_origen = lote_seleccionado.split(" (Saldo")[0].strip()
                     else:
                         st.warning("⚠️ Sábana sin procesar o sin saldo.")
+
+            # --- 3. TERCERA FILA: ALINEACIÓN PERFECTA (CONSECUTIVO VS LOTE MANUAL) ---
+            tr8, tr9 = st.columns(2)
+            with tr8:
+                t_consecutivo = st.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
+                
+            with tr9:
+                if opcion_metodo == "📋 ELEGIR DE LA LISTA SAP":
+                    if not lotes_disp:
                         t_lote_origen = st.text_input("✍️ Digite Lote Manual (Forzado):", key=f"t_lote_man_force_{fk_t}")
                 else:
                     t_lote_origen = st.text_input("✍️ Digite Lote Manual:", key=f"t_lote_man_{fk_t}")
@@ -964,6 +974,8 @@ def ejecutar():
             lote_final_print = t_lote_origen
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
+                
+            # A partir de aquí sigue el Panel de Copiado Rápido que ya está listo
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
