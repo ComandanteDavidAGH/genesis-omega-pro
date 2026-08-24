@@ -944,12 +944,9 @@ def ejecutar():
                         st.warning("⚠️ SAP no reporta otros lotes aquí.")
                         t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
                 
-                # 🎯 EL CONSECUTIVO AHORA RELLENA EL HUECO IZQUIERDO
+                # 🎯 EL CONSECUTIVO AHORA RELLENA EL HUECO IZQUIERDO PERFECTAMENTE
                 st.markdown("<div style='margin-top: 2px;'></div>", unsafe_allow_html=True)
                 t_consecutivo = st.text_input("🔢 Consecutivo", key=f"t_consecutivo_{fk_t}")
-                    else:
-                        st.warning("⚠️ SAP no reporta otros lotes aquí.")
-                        t_lote_nuevo = st.text_input("🔄 LOTE DESTINO (Manual):", key=f"t_lote_dest_man_{fk_t}")
             
             with tr5:
                 opcion_metodo = st.selectbox("⚙️ Origen del Lote", ["📋 ELEGIR DE LA LISTA SAP", "✍️ ESCRIBIR MANUALMENTE"], key=f"metodo_lote_{fk_t}")
@@ -986,6 +983,7 @@ def ejecutar():
                 with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
                 with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
                 with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
+
             st.markdown("<br>", unsafe_allow_html=True)
             btn_guardar_traslado = st.button("🚀 REGISTRAR TRASLADO EN LA BÓVEDA", type="primary", use_container_width=True)
 
