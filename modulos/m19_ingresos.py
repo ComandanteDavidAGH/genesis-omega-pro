@@ -983,14 +983,6 @@ def ejecutar():
                 with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
                 with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
                 with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
-            else:
-                cpt_mat, cpt1, cpt2, cpt3, cpt4 = st.columns(5)
-                with cpt_mat: st.caption("🔢 MATERIAL"); st.code(mat_item_tras, language="text")
-                with cpt1: st.caption("⚖️ CANTIDAD"); st.code(formatear_numero_sap(t_cantidad), language="text")
-                with cpt2: st.caption("📦 LOTE"); st.code(lote_final_print if lote_final_print else "...", language="text")
-                with cpt3: st.caption("🛫 ORIGEN"); st.code(t_origen, language="text")
-                with cpt4: st.caption("🛬 DESTINO"); st.code(t_destino, language="text")
-
             st.markdown("<br>", unsafe_allow_html=True)
             btn_guardar_traslado = st.button("🚀 REGISTRAR TRASLADO EN LA BÓVEDA", type="primary", use_container_width=True)
 
