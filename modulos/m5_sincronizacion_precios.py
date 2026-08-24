@@ -68,7 +68,7 @@ def generar_excel_gerencial(df_comp):
         
         for col_num, col_name in enumerate(df_comp.columns, 1):
             col_letter = openpyxl.utils.get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = 22
+            ws.column_dimensions[col_letter].width = 24
             
             cell_header = ws.cell(row=1, column=col_num)
             cell_header.fill = header_fill
@@ -80,9 +80,9 @@ def generar_excel_gerencial(df_comp):
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.border = borde_fino
                 cell.alignment = Alignment(vertical='center')
-                if any(k in str(col_name) for k in ["Venta", "Ganancia", "Costo", "Diferencia ($)"]):
+                if any(k in str(col_name) for k in ["Venta", "Ganancia", "Costo", "Dif. Venta ($)", "Dif. Ganancia ($)"]):
                     cell.number_format = '"$" #,##0'
-                elif "%" in str(col_name) or "Margen" in str(col_name) or "Diferencia (%)" in str(col_name):
+                elif "%" in str(col_name) or "Margen" in str(col_name) or "Dif." in str(col_name):
                     cell.number_format = '0.00 "%"'
                     
     return buffer.getvalue()
@@ -314,7 +314,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     st.markdown("##### 📊 2. Matriz Comparativa Estratégica")
                     
-                    # Mapa de perfiles y factores de porcentaje
                     mapa_perfiles = [
                         ("TERCERO", cols_dinamicas[1], dict_m.get("TERCERO", 1.451)),
                         ("AFILIADO", cols_dinamicas[2], dict_m.get("AFILIADO", 1.164)),
@@ -342,7 +341,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             f"💰 {prod_base} (Ganancia/Ha)": ganancia_p1_ha
                         }
                         
-                        # Comparación dinámica entre productos seleccionados
                         for prod_comparar in prods_sel[1:]:
                             dosis_p2 = dosis_dict.get(prod_comparar, 1.0)
                             datos_p2 = df_t[df_t["PRODUCTO"] == prod_comparar].iloc[0]
@@ -350,7 +348,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             precio_p2_ha = datos_p2[col_margen] * dosis_p2
                             ganancia_p2_ha = precio_p2_ha - costo_base_p2_ha
                             
-                            # 🎯 Regla del Menor menos el Mayor
                             menor_venta = min(precio_p1_ha, precio_p2_ha)
                             mayor_venta = max(precio_p1_ha, precio_p2_ha)
                             dif_venta_pesos = menor_venta - mayor_venta
@@ -364,8 +361,6 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                             fila[f"📉 {prod_comparar} (Costo/Ha)"] = costo_base_p2_ha
                             fila[f"🏷️ {prod_comparar} (Venta/Ha)"] = precio_p2_ha
                             fila[f"💰 {prod_comparar} (Ganancia/Ha)"] = ganancia_p2_ha
-                            
-                            # Encabezados explícitos nombrando a ambos productos
                             fila[f"⚖️ Dif. Venta ($) [{prod_comparar} vs {prod_base}]"] = dif_venta_pesos
                             fila[f"📈 Dif. Venta (%) [{prod_comparar} vs {prod_base}]"] = dif_venta_pct
                             fila[f"💵 Dif. Ganancia ($) [{prod_comparar} vs {prod_base}]"] = dif_ganancia_pesos
@@ -375,34 +370,33 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     
                     df_gerencial = pd.DataFrame(filas_gerenciales)
                     
-                    # CONFIGURACIÓN DE NOMBRES Y FORMATOS DE COLUMNAS
                     col_config = {
                         "🤝 PERFIL COMERCIAL": st.column_config.TextColumn("🤝 PERFIL COMERCIAL", width="small"),
-                        "📊 MARGEN AL PRODUCTOR (%)": st.column_config.NumberColumn("📊 MARGEN AL PRODUCTOR", format="%.2f %%")
+                        "📊 MARGEN AL PRODUCTOR (%)": st.column_config.NumberColumn("📊 MARGEN AL PRODUCTOR", format="%.2f %%"),
+                        f"📉 {prod_base} (Costo/Ha)": st.column_config.NumberColumn(f"📉 {prod_base} (Costo/Ha)", format="$ %d"),
+                        f"🏷️ {prod_base} (Venta/Ha)": st.column_config.NumberColumn(f"🏷️ {prod_base} (Venta/Ha)", format="$ %d"),
+                        f"💰 {prod_base} (Ganancia/Ha)": st.column_config.NumberColumn(f"💰 {prod_base} (Ganancia/Ha)", format="$ %d")
                     }
-                    
-                    col_config[f"📉 {prod_base} (Costo Base/Ha)"] = st.column_config.NumberColumn(f"📉 {prod_base} (Costo/Ha)", format="$ %d")
-                    col_config[f"🏷️ {prod_base} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_base} (Venta/Ha)", format="$ %d")
-                    col_config[f"💰 {prod_base} (Ganancia/Ha)"] = st.column_config.NumberColumn(f"💰 {prod_base} (Ganancia/Ha)", format="$ %d")
 
                     for prod_comparar in prods_sel[1:]:
-                        col_config[f"📉 {prod_comparar} (Costo Base/Ha)"] = st.column_config.NumberColumn(f"📉 {prod_comparar} (Costo/Ha)", format="$ %d")
+                        col_config[f"📉 {prod_comparar} (Costo/Ha)"] = st.column_config.NumberColumn(f"📉 {prod_comparar} (Costo/Ha)", format="$ %d")
                         col_config[f"🏷️ {prod_comparar} (Venta/Ha)"] = st.column_config.NumberColumn(f"🏷️ {prod_comparar} (Venta/Ha)", format="$ %d")
                         col_config[f"💰 {prod_comparar} (Ganancia/Ha)"] = st.column_config.NumberColumn(f"💰 {prod_comparar} (Ganancia/Ha)", format="$ %d")
-                        col_config[f"⚖️ Dif. ($) ({prod_comparar} vs {prod_base})"] = st.column_config.NumberColumn(f"⚖️ Dif ($) vs {prod_base}", format="$ %d")
-                        col_config[f"📈 Dif. (%) ({prod_comparar} vs {prod_base})"] = st.column_config.NumberColumn(f"📈 Dif (%) vs {prod_base}", format="%.2f %%")
+                        col_config[f"⚖️ Dif. Venta ($) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"⚖️ Dif Venta ($)", format="$ %d")
+                        col_config[f"📈 Dif. Venta (%) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"📈 Dif Venta (%)", format="%.2f %%")
+                        col_config[f"💵 Dif. Ganancia ($) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"💵 Dif Ganancia ($)", format="$ %d")
+                        col_config[f"📊 Dif. Ganancia (%) [{prod_comparar} vs {prod_base}]"] = st.column_config.NumberColumn(f"📊 Dif Ganancia (%)", format="%.2f %%")
 
-                    # ESTILOS DINÁMICOS POR COLOR
-                    def colorear_diferencia_pesos(val):
+                    def colorear_diferencia(val):
                         if isinstance(val, (int, float)):
                             if val > 0: return 'color: #27AE60; font-weight: bold;'
                             if val < 0: return 'color: #E74C3C; font-weight: bold;'
                         return ''
 
                     style_map = df_gerencial.style
-                    for prod_comparar in prods_sel[1:]:
-                        style_map = style_map.map(colorear_diferencia_pesos, subset=[f"⚖️ Dif. ($) ({prod_comparar} vs {prod_base})"])
-                        style_map = style_map.map(colorear_diferencia_pesos, subset=[f"📈 Dif. (%) ({prod_comparar} vs {prod_base})"])
+                    for col in df_gerencial.columns:
+                        if "Dif." in col:
+                            style_map = style_map.map(colorear_diferencia, subset=[col])
                         
                     st.dataframe(style_map, use_container_width=True, hide_index=True, column_config=col_config)
                     
