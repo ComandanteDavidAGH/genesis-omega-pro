@@ -113,7 +113,8 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=1800)
+# 🎯 CIRUGÍA 1: Caché a 10s para actualizar historial de ciclos en tiempo real
+@st.cache_data(show_spinner=False, ttl=10)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -161,17 +162,19 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
                 df_fil = df_temp[mask]
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
-                    if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
+                    # 🎯 CIRUGÍA 2A: Agregar solo el `.date()` sin horas residuales
+                    if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida.date())
 
         extraer_fechas_motor(df_viva)
         extraer_fechas_motor(df_hist)
         
         if fechas_encontradas:
-            fecha_vuelo_dt = pd.to_datetime(fecha_vuelo)
-            fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
+            # 🎯 CIRUGÍA 2B: Asegurar que fecha_vuelo_date sea puro .date()
+            fecha_vuelo_date = fecha_vuelo if isinstance(fecha_vuelo, date) else pd.to_datetime(fecha_vuelo).date()
+            fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
             if fechas_validas:
                 fecha_max = max(fechas_validas)
-                dias = (fecha_vuelo_dt - fecha_max).days
+                dias = (fecha_vuelo_date - fecha_max).days
                 if 0 <= dias <= 365: return int(dias)
     except Exception as e:
         log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
@@ -367,7 +370,8 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
+# 🎯 CIRUGÍA 3: Blindar los argumentos con *args, **kwargs para evitar el TypeError
+def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
@@ -826,7 +830,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
         st.rerun()
 
     with st.container(border=True):
-        st.markdown("### 📡 Panel de Operations")
+        st.markdown("### 📡 Panel de Operaciones")
         c_vacio, c_radar = st.columns([2, 2])
         pedido_sap = c_radar.text_input("📦 Buscar por N° Pedido SAP (Opcional):", key="buscar_sap_mod3", placeholder="Ej: 170036035")
 
@@ -1026,6 +1030,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
 
                 if mision_solo_dron:
                     st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
+                    # TABLAS VACÍAS DE FÁBRICA
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     
@@ -1041,13 +1046,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                     c_av, c_dr = st.columns(2)
                     with c_av: 
                         st.markdown("##### 🛩️ Base Aviones")
+                        # TABLAS VACÍAS DE FÁBRICA
                         df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
                         escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                         
                     with c_dr:
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
+                        # TABLAS VACÍAS DE FÁBRICA
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
-                        escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)               
+                        escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)                
                     
                     for index, row in escuadron_aviones.iterrows():
                         av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
@@ -1068,41 +1075,16 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         tarifa_dron_neta = dict_drones.get(dr_sel, 0)
                         costo_neto_vuelo_total += (tarifa_dron_neta * ha_dr)  
                         costo_total_vuegos += (tarifa_dron_neta * ha_dr) * multi_aviones_final
-            
-            st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
-            
-            pistas_matriz_tarifa = []
-            if not df_tarifas_maestras.empty:
-                pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-            
-            pistas_disponibles_final = []
-            for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ:
-                if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE"]:
-                    pistas_disponibles_final.append(p)
 
+            st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
             top_key_real = f"top_pista_real_{casilla_key}"
             bot_key_real = f"bot_pista_real_{casilla_key}"
-            prev_sel_key_real = f"prev_pista_sel_real_{casilla_key}"
 
-            if top_key_real not in st.session_state: st.session_state[top_key_real] = pista_sel if pista_sel in pistas_disponibles_final else pistas_disponibles_final[0]
+            if top_key_real not in st.session_state: st.session_state[top_key_real] = pista_sel
             if bot_key_real not in st.session_state: st.session_state[bot_key_real] = st.session_state[top_key_real]
-            if prev_sel_key_real not in st.session_state: st.session_state[prev_sel_key_real] = pista_sel
 
-            if st.session_state[prev_sel_key_real] != pista_sel:
-                st.session_state[top_key_real] = pista_sel if pista_sel in pistas_disponibles_final else pistas_disponibles_final[0]
-                st.session_state[bot_key_real] = st.session_state[top_key_real]
-                st.session_state[prev_sel_key_real] = pista_sel
-
-            st.caption("📍 SELECCIONE LA PISTA PARA EXTRAER INVENTARIO DE SAP:")
             c_p1, _ = st.columns([1.5, 2.5])
-            pista_matriz_maestra = c_p1.selectbox(
-                "Pista Oculta Label", 
-                pistas_disponibles_final, 
-                key=top_key_real, 
-                label_visibility="collapsed", 
-                on_change=sync_pistas, 
-                args=(top_key_real, bot_key_real)
-            )
+            pista_matriz_maestra = c_p1.selectbox("Pista Base SAP", pistas_disponibles_final, key=top_key_real, on_change=sync_pistas, args=(top_key_real, bot_key_real))
             
             st.markdown("---")
             costo_mezcla_total = 0.0
@@ -1371,17 +1353,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
             )
             c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
-            st.markdown("""
-                <a href="#inicio_modulo" target="_self" style="
-                    display: block; width: 100%; text-align: center; 
-                    background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
-                    padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
-                    box-shadow: 0px 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; font-size: 16px;
-                ">
-                    ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
-                </a>
-            """, unsafe_allow_html=True)
-
             if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
                 with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz..."):
                     try:
@@ -1421,6 +1392,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
                         total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
                         
+                        coctel_final = coctel_ganador if 'coctel_ganador' in locals() else coctel_piloto_base
+
                         columnas_tabla1 = {
                             0: ("os_virtual", os_virtual),
                             1: ("bloque", bloque_f),
@@ -1428,7 +1401,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                             3: ("sector", sector_f),
                             4: ("ha_bruta", ha_bruta_f),
                             5: ("ha_neta_cobro", ha_f),
-                            6: ("coctel", coctel_ganador),
+                            6: ("coctel", coctel_final),
                             7: ("fecha", fecha_str),
                             8: ("dia_semana", dia_sem),
                             9: ("num_semana", num_sem),
@@ -1454,7 +1427,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         for idx_col, (_nombre, valor) in columnas_tabla1.items():
                             row_azul[idx_col] = valor
 
-                        fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), float(gran_total), fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_mision_str, ""]
+                        fila_apoyo = ["", finca_limpia, ha_f, float(costo_por_ha), float(gran_total), fecha_str, "", "", coctel_final, "", pista_manual, "", "", tipo_mision_str, ""]
                         
                         col_azul = hoja_maestra.col_values(1)
                         col_apoyo = hoja_apoyo.col_values(2)
@@ -1480,12 +1453,12 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                         bodega_f = "BODEGA PRINCIPAL DRON" if mision_solo_dron or total_ha_cobro_escuadron == 0 else "BODEGA PRINCIPAL AVIÓN"
                         filas_memoria = []
                         
-                        if not edited_df.empty:
+                        if 'edited_df' in locals() and not edited_df.empty:
                             for idx, row_m in edited_df.iterrows():
                                 nombre_prod = str(row_m.get("A: Producto", "")).strip().upper()
                                 if "⚠️" not in nombre_prod and nombre_prod not in ["", "NAN"]:
                                     if f"{fecha_str}|{finca_limpia}|{nombre_prod}" not in set_existentes:
-                                        fila_m = [fecha_str, coctel_ganador, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
+                                        fila_m = [fecha_str, coctel_final, str(pista_manual).split("-")[0].strip()[:4], nombre_prod, str(row_m.get("G: Lotes (SAP)", "S/N")), float(row_m.get("D: Dosis Total (Sistema)", 0)), bodega_f, "", "X", finca_limpia]
                                         filas_memoria.append(fila_m)
                         
                         def limpiar_json(val):
@@ -1510,7 +1483,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
                                     "os_virtual": str(os_virtual),
                                     "finca": str(finca_limpia),
                                     "hectareas": float(ha_f),
-                                    "coctel": str(coctel_ganador),
+                                    "coctel": str(coctel_final),
                                     "fecha": str(fecha_str),
                                     "total_operacion": float(gran_total),
                                     "pista": str(pista_manual),
