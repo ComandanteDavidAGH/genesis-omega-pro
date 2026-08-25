@@ -113,7 +113,7 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=1)
+@st.cache_data(show_spinner=False, ttl=1) # 🎯 TTL a 1 segundo: Fuerza lectura en TIEMPO REAL
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -154,7 +154,7 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
             if col_f and col_d:
                 fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
                 
-                # 💥 BÚSQUEDA 100% EXACTA: Extirpamos el "startsWith" y el recorte de 8 letras
+                # 💥 BÚSQUEDA 100% EXACTA
                 mask = fincas_alpha == f_obj_alpha
                 
                 df_fil = df_temp[mask]
@@ -389,12 +389,16 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
 
     st.header("", anchor="inicio_modulo")
     
+    # 💥 REPARACIÓN DE SCROLL EXCEL Y BORDES
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     [data-testid="column"] { display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }
     [data-testid="column"] > div { width: 100% !important; }
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
+    
+    /* 💥 Removido 'overflow: hidden !important;' para habilitar el scroll nativo de Streamlit */
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; }
+    
     div[data-testid="stSelectbox"] > div, div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div, div[data-testid="stDateInput"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
     div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: none !important; box-shadow: none !important; font-weight: 800 !important; color: #0d1b2a !important; background-color: transparent !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
@@ -615,7 +619,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                 if mision_solo_dron:
                     st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
-                    escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+                    
+                    # 💥 MODO EXCEL SCROLL (Altura fija y Ancho Forzado)
+                    escuadron_drones = st.data_editor(
+                        df_drones_def, 
+                        key=f"drones_{casilla_key}", 
+                        num_rows="dynamic", 
+                        height=180,
+                        column_config={
+                            "Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True, width="large"), 
+                            "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True, width="medium")
+                        }, 
+                        use_container_width=True, 
+                        hide_index=True
+                    )
                     
                     for _, row in escuadron_drones.iterrows():
                         dr_sel, ha_dr = row.get("Drone"), row.get("Hectáreas")
@@ -630,12 +647,39 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     with c_av: 
                         st.markdown("##### 🛩️ Base Aviones")
                         df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
-                        escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+                        
+                        # 💥 MODO EXCEL SCROLL (Altura fija y Ancho Forzado)
+                        escuadron_aviones = st.data_editor(
+                            df_aviones_def, 
+                            key=f"aviones_{casilla_key}", 
+                            num_rows="dynamic", 
+                            height=180,
+                            column_config={
+                                "Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True, width="large"), 
+                                "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True, width="medium"), 
+                                "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True, width="medium")
+                            }, 
+                            use_container_width=True, 
+                            hide_index=True
+                        )
                         
                     with c_dr:
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
-                        escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)                
+                        
+                        # 💥 MODO EXCEL SCROLL (Altura fija y Ancho Forzado)
+                        escuadron_drones = st.data_editor(
+                            df_drones_def, 
+                            key=f"drones_mix_{casilla_key}", 
+                            num_rows="dynamic", 
+                            height=180,
+                            column_config={
+                                "Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True, width="large"), 
+                                "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True, width="medium")
+                            }, 
+                            use_container_width=True, 
+                            hide_index=True
+                        )                
                     
                     for index, row in escuadron_aviones.iterrows():
                         av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
