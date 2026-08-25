@@ -1166,12 +1166,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     num_sem = fecha_operacion.isocalendar()[1]
                     os_virtual = f"VIRT-{finca_limpia[:3]}-{obtener_hora_colombia().strftime('%H%M')}"
                     
-                    bloque_f, sector_f, ha_bruta_f = "", "", ""
+                    bloque_f, sector_f, ha_bruta_f_raw = "", "", ""
                     match_f = df_t2[df_t2.iloc[:, 0].astype(str).str.upper().str.strip() == finca_limpia.upper().strip()]
                     if not match_f.empty:
-                        sector_f, ha_bruta_f, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
+                        sector_f, ha_bruta_f_raw, bloque_f = match_f.iloc[0, 1], match_f.iloc[0, 2], match_f.iloc[0, 3]
 
                     ha_f = float(ha_dosis_final)
+                    ha_bruta_f_num = limpiar_numero_estricto(ha_bruta_f_raw) # 💥 CURA: Purifica la coma de Excel
                     
                     # 💥 MOTOR DE REPARTICIÓN PROPORCIONAL MULTI-AVIÓN 💥
                     filas_maestra_a_inyectar = []
