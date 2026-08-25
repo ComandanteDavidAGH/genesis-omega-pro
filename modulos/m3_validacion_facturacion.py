@@ -1213,7 +1213,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     for nave in flota_activa:
                         P = nave["prop"]
                         ha_f_part = ha_f * P
-                        ha_bruta_f_part = float(ha_bruta_f) * P if ha_bruta_f and str(ha_bruta_f).strip() != "" else ha_f_part
+                        ha_bruta_f_part = (ha_bruta_f_num * P) if ha_bruta_f_num > 0 else ha_f_part
                         
                         if nave["tipo"] == "DRONE" or nave["tipo"] == "DRONE PROPIO":
                             h_total_v_part = ha_f_part / 10
