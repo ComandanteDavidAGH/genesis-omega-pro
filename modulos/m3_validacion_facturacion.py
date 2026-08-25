@@ -1388,12 +1388,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         st.write("")
         st.markdown("### 💰 Liquidación Final (Bóveda SAP)")
         
-        # Le añadimos 'height: 100%' para que todas las tarjetas midan exactamente lo mismo
         def mini_metric(i, t, v): 
             return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06); height: 100%;'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
         
-        # 💥 FILA 1: Cuatro recuadros perfectamente alineados
-        m1, m2, m3, m4 = st.columns(4)
+        # 💥 FILA 1: Tres recuadros métricos
+        m1, m2, m3 = st.columns(3)
         with m1:
             st.markdown(mini_metric("🗺️", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
         with m2: 
@@ -1403,25 +1402,21 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.markdown(mini_metric("¼️", "Pista", pista_display_text if not es_dr_dom else "DRON"), unsafe_allow_html=True)
         with m3:
             st.markdown(mini_metric("🚧", "Valor Tope", f"$ {fmt_sap(precio_dron_ref)}" if es_dr_dom else ("Sin Tope" if val_tope in [0, 999999] else f"$ {fmt_sap(val_tope)}")), unsafe_allow_html=True)
-        with m4:
-            st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
             
-        st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
         
-        # 💥 FILA 2: Otros cuatro recuadros (El Costo x HA pasa a ser el ancla visual)
-        m5, m6, m7, m8 = st.columns(4)
-        with m5:
+        # 💥 FILA 2: Tres recuadros (Incluyendo el Costo x Ha en negro)
+        m4, m5, m6 = st.columns(3)
+        with m4:
             st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
-        with m6: 
-            st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
-        with m7:
-            st.markdown(mini_metric("🛸", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
-        with m8:
+        with m5: 
+            st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
+        with m6:
             st.markdown(f"<div style='background-color:#0d1b2a; padding:12px; border-radius:8px; border:2px solid #d4af37; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); height: 100%; display: flex; flex-direction: column; justify-content: center;'><p style='margin:0; color:#d4af37; font-size:11px; font-weight:800; text-transform:uppercase;'>💰 COSTO x HA (Final)</p><p style='margin:0; font-size:16px; font-weight:900; color:white;'>$ {fmt_sap(costo_por_ha)}</p></div>", unsafe_allow_html=True)
         
         st.write("")
         
-        # 💥 FILA 3: Cajas de texto expandidas a 3 columnas para que los números respiren
+        # 💥 FILA 3: Los 3 selectores de copiado rápido (Unitarios y Mezcla)
         c_sap1, c_sap2, c_sap3 = st.columns(3)
         with c_sap1:
             st.caption("👨‍🔬 UNITARIO ST (459)")
@@ -1432,37 +1427,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         with c_sap3:
             st.caption("🧪 TOTAL Mezcla")
             st.code(fmt_sap(costo_mezcla_total), language="text")
-        with m5: 
-            st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
-            st.markdown("<div style='margin-top:5px;'></div>", unsafe_allow_html=True)
-            st.markdown(mini_metric("🛸", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
-        
-        st.write("")
-        c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
-        
-        with c_sap1:
-            st.caption("👨‍🔬 UNITARIO ST (459)")
-            st.code(fmt_sap(unitario_st), language="text")
-        with c_sap2:
-            st.caption("✈️ UNITARIO Vuelo (429)")
-            st.code(fmt_sap(unitario_vuelo), language="text")
-        with c_sap3:
-            st.caption("🧪 TOTAL Mezcla")
-            st.code(fmt_sap(costo_mezcla_total), language="text")
-        with c_sap4:
-            st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
+        # 💥 FILA 4: Las 3 tarjetas GIGANTES finales (Del mismo tamaño exacto flex: 1)
         html_totales = f"""
-        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
-            <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 10px; margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 200px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                 <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
                 <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_st_finca)}</h3>
             </div>
-            <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 200px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
                 <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
                 <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_vuelo_finca)}</h3>
             </div>
-            <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center;">
+            <div style="flex: 1; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center;">
                 <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
                 <h2 style="margin:0; color: white; font-weight: 900; user-select: all;">$ {gran_total:,.0f}</h2>
             </div>
@@ -1470,6 +1447,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         """.replace(",", ".")
         st.markdown(html_totales, unsafe_allow_html=True)
         
+        # 💥 LA BARRA FINAL INTOCABLE: Copiado de las 6 cajas
         st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
         cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
         with cc1:
