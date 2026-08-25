@@ -161,12 +161,14 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
                 df_fil = df_temp[mask]
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
+                    # 🎯 CORRECCIÓN: extraer solo la fecha pura (.date())
                     if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida.date())
 
         extraer_fechas_motor(df_viva)
         extraer_fechas_motor(df_hist)
         
         if fechas_encontradas:
+            # 🎯 CORRECCIÓN: Convertir fecha_vuelo a .date() para alinear la matemática
             fecha_vuelo_date = fecha_vuelo if isinstance(fecha_vuelo, date) else pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
             if fechas_validas:
@@ -176,7 +178,6 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     except Exception as e:
         log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
     return 14
-
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas_mod3():
     gc = obtener_cliente_gspread_unificado()
@@ -367,13 +368,24 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-# 🎯 CIRUGÍA 1: Se agrega *args y **kwargs para evitar UnboundLocalError desde app.py
+# 🎯 CORRECCIÓN: Firma ajustada (*args, **kwargs) para evitar el TypeError
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
     PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
     PISTAS_DISPONIBLES_MATRIZ_BASE = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
+
+    # 🎯 CORRECCIÓN: Calcular pistas dinámicas aquí arriba elimina el UnboundLocalError
+    df_tarifas_maestras = cargar_matriz_tarifas_mod3()
+    pistas_matriz_tarifa = []
+    if not df_tarifas_maestras.empty:
+        pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+    
+    pistas_disponibles_final = []
+    for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ_BASE:
+        if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE", ""]:
+            pistas_disponibles_final.append(p)
 
     def sync_pistas(src, tgt):
         st.session_state[tgt] = st.session_state[src]
