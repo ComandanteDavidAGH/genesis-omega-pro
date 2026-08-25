@@ -1352,8 +1352,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 st.write("")
                 st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
-                # 💥 CURA: Formateamos la lista con puntos usando tu función fmt_sap
-                valores_formateados = [fmt_sap(int(x)) for x in df_matriz['E: Costo Unit (+Margen)'].fillna(0).tolist()]
+                # 💥 CURA DEFINITIVA: Formateo nativo forzado (garantiza el punto de miles)
+                valores_formateados = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz['E: Costo Unit (+Margen)'].fillna(0).tolist()]
                 st.code("\n".join(valores_formateados), language="text")
 
         from decimal import Decimal, ROUND_HALF_UP
