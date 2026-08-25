@@ -400,7 +400,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
     
-    /* 💥 Envoltorios con borde grueso (Calendario Forzado) */
+    /* 💥 Envoltorios con borde grueso (Ahora sí captura al calendario) */
     div[data-testid="stSelectbox"] > div > div, 
     div[data-testid="stSelectbox"] div[data-baseweb="select"], 
     div[data-testid="stTextInput"] > div, 
@@ -413,7 +413,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; 
     }
     
-    /* 💥 Inputs sin borde para evitar doble borde */
+    /* 💥 Inputs sin doble borde */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input, 
     div[data-testid="stDateInput"] input { 
