@@ -113,7 +113,6 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-# 🎯 CIRUGÍA 1: Caché a 10s para actualizar historial de ciclos en tiempo real
 @st.cache_data(show_spinner=False, ttl=10)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
@@ -162,14 +161,12 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
                 df_fil = df_temp[mask]
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
-                    # 🎯 CIRUGÍA 2A: Agregar solo el `.date()` sin horas residuales
                     if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida.date())
 
         extraer_fechas_motor(df_viva)
         extraer_fechas_motor(df_hist)
         
         if fechas_encontradas:
-            # 🎯 CIRUGÍA 2B: Asegurar que fecha_vuelo_date sea puro .date()
             fecha_vuelo_date = fecha_vuelo if isinstance(fecha_vuelo, date) else pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
             if fechas_validas:
@@ -370,456 +367,48 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-# 🎯 CIRUGÍA 3: Blindar los argumentos con *args, **kwargs para evitar el TypeError
+# 🎯 CIRUGÍA 1: Se agrega *args y **kwargs para evitar UnboundLocalError desde app.py
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
+
+    PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
+    PISTAS_DISPONIBLES_MATRIZ_BASE = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
 
     def sync_pistas(src, tgt):
         st.session_state[tgt] = st.session_state[src]
 
     st.header("", anchor="inicio_modulo")
     
-    # 🎯 CSS REFORZADO: ESTÁNDAR FLEXBOX Y ALINEACIÓN DE COLUMNAS
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
-    
-    /* ALINEACIÓN VERTICAL SIMÉTRICA Y PERMANENTE EN COLUMNAS */
-    [data-testid="column"] {
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: flex-start !important;
-        align-items: stretch !important;
-    }
-    
-    [data-testid="column"] > div {
-        width: 100% !important;
-    }
-    
-    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { 
-        border: 3px solid #0d1b2a !important; 
-        border-radius: 8px !important; 
-        box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; 
-        overflow: hidden !important; 
-    }
-    
-    /* PERMITIR TABULACIÓN FLUIDA TIPO EXCEL EN TABLAS */
-    div[data-testid="stDataEditor"] canvas { outline: none !important; }
-    div[data-testid="stDataEditor"] :focus { border-color: #d4af37 !important; }
-    
-    div[data-testid="stSelectbox"] > div, 
-    div[data-testid="stSelectbox"] div[data-baseweb="select"], 
-    div[data-testid="stTextInput"] > div, 
-    div[data-testid="stNumberInput"] > div,
-    div[data-testid="stDateInput"] > div { 
-        background-color: #ffffff !important; 
-        border: 2px solid #0d1b2a !important; 
-        border-radius: 8px !important; 
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; 
-    }
-    
-    div[data-testid="stTextInput"] input, 
-    div[data-testid="stNumberInput"] input, 
-    div[data-testid="stDateInput"] input { 
-        border: none !important; 
-        box-shadow: none !important; 
-        font-weight: 800 !important; 
-        color: #0d1b2a !important; 
-        background-color: transparent !important; 
-    }
-    
+    [data-testid="column"] { display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }
+    [data-testid="column"] > div { width: 100% !important; }
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
+    div[data-testid="stSelectbox"] > div, div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div, div[data-testid="stDateInput"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
+    div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { border: none !important; box-shadow: none !important; font-weight: 800 !important; color: #0d1b2a !important; background-color: transparent !important; }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] * { color: #0d1b2a !important; font-weight: bold !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
-    
-    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre, div[data-testid="stCodeBlock"] pre code { 
-        background-color: #ffffff !important; 
-        border: 2px solid #0d1b2a !important; 
-        border-radius: 8px !important; 
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; 
-        padding: 2px 5px !important; 
-    }
-    
-    div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { 
-        color: #0d1b2a !important; 
-        font-weight: 900 !important; 
-        font-size: 17px !important; 
-        font-family: 'Arial Black', monospace !important; 
-    }
+    div[data-testid="stCodeBlock"], div[data-testid="stCodeBlock"] pre { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; border-radius: 8px !important; }
+    div[data-testid="stCodeBlock"] code { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; }
     </style>
     """, unsafe_allow_html=True)
-
-    def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
-        def f_h(val): return f"{val:,.0f}".replace(",", ".")
-        return f"""
-        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; margin-bottom: 20px; align-items: stretch;">
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
-                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">👨‍🔬 Serv. Tec</div>
-                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(st_val)}</div>
-            </div>
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
-                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">✈️ Vuelo</div>
-                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(vuelo_val)}</div>
-            </div>
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
-                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">🧪 Mezcla</div>
-                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(mezcla_val)}</div>
-            </div>
-            <div style="flex: 1; min-width: 120px; background-color: #ffffff; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; padding: 12px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-between;">
-                <div style="font-size: 11px; color: #6c757d; font-weight: 800; text-transform: uppercase;">⚠️ Recargo</div>
-                <div style="font-size: 17px; color: #0d1b2a; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(recargo_val)}</div>
-            </div>
-            <div style="flex: 1.2; min-width: 140px; background-color: #0d1b2a; border: 3px solid #d4af37; padding: 12px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
-                <div style="font-size: 11px; color: #d4af37; font-weight: 800; text-transform: uppercase;">💰 COSTO x HA</div>
-                <div style="font-size: 19px; color: white; font-weight: 900; margin-top: 2px; user-select: all;" title="Doble clic para copiar">$ {f_h(costo_ha_val)}</div>
-            </div>
-        </div>
-        """
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
-    modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
-
-    if modo_simulacro:
-        st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico.")
-        if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
-            st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
-            url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
-            if url_drive:
-                try:
-                    file_id = url_drive.split('/d/')[1].split('/')[0] if '/d/' in url_drive else None
-                    if file_id:
-                        dl_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx' if 'spreadsheets' in url_drive else f'https://drive.google.com/uc?export=download&id={file_id}'
-                        with st.spinner("📥 Descargando matrices y TABLA 2..."):
-                            resp = requests.get(dl_url, timeout=30)
-                            if resp.status_code == 200:
-                                xls = pd.ExcelFile(io.BytesIO(resp.content))
-                                st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
-                                st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
-                                st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
-                                hojas = xls.sheet_names
-                                nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
-                                st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
-                                st.success("✅ Matrices cargadas y listas.")
-                                st.rerun()
-                except Exception as e: st.error(f"🚨 Error: {e}")
-            st.stop()
-
-        df_cfg = st.session_state['df_cfg']
-        df_recetas = st.session_state['df_recetas']
-        df_vd = st.session_state['df_vd']
-        df_t2 = st.session_state['df_t2']
-
-        diccionario_fincas = {}
-        lista_fincas = []
-        try:
-            for idx, row in df_t2.iterrows():
-                f_name = str(row.iloc[0]).strip().upper()
-                if f_name not in ['NAN', 'NONE', '', 'FINCA', 'TOTAL']:
-                    p_tipo = str(row.iloc[5]).strip().upper() if len(row) > 5 else "TERCERO"
-                    t_tipo = str(row.iloc[6]).strip().upper() if len(row) > 6 else ""
-                    diccionario_fincas[f_name] = {"Productor": p_tipo, "Tope_Key": t_tipo}
-                    if f_name not in lista_fincas: lista_fincas.append(f_name)
-        except Exception as e:
-            log_error_critico("Lectura de fincas (TABLA 2, modo simulador)", e)
-            
-        if not lista_fincas: lista_fincas = ["NUEVO MUNDO"]
-        lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
-
-        if 'finca_anterior_sim' not in st.session_state:
-            st.session_state.finca_anterior_sim = lista_fincas[0]
-            st.session_state.idx_prod_sim = 3
-        if 'fecha_sim_mem' not in st.session_state:
-            st.session_state.fecha_sim_mem = hoy_colombia_date
-        if 'dias_ciclo_sim_mem' not in st.session_state:
-            st.session_state.dias_ciclo_sim_mem = 14
-
-        with st.container(border=True):
-            st.markdown("#### 📝 Parámetros de la Operación")
-            cs1, cs3, cs4 = st.columns(3)
-            coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
-            finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
-            
-            if finca_sim != st.session_state.finca_anterior_sim:
-                datos = diccionario_fincas.get(finca_sim, {})
-                if datos.get("Productor") in lista_productores:
-                    st.session_state.idx_prod_sim = lista_productores.index(datos.get("Productor"))
-                
-            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod_sim)
-            
-            _, c_f4_sim = st.columns([2, 1.2])
-            fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
-            
-            if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
-                st.session_state.dias_ciclo_sim_mem = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
-                st.session_state.finca_anterior_sim = finca_sim
-                st.session_state.fecha_sim_mem = fecha_eval_sim
-                st.rerun()
-
-            st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
-            st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días, edite o añada filas.")
-            
-            df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(st.session_state.dias_ciclo_sim_mem)}])
-            df_areas_in = st.data_editor(
-                df_areas_def, 
-                num_rows="dynamic", 
-                column_config={
-                    "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", min_value=0.0, format="%.2f"),
-                    "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
-                },
-                use_container_width=True, 
-                key=f"areas_simulador_{finca_sim}_{st.session_state.fecha_sim_mem}",
-                hide_index=True
-            )
-            
-            ha_sim = float(df_areas_in["Hectáreas"].sum())
-            if ha_sim <= 0:
-                st.warning("⚠️ El área total debe ser mayor a 0 para simular.")
-            else:
-                st.info(f"**🗺️ Área Total Calculada a Cotizar:** {ha_sim:.2f} Ha")
-
-        tope_finca_auto = diccionario_fincas.get(finca_sim, {}).get("Tope_Key", "TOPE MAX GENERAL")
-        if not tope_finca_auto or tope_finca_auto == "NAN" or tope_finca_auto == "": 
-            tope_finca_auto = "TOPE MAX GENERAL"
-
-        with st.container(border=True):
-            st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
-            c_f1, c_f2, c_f3 = st.columns(3)
-            
-            anio_vuelo_sim = str(fecha_eval_sim.year)
-            dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado_sim = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
-            
-            lista_opciones_flota_sim = list(dict_aviones_sim.keys()) + ["DRONE"]
-            vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
-            
-            pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
-            pista_sim = c_f2.selectbox("🛣️ Pista Base", pistas_base_lista)
-            horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
-            
-            st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
-            recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
-
-        casilla_key_sim = f"sim_{finca_sim}_{fecha_eval_sim}"
-        pistas_matriz_tarifa = []
-        if not df_tarifas_maestras.empty:
-            pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-        
-        pistas_disponibles_final = []
-        for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ:
-            if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE"]:
-                pistas_disponibles_final.append(p)
-
-        top_key_sim = f"top_pista_sim_{casilla_key_sim}"
-        bot_key_sim = f"bot_pista_sim_{casilla_key_sim}"
-        prev_sel_key_sim = f"prev_pista_sel_sim_{casilla_key_sim}"
-
-        if top_key_sim not in st.session_state: st.session_state[top_key_sim] = pista_sim if pista_sim in pistas_disponibles_final else pistas_disponibles_final[0]
-        if bot_key_sim not in st.session_state: st.session_state[bot_key_sim] = st.session_state[top_key_sim]
-        if prev_sel_key_sim not in st.session_state: st.session_state[prev_sel_key_sim] = pista_sim
-
-        if st.session_state[prev_sel_key_sim] != pista_sim:
-            st.session_state[top_key_sim] = pista_sim if pista_sim in pistas_disponibles_final else pistas_disponibles_final[0]
-            st.session_state[bot_key_sim] = st.session_state[top_key_sim]
-            st.session_state[prev_sel_key_sim] = pista_sim
-
-        st.markdown("#### 🧪 Matriz de Validación e Inteligencia de Mezcla")
-        st.caption("📍 SELECCIONE LA PISTA PARA EXTRAER INVENTARIO DE SAP:")
-        c_p1, _ = st.columns([1.5, 2.5])
-        pista_matriz_maestra = c_p1.selectbox(
-            "Pista Oculta Label", 
-            pistas_disponibles_final, 
-            key=top_key_sim, 
-            label_visibility="collapsed", 
-            on_change=sync_pistas, 
-            args=(top_key_sim, bot_key_sim)
-        )
-        
-        if st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True) and ha_sim > 0:
-            try:
-                if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
-                elif tipo_prod_sim == "AFILIADO": mult_m = 1.164; st_base = 1510.0; mult_v = 1.164
-                elif tipo_prod_sim == "COOPERATIVA": mult_m = 1.112; st_base = 1510.0; mult_v = 1.164
-                elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
-                else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
-                
-                val_tope = float(dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
-                if val_tope == 999999: val_tope = 0.0
-
-                if vuelo_sim == "DRONE": 
-                    if "PLUC" == pista_sim: base_dron = 84428
-                    elif "PDIV" == pista_sim: base_dron = 76916
-                    else: base_dron = 72600
-                    unitario_vuelo = base_dron * mult_v
-                else:
-                    tarifa_vuelo_base = float(dict_aviones_sim.get(vuelo_sim, 4606562.0))
-                    costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
-                    if val_tope > 0 and pista_sim != "PDIV": 
-                        costo_bruto = min(costo_bruto, val_tope)
-                    unitario_vuelo = costo_bruto * mult_v
-                
-                subtotal_vuelo = round(unitario_vuelo, 0) * ha_sim
-                
-                subtotal_st = 0.0
-                for _, r_area in df_areas_in.iterrows():
-                    h_a = float(r_area["Hectáreas"])
-                    d_c = int(r_area["Días Ciclo"])
-                    if h_a > 0: subtotal_st += round(st_base, 0) * d_c * h_a
-
-                coctel_u = coctel_sim.upper().strip()
-                partes = coctel_u.split(" ")
-                base_c = partes[0]
-
-                receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
-                prods_f = []
-                for idx, row in receta_c.iterrows():
-                    p = str(row.iloc[1]).upper().strip()
-                    d = pd.to_numeric(row.iloc[2], errors='coerce')
-                    if pd.notna(d) and d > 0 and p not in ['NAN', '']: prods_f.append({"PRODUCTO": p, "DOSIS": d})
-
-                coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
-                fert_encontrado_obj = None
-                sigla_f = partes[1] if len(partes) > 1 else ""
-                if sigla_f:
-                    try:
-                        for idx, row in df_recetas.iterrows():
-                            if len(row) > 13:
-                                f_n = str(row.iloc[12]).strip().upper()
-                                f_s = str(row.iloc[13]).strip().upper()
-                                if f_s == sigla_f and f_n not in ["NAN", "FERTILIZANTES", ""]:
-                                    fert_encontrado_obj = f_n
-                                    break
-                    except Exception: pass
-                
-                if not fert_encontrado_obj:
-                    if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): fert_encontrado_obj = "ZINTRAC X LITRO SV"
-                    elif " BT" in coctel_texto_puro or coctel_texto_puro.endswith("BT"): fert_encontrado_obj = "BANATREL SC"
-                    elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): fert_encontrado_obj = "NATURAMIN WSP"
-                    elif " QM" in coctel_texto_puro or coctel_texto_puro.endswith("QM"): fert_encontrado_obj = "QUELAMIX"
-                
-                if fert_encontrado_obj:
-                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_encontrado_obj)
-                    prods_f.append({"PRODUCTO": fert_encontrado_obj, "DOSIS": dosis_exacta})
-
-                for item in prods_f:
-                    if "ACONDICIONADOR" in item["PRODUCTO"]: 
-                        item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""): 
-                        item["DOSIS"] = 1.5 if (coctel_sim.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_sim.strip().upper().split()[0]) else 1.0
-                    elif "ACEITE" in item["PRODUCTO"]:
-                        for char in coctel_u.split()[0]:
-                            if char.isdigit():
-                                item["DOSIS"] = float(char)
-                                break
-                
-                tabla_visual = []
-                mezcla_total = 0
-                c_p_i, c_c_i = 8, 9 
-                
-                for i in range(5):
-                    r_c = df_cfg.iloc[i].astype(str).str.upper().tolist()
-                    if 'PRODUCTO' in r_c and 'COSTO' in r_c: 
-                        c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
-                        break
-
-                for item in prods_f:
-                    p, d = item["PRODUCTO"], item["DOSIS"]
-                    mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
-                    if not mask.any() and "NEMATICIDA" in p:
-                        mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
-                        if mask.any(): p = df_cfg[mask].iloc[0, c_p_i] 
-                    
-                    if mask.any():
-                        p_b = pd.to_numeric(df_cfg[mask].iloc[0, c_c_i], errors='coerce')
-                        if pd.notna(p_b):
-                            p_m = p_b * mult_m
-                            c_t_p = round((d * ha_sim) * p_m, 0)
-                            mezcla_total += c_t_p
-                            tabla_visual.append({"PRODUCTO": p, "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": f"$ {p_b:,.0f}".replace(",","."), "P. + MARGEN": f"$ {p_m:,.0f}".replace(",","."), "COSTO TOTAL": f"$ {c_t_p:,.0f}".replace(",",".")})
-                    else:
-                        tabla_visual.append({"PRODUCTO": f"⚠️ {p}", "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": "$ 0", "P. + MARGEN": "$ 0", "COSTO TOTAL": "$ 0"})
-
-                recargo_m = round(recargo_sim * mult_v, 0)
-                valor_recargo_t = recargo_m * ha_sim
-                total_finca = subtotal_vuelo + subtotal_st + mezcla_total + valor_recargo_t
-                costo_ha = total_finca / ha_sim if ha_sim > 0 else 0
-
-                st.markdown("---")
-                st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
-                st.caption(f"🗓️ **Días Ciclo:** Variados | 🗺️ **Área Total:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
-                st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
-                
-                st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
-                
-                st.markdown("---")
-                st.markdown(f"<h3 style='text-align: center; color: #0d1b2a; font-weight: 900; user-select: all;' title='Doble clic para copiar'>🔥 TOTAL OPERACIÓN: $ {total_finca:,.0f}</h3>".replace(",", "."), unsafe_allow_html=True)
-                
-                st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
-                cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
-                with cc1: st.write("👨‍🔬 Serv. Tec"); st.code(f"{subtotal_st:,.0f}".replace(",", "."), language="text")
-                with cc2: st.write("✈️ Vuelo"); st.code(f"{subtotal_vuelo:,.0f}".replace(",", "."), language="text")
-                with cc3: st.write("🧪 Mezcla"); st.code(f"{mezcla_total:,.0f}".replace(",", "."), language="text")
-                with cc4: st.write("⚠️ Recargo"); st.code(f"{valor_recargo_t:,.0f}".replace(",", "."), language="text")
-                with cc5: st.write("💰 Costo x Ha"); st.code(f"{costo_ha:,.0f}".replace(",", "."), language="text")
-                with cc6: st.write("🔥 TOTAL"); st.code(f"{total_finca:,.0f}".replace(",", "."), language="text")
-
-                st.markdown("---")
-                st.markdown("### 🛰️ Coordenadas de Lanzamiento Final")
-                c_p1, c_p2 = st.columns([1.5, 2.5])
-                pista_manual = c_p1.selectbox(
-                    "📍 Confirmar Pista de Operación:", 
-                    pistas_disponibles_final, 
-                    key=bot_key_sim, 
-                    on_change=sync_pistas, 
-                    args=(bot_key_sim, top_key_sim)
-                )
-                c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')}")
-
-            except Exception as e: st.error(f"Error: {e}")
-        st.stop()
-
-    # =================================================================
-    # ⚙️ MÓDULO DE FACTURACIÓN OPERATIVO REAL RESTAURADO
-    # =================================================================
-    if 'df_pistas' not in st.session_state or 'df_apoyo' not in st.session_state:
-        st.warning("🚨 No se detectan datos listos en el puente de mando.")
-        st.info("💡 Por favor, cargue los tres archivos fuente en el Módulo 2 y procese antes de validar.")
-        st.stop()
-
-    def forzar_descarga_maestros():
-        gc_maestro = obtener_cliente_gspread_unificado()
-        if not gc_maestro: return None, None
-        try:
-            boveda_m = gc_maestro.open_by_url(SPREADSHEET_URL)
-            t2_data = boveda_m.worksheet("TABLA 2").get_all_values()
-            df_t2_temp = pd.DataFrame()
-            if t2_data: 
-                idx_t2 = 0
-                for i in range(min(10, len(t2_data))):
-                    if "FINCA" in [str(x).upper().strip() for x in t2_data[i]]:
-                        idx_t2 = i; break
-                cols_limpias = [str(c).strip() for c in t2_data[idx_t2]]
-                df_t2_temp = pd.DataFrame(t2_data[idx_t2+1:], columns=cols_limpias)
-                
-            cfg_data = boveda_m.worksheet("Configuración").get_all_values()
-            df_cfg_temp = pd.DataFrame(cfg_data[1:], columns=cfg_data[0]) if cfg_data else pd.DataFrame()
-            return df_t2_temp, df_cfg_temp
-        except Exception as e:
-            st.error(f"🚨 Falla en la red: {e}")
-            return None, None
-
-    df_t2_cache = st.session_state.get('df_config', pd.DataFrame())
-    df_cfg_cache = st.session_state.get('df_config_base', pd.DataFrame())
-
-    if df_t2_cache.empty or df_cfg_cache.empty:
-        with st.spinner("🔄 Detectada anomalía de memoria. Iniciando Auto-Sanación de BD..."):
-            df_t2_nueva, df_cfg_nueva = forzar_descarga_maestros()
-            if df_t2_nueva is not None:
-                st.session_state['df_config'] = df_t2_nueva
-                st.session_state['df_config_base'] = df_cfg_nueva
-                st.rerun()
+    # 🎯 CIRUGÍA 2: Reinyectar el cálculo de pistas_disponibles_final para que el selectbox funcione
+    pistas_matriz_tarifa = []
+    if not df_tarifas_maestras.empty:
+        pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
+    
+    pistas_disponibles_final = []
+    for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ_BASE:
+        if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE", ""]:
+            pistas_disponibles_final.append(p)
 
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
@@ -857,7 +446,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                 except Exception as e:
                     log_error_critico("Lectura del pedido SAP escaneado (finca / hectáreas)", e)
 
-        # 🎯 FILA DE PARÁMETROS NIVELES SIMÉTRICAMENTE
         c_finca, c_pedido, c_fecha = st.columns([2, 2, 1.3])
         if 'fecha_sim_mem' not in st.session_state: st.session_state.fecha_sim_mem = hoy_colombia_date
 
@@ -951,14 +539,13 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                 val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
                 if val_celda.isdigit() and len(val_celda) >= 7: num_pedido = val_celda; break
         
-        lista_pistas_validas = PISTAS_VALIDAS
         pista_detectada, ha_dosis_detectada, match_ped = "PLUC", 0.0, pd.DataFrame()
 
         if not df_ped.empty and num_pedido != "S/N":
             match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
             if not match_ped.empty:
                 texto_pedido = match_ped.to_string().upper()
-                for p_val in lista_pistas_validas:
+                for p_val in PISTAS_VALIDAS:
                     if p_val in texto_pedido: pista_detectada = p_val; break
                 col_ha = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
                 col_mat = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()][0]
@@ -979,7 +566,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
             c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
             mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
             
-            # 🎯 FILA DE 4 COLUMNAS TOTALMENTE NIVELADAS
             r1c1, r1c2, r1c3, r1c4 = st.columns(4)
             with r1c1:
                 st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
@@ -1005,8 +591,8 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
             if not mision_solo_dron:
                 st.markdown("##### 🛣️ Parámetros Terrestres (Aviones)")
                 r2c1, r2c2, r2c3 = st.columns(3)
-                pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
-                pista_sel = r2c1.selectbox("Pista Base", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
+                pista_sugerida = next((p for p in PISTAS_VALIDAS if p in pista_detectada), "PLUC")
+                pista_sel = r2c1.selectbox("Pista Base", PISTAS_VALIDAS, index=PISTAS_VALIDAS.index(pista_sugerida), key=f"pi_{casilla_key}")
                 
                 opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
                 if f"pista_last_{casilla_key}" not in st.session_state:
@@ -1030,7 +616,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
 
                 if mision_solo_dron:
                     st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
-                    # TABLAS VACÍAS DE FÁBRICA
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     
@@ -1046,13 +631,11 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                     c_av, c_dr = st.columns(2)
                     with c_av: 
                         st.markdown("##### 🛩️ Base Aviones")
-                        # TABLAS VACÍAS DE FÁBRICA
                         df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
                         escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                         
                     with c_dr:
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
-                        # TABLAS VACÍAS DE FÁBRICA
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                         escuadron_drones = st.data_editor(df_drones_def, key=f"drones_mix_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)                
                     
@@ -1127,7 +710,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
 
                 coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base)
                 
-                if coctel_ganador == "SIN COINCIDENCIA": st.error(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **SIN COINCIDENCIA**")
+                if coctel_ganador == "SIN COINCIDENCIA": st.error(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **SIN COINCIDENCIA**")
                 else: st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
                 
                 df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0') if not df_sab.empty else pd.Series(dtype=str)
@@ -1168,8 +751,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                             if mask_cfg.any():
                                 precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
                                 if precio_maestro > 0: costo_unit = float(precio_maestro) 
-                    except Exception as e:
-                        log_error_critico(f"Cruce de precio maestro para «{nombre_limpio}» (hoja Configuración)", e)
+                    except Exception: pass
 
                     dosis_teorica = None
                     for p_receta, d_oficial in dosis_oficiales_coctel.items():
@@ -1255,12 +837,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                         disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo"],
                         use_container_width=True, hide_index=True
                     )
-
-                    st.write("")
-                    st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
-                    st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
-            else:
-                st.warning("🚨 No se encontró un pedido válido para la matriz de químicos.")
 
             from decimal import Decimal, ROUND_HALF_UP
 
