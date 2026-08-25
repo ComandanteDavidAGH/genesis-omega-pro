@@ -55,7 +55,7 @@ def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True)
 def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
-# 💥 MOTOR NUMÉRICO BLINDADO (LA SOLUCIÓN A LOS 57 MILLONES)
+# 💥 ESCÁNER 1: PARA DOSIS Y MULTIPLICADORES (Respeta decimales al 100%)
 def limpiar_numero_estricto(val):
     try:
         if pd.isna(val) or val is None: return 0.0
@@ -65,6 +65,29 @@ def limpiar_numero_estricto(val):
         v = v.replace(',', '.')
         v = re.sub(r'[^\d\.\-]', '', v)
         if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
+        return float(v) if v else 0.0
+    except: return 0.0
+
+# 💥 ESCÁNER 2: PARA DINERO Y TARIFAS (Convierte puntos en miles reales)
+def limpiar_dinero(val):
+    try:
+        if pd.isna(val) or val is None: return 0.0
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
+        if not v or v == '-': return 0.0
+        
+        if '.' in v and ',' in v:
+            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
+            else: v = v.replace(',', '')
+        elif ',' in v:
+            if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
+            else: v = v.replace(',', '.')
+        elif '.' in v:
+            partes = v.split('.')
+            if len(partes) > 2: v = v.replace('.', '')
+            elif len(partes[-1]) == 3: v = v.replace('.', '')
+        
+        v = re.sub(r'[^\d\.\-]', '', v)
         return float(v) if v else 0.0
     except: return 0.0
 
@@ -209,7 +232,7 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
         for _, r in df_tarifas.iterrows():
             pista = str(r.get('PISTA', '')).strip().upper()
             equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
-            tarifa_val = limpiar_numero_estricto(r[col_anio])
+            tarifa_val = limpiar_dinero(r[col_anio]) # 💥 DINERO
             
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
@@ -381,7 +404,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
 
     st.header("", anchor="inicio_modulo")
     
-    # 💥 CSS RESTAURADO A SU FORMA ESTABLE ORIGINAL
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
@@ -504,7 +526,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
                 mult_material = limpiar_numero_estricto(match_cfg.iloc[0].iloc[3])
-                tarifa_serv_tec_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[4])
+                tarifa_serv_tec_base = limpiar_dinero(match_cfg.iloc[0].iloc[4]) # 💥 DINERO
                 mult_avion_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[6])
 
         if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
@@ -609,7 +631,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     
-                    # 💥 MODO TABLA ORIGINAL (Fluido y estable)
                     escuadron_drones = st.data_editor(
                         df_drones_def, 
                         key=f"drones_{casilla_key}", 
@@ -636,7 +657,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                         st.markdown("##### 🛩️ Base Aviones")
                         df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
                         
-                        # 💥 MODO TABLA ORIGINAL (Fluido y estable)
                         escuadron_aviones = st.data_editor(
                             df_aviones_def, 
                             key=f"aviones_{casilla_key}", 
@@ -654,7 +674,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                         
-                        # 💥 MODO TABLA ORIGINAL (Fluido y estable)
                         escuadron_drones = st.data_editor(
                             df_drones_def, 
                             key=f"drones_mix_{casilla_key}", 
@@ -755,11 +774,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                             match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_matriz_maestra).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
                             fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
 
-                            if idx_precio != -1: costo_unit = limpiar_numero_estricto(fila_precio.iloc[idx_precio])
+                            if idx_precio != -1: costo_unit = limpiar_dinero(fila_precio.iloc[idx_precio]) # 💥 DINERO
                             if costo_unit == 0.0:
                                 col_v, col_c = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()], [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
                                 if col_v and col_c:
-                                    v_t, c_t = limpiar_numero_estricto(fila_precio[col_v[0]]), limpiar_numero_estricto(fila_precio[col_c[0]])
+                                    v_t, c_t = limpiar_dinero(fila_precio[col_v[0]]), limpiar_numero_estricto(fila_precio[col_c[0]]) # 💥 DINERO Y DOSIS
                                     if c_t > 0: costo_unit = v_t / c_t
 
                             match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_matriz_maestra).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
@@ -777,7 +796,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                             mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
                             if not mask_cfg.any(): mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
                             if mask_cfg.any():
-                                precio_maestro = limpiar_numero_estricto(df_cfg[mask_cfg].iloc[0, c_c_i])
+                                precio_maestro = limpiar_dinero(df_cfg[mask_cfg].iloc[0, c_c_i]) # 💥 DINERO
                                 if precio_maestro > 0: costo_unit = float(precio_maestro) 
                     except Exception: pass
 
