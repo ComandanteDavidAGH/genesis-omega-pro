@@ -947,6 +947,19 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
             )
             c_p2.info(f"🚀 Misión: {('DRONE' if mision_solo_dron else 'AVION')} | 📋 Referencia: {vuelo_ref}")
             
+            # --- ⬆️ BOTÓN DE VOLVER AL INICIO ---
+            st.markdown("""
+                <a href="#inicio_modulo" target="_self" style="
+                    display: block; width: 100%; text-align: center; 
+                    background-color: #0d1b2a; color: #d4af37; border: 1px solid #d4af37; 
+                    padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold;
+                    box-shadow: 0px 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; font-size: 16px;
+                ">
+                    ⬆️ VOLVER AL INICIO DEL MÓDULO ⬆️
+                </a>
+            """, unsafe_allow_html=True)
+            # ------------------------------------
+
             if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
                 with st.spinner("🚀 Inyectando datos con Precisión de Francotirador a Velocidad Luz..."):
                     try:
