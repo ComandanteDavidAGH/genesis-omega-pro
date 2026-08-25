@@ -426,7 +426,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
     
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
-    # --- EXTRACCIÓN DINÁMICA DE PISTAS DESDE LA MATRIZ ---
     pistas_matriz_tarifa = []
     if not df_tarifas_maestras.empty:
         pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
@@ -627,7 +626,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
 
                 if mision_solo_dron:
                     st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
-                    df_drones_def = pd.DataFrame([{"Drone": "DRONE DATAROT", "Hectáreas": ha_dosis_final}])
+                    df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     escuadron_drones = st.data_editor(df_drones_def, key=f"drones_{casilla_key}", num_rows="dynamic", column_config={"Drone": st.column_config.SelectboxColumn("Modelo Dron", options=list(dict_drones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     for _, row in escuadron_drones.iterrows():
                         dr_sel, ha_dr = row.get("Drone"), row.get("Hectáreas")
@@ -641,7 +640,7 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args):
                     c_av, c_dr = st.columns(2)
                     with c_av: 
                         st.markdown("##### 🛩️ Base Aviones")
-                        df_aviones_def = pd.DataFrame([{"Avión": "THRUS SR2", "Hectáreas": ha_dosis_final, "Horómetro": 0.38}])
+                        df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
                         escuadron_aviones = st.data_editor(df_aviones_def, key=f"aviones_{casilla_key}", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(dict_aviones.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
                     with c_dr:
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
