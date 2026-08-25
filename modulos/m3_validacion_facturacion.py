@@ -466,6 +466,16 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     if modo_simulacro:
         st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico de Tarifas.")
+        
+        # 💥 BOTÓN DE SINCRONIZACIÓN EXCLUSIVO DEL MEGAZORD
+        if st.button("🔄 FORZAR SINCRONIZACIÓN CON LA NUBE (Drive / Supabase)", use_container_width=True):
+            st.cache_data.clear()
+            for key in ['df_cfg', 'df_recetas', 'df_vd', 'df_t2']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.toast("✅ Memoria purgada. El sistema descargará los datos más frescos.", icon="🔄")
+            st.rerun()
+
         if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
             st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
             url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
