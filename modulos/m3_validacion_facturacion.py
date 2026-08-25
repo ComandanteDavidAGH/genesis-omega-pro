@@ -400,19 +400,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
     
-    /* Envoltorios con borde grueso */
+    /* 💥 Envoltorios con borde grueso (Calendario Forzado) */
     div[data-testid="stSelectbox"] > div > div, 
     div[data-testid="stSelectbox"] div[data-baseweb="select"], 
     div[data-testid="stTextInput"] > div, 
     div[data-testid="stNumberInput"] > div, 
-    div[data-testid="stDateInput"] > div { 
+    div[data-testid="stDateInput"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"] { 
         background-color: #ffffff !important; 
         border: 3px solid #143521 !important; 
         border-radius: 8px !important; 
         box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; 
     }
     
-    /* Inputs sin borde para evitar doble borde */
+    /* 💥 Inputs sin borde para evitar doble borde */
     div[data-testid="stTextInput"] input, 
     div[data-testid="stNumberInput"] input, 
     div[data-testid="stDateInput"] input { 
@@ -428,7 +429,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     div[data-testid="stCodeBlock"] code, div[data-testid="stCodeBlock"] code span, div[data-testid="stCodeBlock"] pre span { color: #0d1b2a !important; font-weight: 900 !important; font-size: 17px !important; font-family: 'Arial Black', monospace !important; }
     </style>
     """, unsafe_allow_html=True)
-
     def render_tarjetas_html(st_val, vuelo_val, mezcla_val, recargo_val, costo_ha_val):
         def f_h(val): return f"{val:,.0f}".replace(",", ".")
         return f"""
@@ -828,8 +828,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
             except Exception: pass
 
-    # 💥 REUBICACIÓN DE COLUMNAS (Finca -> Referencia -> Fecha)
-    c1, c2, c0 = st.columns([2, 2.2, 1.3])
+    # 💥 ORDEN CORRECTO: Finca (Izquierda) -> Pedido (Centro) -> Fecha (Derecha)
+    c_finca, c_pedido, c_fecha = st.columns([2, 2.2, 1.3])
     
     if 'fecha_sim_mem' not in st.session_state:
         st.session_state.fecha_sim_mem = hoy_colombia_date
@@ -858,12 +858,17 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 idx_finca = i
                 break
 
-    finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
+    # 1. FINCA EN LA IZQUIERDA
+    finca_sel = c_finca.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
+    
     vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
     lista_origenes = vuegos_informe['ORIGEN'].unique().tolist() if not vuegos_informe.empty else []
-    vuelo_ref = c2.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
     
-    fecha_operacion = c0.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
+    # 2. PEDIDO EN EL CENTRO
+    vuelo_ref = c_pedido.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
+    
+    # 3. FECHA A LA DERECHA Y CON BORDE
+    fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
     anio_vuelo = str(fecha_operacion.year)
     
     dict_aviones, dict_drones, dict_topes, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
