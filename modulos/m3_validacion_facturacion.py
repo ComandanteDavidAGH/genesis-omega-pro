@@ -10,6 +10,9 @@ import math
 import json
 from datetime import datetime, timedelta, date
 from oauth2client.service_account import ServiceAccountCredentials
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 # =================================================================
 # ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
