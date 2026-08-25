@@ -113,7 +113,7 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=1) # 🎯 TTL a 1 segundo: Fuerza lectura en TIEMPO REAL
+@st.cache_data(show_spinner=False, ttl=1)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -139,12 +139,13 @@ def obtener_historial_completo_ciclos_cached():
         log_error_critico("Lectura de historial de ciclos (TABLA 1 / TABLA DE APOYO2023)", e, False)
         return pd.DataFrame(), pd.DataFrame()
 
+# 💥 LÓGICA DE DÍAS CICLO PURIFICADA (Tolerancia Cero a la Búsqueda Aproximada)
 def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     if not finca_nombre or finca_nombre == "---": return 14
     try:
         f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_nombre).upper())
         df_viva, df_hist = obtener_historial_completo_ciclos_cached()
-        fechas_encontradas = set() # 🎯 SET: Elimina fechas duplicadas instantáneamente
+        fechas_encontradas = set() 
 
         def extraer_fechas_motor(df_temp):
             if df_temp.empty: return
@@ -152,24 +153,20 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
             col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
             if col_f and col_d:
                 fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+                
+                # 💥 BÚSQUEDA 100% EXACTA: Extirpamos el "startsWith" y el recorte de 8 letras
                 mask = fincas_alpha == f_obj_alpha
-                if not mask.any(): mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
-                if not mask.any():
-                    partes = f_obj_alpha.replace("COOP", "").replace("BANAFRU", "").replace("ASO", "").replace("COOBAMAG", "").strip()
-                    clave = partes[:8] if len(partes) > 8 else partes
-                    mask = fincas_alpha.str.contains(clave, regex=False, na=False)
+                
                 df_fil = df_temp[mask]
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
                     if pd.notna(fecha_valida): 
-                        # 🎯 BLINDAJE: Extracción pura de .date() sin rastro de horas
                         fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
 
         extraer_fechas_motor(df_viva)
         extraer_fechas_motor(df_hist)
         
         if fechas_encontradas:
-            # 🎯 BLINDAJE: Conversión incondicional de la fecha de vuelo a .date()
             fecha_vuelo_date = pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
             if fechas_validas:
@@ -370,7 +367,7 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
+def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kwargs):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
