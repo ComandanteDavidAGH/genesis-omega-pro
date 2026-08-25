@@ -172,15 +172,14 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
             # 🎯 BLINDAJE: Conversión incondicional de la fecha de vuelo a .date()
             fecha_vuelo_date = pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
-            
             if fechas_validas:
                 fecha_max = max(fechas_validas)
                 dias = (fecha_vuelo_date - fecha_max).days
-                if 0 < dias <= 365: 
-                    return int(dias)
+                if 0 < dias <= 365: return int(dias)
     except Exception as e:
         log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}»", e, False)
     return 14
+
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas_mod3():
     gc = obtener_cliente_gspread_unificado()
@@ -371,7 +370,6 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-# 🎯 CORRECCIÓN: Firma ajustada (*args, **kwargs) para evitar el TypeError
 def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
@@ -379,7 +377,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
     PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
     PISTAS_DISPONIBLES_MATRIZ_BASE = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA"]
 
-    # 🎯 CORRECCIÓN: Calcular pistas dinámicas aquí arriba elimina el UnboundLocalError
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
     pistas_matriz_tarifa = []
     if not df_tarifas_maestras.empty:
@@ -413,18 +410,6 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
 
     st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     
-    df_tarifas_maestras = cargar_matriz_tarifas_mod3()
-
-    # 🎯 CIRUGÍA 2: Reinyectar el cálculo de pistas_disponibles_final para que el selectbox funcione
-    pistas_matriz_tarifa = []
-    if not df_tarifas_maestras.empty:
-        pistas_matriz_tarifa = df_tarifas_maestras.iloc[:, 0].dropna().astype(str).str.strip().str.upper().unique().tolist()
-    
-    pistas_disponibles_final = []
-    for p in pistas_matriz_tarifa + PISTAS_DISPONIBLES_MATRIZ_BASE:
-        if p and p not in pistas_disponibles_final and p not in ["PISTA", "NAN", "NONE", ""]:
-            pistas_disponibles_final.append(p)
-
     col_vacia, col_sync = st.columns([3, 1])
     if col_sync.button("🔄 Sincronizar Módulo", type="primary", use_container_width=True, key="btn_sync_m3"):
         st.cache_data.clear()
@@ -554,13 +539,14 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                 val_celda = str(datos_raw.get(idx, "")).split('.')[0].strip()
                 if val_celda.isdigit() and len(val_celda) >= 7: num_pedido = val_celda; break
         
+        lista_pistas_validas = PISTAS_VALIDAS
         pista_detectada, ha_dosis_detectada, match_ped = "PLUC", 0.0, pd.DataFrame()
 
         if not df_ped.empty and num_pedido != "S/N":
             match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
             if not match_ped.empty:
                 texto_pedido = match_ped.to_string().upper()
-                for p_val in PISTAS_VALIDAS:
+                for p_val in lista_pistas_validas:
                     if p_val in texto_pedido: pista_detectada = p_val; break
                 col_ha = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()][0]
                 col_mat = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()][0]
