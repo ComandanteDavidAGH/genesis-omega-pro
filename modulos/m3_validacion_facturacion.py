@@ -850,6 +850,15 @@ def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada, *args, **kwargs):
                         use_container_width=True, hide_index=True
                     )
 
+                    # --- 📋 RESTAURACIÓN DEL PANEL DE COPIA RÁPIDA ---
+                    st.write("")
+                    st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
+                    if not df_matriz.empty:
+                        st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
+                    else:
+                        st.info("Matriz vacía.")
+                    # -------------------------------------------------
+
             from decimal import Decimal, ROUND_HALF_UP
 
             def sap_round(n): 
