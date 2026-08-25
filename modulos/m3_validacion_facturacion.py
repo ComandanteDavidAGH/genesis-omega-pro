@@ -55,21 +55,17 @@ def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True)
 def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
-def extraer_numero(val):
-    if pd.isna(val) or val is None: return 0.0
-    if isinstance(val, (int, float)): return float(val)
-    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
-    if not v or v == '-': return 0.0
+# 💥 MOTOR NUMÉRICO BLINDADO (LA SOLUCIÓN A LOS 57 MILLONES)
+def limpiar_numero_estricto(val):
     try:
-        if '.' in v and ',' in v:
-            if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
-            else: v = v.replace(',', '')
-        elif ',' in v:
-            if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
-            else: v = v.replace(',', '.')
-        elif '.' in v:
-            if v.count('.') > 1 or len(v.split('.')[-1]) == 3: v = v.replace('.', '')
-        return float(v)
+        if pd.isna(val) or val is None: return 0.0
+        if isinstance(val, (int, float)): return float(val)
+        v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
+        if not v or v == '-': return 0.0
+        v = v.replace(',', '.')
+        v = re.sub(r'[^\d\.\-]', '', v)
+        if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
+        return float(v) if v else 0.0
     except: return 0.0
 
 def obtener_cliente_gspread_unificado():
@@ -113,7 +109,7 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=1) # 🎯 TTL a 1 segundo: Fuerza lectura en TIEMPO REAL
+@st.cache_data(show_spinner=False, ttl=1)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -139,7 +135,6 @@ def obtener_historial_completo_ciclos_cached():
         log_error_critico("Lectura de historial de ciclos (TABLA 1 / TABLA DE APOYO2023)", e, False)
         return pd.DataFrame(), pd.DataFrame()
 
-# 💥 LÓGICA DE DÍAS CICLO PURIFICADA (Tolerancia Cero a la Búsqueda Aproximada)
 def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     if not finca_nombre or finca_nombre == "---": return 14
     try:
@@ -153,10 +148,7 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
             col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
             if col_f and col_d:
                 fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-                
-                # 💥 BÚSQUEDA 100% EXACTA
                 mask = fincas_alpha == f_obj_alpha
-                
                 df_fil = df_temp[mask]
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
@@ -217,7 +209,7 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
         for _, r in df_tarifas.iterrows():
             pista = str(r.get('PISTA', '')).strip().upper()
             equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
-            tarifa_val = extraer_numero(r[col_anio])
+            tarifa_val = limpiar_numero_estricto(r[col_anio])
             
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
@@ -389,14 +381,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
 
     st.header("", anchor="inicio_modulo")
     
-    # 💥 REPARACIÓN DE SCROLL EXCEL Y BORDES
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     [data-testid="column"] { display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }
     [data-testid="column"] > div { width: 100% !important; }
     
-    /* 💥 Removido 'overflow: hidden !important;' para habilitar el scroll nativo de Streamlit */
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; }
     
     div[data-testid="stSelectbox"] > div, div[data-testid="stTextInput"] > div, div[data-testid="stNumberInput"] > div, div[data-testid="stDateInput"] > div { background-color: #ffffff !important; border: 2px solid #0d1b2a !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
@@ -441,8 +431,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     for _, fila_ped in match_sap.iterrows():
                         valor_material = str(fila_ped[col_mat]).strip()
                         if valor_material == "459" or valor_material.split(".")[0] == "459": 
-                            ha_correcta = extraer_numero(fila_ped[col_ha]); break
-                    st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else extraer_numero(match_sap.iloc[0][col_ha])
+                            ha_correcta = limpiar_numero_estricto(fila_ped[col_ha]); break
+                    st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else limpiar_numero_estricto(match_sap.iloc[0][col_ha])
                     st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
                 except Exception as e:
                     log_error_critico("Lectura del pedido SAP escaneado (finca / hectáreas)", e)
@@ -514,9 +504,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
         if not df_cfg.empty:
             match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
             if not match_cfg.empty:
-                mult_material = extraer_numero(match_cfg.iloc[0].iloc[3])
-                tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
-                mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
+                mult_material = limpiar_numero_estricto(match_cfg.iloc[0].iloc[3])
+                tarifa_serv_tec_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[4])
+                mult_avion_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[6])
 
         if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
         if 'fecha_operacion_anterior' not in st.session_state: st.session_state.fecha_operacion_anterior = fecha_operacion
@@ -554,9 +544,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
 
                 for _, r_p in match_ped.iterrows():
                     val_mat = str(r_p[col_mat]).strip()
-                    if val_mat == "459" or val_mat.split(".")[0] == "459": ha_dosis_detectada = extraer_numero(r_p[col_ha]); break
+                    if val_mat == "459" or val_mat.split(".")[0] == "459": ha_dosis_detectada = limpiar_numero_estricto(r_p[col_ha]); break
         
-        ha_cobro_detectada = extraer_numero(datos_raw.get(8, 0))
+        ha_cobro_detectada = limpiar_numero_estricto(datos_raw.get(8, 0))
         if ha_dosis_detectada == 0: ha_dosis_detectada = ha_cobro_detectada
 
         coctel_piloto_raw = str(datos_vuelo.get('COCTEL', '')).upper().strip()
@@ -620,7 +610,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     st.success("🛸 Modo Dron Activo: Costos calculados sin recargos terrestres ni topes de pista.")
                     df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                     
-                    # 💥 MODO EXCEL SCROLL (Altura fija y Ancho Forzado)
                     escuadron_drones = st.data_editor(
                         df_drones_def, 
                         key=f"drones_{casilla_key}", 
@@ -648,7 +637,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                         st.markdown("##### 🛩️ Base Aviones")
                         df_aviones_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
                         
-                        # 💥 MODO EXCEL SCROLL (Altura fija y Ancho Forzado)
                         escuadron_aviones = st.data_editor(
                             df_aviones_def, 
                             key=f"aviones_{casilla_key}", 
@@ -667,7 +655,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                         st.markdown("##### 🛸 Base Drones (Apoyo)")
                         df_drones_def = pd.DataFrame(columns=["Drone", "Hectáreas"])
                         
-                        # 💥 MODO EXCEL SCROLL (Altura fija y Ancho Forzado)
                         escuadron_drones = st.data_editor(
                             df_drones_def, 
                             key=f"drones_mix_{casilla_key}", 
@@ -735,7 +722,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
 
                     cod_item = texto_material.split('.')[0].lstrip('0')
                     col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
-                    cant_total = extraer_numero(fila_sap[col_cant_real[0]]) if col_cant_real else 0.0
+                    cant_total = limpiar_numero_estricto(fila_sap[col_cant_real[0]]) if col_cant_real else 0.0
                     dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
                     nombre_p = f"Item {cod_item}"
@@ -769,18 +756,18 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                             match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_matriz_maestra).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
                             fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
 
-                            if idx_precio != -1: costo_unit = extraer_numero(fila_precio.iloc[idx_precio])
+                            if idx_precio != -1: costo_unit = limpiar_numero_estricto(fila_precio.iloc[idx_precio])
                             if costo_unit == 0.0:
                                 col_v, col_c = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()], [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
                                 if col_v and col_c:
-                                    v_t, c_t = extraer_numero(fila_precio[col_v[0]]), extraer_numero(fila_precio[col_c[0]])
+                                    v_t, c_t = limpiar_numero_estricto(fila_precio[col_v[0]]), limpiar_numero_estricto(fila_precio[col_c[0]])
                                     if c_t > 0: costo_unit = v_t / c_t
 
                             match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_matriz_maestra).strip().upper(), na=False)] if idx_almacen != -1 else match_sabana_global
                             if not match_pista.empty:
                                 fila_final = match_pista.iloc[0]
                                 if idx_lote != -1: lote_sap = str(fila_final.iloc[idx_lote])
-                                if idx_saldo != -1: saldo_sap = extraer_numero(fila_final.iloc[idx_saldo])
+                                if idx_saldo != -1: saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
                     try:
                         if not df_cfg.empty:
@@ -791,7 +778,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                             mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
                             if not mask_cfg.any(): mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
                             if mask_cfg.any():
-                                precio_maestro = extraer_numero(df_cfg[mask_cfg].iloc[0, c_c_i])
+                                precio_maestro = limpiar_numero_estricto(df_cfg[mask_cfg].iloc[0, c_c_i])
                                 if precio_maestro > 0: costo_unit = float(precio_maestro) 
                     except Exception: pass
 
