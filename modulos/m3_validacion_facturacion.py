@@ -1174,6 +1174,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     ha_f = float(ha_dosis_final)
                     ha_bruta_f_num = limpiar_numero_estricto(ha_bruta_f_raw) # 💥 CURA: Purifica la coma de Excel
                     
+                    # 💥 RESTAURACIÓN: Cálculos globales antes de fraccionar
+                    tarifa_vuelo_neta_ha = float(costo_neto_vuelo_total / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0.0
+                    total_pago_avion_neto = (tarifa_vuelo_neta_ha + float(recargo_final)) * ha_f
+                    
                     # 💥 MOTOR DE REPARTICIÓN PROPORCIONAL MULTI-AVIÓN 💥
                     filas_maestra_a_inyectar = []
                     filas_apoyo_a_inyectar = []
