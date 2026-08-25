@@ -113,7 +113,7 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=10)
+@st.cache_data(show_spinner=False, ttl=1) # 🎯 TTL a 1 segundo: Fuerza lectura en TIEMPO REAL
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -136,7 +136,7 @@ def obtener_historial_completo_ciclos_cached():
         
         return df_t1, df_apoyo
     except Exception as e:
-        log_error_critico("Lectura de historial de ciclos (TABLA 1 / TABLA DE APOYO2023)", e)
+        log_error_critico("Lectura de historial de ciclos (TABLA 1 / TABLA DE APOYO2023)", e, False)
         return pd.DataFrame(), pd.DataFrame()
 
 def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
@@ -144,7 +144,7 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     try:
         f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_nombre).upper())
         df_viva, df_hist = obtener_historial_completo_ciclos_cached()
-        fechas_encontradas = []
+        fechas_encontradas = set() # 🎯 SET: Elimina fechas duplicadas instantáneamente
 
         def extraer_fechas_motor(df_temp):
             if df_temp.empty: return
@@ -161,22 +161,25 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
                 df_fil = df_temp[mask]
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
-                    # 🎯 CORRECCIÓN: extraer solo la fecha pura (.date())
-                    if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida.date())
+                    if pd.notna(fecha_valida): 
+                        # 🎯 BLINDAJE: Extracción pura de .date() sin rastro de horas
+                        fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
 
         extraer_fechas_motor(df_viva)
         extraer_fechas_motor(df_hist)
         
         if fechas_encontradas:
-            # 🎯 CORRECCIÓN: Convertir fecha_vuelo a .date() para alinear la matemática
-            fecha_vuelo_date = fecha_vuelo if isinstance(fecha_vuelo, date) else pd.to_datetime(fecha_vuelo).date()
+            # 🎯 BLINDAJE: Conversión incondicional de la fecha de vuelo a .date()
+            fecha_vuelo_date = pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
+            
             if fechas_validas:
                 fecha_max = max(fechas_validas)
                 dias = (fecha_vuelo_date - fecha_max).days
-                if 0 <= dias <= 365: return int(dias)
+                if 0 < dias <= 365: 
+                    return int(dias)
     except Exception as e:
-        log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}» (se usará 14 por defecto)", e)
+        log_error_critico(f"Cálculo de días de ciclo para «{finca_nombre}»", e, False)
     return 14
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas_mod3():
