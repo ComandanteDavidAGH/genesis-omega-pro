@@ -1335,6 +1335,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 # 💥 CURA VISUAL: Formatear a texto con puntos solo para mostrar en pantalla
                 df_vista = df_matriz.drop(columns=["TOTAL_PROD_SAP"])
                 df_vista["E: Costo Unit (+Margen)"] = df_vista["E: Costo Unit (+Margen)"].apply(lambda x: f"{int(x):,.0f}".replace(",", "."))
+                
+                # 💥 NUEVA CAPA: Formato SAP para el Saldo (Punto de miles, coma de decimales)
+                df_vista["H: Saldo Real SAP"] = df_vista["H: Saldo Real SAP"].apply(lambda x: f"{float(x):,.3f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                
                 df_estilizado = df_vista.style.apply(estilizar_dosis_ideal, axis=1)
 
                 edited_df = st.data_editor(
@@ -1346,8 +1350,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                         "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
                         "📊 Ajuste de Campo": st.column_config.TextColumn("📊 Ajuste de Campo"),
-                        "E: Costo Unit (+Margen)": st.column_config.TextColumn("Costo Unit (COP)"), # 💥 Forzado a Texto para proteger el punto
-                        "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
+                        "E: Costo Unit (+Margen)": st.column_config.TextColumn("Costo Unit (COP)"),
+                        "H: Saldo Real SAP": st.column_config.TextColumn("Saldo SAP"), # 💥 Forzado a Texto para proteger la armadura SAP
                     },
                     disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo"],
                     use_container_width=True, hide_index=True
