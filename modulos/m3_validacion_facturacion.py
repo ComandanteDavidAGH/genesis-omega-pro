@@ -634,8 +634,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 prods_f = []
                 for idx, row in receta_c.iterrows():
                     p = str(row.iloc[1]).upper().strip()
-                    d = pd.to_numeric(row.iloc[2], errors='coerce')
-                    if pd.notna(d) and d > 0 and p not in ['NAN', '']:
+                    # 💥 CURA: Usamos el motor estricto para absorber las comas de Excel sin estrellarse
+                    d = limpiar_numero_estricto(row.iloc[2])
+                    if d > 0 and p not in ['NAN', '']:
                         prods_f.append({"PRODUCTO": p, "DOSIS": d})
 
                 coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
