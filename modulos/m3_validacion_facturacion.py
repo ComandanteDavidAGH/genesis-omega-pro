@@ -1332,7 +1332,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 ]
                 df_matriz = df_matriz[columnas_ordenadas]
                 
-                df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
+                # 💥 CURA VISUAL: Formatear a texto con puntos solo para mostrar en pantalla
+                df_vista = df_matriz.drop(columns=["TOTAL_PROD_SAP"])
+                df_vista["E: Costo Unit (+Margen)"] = df_vista["E: Costo Unit (+Margen)"].apply(lambda x: f"{int(x):,.0f}".replace(",", "."))
+                df_estilizado = df_vista.style.apply(estilizar_dosis_ideal, axis=1)
 
                 edited_df = st.data_editor(
                     df_estilizado,
@@ -1343,13 +1346,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                         "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
                         "📊 Ajuste de Campo": st.column_config.TextColumn("📊 Ajuste de Campo"),
-                        "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
+                        "E: Costo Unit (+Margen)": st.column_config.TextColumn("Costo Unit (COP)"), # 💥 Forzado a Texto para proteger el punto
                         "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
                     },
                     disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo"],
                     use_container_width=True, hide_index=True
                 )
-
                 st.write("")
                 st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
                 # 💥 CURA DEFINITIVA: Formateo nativo forzado (garantiza el punto de miles)
