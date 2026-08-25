@@ -49,33 +49,18 @@ def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True)
         print(mensaje)
 
 # =================================================================
-# 🔌 CONEXIÓN Y RELOJ SATELITAL
+# 🔌 CONEXIÓN Y RELOJ SATELITAL (ZONA HORARIA COLOMBIA)
 # =================================================================
 
 def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
-# 💥 ESCÁNER 1: PARA DOSIS Y MULTIPLICADORES (Respeta decimales pequeños al 100%)
-def limpiar_numero_estricto(val):
+def extraer_numero(val):
+    if pd.isna(val) or val is None: return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
+    if not v or v == '-': return 0.0
     try:
-        if pd.isna(val) or val is None: return 0.0
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
-        if not v or v == '-': return 0.0
-        v = v.replace(',', '.')
-        v = re.sub(r'[^\d\.\-]', '', v)
-        if v.count('.') > 1: v = v.rsplit('.', 1)[0].replace('.', '') + '.' + v.rsplit('.', 1)[1]
-        return float(v) if v else 0.0
-    except: return 0.0
-
-# 💥 ESCÁNER 2: PARA DINERO Y TARIFAS (Convierte puntos en miles reales)
-def limpiar_dinero(val):
-    try:
-        if pd.isna(val) or val is None: return 0.0
-        if isinstance(val, (int, float)): return float(val)
-        v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
-        if not v or v == '-': return 0.0
-        
         if '.' in v and ',' in v:
             if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
             else: v = v.replace(',', '')
@@ -83,12 +68,8 @@ def limpiar_dinero(val):
             if len(v.split(',')[-1]) == 3: v = v.replace(',', '')
             else: v = v.replace(',', '.')
         elif '.' in v:
-            partes = v.split('.')
-            if len(partes) > 2: v = v.replace('.', '')
-            elif len(partes[-1]) == 3: v = v.replace('.', '')
-        
-        v = re.sub(r'[^\d\.\-]', '', v)
-        return float(v) if v else 0.0
+            if v.count('.') > 1 or len(v.split('.')[-1]) == 3: v = v.replace('.', '')
+        return float(v)
     except: return 0.0
 
 def obtener_cliente_gspread_unificado():
@@ -100,33 +81,6 @@ def obtener_cliente_gspread_unificado():
             return gspread.authorize(creds)
         return gspread.service_account(filename='credenciales.json')
     except Exception: return None
-
-# 💥 MOTOR DE FECHAS SÚPER-ROBUSTO (Heredado de tu simulador)
-def procesar_fecha_estricta(val):
-    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
-    s = str(val).strip().lower()
-    if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
-    if s.replace('.', '', 1).isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-    
-    meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
-    match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
-    if match1:
-        dia_str, mes_str, anio_str = match1.groups()
-        if mes_str in meses_es: return pd.to_datetime(f"{anio_str}-{meses_es[mes_str]:02d}-{int(dia_str):02d}")
-    match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
-    if match2:
-        mes_str, dia_str, anio_str = match2.groups()
-        if mes_str in meses_es: return pd.to_datetime(f"{anio_str}-{meses_es[mes_str]:02d}-{int(dia_str):02d}")
-
-    for dia_sem in ['lunes','martes','miércoles','miercoles','jueves','viernes','sábado','sabado','domingo']: s = s.replace(dia_sem, '')
-    s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
-    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
-        try: return pd.to_datetime(s, format=fmt)
-        except: pass
-    try: 
-        res = pd.to_datetime(s.split(" ")[0], dayfirst=True)
-        return pd.NaT if pd.isna(res) else res
-    except: return pd.NaT 
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_historial_completo_ciclos_cached():
@@ -151,43 +105,6 @@ def obtener_historial_completo_ciclos_cached():
         
         return df_t1, df_apoyo
     except Exception: return pd.DataFrame(), pd.DataFrame()
-
-# 💥 LÓGICA DE DÍAS CICLO PURIFICADA (Tolerancia Cero a Búsqueda Aproximada)
-def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
-    if not finca_nombre or finca_nombre == "---": return 14
-    try:
-        f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_nombre).upper())
-        df_viva, df_hist = obtener_historial_completo_ciclos_cached()
-        fechas_encontradas = set() 
-
-        def extraer_fechas_motor(df_temp):
-            if df_temp.empty: return
-            col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
-            col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
-            if col_f and col_d:
-                fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-                
-                # Búsqueda 100% estricta (Eliminado el salvavidas que mezclaba datos)
-                mask = fincas_alpha == f_obj_alpha
-                
-                df_fil = df_temp[mask]
-                for d_raw in df_fil[col_d]:
-                    fecha_valida = procesar_fecha_estricta(d_raw)
-                    if pd.notna(fecha_valida): 
-                        fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
-
-        extraer_fechas_motor(df_viva)
-        extraer_fechas_motor(df_hist)
-        
-        if fechas_encontradas:
-            fecha_vuelo_date = pd.to_datetime(fecha_vuelo).date()
-            fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
-            if fechas_validas:
-                fecha_max = max(fechas_validas)
-                dias = (fecha_vuelo_date - fecha_max).days
-                if 0 < dias <= 365: return int(dias)
-    except Exception: pass
-    return 14
 
 # =================================================================
 # 🧠 MÁQUINA DEL TIEMPO: LECTOR DE TARIFAS MAESTRO (MASTER DATA)
@@ -231,7 +148,7 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
         for _, r in df_tarifas.iterrows():
             pista = str(r.get('PISTA', '')).strip().upper()
             equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
-            tarifa_val = limpiar_dinero(r[col_anio]) # 💥 DINERO
+            tarifa_val = extraer_numero(r[col_anio])
             
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
@@ -390,20 +307,67 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 
     return coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA", dosis_oficiales_coctel
 
+def procesar_fecha_estricta(val):
+    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
+    s = str(val).strip().lower()
+    if s.replace('.', '', 1).isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
+    meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
+    mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
+    if mes_encontrado:
+        numeros = re.findall(r'\d+', s)
+        if len(numeros) >= 2:
+            n1, n2 = int(numeros[0]), int(numeros[1])
+            anio = n1 if n1 > 1000 else (n2 if n2 > 1000 else (2000 + n2 if n2 < 100 else n2))
+            dia = n2 if n1 > 1000 else (n1 if n2 > 1000 else n1)
+            try: return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
+            except: pass
+    for dia_sem in ['lunes','martes','miércoles','miercoles','jueves','viernes','sábado','sabado','domingo']: s = s.replace(dia_sem, '')
+    s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
+    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
+        try: return pd.to_datetime(s, format=fmt)
+        except: pass
+    try: 
+        res = pd.to_datetime(s, dayfirst=True)
+        return pd.NaT if pd.isna(res) else res
+    except: return pd.NaT 
+
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
+def ejecutar(extraer_numero, fmt_sap, procesar_fecha_pesada):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
 
     st.header("", anchor="inicio_modulo")
+    
+    # 💥 CSS REPARADO: Borde forzado al calendario y simetría total
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
-    div[data-testid="stSelectbox"] > div, div[data-testid="stSelectbox"] div[data-baseweb="select"], div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input { background-color: #ffffff !important; border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; }
+    
+    /* Envoltorios con borde grueso */
+    div[data-testid="stSelectbox"] > div > div, 
+    div[data-testid="stSelectbox"] div[data-baseweb="select"], 
+    div[data-testid="stTextInput"] > div, 
+    div[data-testid="stNumberInput"] > div, 
+    div[data-testid="stDateInput"] > div { 
+        background-color: #ffffff !important; 
+        border: 3px solid #143521 !important; 
+        border-radius: 8px !important; 
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; 
+    }
+    
+    /* Inputs sin borde para evitar doble borde */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input, 
+    div[data-testid="stDateInput"] input { 
+        background-color: transparent !important; 
+        border: none !important; 
+        box-shadow: none !important; 
+    }
+    
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] *, div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stDateInput"] * { color: #000000 !important; font-weight: bold !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
@@ -528,13 +492,64 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             
             # 💥 INTELIGENCIA DE CICLOS INYECTADA EN EL SIMULADOR
             if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
-                st.session_state.dias_ciclo_sim_mem = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
+                dias_ciclo_calc_sim = 14
+                try:
+                    f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_sim).upper())
+                    df_viva, df_hist = obtener_historial_completo_ciclos_cached()
+                    fechas_encontradas = []
+
+                    def parsear_fecha_robusta_sim(val):
+                        if pd.isna(val) or str(val).strip() == "": return pd.NaT
+                        s = str(val).strip().lower()
+                        if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
+                        meses = {'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12}
+                        match1 = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})', s)
+                        if match1:
+                            dia_str, mes_str, anio_str = match1.groups()
+                            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                        match2 = re.search(r'([a-z]+)\s+(\d{1,2}),\s+(\d{4})', s)
+                        if match2:
+                            mes_str, dia_str, anio_str = match2.groups()
+                            if mes_str in meses: return pd.to_datetime(f"{anio_str}-{meses[mes_str]:02d}-{int(dia_str):02d}")
+                        try: return pd.to_datetime(s.split(" ")[0], dayfirst=True, errors='coerce')
+                        except Exception: return pd.NaT
+
+                    def extraer_fechas_sim(df_temp):
+                        if df_temp.empty: return
+                        col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+                        col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
+                        if col_f and col_d:
+                            fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+                            mask = fincas_alpha == f_obj_alpha
+                            if not mask.any(): mask = fincas_alpha.apply(lambda x: f_obj_alpha in x if f_obj_alpha else False)
+                            if not mask.any():
+                                partes = f_obj_alpha.replace("COOP", "").replace("BANAFRU", "").replace("ASO", "").replace("COOBAMAG", "").strip()
+                                clave = partes[:8] if len(partes) > 8 else partes
+                                mask = fincas_alpha.str.contains(clave, regex=False, na=False)
+                            df_fil = df_temp[mask]
+                            for d_raw in df_fil[col_d]:
+                                fecha_valida = parsear_fecha_robusta_sim(d_raw)
+                                if pd.notna(fecha_valida): fechas_encontradas.append(fecha_valida)
+
+                    extraer_fechas_sim(df_viva)
+                    extraer_fechas_sim(df_hist)
+                    
+                    if fechas_encontradas:
+                        fecha_vuelo_dt = pd.to_datetime(fecha_eval_sim)
+                        fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_dt]
+                        if fechas_validas:
+                            fecha_max = max(fechas_validas)
+                            dias_ciclo_calc_sim = (fecha_vuelo_dt - fecha_max).days
+                            if dias_ciclo_calc_sim < 0 or dias_ciclo_calc_sim > 365: dias_ciclo_calc_sim = 14
+                except Exception: pass
+
+                st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc_sim
                 st.session_state.finca_anterior_sim = finca_sim
                 st.session_state.fecha_sim_mem = fecha_eval_sim
                 st.rerun()
 
             st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
-            st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días, edite o añada filas. El ST se cobrará línea por línea.")
+            st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días (ej. 92Ha a 25 días y 51Ha a 9 días), edite o añada filas. El ST se cobrará línea por línea.")
             
             df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(st.session_state.dias_ciclo_sim_mem)}])
             df_areas_in = st.data_editor(
@@ -563,6 +578,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.markdown("#### ⚙️ Configuración de Flota y Tiempos")
             c_f1, c_f2, c_f3 = st.columns(3)
             
+            # 💥 EXTRACCIÓN DINÁMICA DE TARIFAS POR AÑO
             anio_vuelo_sim = str(fecha_eval_sim.year)
             dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
 
@@ -585,6 +601,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 elif tipo_prod_sim == "ORGANICO": mult_m = 1.011; st_base = 1337.0; mult_v = 1.011
                 else: mult_m = 1.112; st_base = 1337.0; mult_v = 1.112
                 
+                # Rescatar tope dinámico del año seleccionado
                 val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
                 if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
                 if val_tope == 999999: val_tope = 0.0
@@ -681,8 +698,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             p = df_cfg[mask].iloc[0, c_p_i] 
                     
                     if mask.any():
-                        p_b = limpiar_dinero(df_cfg[mask].iloc[0, c_c_i]) # 💥 DINERO
-                        if p_b > 0:
+                        p_b = pd.to_numeric(df_cfg[mask].iloc[0, c_c_i], errors='coerce')
+                        if pd.notna(p_b):
                             p_m = p_b * mult_m
                             c_t_p = round((d * ha_sim) * p_m, 0)
                             mezcla_total += c_t_p
@@ -802,17 +819,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 for _, fila_ped in match_sap.iterrows():
                     valor_material = str(fila_ped[col_mat]).strip()
                     if valor_material == "459" or valor_material.split(".")[0] == "459": 
-                        ha_correcta = limpiar_numero_estricto(fila_ped[col_ha]) # 💥 DOSIS
+                        ha_correcta = extraer_numero(fila_ped[col_ha])
                         break
                 
-                st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else limpiar_numero_estricto(match_sap.iloc[0][col_ha])
+                st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else extraer_numero(match_sap.iloc[0][col_ha])
                 st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
             except Exception: pass
 
-    c0, c1, c2 = st.columns([1, 2, 2])
+    # 💥 MICRO-CIRUGÍA: Reubicación de Columnas Visuales
+    c1, c2, c0 = st.columns([2, 2.2, 1.3])
+    
     if 'fecha_sim_mem' not in st.session_state:
         st.session_state.fecha_sim_mem = hoy_colombia_date
 
+    # El calendario ahora se pinta en el extremo derecho (c0)
     fecha_operacion = c0.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
     anio_vuelo = str(fecha_operacion.year)
     
@@ -847,6 +867,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 idx_finca = i
                 break
 
+    # La Finca se pinta a la izquierda (c1) y el Pedido al centro (c2)
     finca_sel = c1.selectbox("📍 Seleccione Finca:", opciones_finca, index=idx_finca)
     vuegos_informe = st.session_state.get('df_pistas', pd.DataFrame())
     lista_origenes = vuegos_informe['ORIGEN'].unique().tolist() if not vuegos_informe.empty else []
@@ -887,7 +908,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
         if not match_cfg.empty:
             mult_material = limpiar_numero_estricto(match_cfg.iloc[0].iloc[3])
-            tarifa_serv_tec_base = limpiar_dinero(match_cfg.iloc[0].iloc[4]) # 💥 DINERO
+            tarifa_serv_tec_base = limpiar_dinero(match_cfg.iloc[0].iloc[4])
             mult_avion_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[6])
 
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
@@ -939,10 +960,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             for _, r_p in match_ped.iterrows():
                 val_mat = str(r_p[col_mat]).strip()
                 if val_mat == "459" or val_mat.split(".")[0] == "459":
-                    ha_dosis_detectada = limpiar_numero_estricto(r_p[col_ha]) # 💥 DOSIS
+                    ha_dosis_detectada = limpiar_numero_estricto(r_p[col_ha])
                     break
     
-    ha_cobro_detectada = limpiar_numero_estricto(datos_raw.get(8, 0)) # 💥 DOSIS
+    ha_cobro_detectada = limpiar_numero_estricto(datos_raw.get(8, 0))
     if ha_dosis_detectada == 0: 
         ha_dosis_detectada = ha_cobro_detectada
 
@@ -1139,12 +1160,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         fila_precio = match_pista_precio.iloc[0] if not match_pista_precio.empty else match_sabana_global.iloc[0]
 
                         if idx_precio != -1: 
-                            costo_unit = limpiar_dinero(fila_precio.iloc[idx_precio]) # 💥 DINERO
+                            costo_unit = limpiar_dinero(fila_precio.iloc[idx_precio])
                         if costo_unit == 0.0:
                             col_v = [c for c in fila_precio.index if 'VALOR' in str(c).upper() and 'LIBRE' in str(c).upper()]
                             col_c = [c for c in fila_precio.index if 'LIBRE' in str(c).upper() and 'VALOR' not in str(c).upper()]
                             if col_v and col_c:
-                                v_t, c_t = limpiar_dinero(fila_precio[col_v[0]]), limpiar_numero_estricto(fila_precio[col_c[0]]) # 💥 DINERO/DOSIS
+                                v_t, c_t = limpiar_dinero(fila_precio[col_v[0]]), limpiar_numero_estricto(fila_precio[col_c[0]])
                                 if c_t > 0: 
                                     costo_unit = v_t / c_t
 
@@ -1174,7 +1195,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
                         
                         if mask_cfg.any():
-                            precio_maestro = limpiar_dinero(df_cfg[mask_cfg].iloc[0, c_c_i]) # 💥 DINERO
+                            precio_maestro = limpiar_dinero(df_cfg[mask_cfg].iloc[0, c_c_i])
                             if precio_maestro > 0:
                                 costo_unit = float(precio_maestro) 
                 except Exception:
