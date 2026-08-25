@@ -880,6 +880,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     # 2. PEDIDO EN EL CENTRO
     vuelo_ref = c_pedido.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
     
+    # 💥 CURA: DETECTOR DE CAMBIOS. Si cambia la finca, el informe o el SAP, la fecha vuelve a HOY.
+    if 'mem_trigger' not in st.session_state: 
+        st.session_state['mem_trigger'] = f"{finca_sel}_{vuelo_ref}_{pedido_sap}"
+    
+    current_trigger = f"{finca_sel}_{vuelo_ref}_{pedido_sap}"
+    
+    if st.session_state['mem_trigger'] != current_trigger:
+        st.session_state['mem_trigger'] = current_trigger
+        st.session_state.fecha_sim_mem = hoy_colombia_date
+        if 'fecha_vuelo_master' in st.session_state:
+            del st.session_state['fecha_vuelo_master']
+        st.rerun()
+
     # 3. FECHA A LA DERECHA Y CON BORDE
     fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
     anio_vuelo = str(fecha_operacion.year)
