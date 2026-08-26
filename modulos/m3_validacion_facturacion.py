@@ -1652,8 +1652,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                     filas_memoria.append(fila_m)
                     
                     def limpiar_json(val):
+                        # 💥 CURA: Detecta formatos numpy (como int64 o float64) y los pasa a Python nativo
                         if pd.isna(val) or (isinstance(val, float) and math.isnan(val)):
                             return ""
+                        if hasattr(val, 'item'): 
+                            return val.item()
                         return val
 
                     filas_maestra_a_inyectar = [[limpiar_json(x) for x in fila] for fila in filas_maestra_a_inyectar]
