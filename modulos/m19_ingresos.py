@@ -691,16 +691,20 @@ def ejecutar():
                 else: df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
                 st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
-                st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
                 # 💥 CURA: INTERRUPTOR MODO DIOS (Desbloqueo Total)
-                modo_dios_edicion = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Corrección Profunda)", value=False)
+                modo_dios_edicion = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Modo Dios)", value=False)
+                
+                if modo_dios_edicion:
+                    st.warning("⚠️ **MODO DIOS ACTIVO:** Todas las columnas están desbloqueadas. Edita con precaución.")
+                else:
+                    st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
                 columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
                 columnas_editables_reales = [COL_ESTADO]
                 
                 for col in df_filtrado.columns:
-                    # Si el Modo Dios está activo, todas las columnas visibles se vuelven editables y rastreables
+                    # Si el Modo Dios está activo, todas las columnas se vuelven editables
                     if modo_dios_edicion and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']:
                         if col not in columnas_editables_reales:
                             columnas_editables_reales.append(col)
@@ -721,21 +725,25 @@ def ejecutar():
                 col_config = {COL_ESTADO: st.column_config.SelectboxColumn("🛡️ ESTADO / OBSERVACIÓN", help="Doble clic para anular o cambiar estado.", width="large", options=opciones_estado, required=True)}
                 for c in df_vista.columns:
                     c_up = c.upper()
-                    if "SEMANA" in c_up: col_config[c] = st.column_config.TextColumn("📅 SEMANA", width="small")
-                    elif "PROV" in c_up: col_config[c] = st.column_config.TextColumn("🏭 PROVEEDOR", width="medium")
-                    elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn("🗓️ INGRESO SAP", width="medium")
-                    elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                    elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn("📍 BASE", width="small")
-                    elif "CANT" in c_up: col_config[c] = st.column_config.TextColumn("⚖️ CANTIDAD (Editable)", width="medium")
-                    elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn("📦 LOTE (Editable)", width="medium")
-                    elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn("⚙️ F/F", width="small")
-                    elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn("⏳ F/V", width="small")
-                    elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn("🧾 FACTURA (Editable)", width="medium")
-                    elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn("🛒 PEDIDO (Editable)", width="medium")
-                    elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn("🔢 CONSECUTIVO (Editable)", width="medium")
                     
-                df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
+                    # 💥 Mejora visual: Etiquetas dinámicas según el Modo Dios
+                    lbl_extra = " (Modo Dios)" if modo_dios_edicion else ""
+                    lbl_edit = " (Modo Dios)" if modo_dios_edicion else " (Editable)"
+                    
+                    if "SEMANA" in c_up: col_config[c] = st.column_config.TextColumn(f"📅 SEMANA{lbl_extra}", width="small")
+                    elif "PROV" in c_up: col_config[c] = st.column_config.TextColumn(f"🏭 PROVEEDOR{lbl_extra}", width="medium")
+                    elif "INGRESO" in c_up: col_config[c] = st.column_config.TextColumn(f"🗓️ INGRESO SAP{lbl_extra}", width="medium")
+                    elif "PROD" in c_up: col_config[c] = st.column_config.TextColumn(f"🧪 PRODUCTO{lbl_extra}", width="large")
+                    elif "PISTA" in c_up: col_config[c] = st.column_config.TextColumn(f"📍 BASE{lbl_extra}", width="small")
+                    elif "CANT" in c_up: col_config[c] = st.column_config.TextColumn(f"⚖️ CANTIDAD{lbl_edit}", width="medium")
+                    elif "LOTE" in c_up: col_config[c] = st.column_config.TextColumn(f"📦 LOTE{lbl_edit}", width="medium")
+                    elif "F/F" in c_up: col_config[c] = st.column_config.TextColumn(f"⚙️ F/F{lbl_extra}", width="small")
+                    elif "F/V" in c_up: col_config[c] = st.column_config.TextColumn(f"⏳ F/V{lbl_extra}", width="small")
+                    elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn(f"🧾 FACTURA{lbl_edit}", width="medium")
+                    elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn(f"🛒 PEDIDO{lbl_edit}", width="medium")
+                    elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn(f"🔢 CONSECUTIVO{lbl_edit}", width="medium")
 
+                df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
