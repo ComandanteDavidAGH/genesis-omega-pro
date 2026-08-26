@@ -157,37 +157,71 @@ def obtener_historial_completo_ciclos_cached():
 
 def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     if not finca_nombre or finca_nombre == "---": return 14
+    
+    cebo_log = [] # 💥 NUESTRA TRAMPA DE DIAGNÓSTICO
     try:
         f_obj_alpha = re.sub(r'[^A-Z0-9]', '', str(finca_nombre).upper())
+        cebo_log.append(f"1. Buscando Finca: '{finca_nombre}' -> AlfaNum: '{f_obj_alpha}'")
+        cebo_log.append(f"2. Fecha Vuelo Actual (Pivote): {fecha_vuelo}")
+        
         df_viva, df_hist = obtener_historial_completo_ciclos_cached()
+        cebo_log.append(f"3. Filas DB Viva (T1): {len(df_viva)} | DB Histórica (Apoyo): {len(df_hist)}")
+        
         fechas_encontradas = set() 
+        fechas_raw = []
 
-        def extraer_fechas_motor(df_temp):
+        def extraer_fechas_motor(df_temp, nombre_db):
             if df_temp.empty: return
             col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
             col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
+            
             if col_f and col_d:
                 fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
                 mask = fincas_alpha == f_obj_alpha
                 df_fil = df_temp[mask]
+                cebo_log.append(f"  -> Coincidencias exactas halladas en {nombre_db}: {len(df_fil)} filas")
+                
                 for d_raw in df_fil[col_d]:
+                    fechas_raw.append(str(d_raw))
                     fecha_valida = procesar_fecha_estricta(d_raw)
                     if pd.notna(fecha_valida): 
                         fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
+            else:
+                cebo_log.append(f"  -> ERROR: No halló columnas FINCA/FECHA en {nombre_db}")
 
-        extraer_fechas_motor(df_viva)
-        extraer_fechas_motor(df_hist)
+        extraer_fechas_motor(df_viva, "TABLA 1")
+        extraer_fechas_motor(df_hist, "TABLA APOYO")
+        
+        cebo_log.append(f"4. Fechas CRUDAS vistas (primeras 8): {fechas_raw[:8]}")
+        cebo_log.append(f"5. Fechas PARSEADAS y válidas: {[str(f) for f in fechas_encontradas]}")
         
         if fechas_encontradas:
             fecha_vuelo_date = pd.to_datetime(fecha_vuelo).date()
             fechas_validas = [f for f in fechas_encontradas if f < fecha_vuelo_date]
+            cebo_log.append(f"6. Fechas ESTRICTAMENTE anteriores al vuelo: {[str(f) for f in fechas_validas]}")
+            
             if fechas_validas:
                 fecha_max = max(fechas_validas)
                 dias = (fecha_vuelo_date - fecha_max).days
+                cebo_log.append(f"✅ ÉXITO MATEMÁTICO: Max fecha = {fecha_max} -> Días = {dias}")
+                
+                # IMPRIMIMOS EL CEBO EN LA BARRA LATERAL
+                st.sidebar.error("🛠️ RADAR DE CICLOS (CEBO ACTIVO)")
+                st.sidebar.json(cebo_log)
+                
                 if 0 < dias <= 365: return int(dias)
-    except Exception: pass
+                else: cebo_log.append(f"⚠️ Días ({dias}) fuera del rango lógico (0-365). Se aborta.")
+            else:
+                cebo_log.append("⚠️ No hay NINGUNA fecha anterior a la del vuelo.")
+        else:
+            cebo_log.append("⚠️ Ninguna fecha cruda se pudo convertir a fecha real.")
+    except Exception as e: 
+        cebo_log.append(f"🚨 ERROR FATAL: {str(e)}")
+        
+    # SI LLEGA HASTA ACÁ, ES PORQUE FALLÓ ALGO Y DEVOLVERÁ 14
+    st.sidebar.warning("🛠️ RADAR DE CICLOS (FALLÓ Y RETORNÓ 14)")
+    st.sidebar.json(cebo_log)
     return 14
-
 @st.cache_data(show_spinner=False, ttl=600)
 def cargar_matriz_tarifas_mod3():
     gc = obtener_cliente_gspread_unificado()
