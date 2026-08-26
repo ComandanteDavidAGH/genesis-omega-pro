@@ -462,7 +462,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     with col_btn_master:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Sincronizar Nube", type="secondary", use_container_width=True, key="sync_master_val_btn"):
+        # 💥 CURA DE LLAVE DUPLICADA: ID hiper-único para no chocar con la barra lateral
+        if st.button("🔄 Sincronizar Nube", type="secondary", use_container_width=True, key="btn_sync_superior_val_unico_2026"):
             st.cache_data.clear()
             claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2', 'df_pedidos', 'df_sabana', 'df_mezclas', 'df_pistas']
             for key in claves_a_purgar:
