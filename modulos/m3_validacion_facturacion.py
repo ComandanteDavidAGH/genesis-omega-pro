@@ -512,32 +512,29 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 st.rerun()
 
         if 'df_cfg' not in st.session_state or 'df_recetas' not in st.session_state or 'df_vd' not in st.session_state or 'df_t2' not in st.session_state:
-            st.warning("⚠️ Bóveda Vacía. Conecte su Drive para cargar las matrices base.")
-            url_drive = st.text_input("🔗 Pegue el Link de Google Drive (Google Sheets):", key="sim_drive")
-            if url_drive:
+            with st.spinner("📥 Bóveda Vacía. Conectando automáticamente al Cuartel General para extraer matrices..."):
                 try:
-                    file_id = url_drive.split('/d/')[1].split('/')[0] if '/d/' in url_drive else None
-                    if file_id:
-                        dl_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx' if 'spreadsheets' in url_drive else f'https://drive.google.com/uc?export=download&id={file_id}'
-                        with st.spinner("📥 Descargando matrices y TABLA 2..."):
-                            resp = requests.get(dl_url, timeout=30)
-                            if resp.status_code == 200:
-                                xls = pd.ExcelFile(io.BytesIO(resp.content))
-                                st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
-                                st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
-                                st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
-                                hojas = xls.sheet_names
-                                nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
-                                st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
-                                st.success("✅ Matrices cargadas y listas.")
-                                st.rerun()
-                            else: 
-                                st.error(f"❌ Error de descarga: {resp.status_code}")
+                    # 💥 URL INTRÍNSECA FIJA (Ya no hay que pegarla manualmente)
+                    url_drive_fija = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+                    file_id = url_drive_fija.split('/d/')[1].split('/')[0]
+                    dl_url = f'https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx'
+                    
+                    resp = requests.get(dl_url, timeout=30)
+                    if resp.status_code == 200:
+                        xls = pd.ExcelFile(io.BytesIO(resp.content))
+                        st.session_state['df_cfg'] = pd.read_excel(xls, sheet_name="Configuración")
+                        st.session_state['df_recetas'] = pd.read_excel(xls, sheet_name="DD_Mesclas")
+                        st.session_state['df_vd'] = pd.read_excel(xls, sheet_name="Validación Dosis")
+                        hojas = xls.sheet_names
+                        nombre_tabla2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
+                        st.session_state['df_t2'] = pd.read_excel(xls, sheet_name=nombre_tabla2)
+                        st.rerun()
                     else: 
-                        st.error("❌ Link inválido.")
+                        st.error(f"❌ Error de conexión satelital: {resp.status_code}")
+                        st.stop()
                 except Exception as e: 
-                    st.error(f"🚨 Error: {e}")
-            st.stop()
+                    st.error(f"🚨 Error crítico de descarga: {e}")
+                    st.stop()
 
         df_cfg = st.session_state['df_cfg']
         df_recetas = st.session_state['df_recetas']
