@@ -1555,7 +1555,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     for nave in flota_activa:
                         P = nave["prop"]
                         ha_f_part = ha_f * P
-                        ha_bruta_f_part = (ha_bruta_f_num * P) if ha_bruta_f_num > 0 else ha_f_part
+                        
+                        # 💥 CURA 1: Área bruta NO se divide. Se inyecta el total de la finca intacto.
+                        ha_bruta_f_part = ha_bruta_f_num if ha_bruta_f_num > 0 else ha_f
                         
                         if nave["tipo"] == "DRONE" or nave["tipo"] == "DRONE PROPIO":
                             h_total_v_part = ha_f_part / 10
@@ -1574,8 +1576,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         row_azul[1] = bloque_f
                         row_azul[2] = finca_limpia
                         row_azul[3] = sector_f
-                        row_azul[4] = round(ha_bruta_f_part, 2)
-                        row_azul[5] = round(ha_f_part, 2)
+                        row_azul[4] = round(ha_bruta_f_part, 2) # Bruta Intacta
+                        row_azul[5] = round(ha_f_part, 2) # Fumigada Dividida
                         row_azul[6] = coctel_ganador
                         row_azul[7] = fecha_str
                         row_azul[8] = dia_sem
@@ -1590,7 +1592,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         row_azul[17] = nave["tipo"]
                         row_azul[18] = round(gran_total_part, 2)
                         row_azul[19] = round(tarifa_vuelo_neta_ha, 2)
-                        row_azul[20] = round(float(recargo_final), 2) # El recargo es por Ha, por lo tanto el recargo total es proporcional a las hectáreas
+                        row_azul[20] = round(float(recargo_final), 2)
                         row_azul[21] = round(gran_total_part, 2)
                         row_azul[23] = pista_manual
                         row_azul[28] = round(gran_total_part, 2)
@@ -1600,9 +1602,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         
                         filas_maestra_a_inyectar.append(row_azul)
                         
-                        fila_apoyo = ["", finca_limpia, round(ha_f_part, 2), float(costo_por_ha), round(gran_total_part, 2), fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", nave["tipo"], ""]
-                        filas_apoyo_a_inyectar.append(fila_apoyo)
-                        
+                        # (La inyección a Supabase mantiene la fracción del avión para auditoría)
                         payloads_supabase.append({
                             "os_virtual": str(os_virtual),
                             "finca": str(finca_limpia),
@@ -1614,6 +1614,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             "tipo_productor": str(tipo_productor),
                             "aeronave": nave["hk"]
                         })
+
+                    # 💥 CURA 2: Fuera del bucle. TABLA DE APOYO NO SE DIVIDE. 
+                    # Se inyecta UNA SOLA FILA consolidada con las Hectáreas Totales y el Costo Total de la Operación.
+                    tipo_nave_apoyo = "DRONE" if mision_solo_dron else "AVION"
+                    fila_apoyo = ["", finca_limpia, round(ha_f, 2), float(costo_por_ha), round(gran_total, 2), fecha_str, "", "", coctel_ganador, "", pista_manual, "", "", tipo_nave_apoyo, ""]
+                    filas_apoyo_a_inyectar.append(fila_apoyo)
 
                     # INYECCIÓN FÍSICA A LA NUBE
                     col_azul = hoja_maestra.col_values(1)
