@@ -1010,13 +1010,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
 
-    dias_ciclo_calc = st.session_state.dias_ciclo_sim_mem
-    if (finca_sel != st.session_state.finca_anterior) or (fecha_operacion != st.session_state.fecha_sim_mem):
-        dias_ciclo_calc = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
-        st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc
-        st.session_state.finca_anterior = finca_sel
-        st.session_state.fecha_sim_mem = fecha_operacion
-        st.rerun()
+    # 💥 CURA CEBO PERMANENTE: Calculamos en vivo y quitamos el rerun() para ver el rastro
+    dias_ciclo_calc = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
+    st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc
+    st.session_state.finca_anterior = finca_sel
+    st.session_state.fecha_sim_mem = fecha_operacion
 
     datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
     datos_raw = datos_vuelo.get('DATOS_FILA', {})
