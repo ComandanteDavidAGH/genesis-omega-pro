@@ -1034,38 +1034,31 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     coctel_piloto_base = partes_coctel[0]
 
     with st.container(border=True):
-        st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
-        c_sup1, c_sup2 = st.columns([3, 1])
-        c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-        mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
-        
-        # 💥 CURA: MATRIZ DE CÁLCULO DEL SIMULADOR INYECTADA
-        st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
-        st.caption("Igual que en el Simulador: Añade filas si la finca tiene varios sectores con distintos ciclos. El ST se calculará línea por línea.")
-        
-        ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
-        if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+            st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
+            c_sup1, c_sup2 = st.columns([3, 1])
+            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+            mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+            
+            r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+            with r1c1:
+                st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
+            with r1c2:
+                d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
+            with r1c3:
+                ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
+                if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+                
+                widget_key = f"had_{casilla_key}"
+                sap_val = st.session_state.get('ha_radar_sap', 0.0)
+                if sap_val > 0 and st.session_state.get(f"sync_{widget_key}") != sap_val:
+                    st.session_state[widget_key] = float(sap_val)
+                    st.session_state[f"sync_{widget_key}"] = sap_val
 
-        df_areas_def_val = pd.DataFrame([{"Hectáreas": float(ha_sugerida), "Días Ciclo": int(dias_ciclo_calc)}])
-        df_areas_in_val = st.data_editor(
-            df_areas_def_val, 
-            num_rows="dynamic", 
-            column_config={
-                "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", min_value=0.0, format="%.2f"),
-                "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
-            },
-            use_container_width=True, 
-            key=f"areas_val_{casilla_key}",
-            hide_index=True
-        )
-        
-        ha_dosis_final = float(df_areas_in_val["Hectáreas"].sum())
-        if ha_dosis_final <= 0: st.warning("⚠️ El área total debe ser mayor a 0.")
-        
-        c_toggles1, c_toggles2 = st.columns(2)
-        multi_aviones = c_toggles1.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-        multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
-        interciclo_menor_20 = c_toggles2.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
+                ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=widget_key)
+            with r1c4:
+                multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
+                multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+                interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
         st.markdown("##### 🛣️ Parámetros de Base / Empresa")
         r2c1, r2c2, r2c3 = st.columns(3)
         pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
@@ -1410,18 +1403,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         else:
             costo_mezcla_total = 0
 
-        # 💥 CURA: Calcular ST línea por línea basado en la Matriz de Áreas (como en el simulador)
-        subtotal_st_calc = 0.0
-        for _, r_area in df_areas_in_val.iterrows():
-            h_a = float(r_area["Hectáreas"])
-            d_c = int(r_area["Días Ciclo"])
-            if h_a > 0:
-                subtotal_st_calc += round(tarifa_serv_tec_base, 0) * d_c * h_a
-
-        subtotal_st_finca = sap_round(subtotal_st_calc)
-        unitario_st = sap_round(subtotal_st_finca / ha_dosis_final) if ha_dosis_final > 0 else 0
+        unitario_st = sap_round(d_ciclo_factura * tarifa_serv_tec_base)
         unitario_vuelo = sap_round(costo_total_vuegos / total_ha_cobro_escuadron) if total_ha_cobro_escuadron > 0 else 0
         
+        subtotal_st_finca = sap_round(unitario_st * ha_dosis_final)
         subtotal_vuelo_finca = sap_round(unitario_vuelo * ha_dosis_final)
         
         gran_total = costo_mezcla_total + subtotal_vuelo_finca + subtotal_st_finca
