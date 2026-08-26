@@ -459,15 +459,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     # 💥 CURA VISUAL: Dividimos la cabecera para insertar el botón de sincronización global a la derecha
     col_tit_principal, col_btn_master = st.columns([3.5, 1])
     with col_tit_principal:
-        # 💥 CURA VISUAL: Dividimos la cabecera para insertar el botón de sincronización global a la derecha
-    col_tit_principal, col_btn_master = st.columns([3.5, 1])
-    with col_tit_principal:
         st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     with col_btn_master:
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True) # Alineación vertical
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         if st.button("🔄 Sincronizar Nube", type="secondary", use_container_width=True, key="sync_master_val_btn"):
             st.cache_data.clear()
-            # Purgamos TODAS las bases maestras para que se descarguen de nuevo
             claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2', 'df_pedidos', 'df_sabana', 'df_mezclas', 'df_pistas']
             for key in claves_a_purgar:
                 if key in st.session_state:
