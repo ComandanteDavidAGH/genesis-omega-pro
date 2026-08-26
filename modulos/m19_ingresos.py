@@ -693,14 +693,22 @@ def ejecutar():
                 st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
                 st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa el Estado para anular o ELIMINAR el registro físicamente.")
                 
+                # 💥 CURA: INTERRUPTOR MODO DIOS (Desbloqueo Total)
+                modo_dios_edicion = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Corrección Profunda)", value=False)
+                
                 columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
                 columnas_editables_reales = [COL_ESTADO]
                 
                 for col in df_filtrado.columns:
-                    for nom_edit in columnas_editables_nombres:
-                        if nom_edit in str(col).upper() and col not in columnas_editables_reales:
+                    # Si el Modo Dios está activo, todas las columnas visibles se vuelven editables y rastreables
+                    if modo_dios_edicion and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']:
+                        if col not in columnas_editables_reales:
                             columnas_editables_reales.append(col)
-                            
+                    else:
+                        for nom_edit in columnas_editables_nombres:
+                            if nom_edit in str(col).upper() and col not in columnas_editables_reales:
+                                columnas_editables_reales.append(col)
+                                
                 cols_disabled = [col for col in df_filtrado.columns if col not in columnas_editables_reales and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
                 
                 opciones_estado = ["✅ VIGENTE", "❌ ANULADO: ERROR EN PRECIOS", "❌ ANULADO: ERROR DE CANTIDAD", "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR", "❌ ANULADO: ERROR EN LOTE/FECHAS", "❌ ANULADO: OTRO MOTIVO", "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"]
