@@ -98,7 +98,7 @@ def generar_excel_gerencial(df_comp, dosis_dict):
             # Formato Encabezados (TODOS CON FONDO OSCURO Y LETRA DORADA EN EXCEL)
             cell_header = ws.cell(row=header_row, column=col_num)
             cell_header.fill = header_fill
-            if "DIF" in str(col_name) and "%" in str(col_name):
+            if ("DIF" in str(col_name) and "%" in str(col_name)) or "MARGEN REQ" in str(col_name):
                 cell_header.font = Font(color="D4AF37", bold=True, size=11)
             else:
                 cell_header.font = Font(color="FFFFFF", bold=True, size=11)
@@ -120,9 +120,10 @@ def generar_excel_gerencial(df_comp, dosis_dict):
                 if col_num in [1, 2]:
                     cell.font = Font(name="Arial", size=11, bold=True) if is_ganancia else Font(name="Arial", size=11)
                 elif isinstance(val, (int, float)):
-                    if "DIF" in str(col_name) and "%" in str(col_name):
+                    if ("DIF" in str(col_name) and "%" in str(col_name)) or "MARGEN REQ" in str(col_name):
                         cell.number_format = '0.00 "%";[Red]-0.00 "%";"0.00 %"'
                         if val < 0: cell.font = Font(name="Arial", size=11, bold=True, color="E74C3C")
+                        elif "MARGEN REQ" in str(col_name): cell.font = Font(name="Arial", size=11, bold=True, color="8E44AD") # Púrpura estratégico
                         else: cell.font = Font(name="Arial", size=11, bold=is_ganancia)
                         cell.alignment = Alignment(vertical='center', horizontal='center')
                     else:
@@ -405,9 +406,14 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                 dif_pesos = min(val_p1, val_p2) - max(val_p1, val_p2)
                                 dif_pct = (dif_pesos / max(val_p1, val_p2) * 100) if max(val_p1, val_p2) > 0 else 0.0
                                 
+                                # 💥 CURA TÁCTICA: CÁLCULO DE MARGEN REQUERIDO
+                                # Margen necesario sobre COSTO Manzate para igualar VENTA Mancol
+                                margen_req = ((v_p1 / c_p2) - 1.0) * 100.0 if c_p2 > 0 else 0.0
+                                
                                 fila_ex[f"🧪 {prod_comp}"] = val_p2
                                 fila_ex[f"⚖️ DIFERENCIA ($) [{prod_comp} vs {prod_base}]"] = dif_pesos
                                 fila_ex[f"📉 DIFERENCIA (%) [{prod_comp} vs {prod_base}]"] = dif_pct
+                                fila_ex[f"🎯 MARGEN REQ. (%) [{prod_comp} -> Venta {prod_base}]"] = margen_req
 
                             filas_excel.append(fila_ex)
 
@@ -425,6 +431,7 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                     for p_comp in prods_sel[1:]:
                         col_config[f"⚖️ DIFERENCIA ($) [{p_comp} vs {prod_base}]"] = st.column_config.NumberColumn("⚖️ DIF. GANANCIA", format="$ %d")
                         col_config[f"📉 DIFERENCIA (%) [{p_comp} vs {prod_base}]"] = st.column_config.NumberColumn("📉 DIF. GANANCIA (%)", format="%.2f %%")
+                        col_config[f"🎯 MARGEN REQ. (%) [{p_comp} -> Venta {prod_base}]"] = st.column_config.NumberColumn("🎯 MARGEN REQ. (%)", format="%.2f %%")
 
                     def aplicar_estilos_gerenciales(row):
                         estilos = [''] * len(row)
@@ -439,9 +446,10 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
                                 if val < 0: cell_style += ' color: #E74C3C; font-weight: bold;'
                                 elif val > 0: cell_style += ' color: #27AE60; font-weight: bold;'
                                 else: cell_style += ' color: #0d1b2a; font-weight: bold;'
+                            elif "MARGEN REQ" in col and isinstance(val, (int, float)):
+                                cell_style += ' color: #8E44AD; font-weight: bold;' # Púrpura estratégico
                             estilos[i] = cell_style
                         return estilos
-
                     st.dataframe(
                         df_excel_export.style.apply(aplicar_estilos_gerenciales, axis=1), 
                         use_container_width=True, 
