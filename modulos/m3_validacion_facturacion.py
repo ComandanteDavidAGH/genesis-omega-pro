@@ -1034,39 +1034,38 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     coctel_piloto_base = partes_coctel[0]
 
     with st.container(border=True):
-            st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
-            c_sup1, c_sup2 = st.columns([3, 1])
-            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-            mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
-            
-            # 💥 CURA: MATRIZ DE CÁLCULO DEL SIMULADOR INYECTADA
-            st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
-            st.caption("Igual que en el Simulador: Añade filas si la finca tiene varios sectores con distintos ciclos. El ST se calculará línea por línea.")
-            
-            ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
-            if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+        st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
+        c_sup1, c_sup2 = st.columns([3, 1])
+        c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+        mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+        
+        # 💥 CURA: MATRIZ DE CÁLCULO DEL SIMULADOR INYECTADA
+        st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
+        st.caption("Igual que en el Simulador: Añade filas si la finca tiene varios sectores con distintos ciclos. El ST se calculará línea por línea.")
+        
+        ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
+        if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
 
-            df_areas_def_val = pd.DataFrame([{"Hectáreas": float(ha_sugerida), "Días Ciclo": int(dias_ciclo_calc)}])
-            df_areas_in_val = st.data_editor(
-                df_areas_def_val, 
-                num_rows="dynamic", 
-                column_config={
-                    "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", min_value=0.0, format="%.2f"),
-                    "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
-                },
-                use_container_width=True, 
-                key=f"areas_val_{casilla_key}",
-                hide_index=True
-            )
-            
-            ha_dosis_final = float(df_areas_in_val["Hectáreas"].sum())
-            if ha_dosis_final <= 0: st.warning("⚠️ El área total debe ser mayor a 0.")
-            
-            c_toggles1, c_toggles2 = st.columns(2)
-            multi_aviones = c_toggles1.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-            multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
-            interciclo_menor_20 = c_toggles2.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
-
+        df_areas_def_val = pd.DataFrame([{"Hectáreas": float(ha_sugerida), "Días Ciclo": int(dias_ciclo_calc)}])
+        df_areas_in_val = st.data_editor(
+            df_areas_def_val, 
+            num_rows="dynamic", 
+            column_config={
+                "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", min_value=0.0, format="%.2f"),
+                "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
+            },
+            use_container_width=True, 
+            key=f"areas_val_{casilla_key}",
+            hide_index=True
+        )
+        
+        ha_dosis_final = float(df_areas_in_val["Hectáreas"].sum())
+        if ha_dosis_final <= 0: st.warning("⚠️ El área total debe ser mayor a 0.")
+        
+        c_toggles1, c_toggles2 = st.columns(2)
+        multi_aviones = c_toggles1.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
+        multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+        interciclo_menor_20 = c_toggles2.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
         st.markdown("##### 🛣️ Parámetros de Base / Empresa")
         r2c1, r2c2, r2c3 = st.columns(3)
         pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
