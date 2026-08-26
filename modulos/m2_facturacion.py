@@ -173,14 +173,20 @@ def ejecutar(extraer_numero):
 
     # Reconstrucción de Bytes para el Procesamiento Maestro
     f_sabana = None
-    if st.session_state['mem_sabana']:
-        f_sabana = io.BytesIO(st.session_state['mem_sabana'])
-        f_sabana.name = st.session_state['name_sabana']
-        
+    if st.session_state['mem_sabana'] is not None:
+        if isinstance(st.session_state['mem_sabana'], pd.DataFrame):
+            f_sabana = "DATAFRAME_LISTO"
+        else:
+            f_sabana = io.BytesIO(st.session_state['mem_sabana'])
+            f_sabana.name = st.session_state.get('name_sabana', 'Sabana_SAP.csv')
+            
     f_pedidos = None
-    if st.session_state['mem_pedidos']:
-        f_pedidos = io.BytesIO(st.session_state['mem_pedidos'])
-        f_pedidos.name = st.session_state['name_pedidos']
+    if st.session_state['mem_pedidos'] is not None:
+        if isinstance(st.session_state['mem_pedidos'], pd.DataFrame):
+            f_pedidos = "DATAFRAME_LISTO"
+        else:
+            f_pedidos = io.BytesIO(st.session_state['mem_pedidos'])
+            f_pedidos.name = st.session_state.get('name_pedidos', 'Pedidos_SAP.xlsx')
 
     f_pistas = []
     if st.session_state['mem_pistas']:
@@ -195,18 +201,26 @@ def ejecutar(extraer_numero):
         if f_sabana and f_pedidos and f_pistas:
             with st.spinner("Desplegando Anclaje de Extracción Inteligente (Optimizado)..."):
                 try: 
-                    nombre_sabana = f_sabana.name.lower()
-                    if nombre_sabana.endswith(('.xlsx', '.xls')): 
-                        st.session_state['df_sabana'] = pd.read_excel(f_sabana)
+                    # 💥 CURA: Lectura Híbrida de Sábana
+                    if f_sabana == "DATAFRAME_LISTO":
+                        st.session_state['df_sabana'] = st.session_state['mem_sabana'].copy()
                     else:
-                        try: 
-                            st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='utf-8')
-                        except Exception:
-                            f_sabana.seek(0)
-                            st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='latin1')
+                        nombre_sabana = f_sabana.name.lower()
+                        if nombre_sabana.endswith(('.xlsx', '.xls')): 
+                            st.session_state['df_sabana'] = pd.read_excel(f_sabana)
+                        else:
+                            try: 
+                                st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='utf-8')
+                            except Exception:
+                                f_sabana.seek(0)
+                                st.session_state['df_sabana'] = pd.read_csv(f_sabana, sep=None, engine='python', encoding='latin1')
                     
-                    bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
-                    st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
+                    # 💥 CURA: Lectura Híbrida de Pedidos
+                    if f_pedidos == "DATAFRAME_LISTO":
+                        st.session_state['df_pedidos'] = st.session_state['mem_pedidos'].copy()
+                    else:
+                        bytes_pedidos = io.BytesIO(f_pedidos.getvalue())
+                        st.session_state['df_pedidos'] = pd.read_excel(bytes_pedidos) if f_pedidos.name.lower().endswith(('.xlsx', '.xls')) else pd.read_csv(bytes_pedidos, sep=None, engine='python')
                         
                     resultados = cargar_tablas_maestras_m2_cached()
 
