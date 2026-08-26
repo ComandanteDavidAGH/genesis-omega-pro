@@ -456,20 +456,37 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         </div>
         """
 
-    # 💥 CABECERA LIMPIA: Un solo título y UN SOLO botón
-    col_tit_principal, col_btn_master = st.columns([3.5, 1])
+    # 💥 CABECERA LIMPIA Y BLINDADA: Título y Botón con Seguro de Disparo
+    col_tit_principal, col_btn_master = st.columns([3.5, 1.2]) # Ajustamos un poco el ancho para los botones de confirmación
     with col_tit_principal:
         st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
     with col_btn_master:
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Sincronizar Nube", type="secondary", use_container_width=True, key="btn_sync_superior_val_unico_2026"):
-            st.cache_data.clear()
-            claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2', 'df_pedidos', 'df_sabana', 'df_mezclas', 'df_pistas']
-            for key in claves_a_purgar:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.toast("✅ Bóveda limpiada. Recargando bases maestras...", icon="🔄")
-            st.rerun()
+        
+        # 🛡️ Lógica del Seguro de Disparo
+        if 'seguro_sincronizacion' not in st.session_state:
+            st.session_state['seguro_sincronizacion'] = False
+
+        if not st.session_state['seguro_sincronizacion']:
+            if st.button("🔄 Sincronizar Nube", type="secondary", use_container_width=True, key="btn_sync_pre_seguro"):
+                st.session_state['seguro_sincronizacion'] = True
+                st.rerun()
+        else:
+            st.error("⚠️ ¿Perder progreso actual?")
+            c_conf1, c_conf2 = st.columns(2)
+            if c_conf1.button("✅ SÍ", type="primary", use_container_width=True, key="btn_sync_confirmar"):
+                st.cache_data.clear()
+                claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2', 'df_pedidos', 'df_sabana', 'df_mezclas', 'df_pistas']
+                for key in claves_a_purgar:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.session_state['seguro_sincronizacion'] = False # Quitamos el seguro tras detonar
+                st.toast("✅ Bóveda limpiada. Recargando bases maestras...", icon="🔄")
+                st.rerun()
+                
+            if c_conf2.button("❌ NO", use_container_width=True, key="btn_sync_abortar"):
+                st.session_state['seguro_sincronizacion'] = False # Abortamos y restauramos el botón
+                st.rerun()
 
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
     # =================================================================
