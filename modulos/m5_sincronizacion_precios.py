@@ -173,19 +173,16 @@ def obtener_tarifario_maestro_cached(_supabase_client):
                     return 0.0
 
                 for idx, row in df_raw.iterrows():
-                    grupo = str(row.iloc[0]).strip().upper()
-                    if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
-                        factor = 0.0
-                        for c in range(1, 4):
-                            f_val = parse_mult(row.iloc[c])
-                            if f_val > 1.0:
-                                factor = f_val
-                                break
-                        if factor > 0:
-                            if grupo in ["SOCIO", "COOPERATIVA"]: margenes["COOPERATIVA / SOCIO"] = factor
-                            elif grupo == "TERCERO": margenes["TERCERO"] = factor
-                            elif grupo == "AFILIADO": margenes["AFILIADO"] = factor
-                            elif grupo == "ORGANICO": margenes["ORGANICO"] = factor
+                            grupo = str(row.iloc[0]).strip().upper()
+                            if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
+                                # 💥 CURA TÁCTICA: LEER EXACTAMENTE LA COLUMNA 'C' (Material TOTAL - Índice 2)
+                                factor = parse_mult(row.iloc[2]) 
+                                
+                                if factor > 0:
+                                    if grupo in ["SOCIO", "COOPERATIVA"]: margenes["COOPERATIVA / SOCIO"] = factor
+                                    elif grupo == "TERCERO": margenes["TERCERO"] = factor
+                                    elif grupo == "AFILIADO": margenes["AFILIADO"] = factor
+                                    elif grupo == "ORGANICO": margenes["ORGANICO"] = factor
                 
                 if df.empty and len(df_raw.columns) > 10:
                     df = df_raw.iloc[:, [8, 10]].copy()
