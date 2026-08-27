@@ -202,6 +202,10 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
     df = df[df['COSTO BASE'] > 0].copy()
     
+    # 💥 CURA TÁCTICA: PURIFICACIÓN DE DUPLICADOS (COMO EN MÓDULO 1)
+    # Aplastamos las filas repetidas y conservamos solo la última actualización ('last')
+    df = df.drop_duplicates(subset=['PRODUCTO'], keep='last').copy()
+    
     if df.empty: return pd.DataFrame(), [], {}
     
     def fmt_pct(factor): return round((factor - 1.0) * 100, 2)
