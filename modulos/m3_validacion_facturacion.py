@@ -742,10 +742,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             p = df_cfg[mask].iloc[0, c_p_i] 
                     
                     if mask.any():
+                        if mask.any():
                         # 💥 CURA: Utilizamos limpiar_dinero para los costos base
                         p_b = limpiar_dinero(df_cfg[mask].iloc[0, c_c_i])
                         if p_b > 0:
-                            p_m = p_b * mult_m
+                            p_m = p_b * mult_m # Paso 1: Aplicamos el Margen Normal de la Tabla de Configuración
+                            
+                            # 🎯 EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG (SIMULADOR)
+                            if "MANZATE 200 WG" in str(p).upper():
+                                t_prod_upper = str(tipo_prod_sim).upper()
+                                if "TERCERO" in t_prod_upper: p_m = p_m * 1.28
+                                elif "AFILIADO" in t_prod_upper: p_m = p_m * 1.17
+                                elif "ORGANICO" in t_prod_upper or "ORGÁNICO" in t_prod_upper: p_m = p_m * 1.01
+                                else: p_m = p_m * 1.11 # SOCIO / AGRICOLAS / COOPERATIVA
+                                
                             c_t_p = round((d * ha_sim) * p_m, 0)
                             mezcla_total += c_t_p
                             tabla_visual.append({"PRODUCTO": p, "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": f"$ {p_b:,.0f}".replace(",","."), "P. + MARGEN": f"$ {p_m:,.0f}".replace(",","."), "COSTO TOTAL": f"$ {c_t_p:,.0f}".replace(",",".")})
@@ -1284,13 +1294,23 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         dosis_teorica = 0.0
 
                 dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
+                
+                # 🎯 EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG (VALIDACIÓN SAP)
+                precio_marginado_final = costo_unit * mult_material # Paso 1: Margen Normal
+                
+                if "MANZATE 200 WG" in str(nombre_limpio).upper() or "MANZATE 200 WG" in str(nombre_p).upper():
+                    t_prod_upper = str(tipo_productor).upper()
+                    if "TERCERO" in t_prod_upper: precio_marginado_final = precio_marginado_final * 1.28
+                    elif "AFILIADO" in t_prod_upper: precio_marginado_final = precio_marginado_final * 1.17
+                    elif "ORGANICO" in t_prod_upper or "ORGÁNICO" in t_prod_upper: precio_marginado_final = precio_marginado_final * 1.01
+                    else: precio_marginado_final = precio_marginado_final * 1.11 # SOCIO / AGRICOLAS / COOPERATIVA
 
                 matriz_datos.append({
                     "A: Producto": nombre_p, 
                     "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), 
                     "C: X (Extra %)": 0.0, 
                     "D: Dosis Total (Sistema)": dosis_ideal_pura, 
-                    "E: Costo Unit (+Margen)": round(costo_unit * mult_material, 0),
+                    "E: Costo Unit (+Margen)": round(precio_marginado_final, 0),
                     "G: Lotes (SAP)": lote_sap, 
                     "H: Saldo Real SAP": round(saldo_sap, 3), 
                     "I: Sugerido SAP (Total)": round(cant_linea_sap, 3)
