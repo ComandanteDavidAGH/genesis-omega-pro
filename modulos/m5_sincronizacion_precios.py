@@ -215,10 +215,19 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     col_soc = f"COOP/SOCIO (+{fmt_pct(margenes['COOPERATIVA / SOCIO'])}%)"
     col_org = f"ORGÁNICO (+{fmt_pct(margenes['ORGANICO'])}%)"
 
+    # 1. Cálculo general para todos los productos
     df[col_ter] = (df['COSTO BASE'] * margenes['TERCERO']).round(0)
     df[col_afi] = (df['COSTO BASE'] * margenes['AFILIADO']).round(0)
     df[col_soc] = (df['COSTO BASE'] * margenes['COOPERATIVA / SOCIO']).round(0)
     df[col_org] = (df['COSTO BASE'] * margenes['ORGANICO']).round(0)
+    
+    # 🎯 2. EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG
+    mask_manzate = df['PRODUCTO'].str.contains("MANZATE 200 WG", na=False)
+    
+    df.loc[mask_manzate, col_ter] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['TERCERO'] * 1.28).round(0)
+    df.loc[mask_manzate, col_afi] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['AFILIADO'] * 1.17).round(0)
+    df.loc[mask_manzate, col_soc] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['COOPERATIVA / SOCIO'] * 1.11).round(0)
+    df.loc[mask_manzate, col_org] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['ORGANICO'] * 1.01).round(0)
     
     cols = ["PRODUCTO", "COSTO BASE", col_ter, col_afi, col_soc, col_org]
     df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
