@@ -977,9 +977,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if not df_cfg.empty:
         match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
         if not match_cfg.empty:
-            mult_material = limpiar_numero_estricto(match_cfg.iloc[0].iloc[2]) # Columna C (Material TOTAL)
-            tarifa_serv_tec_base = limpiar_dinero(match_cfg.iloc[0].iloc[3]) # Columna D (Servicio Tec)
-            mult_avion_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[5]) # Columna F (Avion TOTAL)
+            # 💥 BISTURÍ: Desplazamos la mira +1 a la derecha para leer los multiplicadores reales
+            mult_material = limpiar_numero_estricto(match_cfg.iloc[0].iloc[3]) # Ahora lee 1.1407
+            tarifa_serv_tec_base = limpiar_dinero(match_cfg.iloc[0].iloc[4])   # Ahora lee el Serv. Tec real
+            mult_avion_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[6]) # Ahora lee el Avión real
 
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
