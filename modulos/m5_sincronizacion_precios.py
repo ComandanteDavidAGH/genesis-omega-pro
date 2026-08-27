@@ -173,12 +173,12 @@ def obtener_tarifario_maestro_cached(_supabase_client):
                     except: pass
                     return 0.0
 
-                # 💥 BISTURÍ DEFINITIVO: Eliminamos el bucle viejo y leemos directo la Columna C (Índice 2)
+                # 💥 BISTURÍ DEFINITIVO: Leemos directo la Columna C (Índice 2)
                 for idx, row in df_raw.iterrows():
                     grupo = str(row.iloc[0]).strip().upper()
                     if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
                         
-                        factor = parse_mult(row.iloc[2]) # <-- DIRECTO A LA YUGULAR (Columna TOTAL)
+                        factor = parse_mult(row.iloc[2]) # <-- DIRECTO A LA COLUMNA TOTAL
                         
                         if factor > 1.0:
                             if grupo in ["SOCIO", "COOPERATIVA"]: margenes["COOPERATIVA / SOCIO"] = factor
@@ -201,7 +201,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
     df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
     df = df[df['COSTO BASE'] > 0].copy()
     
-    # 💥 PURIFICACIÓN DE DUPLICADOS (Aplastamos filas repetidas, como en Módulo 1)
+    # 💥 PURIFICACIÓN DE DUPLICADOS (Aplastamos filas repetidas)
     df = df.drop_duplicates(subset=['PRODUCTO'], keep='last').copy()
     
     if df.empty: return pd.DataFrame(), [], {}
