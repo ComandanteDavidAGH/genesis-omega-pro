@@ -151,6 +151,7 @@ def obtener_tarifario_maestro_cached(_supabase_client):
             if respuesta.data: df = pd.DataFrame(respuesta.data)
         except Exception: df = pd.DataFrame()
 
+    # 🔥 ESCUDO DE SEGURIDAD: Márgenes por defecto
     margenes = {"TERCERO": 1.451, "AFILIADO": 1.164, "COOPERATIVA / SOCIO": 1.112, "ORGANICO": 1.011}
     
     gc = obtener_cliente_gspread_unificado()
@@ -172,6 +173,64 @@ def obtener_tarifario_maestro_cached(_supabase_client):
                     except: pass
                     return 0.0
 
+                # 💥 BISTURÍ DEFINITIVO: Eliminamos el bucle viejo y leemos directo la Columna C (Índice 2)
+                for idx, row in df_raw.iterrows():
+                    grupo = str(row.iloc[0]).strip().upper()
+                    if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
+                        
+                        factor = parse_mult(row.iloc[2]) # <-- DIRECTO A LA YUGULAR (Columna TOTAL)
+                        
+                        if factor > 1.0:
+                            if grupo in ["SOCIO", "COOPERATIVA"]: margenes["COOPERATIVA / SOCIO"] = factor
+                            elif grupo == "TERCERO": margenes["TERCERO"] = factor
+                            elif grupo == "AFILIADO": margenes["AFILIADO"] = factor
+                            elif grupo == "ORGANICO": margenes["ORGANICO"] = factor
+                        
+                if df.empty and len(df_raw.columns) > 10:
+                    df = df_raw.iloc[:, [8, 10]].copy()
+                    df.columns = ['PRODUCTO', 'COSTO']
+        except Exception: pass
+
+    if df.empty or 'PRODUCTO' not in df.columns or 'COSTO' not in df.columns:
+        return pd.DataFrame(), [], {}
+        
+    df['PRODUCTO'] = df['PRODUCTO'].astype(str).str.strip().str.upper()
+    mask_validos = (df['PRODUCTO'].notna() & (df['PRODUCTO'] != "") & (df['PRODUCTO'] != "PRODUCTO") & (~df['PRODUCTO'].str.contains("INVENTARIO", na=False)))
+    df = df[mask_validos].copy()
+    
+    df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
+    df = df[df['COSTO BASE'] > 0].copy()
+    
+    # 💥 PURIFICACIÓN DE DUPLICADOS (Aplastamos filas repetidas, como en Módulo 1)
+    df = df.drop_duplicates(subset=['PRODUCTO'], keep='last').copy()
+    
+    if df.empty: return pd.DataFrame(), [], {}
+    
+    def fmt_pct(factor): return round((factor - 1.0) * 100, 2)
+    
+    col_ter = f"TERCERO (+{fmt_pct(margenes['TERCERO'])}%)"
+    col_afi = f"AFILIADO (+{fmt_pct(margenes['AFILIADO'])}%)"
+    col_soc = f"COOP/SOCIO (+{fmt_pct(margenes['COOPERATIVA / SOCIO'])}%)"
+    col_org = f"ORGÁNICO (+{fmt_pct(margenes['ORGANICO'])}%)"
+
+    # 1. Cálculo general de precios
+    df[col_ter] = (df['COSTO BASE'] * margenes['TERCERO']).round(0)
+    df[col_afi] = (df['COSTO BASE'] * margenes['AFILIADO']).round(0)
+    df[col_soc] = (df['COSTO BASE'] * margenes['COOPERATIVA / SOCIO']).round(0)
+    df[col_org] = (df['COSTO BASE'] * margenes['ORGANICO']).round(0)
+    
+    # 🎯 2. EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG
+    mask_manzate = df['PRODUCTO'].str.contains("MANZATE 200 WG", na=False)
+    
+    df.loc[mask_manzate, col_ter] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['TERCERO'] * 1.28).round(0)
+    df.loc[mask_manzate, col_afi] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['AFILIADO'] * 1.17).round(0)
+    df.loc[mask_manzate, col_soc] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['COOPERATIVA / SOCIO'] * 1.11).round(0)
+    df.loc[mask_manzate, col_org] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['ORGANICO'] * 1.01).round(0)
+    
+    cols = ["PRODUCTO", "COSTO BASE", col_ter, col_afi, col_soc, col_org]
+    df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
+    
+    return df_tarifario, cols[1:], margenes
                 for idx, row in df_raw.iterrows():
                             grupo = str(row.iloc[0]).strip().upper()
                             if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
