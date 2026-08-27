@@ -742,7 +742,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             p = df_cfg[mask].iloc[0, c_p_i] 
                     
                     if mask.any():
-                        if mask.any():
                         # 💥 CURA: Utilizamos limpiar_dinero para los costos base
                         p_b = limpiar_dinero(df_cfg[mask].iloc[0, c_c_i])
                         if p_b > 0:
