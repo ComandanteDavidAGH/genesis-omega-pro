@@ -113,7 +113,7 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=1) # 🎯 Caché en Tiempo Real para no arrastrar errores
+@st.cache_data(show_spinner=False, ttl=1)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -152,11 +152,7 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
             col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
             if col_f and col_d:
                 fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-                
-                # 🎯 CIRUGÍA: BÚSQUEDA EXACTA. Evita que "MACONDO" atrape los vuelos de "MACONDO SUR"
                 mask = fincas_alpha == f_obj_alpha
-                
-                # Solo si la exacta falla (por ej: la finca tiene código SAP "MACONDO 123"), usamos la flexible
                 if not mask.any(): 
                     mask = fincas_alpha.str.startswith(f_obj_alpha, na=False)
                 if not mask.any():
@@ -166,7 +162,6 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
                 for d_raw in df_fil[col_d]:
                     fecha_valida = procesar_fecha_estricta(d_raw)
                     if pd.notna(fecha_valida): 
-                        # Extraemos fecha pura (.date()) sin horas invisibles
                         fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
 
         extraer_fechas_motor(df_viva)
@@ -201,42 +196,28 @@ def cargar_matriz_tarifas_mod3():
     return pd.DataFrame()
 
 def extraer_tarifas_dinamicas(df_tarifas, anio_str):
-    dict_av = {}
-    dict_dr = {}
-    dict_topes = {
-        "TOPE MAX GENERAL": {},
-        "TOPE SUR": {},
-        "TOPE PARCELA INTER < 20HA": {}
-    }
-    
-    if df_tarifas.empty:
-        return DICT_AVIONES_DEFAULT, DICT_DRONES_DEFAULT, dict_topes, None
-        
+    dict_av, dict_dr = {}, {}
+    dict_topes = {"TOPE MAX GENERAL": {}, "TOPE SUR": {}, "TOPE PARCELA INTER < 20HA": {}}
+    if df_tarifas.empty: return DICT_AVIONES_DEFAULT, DICT_DRONES_DEFAULT, dict_topes, None
     anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
     col_anio = anio_str if anio_str in anios_disp else None
-    
     if not col_anio:
         valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
         col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
-        
     if col_anio:
         for _, r in df_tarifas.iterrows():
             pista = str(r.get('PISTA', '')).strip().upper()
             equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
             tarifa_val = extraer_numero(r[col_anio])
-            
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
             elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
             elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
-                 nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
-                 dict_dr[nombre_dron] = tarifa_val
+                 dict_dr[equipo if "DRON" in equipo else f"DRONE {equipo}"] = tarifa_val
             elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
                  dict_av[equipo] = tarifa_val
-                 
     if not dict_av: dict_av = DICT_AVIONES_DEFAULT
     if not dict_dr: dict_dr = DICT_DRONES_DEFAULT
-    
     return dict_av, dict_dr, dict_topes, col_anio
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
@@ -288,8 +269,7 @@ def cargar_diccionarios_crudos():
     f_col = -1
     for r in range(min(20, len(datos))):
         for c in range(len(datos[r])):
-            if 'FERTILIZANTE' in str(datos[r][c]).upper():
-                f_col = c; break
+            if 'FERTILIZANTE' in str(datos[r][c]).upper(): f_col = c; break
         if f_col != -1: break
     if f_col != -1 and f_col + 1 < len(datos[0]):
         for r in range(1, len(datos)):
@@ -373,7 +353,6 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
 
-# 🎯 FIRMA SEGURA CON *args, **kwargs
 def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kwargs):
     hora_oficial_col = obtener_hora_colombia()
     hoy_colombia_date = hora_oficial_col.date()
@@ -859,10 +838,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     # 💥 CURA DEFINITIVA: Formateo nativo forzado (garantiza el punto de miles)
                     valores_formateados = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz['E: Costo Unit (+Margen)'].fillna(0).tolist()]
                     st.code("\n".join(valores_formateados), language="text")
-                    # -------------------------------------------------
-                    else:
-                        st.info("Matriz vacía.")
-                    # -------------------------------------------------
 
             from decimal import Decimal, ROUND_HALF_UP
 
@@ -1119,4 +1094,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     except Exception as e_save: st.error(f"🚨 Falla en el Guardado: {e_save}")
 
 if __name__ == "__main__":
-    pass
+    pass LISTO COMPAÑERO TODO FUNCIONA EXCELENTE E INCLUSO PROBE EL MDO SIMUALDOR Y TODO ESTA OK. LO UNICO ES ESTO EN  EL MDO SIMULADOR LAS CANTIDADES NO SALEN CON EL SIGNO $ SERA QUE EN VEZ DE SALIR EL TOTAL COMPLETO SIN PUNTOS NI COMAS DEBE SALIR CON EL SIGNO $ Y SEPARADOS POR PUNTOS NO SE SI ES MUCHO PEDIR PARA LAS COORDENADAS DONDE DEBO AJUSTAR QUE NO AFECTE NADA MAS PORQUE TE DOY UN 10. EL COSTO UNITARIO Y EL COTO TOTAL EN EL PANEL DE MEZCLAS A ESAS ME REFIERO MIRA TE PASO LA IMAGEN PARA MAYOR REFERENCIA. Y POR OTRA PARTE EL SIMULADOR ME FUNCIONA EXCELENTE INCLUSIVE REALIZA TODOS LOS AJUSTES PREVIOS SI RECUERDA EL COSTO UNITARIO SALIA TODO FEO ASI LO QUIERO PERO ME GUARDO EL REQUERIMIENTO DE DEONAR LA FACTURA, AHI SI NO ME DEJO TE PASO LA IMAGEN DEL ERROR
+
+There is a file you can reference named "image_583a64.png". Refer to this file by its name verbatim.
