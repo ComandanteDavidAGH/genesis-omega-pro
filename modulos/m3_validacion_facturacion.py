@@ -1468,6 +1468,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
         with m5: 
             st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
+            st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+            if es_dr_dom:
+                st.markdown(mini_metric("🛸", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
+            else:
+                st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
         with m6:
             st.markdown(f"<div style='background-color:#0d1b2a; padding:12px; border-radius:8px; border:2px solid #d4af37; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); height: 100%; display: flex; flex-direction: column; justify-content: center;'><p style='margin:0; color:#d4af37; font-size:11px; font-weight:800; text-transform:uppercase;'>💰 COSTO x HA (Final)</p><p style='margin:0; font-size:16px; font-weight:900; color:white;'>$ {fmt_sap(costo_por_ha)}</p></div>", unsafe_allow_html=True)
         
