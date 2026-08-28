@@ -163,6 +163,7 @@ def obtener_historial_completo_ciclos_cached():
         return df_t1, df_apoyo
     except Exception: return pd.DataFrame(), pd.DataFrame()
 
+@st.cache_data(show_spinner=False, ttl=60)
 def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
     if not finca_nombre or finca_nombre == "---": return 14
     try:
