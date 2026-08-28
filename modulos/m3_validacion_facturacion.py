@@ -891,9 +891,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
             
             st.write("")
             c_sap1, c_sap2, c_sap3, c_sap4 = st.columns(4)
-            with c_sap1: st.caption("👨‍🔬 UNITARIO ST (459)"); st.code(fmt_sap(unitario_st), language="text")
-            with c_sap2: st.caption("✈️ UNITARIO Vuelo (429)"); st.code(fmt_sap(unitario_vuelo), language="text")
-            with c_sap3: st.caption("🧪 TOTAL Mezcla"); st.code(fmt_sap(costo_mezcla_total), language="text")
+            with c_sap1: st.caption("👨‍🔬 UNITARIO ST (459)"); st.code(f"$ {fmt_sap(unitario_st)}", language="text")
+            with c_sap2: st.caption("✈️ UNITARIO Vuelo (429)"); st.code(f"$ {fmt_sap(unitario_vuelo)}", language="text")
+            with c_sap3: st.caption("🧪 TOTAL Mezcla"); st.code(f"$ {fmt_sap(costo_mezcla_total)}", language="text")
             with c_sap4: st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha)}</h4></div>", unsafe_allow_html=True)
 
             html_totales = f"""
@@ -1099,6 +1099,4 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     except Exception as e_save: st.error(f"🚨 Falla en el Guardado: {e_save}")
 
 if __name__ == "__main__":
-    pass LISTO COMPAÑERO TODO FUNCIONA EXCELENTE E INCLUSO PROBE EL MDO SIMUALDOR Y TODO ESTA OK. LO UNICO ES ESTO EN  EL MDO SIMULADOR LAS CANTIDADES NO SALEN CON EL SIGNO $ SERA QUE EN VEZ DE SALIR EL TOTAL COMPLETO SIN PUNTOS NI COMAS DEBE SALIR CON EL SIGNO $ Y SEPARADOS POR PUNTOS NO SE SI ES MUCHO PEDIR PARA LAS COORDENADAS DONDE DEBO AJUSTAR QUE NO AFECTE NADA MAS PORQUE TE DOY UN 10. EL COSTO UNITARIO Y EL COTO TOTAL EN EL PANEL DE MEZCLAS A ESAS ME REFIERO MIRA TE PASO LA IMAGEN PARA MAYOR REFERENCIA. Y POR OTRA PARTE EL SIMULADOR ME FUNCIONA EXCELENTE INCLUSIVE REALIZA TODOS LOS AJUSTES PREVIOS SI RECUERDA EL COSTO UNITARIO SALIA TODO FEO ASI LO QUIERO PERO ME GUARDO EL REQUERIMIENTO DE DEONAR LA FACTURA, AHI SI NO ME DEJO TE PASO LA IMAGEN DEL ERROR
-
-There is a file you can reference named "image_583a64.png". Refer to this file by its name verbatim.
+    pass 
