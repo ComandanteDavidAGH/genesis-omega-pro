@@ -808,9 +808,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     ]
                     df_matriz = df_matriz[columnas_ordenadas]
                     
-                    # 💥 CURA VISUAL: Formatear a texto con puntos solo para mostrar en pantalla
+                    # 💥 CURA VISUAL: Formatear a texto con signo $ y puntos de miles
                     df_vista = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).copy()
-                    df_vista["E: Costo Unit (+Margen)"] = df_vista["E: Costo Unit (+Margen)"].apply(lambda x: f"{int(x):,.0f}".replace(",", "."))
+                    df_vista["E: Costo Unit (+Margen)"] = df_vista["E: Costo Unit (+Margen)"].apply(lambda x: f"$ {int(x):,.0f}".replace(",", "."))
                     
                     # 💥 NUEVA CAPA: Formato SAP para el Saldo (Punto de miles, coma de decimales)
                     df_vista["H: Saldo Real SAP"] = df_vista["H: Saldo Real SAP"].apply(lambda x: f"{float(x):,.3f}".replace(",", "X").replace(".", ",").replace("X", "."))
@@ -833,11 +833,16 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                         use_container_width=True, hide_index=True
                     )
 
+                    # --- 📋 RESTAURACIÓN DEL PANEL DE COPIA RÁPIDA ---
                     st.write("")
                     st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
-                    # 💥 CURA DEFINITIVA: Formateo nativo forzado (garantiza el punto de miles)
-                    valores_formateados = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz['E: Costo Unit (+Margen)'].fillna(0).tolist()]
-                    st.code("\n".join(valores_formateados), language="text")
+                    if not df_matriz.empty:
+                        # 💥 CURA DEFINITIVA: Formateo nativo forzado (garantiza el punto de miles, SIN el signo $ para que SAP lo acepte)
+                        valores_formateados = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz['E: Costo Unit (+Margen)'].fillna(0).tolist()]
+                        st.code("\n".join(valores_formateados), language="text")
+                    else:
+                        st.info("Matriz vacía.")
+                    # -------------------------------------------------
 
             from decimal import Decimal, ROUND_HALF_UP
 
