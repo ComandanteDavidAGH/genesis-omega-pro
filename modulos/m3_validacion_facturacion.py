@@ -1448,7 +1448,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         def mini_metric(i, t, v): 
             return f"<div style='background-color:#ffffff; padding:12px; border-radius:8px; border: 2px solid #0d1b2a; border-left:5px solid #d4af37; box-shadow: 0 2px 4px rgba(0,0,0,0.06); height: 100%;'><p style='margin:0; font-size:11px; font-weight:800; color:#0d1b2a; text-transform:uppercase;'>{i} {t}</p><p style='margin:0; font-size:15px; font-weight:900; color:#1a365d;'>{v}</p></div>"
         
-        # 💥 FILA 1: Tres recuadros métricos
+        # 💥 FILA 1 (3 columnas): Datos generales
         m1, m2, m3 = st.columns(3)
         with m1:
             st.markdown(mini_metric("🗺️", "Hectáreas", f"{ha_dosis_final:.2f} Ha"), unsafe_allow_html=True)
@@ -1462,23 +1462,24 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             
         st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
         
-        # 💥 FILA 2: Tres recuadros (Incluyendo el Costo x Ha en negro)
-        m4, m5, m6 = st.columns(3)
+        # 💥 FILA 2 (2 columnas): Tarifas base
+        m4, m5 = st.columns(2)
         with m4:
             st.markdown(mini_metric("👨‍🔬", "Tarifa ST", f"$ {fmt_sap(tarifa_serv_tec_base)}"), unsafe_allow_html=True)
         with m5: 
             st.markdown(mini_metric("✈️", "Mult.", f"x {multi_aviones_final}"), unsafe_allow_html=True)
-            st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+            
+        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+        
+        # 💥 FILA 3 (2 columnas): Totales por unidad
+        m6, m7 = st.columns(2)
+        with m6:
             if es_dr_dom:
                 st.markdown(mini_metric("🛸", "Tarifa Dron", f"$ {fmt_sap(precio_dron_ref)}"), unsafe_allow_html=True)
             else:
                 st.markdown(mini_metric("⏱️", "Precio Hora", f"$ {fmt_sap(precio_columna_ref)}"), unsafe_allow_html=True)
-        with m6:
+        with m7:
             st.markdown(f"<div style='background-color:#0d1b2a; padding:12px; border-radius:8px; border:2px solid #d4af37; text-align:center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); height: 100%; display: flex; flex-direction: column; justify-content: center;'><p style='margin:0; color:#d4af37; font-size:11px; font-weight:800; text-transform:uppercase;'>💰 COSTO x HA (Final)</p><p style='margin:0; font-size:16px; font-weight:900; color:white;'>$ {fmt_sap(costo_por_ha)}</p></div>", unsafe_allow_html=True)
-        
-        st.write("")
-        
-        # 💥 FILA 3: Los 3 selectores de copiado rápido (Unitarios y Mezcla)
         c_sap1, c_sap2, c_sap3 = st.columns(3)
         with c_sap1:
             st.caption("👨‍🔬 UNITARIO ST (459)")
