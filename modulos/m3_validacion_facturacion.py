@@ -1559,6 +1559,24 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         """, unsafe_allow_html=True)
 
         if st.button("💾 DETONAR FACTURA Y GUARDAR EN BÓVEDA", type="primary", use_container_width=True):
+            errores_validacion = []
+
+            if ha_dosis_final <= 0:
+                errores_validacion.append("🗺️ Las hectáreas (Ha Dosis) deben ser mayores a 0.")
+
+            if total_ha_cobro_escuadron <= 0:
+                errores_validacion.append("✈️ No hay aviones ni drones cargados en el Hangar de Despliegue (0 Ha totales).")
+
+            if gran_total <= 0:
+                errores_validacion.append(f"💰 El Total de la Operación es ${fmt_sap(gran_total)}, lo cual es inválido. Revisa tarifas, tope de pista y matriz de mezcla antes de guardar.")
+
+            if costo_por_ha <= 0:
+                errores_validacion.append(f"📊 El Costo x Ha final es ${fmt_sap(costo_por_ha)}, lo cual es inválido.")
+
+            if errores_validacion:
+                st.error("🚨 **NO SE PUEDE GUARDAR — Revisa lo siguiente antes de detonar la factura:**\n\n" + "\n\n".join(errores_validacion))
+                st.stop()
+
             with st.spinner("🚀 Dividiendo Rendimientos e Inyectando Múltiples Aeronaves..."):
                 try:
                     gc_save = obtener_cliente_gspread_unificado()
