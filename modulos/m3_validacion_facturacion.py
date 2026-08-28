@@ -824,7 +824,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     columnas_ordenadas = ["A: Producto", "B: Dosis/Ha (SAP)", "C: X (Extra %)", "D: Dosis Total (Sistema)", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "TOTAL_PROD_SAP"]
                     df_matriz = df_matriz[columnas_ordenadas]
                     
-                    df_estilizado = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).style.apply(estilizar_dosis_ideal, axis=1)
+                    # 🎯 CIRUGÍA: Formatear solo la vista para la estética de la tabla (Puntos de Miles)
+                    df_vista = df_matriz.drop(columns=["TOTAL_PROD_SAP"]).copy()
+                    df_vista["E: Costo Unit (+Margen)"] = df_vista["E: Costo Unit (+Margen)"].apply(lambda x: f"{int(x):,.0f}".replace(",", "."))
+                    
+                    df_estilizado = df_vista.style.apply(estilizar_dosis_ideal, axis=1)
 
                     edited_df = st.data_editor(
                         df_estilizado,
@@ -835,7 +839,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                             "D: Dosis Total (Sistema)": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                             "I: Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
                             "📊 Ajuste de Campo": st.column_config.TextColumn("📊 Ajuste de Campo"),
-                            "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
+                            "E: Costo Unit (+Margen)": st.column_config.TextColumn("Costo Unit (COP)"), # 🎯 Cambiado a TextColumn
                             "H: Saldo Real SAP": st.column_config.NumberColumn("Saldo SAP", format="%.3f"),
                         },
                         disabled=["A: Producto", "D: Dosis Total (Sistema)", "E: Costo Unit (+Margen)", "G: Lotes (SAP)", "H: Saldo Real SAP", "I: Sugerido SAP (Total)", "📊 Ajuste de Campo"],
@@ -845,8 +849,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
                     # --- 📋 RESTAURACIÓN DEL PANEL DE COPIA RÁPIDA ---
                     st.write("")
                     st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
-                    if not df_matriz.empty:
-                        st.code("\n".join(df_matriz['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
+                    # 🎯 CIRUGÍA: Formatear con separadores de miles para que se vea perfecto al copiar a SAP
+                    valores_formateados = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz['E: Costo Unit (+Margen)'].fillna(0).tolist()]
+                    st.code("\n".join(valores_formateados), language="text")
+                    # -------------------------------------------------
                     else:
                         st.info("Matriz vacía.")
                     # -------------------------------------------------
