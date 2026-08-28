@@ -163,20 +163,26 @@ def calcular_dias_ciclo_real(finca_nombre, fecha_vuelo):
         fechas_encontradas = set() 
 
         def extraer_fechas_motor(df_temp):
-            if df_temp.empty: return
-            col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
-            col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
-            if col_f and col_d:
-                fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
-                
-                # 💥 CURA DEFINITIVA: str.contains en lugar de '==' para ignorar los códigos SAP "14312"
-                mask = fincas_alpha.str.contains(f_obj_alpha, na=False)
-                df_fil = df_temp[mask]
-                
-                for d_raw in df_fil[col_d]:
-                    fecha_valida = procesar_fecha_estricta(d_raw)
-                    if pd.notna(fecha_valida): 
-                        fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
+         if df_temp.empty: return
+         col_f = next((c for c in df_temp.columns if 'FINCA' in str(c).upper() or 'PROPIEDAD' in str(c).upper()), None)
+         col_d = next((c for c in df_temp.columns if 'FECHA' in str(c).upper() or 'DATE' in str(c).upper()), None)
+         if col_f and col_d:
+             fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+        
+             # 🛡️ CASCADA DE SEGURIDAD: exacto primero, luego "empieza con",
+             # y "contiene" solo como último recurso (evita mezclar fincas con nombres parecidos)
+             mask = fincas_alpha == f_obj_alpha
+             if not mask.any():
+                 mask = fincas_alpha.str.startswith(f_obj_alpha, na=False)
+             if not mask.any():
+                 mask = fincas_alpha.str.contains(f_obj_alpha, na=False, regex=False)
+        
+             df_fil = df_temp[mask]
+        
+             for d_raw in df_fil[col_d]:
+                 fecha_valida = procesar_fecha_estricta(d_raw)
+                 if pd.notna(fecha_valida): 
+                     fechas_encontradas.add(pd.to_datetime(fecha_valida).date())
 
         extraer_fechas_motor(df_viva)
         extraer_fechas_motor(df_hist)
