@@ -93,6 +93,14 @@ def limpiar_dinero(val):
         v = re.sub(r'[^\d\.\-]', '', v)
         return float(v) if v else 0.0
     except: return 0.0
+def aplicar_excepcion_manzate(precio_con_margen, nombre_producto, tipo_productor):
+    if "MANZATE 200 WG" not in str(nombre_producto).upper():
+        return precio_con_margen
+    t = str(tipo_productor).upper()
+    if "TERCERO" in t: return precio_con_margen * 1.28
+    if "AFILIADO" in t: return precio_con_margen * 1.17
+    if "ORGANICO" in t or "ORGÁNICO" in t: return precio_con_margen * 1.01
+    return precio_con_margen * 1.11
 
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -131,7 +139,7 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
-@st.cache_data(show_spinner=False, ttl=1800)
+@st.cache_data(show_spinner=False, ttl=60)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
     gc = obtener_cliente_gspread_unificado()
@@ -653,7 +661,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 # Rescatar tope dinámico del año seleccionado
                 val_tope = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 0.0)
                 if val_tope == 0.0: val_tope = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
-                if val_tope == 999999: val_tope = 0.0
+                
 
                 if vuelo_sim in dict_drones_sim: 
                     tarifa_vuelo_base = float(dict_drones_sim.get(vuelo_sim, 0))
@@ -752,15 +760,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         p_b = limpiar_dinero(df_cfg[mask].iloc[0, c_c_i])
                         if p_b > 0:
                             p_m = p_b * mult_m # Paso 1: Aplicamos el Margen Normal de la Tabla de Configuración
-                            
-                            # 🎯 EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG (SIMULADOR)
-                            if "MANZATE 200 WG" in str(p).upper():
-                                t_prod_upper = str(tipo_prod_sim).upper()
-                                if "TERCERO" in t_prod_upper: p_m = p_m * 1.28
-                                elif "AFILIADO" in t_prod_upper: p_m = p_m * 1.17
-                                elif "ORGANICO" in t_prod_upper or "ORGÁNICO" in t_prod_upper: p_m = p_m * 1.01
-                                else: p_m = p_m * 1.11 # SOCIO / AGRICOLAS / COOPERATIVA
-                                
+                            p_m = aplicar_excepcion_manzate(p_m, p, tipo_prod_sim)
                             c_t_p = round((d * ha_sim) * p_m, 0)
                             mezcla_total += c_t_p
                             tabla_visual.append({"PRODUCTO": p, "DOSIS": f"{d:.3f}", "X": "-", "P. UNIT.": f"$ {p_b:,.0f}".replace(",","."), "P. + MARGEN": f"$ {p_m:,.0f}".replace(",","."), "COSTO TOTAL": f"$ {c_t_p:,.0f}".replace(",",".")})
@@ -1303,14 +1303,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 
                 # 🎯 EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG (VALIDACIÓN SAP)
                 precio_marginado_final = costo_unit * mult_material # Paso 1: Margen Normal
-                
-                if "MANZATE 200 WG" in str(nombre_limpio).upper() or "MANZATE 200 WG" in str(nombre_p).upper():
-                    t_prod_upper = str(tipo_productor).upper()
-                    if "TERCERO" in t_prod_upper: precio_marginado_final = precio_marginado_final * 1.28
-                    elif "AFILIADO" in t_prod_upper: precio_marginado_final = precio_marginado_final * 1.17
-                    elif "ORGANICO" in t_prod_upper or "ORGÁNICO" in t_prod_upper: precio_marginado_final = precio_marginado_final * 1.01
-                    else: precio_marginado_final = precio_marginado_final * 1.11 # SOCIO / AGRICOLAS / COOPERATIVA
-
+                precio_marginado_final = aplicar_excepcion_manzate(precio_marginado_final, f"{nombre_limpio} {nombre_p}", tipo_productor)
                 matriz_datos.append({
                     "A: Producto": nombre_p, 
                     "B: Dosis/Ha (SAP)": round(dosis_teorica, 3), 
@@ -1718,7 +1711,14 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                     rango_maestra = f"A{f_azul}:{get_column_letter(len(filas_maestra_a_inyectar[0]))}{f_azul + len(filas_maestra_a_inyectar) - 1}"
                     rango_apoyo = f"A{f_apoyo}:{get_column_letter(len(filas_apoyo_a_inyectar[0]))}{f_apoyo + len(filas_apoyo_a_inyectar) - 1}"
-
+                    valor_actual_fila = hoja_maestra.cell(f_azul, 1).value
+                    if valor_actual_fila and str(valor_actual_fila).strip() != "":
+                        st.error(
+                            f"🚨 CONFLICTO DE CONCURRENCIA: la fila {f_azul} de TABLA 1 ya "
+                            "fue ocupada por otra operación mientras se calculaba esta factura. "
+                            "Sincroniza el módulo y reintenta para evitar sobrescribir datos."
+                        )
+                        st.stop()
                     hoja_maestra.update(range_name=rango_maestra, values=filas_maestra_a_inyectar, value_input_option='USER_ENTERED')
                     hoja_apoyo.update(range_name=rango_apoyo, values=filas_apoyo_a_inyectar, value_input_option='USER_ENTERED')
                     if filas_memoria: 
