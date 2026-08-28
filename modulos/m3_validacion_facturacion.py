@@ -494,18 +494,17 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext, *args, **kw
 
         if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia: tipo_productor = "COOPERATIVA"
         if not df_cfg.empty:
-            if not df_cfg.empty:
-                match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
-                if not match_cfg.empty:
-                    mult_material = extraer_numero(match_cfg.iloc[0].iloc[3])
-                    tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
-                    mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
+            match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
+            if not match_cfg.empty:
+                mult_material = extraer_numero(match_cfg.iloc[0].iloc[3])
+                tarifa_serv_tec_base = extraer_numero(match_cfg.iloc[0].iloc[4])
+                mult_avion_base = extraer_numero(match_cfg.iloc[0].iloc[6])
 
-                    # 🛡️ CORRECCIÓN: los multiplicadores (~1.0 a 2.0) nunca deben superar 10.
-                    # Si extraer_numero() malinterpretó "1,112" como 1112 (formato coma decimal
-                    # español leído como separador de miles inglés), se corrige aquí.
-                   if mult_material > 10: mult_material /= 1000
-                   if mult_avion_base > 10: mult_avion_base /= 1000
+                # 🛡️ CORRECCIÓN: los multiplicadores (~1.0 a 2.0) nunca deben superar 10.
+                # Si extraer_numero() malinterpretó "1,112" como 1112 (formato coma decimal
+                # español leído como separador de miles inglés), se corrige aquí.
+                if mult_material > 10: mult_material /= 1000
+                if mult_avion_base > 10: mult_avion_base /= 1000
 
         if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
         if 'fecha_operacion_anterior' not in st.session_state: st.session_state.fecha_operacion_anterior = fecha_operacion
