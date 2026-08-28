@@ -648,8 +648,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
+            
+            st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+            click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
 
-        if st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True) and ha_sim > 0:
+        if click_megazord and ha_sim > 0:
             try:
                 # 💥 CURA: Multiplicadores y bases usan el motor numérico estricto
                 if tipo_prod_sim == "TERCERO": mult_m = 1.451; st_base = 1583.0; mult_v = 1.451
