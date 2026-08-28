@@ -690,7 +690,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
 
-                receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
+                col0_recetas = df_recetas.iloc[:,0].astype(str).str.upper().str.strip()
+                receta_c = df_recetas[col0_recetas == base_c]
+                if receta_c.empty:
+                    receta_c = df_recetas[col0_recetas.str.startswith(base_c, na=False)]
+                if receta_c.empty:
+                    receta_c = df_recetas[col0_recetas.str.contains(base_c, na=False, regex=False)]
+                prods_f = []receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
                 prods_f = []
                 for idx, row in receta_c.iterrows():
                     p = str(row.iloc[1]).upper().strip()
