@@ -991,13 +991,22 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia:
         tipo_productor = "COOPERATIVA"
     
-    if not df_cfg.empty:
+        if not df_cfg.empty:
+        col_map_cfg = {str(c).strip().upper(): c for c in df_cfg.columns}
         match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
         if not match_cfg.empty:
-            # 💥 BISTURÍ: Desplazamos la mira +1 a la derecha para leer los multiplicadores reales
-            mult_material = limpiar_numero_estricto(match_cfg.iloc[0].iloc[3]) # Ahora lee 1.1407
-            tarifa_serv_tec_base = limpiar_dinero(match_cfg.iloc[0].iloc[4])   # Ahora lee el Serv. Tec real
-            mult_avion_base = limpiar_numero_estricto(match_cfg.iloc[0].iloc[6]) # Ahora lee el Avión real
+            fila_cfg = match_cfg.iloc[0]
+            try:
+                mult_material = limpiar_numero_estricto(fila_cfg[col_map_cfg["MATERIAL MULT"]])
+                tarifa_serv_tec_base = limpiar_dinero(fila_cfg[col_map_cfg["SERVICIO TEC BASE"]])
+                mult_avion_base = limpiar_numero_estricto(fila_cfg[col_map_cfg["AVION MULT"]])
+            except KeyError as e:
+                st.error(f"🚨 Falta la columna {e} en la hoja «Configuración». Revisa que los encabezados digan exactamente: Material Mult, Servicio Tec Base, Avion Mult.")
+                st.stop()
+
+    if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
+        st.error(f"🚨 La configuración financiera para el productor «{tipo_productor}» tiene un valor en cero o negativo. Verifica la hoja «Configuración» antes de facturar.")
+        st.stop()
 
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
