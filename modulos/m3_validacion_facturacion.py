@@ -785,7 +785,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 st.markdown("---")
                 st.markdown(f"### 📋 MATRIZ DE VALIDACIÓN: {finca_sim}")
                 st.caption(f"🗓️ **Días Ciclo:** Variados | 🗺️ **Área Total:** {ha_sim} Ha | 🧪 **Cóctel:** {coctel_sim}")
-                st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
+                if not tabla_visual:
+                    st.warning(f"⚠️ No se encontraron productos en «DD_Mesclas» para el cóctel «{base_c}». Revisa que el código coincida (mayúsculas, sin espacios extra) con la columna de recetas.")
+                else:
+                    st.dataframe(pd.DataFrame(tabla_visual), use_container_width=True, hide_index=True) 
                 
                 st.markdown(render_tarjetas_html(subtotal_st, subtotal_vuelo, mezcla_total, valor_recargo_t, costo_ha), unsafe_allow_html=True)
                 
