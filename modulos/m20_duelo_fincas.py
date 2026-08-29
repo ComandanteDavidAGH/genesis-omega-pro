@@ -334,8 +334,9 @@ def ejecutar():
     ha_A, inv_A, costo_integral_A, costo_os_A, html_mod_A, html_ciclos_A = calcular_metricas(df_A)
     ha_B, inv_B, costo_integral_B, costo_os_B, html_mod_B, html_ciclos_B = calcular_metricas(df_B)
 
-    clase_win_A = "victoria" if (costo_integral_A < costo_integral_B and costo_integral_A > 0) or costo_integral_B == 0 else ""
-    clase_win_B = "victoria" if (costo_integral_B < costo_integral_A and costo_integral_B > 0) or costo_integral_A == 0 else ""
+    tiene_datos_A, tiene_datos_B = costo_integral_A > 0, costo_integral_B > 0
+    clase_win_A = "victoria" if tiene_datos_A and (not tiene_datos_B or costo_integral_A < costo_integral_B) else ""
+    clase_win_B = "victoria" if tiene_datos_B and (not tiene_datos_A or costo_integral_B < costo_integral_A) else ""
 
     col_A, col_vs, col_B = st.columns([4, 1, 4])
     with col_A:
@@ -577,7 +578,7 @@ def ejecutar():
                 )
             except Exception as e:
                 st.warning(f"⚠️ Servidor sin openpyxl nativo. Generando CSV: {e}")
-                csv = df_resumen.to_csv(index=False, sep= me, decimal=',').encode('utf-8-sig')
+                csv = df_resumen.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EN CSV",
                     data=csv,
