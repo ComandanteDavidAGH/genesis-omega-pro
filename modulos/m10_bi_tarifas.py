@@ -997,6 +997,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             btn_simular = st.button("🚀 EJECUTAR SIMULACIÓN", type="primary", use_container_width=True, key="btn_simular_f")
 
         if btn_simular:
+            if margen_actual <= -100:
+                st.error("🚨 El «Margen Actual en Factura» no puede ser -100% o menor (causaría una división entre cero). Ajusta el valor antes de simular.")
+                st.stop()
+
             with st.spinner("Procesando auditoría..."):
                 df_sim = super_base_bi[(super_base_bi['FECHA_DT'].dt.date >= sim_fecha_inicio) & (super_base_bi['FECHA_DT'].dt.date <= sim_fecha_fin)].copy()
                 if col_pista_sim and sim_pista != "TODAS": df_sim = df_sim[df_sim[col_pista_sim].astype(str).str.upper() == sim_pista]
@@ -1013,9 +1017,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         os_val = str(row['OS_MAESTRA']).strip()
                         if os_val in ["", "nan"]: continue
                         
-                        tar_avion_raw = limpiar_dinero(row['AVION_MAESTRO'])
-                        tar_dom_raw = limpiar_dinero(row['DOMINIC_MAESTRO'])
-                        tarita_unitaria_actual = tar_avion_raw + tar_dom_raw
+                        tarita_unitaria_actual = sanear_valores_sap(row['AVION_MAESTRO']) + sanear_valores_sap(row['DOMINIC_MAESTRO'])
 
                         if row['AREA_NUM'] > 0:
                             t_act_red = red_excel(tarita_unitaria_actual)
