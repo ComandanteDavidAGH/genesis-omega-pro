@@ -566,36 +566,70 @@ def ejecutar(purificar_lote, extraer_numero):
                         """, unsafe_allow_html=True)
                         st.markdown("<br/>", unsafe_allow_html=True)
                         
+                        # 💥 MOTOR VISUAL PREMIUM (Alineación y Sombreado Dinámico)
                         def pintar_oraculo(row):
-                            if "CRÍTICO" in row['ESTADO']: return ['background-color: #ffe6e6; color: #cc0000; font-weight:bold;'] * len(row)
-                            if "ALERTA" in row['ESTADO']: return ['background-color: #fff3cd; color: #856404; font-weight:bold;'] * len(row)
-                            return ['color: #155724;'] * len(row)
+                            estilos = [''] * len(row)
+                            estado = str(row['ESTADO']).upper()
+                            
+                            # Fondo por nivel de alerta
+                            if "CRÍTICO" in estado: 
+                                base_style = 'background-color: #ffe6e6; color: #cc0000; font-weight: 900;'
+                            elif "ALERTA" in estado: 
+                                base_style = 'background-color: #fff3cd; color: #856404; font-weight: 900;'
+                            else: 
+                                base_style = 'background-color: #ffffff; color: #155724; font-weight: 600;'
+                                
+                            for i, col in enumerate(row.index):
+                                cell_style = base_style
+                                # Alineamos a la derecha todo lo que sean números
+                                if col not in ['📍 PISTA', '🧪 CÓDIGO | PRODUCTO', 'ESTADO']:
+                                    cell_style += ' text-align: right;'
+                                else:
+                                    cell_style += ' text-align: left;'
+                                estilos[i] = cell_style
+                                
+                            return estilos
 
                         df_vista = df_oraculo.copy()
+                        
+                        # Formato estricto para mantener la tabla viva y ordenable
+                        formato_oraculo = {}
 
                         if modo_analisis == "Estándar (Autonomía Días)":
-                            df_vista['⏳ AUTONOMÍA (DÍAS)'] = df_vista['⏳ AUTONOMÍA (DÍAS)'].apply(lambda x: "∞" if x >= 9999 else x)
+                            formato_oraculo["📦 SALDO (SAP)"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
+                            formato_oraculo["📈 PROYECCIÓN MES (L/Kg)"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
+                            formato_oraculo["⏳ AUTONOMÍA (DÍAS)"] = lambda x: "∞" if x >= 9999 else f"{int(x)}"
+                            
                             config_columnas = {
-                                "📍 PISTA": st.column_config.TextColumn("PISTA", width="small"),
-                                "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("PRODUCTO", width="large"),
-                                "📦 SALDO (SAP)": st.column_config.NumberColumn("SALDO (SAP)", format="%,.1f", width="medium"),
-                                "📈 PROYECCIÓN MES (L/Kg)": st.column_config.NumberColumn("PROYECCIÓN MES", format="%,.1f", width="medium"),
-                                "⏳ AUTONOMÍA (DÍAS)": st.column_config.TextColumn("DÍAS DE AUTONOMÍA", width="medium"),
-                                "ESTADO": st.column_config.TextColumn("ESTADO LOGÍSTICO", width="medium")
+                                "📍 PISTA": st.column_config.TextColumn("📍 PISTA", width="small"),
+                                "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO", width="large"),
+                                "📦 SALDO (SAP)": st.column_config.TextColumn("📦 SALDO (SAP)", width="medium"),
+                                "📈 PROYECCIÓN MES (L/Kg)": st.column_config.TextColumn("📈 PROYECCIÓN MES", width="medium"),
+                                "⏳ AUTONOMÍA (DÍAS)": st.column_config.TextColumn("⏳ AUTONOMÍA (DÍAS)", width="medium"),
+                                "ESTADO": st.column_config.TextColumn("🛡️ ESTADO LOGÍSTICO", width="medium")
                             }
                         else:
-                            df_vista['🔋 CICLOS RESTANTES'] = df_vista['🔋 CICLOS RESTANTES'].apply(lambda x: "∞" if x >= 99.9 else round(x, 2))
+                            formato_oraculo["📦 SALDO (SAP)"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
+                            formato_oraculo["⏱️ DÍAS POR CICLO"] = lambda x: f"{x:.1f}" if pd.notna(x) else ""
+                            formato_oraculo["🔄 CONSUMO POR CICLO"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
+                            formato_oraculo["🔋 CICLOS RESTANTES"] = lambda x: "∞" if x >= 99.9 else f"{x:.2f}"
+                            
                             config_columnas = {
-                                "📍 PISTA": st.column_config.TextColumn("PISTA", width="small"),
-                                "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("PRODUCTO", width="large"),
-                                "📦 SALDO (SAP)": st.column_config.NumberColumn("SALDO (SAP)", format="%,.1f", width="medium"),
-                                "⏱️ DÍAS POR CICLO": st.column_config.NumberColumn("DÍAS POR CICLO", format="%.1f", width="small"),
-                                "🔄 CONSUMO POR CICLO": st.column_config.NumberColumn("CONSUMO/CICLO", format="%,.1f", width="medium"),
-                                "🔋 CICLOS RESTANTES": st.column_config.TextColumn("CICLOS RESTANTES", width="medium"),
-                                "ESTADO": st.column_config.TextColumn("ESTADO TÁCTICO", width="medium")
+                                "📍 PISTA": st.column_config.TextColumn("📍 PISTA", width="small"),
+                                "🧪 CÓDIGO | PRODUCTO": st.column_config.TextColumn("🧪 PRODUCTO", width="large"),
+                                "📦 SALDO (SAP)": st.column_config.TextColumn("📦 SALDO (SAP)", width="medium"),
+                                "⏱️ DÍAS POR CICLO": st.column_config.TextColumn("⏱️ DÍAS POR CICLO", width="small"),
+                                "🔄 CONSUMO POR CICLO": st.column_config.TextColumn("🔄 CONSUMO/CICLO", width="medium"),
+                                "🔋 CICLOS RESTANTES": st.column_config.TextColumn("🔋 CICLOS RESTANTES", width="medium"),
+                                "ESTADO": st.column_config.TextColumn("🛡️ ESTADO TÁCTICO", width="medium")
                             }
 
                         st.dataframe(
+                            df_vista.style.apply(pintar_oraculo, axis=1).format(formato_oraculo), 
+                            use_container_width=True, 
+                            hide_index=True,
+                            column_config=config_columnas
+                        )
                             df_vista.style.apply(pintar_oraculo, axis=1), 
                             use_container_width=True, 
                             hide_index=True,
