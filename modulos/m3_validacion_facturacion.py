@@ -1000,6 +1000,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             col_pos_cfg = {nombre: idx for idx, nombre in enumerate(valores_header) if nombre and nombre != "NAN"}
 
         match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
+        
         if not match_cfg.empty:
             fila_cfg = match_cfg.iloc[0]
             try:
@@ -1008,6 +1009,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 mult_avion_base = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["AVION MULT"]])
             except KeyError as e:
                 st.warning(f"⚠️ No se encontró la columna {e} en la fila «Grupos» de «Configuración». Usando valores por defecto (Material x{mult_material}, ST ${tarifa_serv_tec_base:,.0f}, Avión x{mult_avion_base}) — pulsa «🔄 Sincronizar Nube» para traer los datos más recientes antes de facturar.")
+        else:
+            # 💥 AQUÍ ESTÁ EL BLINDAJE: Si el productor no existe, frena el sistema y te avisa a gritos.
+            st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» asignado a esta finca NO EXISTE en la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
+
+    if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
+        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» parece incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube» y verifica antes de detonar la factura.")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
         st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» parece incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube» y verifica antes de detonar la factura.")
