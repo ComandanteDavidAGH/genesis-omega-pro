@@ -994,10 +994,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         fila_productor = df_cfg_puro[col_a == tipo_productor]
         
         if not fila_productor.empty:
-            # Coordenadas exactas en Excel: C=2, D=3, F=5
-            mult_material = limpiar_numero_estricto(fila_productor.iloc[0, 2])
-            tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[0, 3])
-            mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[0, 5])
+            # 💥 COORDENADAS CORREGIDAS SALTANDO LA COLUMNA B (D=3, E=4, G=6)
+            mult_material = limpiar_numero_estricto(fila_productor.iloc[0, 3])
+            tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[0, 4])
+            mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[0, 6])
         else:
             st.error(f"🚨 ALERTA FINANCIERA: El perfil «{tipo_productor}» NO EXISTE en la Columna A de Configuración.")
     except Exception as e:
