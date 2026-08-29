@@ -296,39 +296,63 @@ def extraer_receta_mega_rapida(coctel_sel, finca_sel_clean, dict_mezclas, dict_d
     
     return dict_prods
 
-# 💥 GENERADOR DE EXCEL CON CACHÉ (Evita que la pantalla se congele al usar filtros)
+# 💥 GENERADOR DE EXCEL CON CACHÉ (Diseño VIP Corporativo)
 @st.cache_data(show_spinner=False)
 def generar_excel_gerencial(df_filtro, df_resumen_finca, df_insumos_raw):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False)
-        df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
+        # 💥 Desplazamos las tablas a la fila 4 (startrow=3) para crear la cabecera
+        df_filtro.to_excel(writer, sheet_name='Detalle_Económico', index=False, startrow=3)
+        df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False, startrow=3)
         if not df_insumos_raw.empty:
-            df_insumos_raw[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False)
+            df_insumos_raw[["🧪 PRODUCTO", "VOLUMEN ESTIMADO"]].to_excel(writer, sheet_name='Consumo_Insumos', index=False, startrow=3)
         
         workbook = writer.book
-        borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-        header_font = Font(color="FFFFFF", bold=True)
+        
+        # 🎨 Paleta de Estilos VIP
+        fill_titulo = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+        font_titulo = Font(color="FFFFFF", bold=True, size=14)
+        font_sub = Font(color="555555", italic=True, size=10)
+        
+        header_fill = PatternFill(start_color="1A365D", end_color="1A365D", fill_type="solid")
+        header_font = Font(color="D4AF37", bold=True)
+        borde = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
+                       top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+        
+        fecha_actual = datetime.now().strftime('%d/%m/%Y %H:%M')
 
         for sheet_name in workbook.sheetnames:
             ws = workbook[sheet_name]
             ws.sheet_view.showGridLines = False
             max_r, max_c = ws.max_row, ws.max_column
-            column_headers = {}
             
+            # 💥 Inyección de Títulos Combinados
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_c)
+            c_tit = ws.cell(row=1, column=1, value=f"REPORTE MEGA-PROYECCIÓN — {sheet_name.upper().replace('_', ' ')}")
+            c_tit.fill = fill_titulo
+            c_tit.font = font_titulo
+            c_tit.alignment = Alignment(horizontal='center', vertical='center')
+
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max_c)
+            c_sub = ws.cell(row=2, column=1, value=f"Proyección Operativa y Financiera | Generado el: {fecha_actual}")
+            c_sub.font = font_sub
+            c_sub.alignment = Alignment(horizontal='left', vertical='center')
+
+            # Auto-ajuste de columnas
+            column_headers = {}
             for col_idx in range(1, max_c + 1):
                 letra_columna = openpyxl.utils.get_column_letter(col_idx)
-                header_val = ws.cell(row=1, column=col_idx).value
-                valores_columna = [ws.cell(row=r, column=col_idx).value for r in range(1, min(max_r, 50) + 1)]
-                ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 2
+                header_val = ws.cell(row=4, column=col_idx).value
+                valores_columna = [ws.cell(row=r, column=col_idx).value for r in range(4, min(max_r, 50) + 1)]
+                ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 4
                 ws.column_dimensions[letra_columna].width = min(max(ancho, 14), 35)
                 column_headers[col_idx] = str(header_val).upper() if header_val else ""
 
-            for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
+            # Aplicar bordes, formatos y monedas
+            for row in ws.iter_rows(min_row=4, max_row=max_r, min_col=1, max_col=max_c):
                 for cell in row:
                     cell.border = borde
-                    if cell.row == 1:
+                    if cell.row == 4:
                         cell.fill = header_fill
                         cell.font = header_font
                         cell.alignment = Alignment(horizontal='center', vertical='center')
@@ -336,9 +360,9 @@ def generar_excel_gerencial(df_filtro, df_resumen_finca, df_insumos_raw):
                         cell.alignment = Alignment(vertical='center')
                         col_name = column_headers.get(cell.column, "")
                         if isinstance(cell.value, (int, float)):
-                            if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name or "RECARGO" in col_name:
-                                cell.number_format = '"$" #,##0' 
-                            elif "HECTAREAS" in col_name or "VOLUMEN" in col_name:
+                            if any(kw in col_name for kw in ["COSTO", "PRECIO", "RESULTADO", "TOTAL ($)", "RECARGO"]):
+                                cell.number_format = '"$"#,##0' 
+                            elif any(kw in col_name for kw in ["HECTAREAS", "VOLUMEN"]):
                                 cell.number_format = '#,##0.0'
     return buffer.getvalue()
 
@@ -403,14 +427,25 @@ def ejecutar(supabase_client=None):
         st.session_state.m17_df_entrada_grid = pd.DataFrame([{"FINCA": "", "HECTAREAS": "", "COCTEL": "", "FERTILIZANTE": "", "DIAS CICLO": "", "PRECIO VUELO": "", "DOMINICAL": False} for _ in range(1000)])
 
     st.markdown("### 📥 1. Pista de Aterrizaje Segura")
-    df_edited = st.data_editor(st.session_state.m17_df_entrada_grid, key="m17_tabla_maestra_grid", use_container_width=True, hide_index=True,
-        column_config={
-            "FINCA": st.column_config.TextColumn("Finca"), "HECTAREAS": st.column_config.TextColumn("Hectáreas"), 
-            "COCTEL": st.column_config.TextColumn("Cóctel"), "FERTILIZANTE": st.column_config.TextColumn("Fertilizante"),
-            "DIAS CICLO": st.column_config.TextColumn("Días Ciclo"), "PRECIO VUELO": st.column_config.TextColumn("Precio Vuelo Manual (Opcional)"),
-            "DOMINICAL": st.column_config.CheckboxColumn("¿Dom/Fest?", default=False),
-        })
+    
+    # 💥 MOTOR VISUAL PREMIUM PARA ENTRADA
+    columnas_ui_proyeccion = {
+        "FINCA": st.column_config.TextColumn("🏡 FINCA", width="medium"),
+        "HECTAREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.2f", width="small"),
+        "COCTEL": st.column_config.TextColumn("🧪 CÓCTEL", width="small"),
+        "FERTILIZANTE": st.column_config.TextColumn("🌱 FERTILIZANTE", width="small"),
+        "DIAS CICLO": st.column_config.NumberColumn("⏳ DÍAS CICLO", min_value=1, step=1, width="small"),
+        "PRECIO VUELO": st.column_config.NumberColumn("💵 PRECIO VUELO (Opcional)", format="$ %d", width="medium"),
+        "DOMINICAL": st.column_config.CheckboxColumn("🏖️ DOM / FEST", width="small")
+    }
 
+    df_edited = st.data_editor(
+        st.session_state.m17_df_entrada_grid, 
+        key="m17_tabla_maestra_grid", 
+        use_container_width=True, 
+        hide_index=True,
+        column_config=columnas_ui_proyeccion
+    )
     st.markdown("---")
     st.markdown("### ⚙️ 2. Parámetros de Riesgo y Base Histórica")
     
@@ -623,18 +658,42 @@ def ejecutar(supabase_client=None):
 
         tab1, tab2, tab3 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📑 Resumen Ejecutivo por Finca", "📦 Auditoría Volumétrica de Insumos"])
         
+        # 💥 MOTOR VISUAL PREMIUM PARA RESULTADOS
+        def estilo_detalles(row):
+            estilos = ['background-color: #ffffff; color: #0d1b2a; font-weight: 500;'] * len(row)
+            for i, col in enumerate(row.index):
+                if col == 'RESULTADO TOTAL ($)':
+                    estilos[i] = 'background-color: #e6f4ea; color: #143521; font-weight: 900; border-left: 2px solid #28a745; text-align: right;'
+                elif 'Costo' in col or col in ['PRECIO VUELO', 'RECARGO ($/HA)']:
+                    estilos[i] = 'background-color: #f8f9fa; color: #333333; font-weight: 600; text-align: right;'
+            return estilos
+
+        def estilo_resumen(row):
+            estilos = ['background-color: #ffffff; color: #0d1b2a; font-weight: 500;'] * len(row)
+            for i, col in enumerate(row.index):
+                if col == 'RESULTADO TOTAL ($)':
+                    estilos[i] = 'background-color: #fff9e6; color: #0d1b2a; font-weight: 900; border-left: 2px solid #d4af37; text-align: right;'
+                elif 'Costo' in col:
+                    estilos[i] = 'background-color: #f8f9fa; color: #333333; font-weight: 600; text-align: right;'
+            return estilos
+
+        formato_dinero = {col: lambda x: f"$ {x:,.0f}".replace(",", ".") for col in ["PRECIO VUELO", "RECARGO ($/HA)", "Costo ST ($)", "Costo Vuelo ($)", "Costo Recargo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]}
+
         with tab1:
-            df_view = df_filtro.copy()
-            for col in ["PRECIO VUELO", "RECARGO ($/HA)", "Costo ST ($)", "Costo Vuelo ($)", "Costo Recargo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
-                df_view[col] = df_view[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
-            st.dataframe(df_view, use_container_width=True, hide_index=True)
+            st.dataframe(
+                df_filtro.style.apply(estilo_detalles, axis=1).format(formato_dinero), 
+                use_container_width=True, 
+                hide_index=True
+            )
 
         with tab2:
             if not df_resumen_finca.empty:
-                df_resumen_view = df_resumen_finca.copy()
-                for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Recargo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
-                    df_resumen_view[col] = df_resumen_view[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
-                st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
+                formato_dinero_res = {col: lambda x: f"$ {x:,.0f}".replace(",", ".") for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Recargo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']}
+                st.dataframe(
+                    df_resumen_finca.style.apply(estilo_resumen, axis=1).format(formato_dinero_res), 
+                    use_container_width=True, 
+                    hide_index=True
+                )
             else: st.info("No hay datos para resumir.")
 
         with tab3:
