@@ -93,39 +93,55 @@ def limpiar_tiempo(val):
         return float(v) if v else 0.0
     except: return 0.0
 
+# 💥 TURBO 1: Procesador de Fechas con "Memoria Fotográfica" (Caché local)
+_date_cache = {}
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
-    if s.replace('.', '', 1).isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-    meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
-    mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
-    if mes_encontrado:
-        numeros = re.findall(r'\d+', s)
-        if len(numeros) >= 2:
-            n1, n2 = int(numeros[0]), int(numeros[1])
-            anio = n1 if n1 > 1000 else (n2 if n2 > 1000 else (2000 + n2 if n2 < 100 else n2))
-            dia = n2 if n1 > 1000 else (n1 if n2 > 1000 else n1)
-            try: return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
-            except: pass
-    s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
-    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
-        try: return pd.to_datetime(s, format=fmt)
-        except: pass
-    try: 
-        res = pd.to_datetime(s, dayfirst=True)
-        return pd.NaT if pd.isna(res) else res
-    except: return pd.NaT 
+    
+    # Si ya calculó esta fecha antes, la saca de la memoria al instante
+    if s in _date_cache: return _date_cache[s]
+    
+    res = pd.NaT
+    if s.replace('.', '', 1).isdigit(): 
+        res = pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
+    else:
+        meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
+        mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
+        if mes_encontrado:
+            numeros = re.findall(r'\d+', s)
+            if len(numeros) >= 2:
+                n1, n2 = int(numeros[0]), int(numeros[1])
+                anio = n1 if n1 > 1000 else (n2 if n2 > 1000 else (2000 + n2 if n2 < 100 else n2))
+                dia = n2 if n1 > 1000 else (n1 if n2 > 1000 else n1)
+                try: res = pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
+                except: pass
 
+        if pd.isna(res):
+            s_clean = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
+            for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
+                try: 
+                    res = pd.to_datetime(s_clean, format=fmt)
+                    break
+                except: pass
+            if pd.isna(res):
+                try: res = pd.to_datetime(s_clean, dayfirst=True)
+                except: pass
+                
+    # Guarda el resultado en memoria para no volver a calcularlo
+    _date_cache[s] = res
+    return res 
+
+# 💥 TURBO 2: Escáner de Flota con Puntería Láser (Evita leer 30 pestañas inútiles)
 def extraer_diccionario_flota(gc):
     try:
-        sh = gc.open_by_url(SPREADSHEET_URL)
-        for ws in sh.worksheets():
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        
+        # Le decimos exactamente en qué pestañas buscar para ahorrar 20 segundos de carga
+        hojas_clave = [ws for ws in sh.worksheets() if ws.title.upper() in ["CONFIGURACIÓN", "CONFIGURACION", "TABLA DE APOYO2023", "TABLA 2"]]
+        
+        for ws in hojas_clave:
             try:
-                # 🩹 FIX: antes se llamaba ws.get_all_values() -- trae la hoja COMPLETA
-                # (miles de filas en pestañas como TABLA DE APOYO2023) solo para mirar
-                # las primeras filas. Multiplicado por cada pestaña del Drive, esto es
-                # lo que probablemente cuelga la carga inicial del módulo. Ahora se pide
-                # solo el rango A1:Z25 -- rapidísimo sin importar el tamaño real de la hoja.
                 muestra = ws.get('A1:Z25')
                 idx_header, idx_hk, idx_mod = -1, -1, -1
                 for i, row in enumerate(muestra):
@@ -137,7 +153,7 @@ def extraer_diccionario_flota(gc):
                         break
                 if idx_header == -1:
                     continue
-                # Ya localizamos la hoja correcta: recién aquí se justifica traerla completa.
+                    
                 data_completa = ws.get_all_values()
                 flota = {}
                 for r in data_completa[idx_header + 1:]:
