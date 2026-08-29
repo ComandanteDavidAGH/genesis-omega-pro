@@ -993,6 +993,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     
     if not df_cfg.empty:
         col_map_cfg = {str(c).strip().upper(): c for c in df_cfg.columns}
+            if not df_cfg.empty:
+        fila_header_grupos = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == "GRUPOS"]
+        col_pos_cfg = {}
+        if not fila_header_grupos.empty:
+            valores_header = fila_header_grupos.iloc[0].astype(str).str.strip().str.upper().tolist()
+            col_pos_cfg = {nombre: idx for idx, nombre in enumerate(valores_header) if nombre and nombre != "NAN"}
+
         match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
         if not match_cfg.empty:
             fila_cfg = match_cfg.iloc[0]
