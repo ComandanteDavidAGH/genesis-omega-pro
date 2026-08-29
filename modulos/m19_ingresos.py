@@ -40,6 +40,8 @@ def obtener_datos_bovedas():
     except Exception as e: return None, None, None, None, str(e)
 
 # --- 🔍 RASTREADOR DE MATERIALES 100% ESTRICTO ---
+# 💥 TURBO 1: Guardamos la "Plantilla" en memoria por 1 hora para no descargarla en cada clic
+@st.cache_data(show_spinner=False, ttl=3600)
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
     if not gc: return {"ERROR": "Sin conexión a los servidores de Google."}
@@ -67,29 +69,44 @@ def buscar_codigo_material(producto_nombre, mapeo):
     if prod_clean in mapeo: return mapeo[prod_clean]
     return "S/N"
 
+# 💥 TURBO 2: Procesador de Fechas con "Memoria Fotográfica" (Caché local)
+_date_cache = {}
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
-    if s.replace('.', '', 1).isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-    meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
-    mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
-    if mes_encontrado:
-        numeros = re.findall(r'\d+', s)
-        if len(numeros) >= 2:
-            n1, n2 = int(numeros[0]), int(numeros[1])
-            anio = n1 if n1 > 1000 else (n2 if n2 > 1000 else (2000 + n2 if n2 < 100 else n2))
-            dia = n2 if n1 > 1000 else (n1 if n2 > 1000 else n1)
-            try: return pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
-            except: pass
-    for dia_sem in ['lunes','martes','miércoles','miercoles','jueves','viernes','sábado','sabado','domingo']: s = s.replace(dia_sem, '')
-    s = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
-    for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
-        try: return pd.to_datetime(s, format=fmt)
-        except: pass
-    try: 
-        res = pd.to_datetime(s, dayfirst=True)
-        return pd.NaT if pd.isna(res) else res
-    except: return pd.NaT 
+    
+    # Si ya calculó esta fecha antes, la saca de la memoria al instante
+    if s in _date_cache: return _date_cache[s]
+    
+    res = pd.NaT
+    if s.replace('.', '', 1).isdigit(): 
+        res = pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
+    else:
+        meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
+        mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
+        if mes_encontrado:
+            numeros = re.findall(r'\d+', s)
+            if len(numeros) >= 2:
+                n1, n2 = int(numeros[0]), int(numeros[1])
+                anio = n1 if n1 > 1000 else (n2 if n2 > 1000 else (2000 + n2 if n2 < 100 else n2))
+                dia = n2 if n1 > 1000 else (n1 if n2 > 1000 else n1)
+                try: res = pd.Timestamp(year=anio, month=mes_encontrado, day=dia)
+                except: pass
+
+        if pd.isna(res):
+            s_clean = s.replace(',', '').replace(' de ', '/').replace('-', '/').strip()
+            for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
+                try: 
+                    res = pd.to_datetime(s_clean, format=fmt)
+                    break
+                except: pass
+            if pd.isna(res):
+                try: res = pd.to_datetime(s_clean, dayfirst=True)
+                except: pass
+                
+    # Guarda el resultado en memoria para no volver a calcularlo
+    _date_cache[s] = res
+    return res 
 
 def formatear_numero_sap(val):
     try:
@@ -800,7 +817,7 @@ def ejecutar():
                                             }
                                         })
                                     sh_temp.batch_update({"requests": peticiones_borrado})
-                                    
+                                
                                 st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente en una sola operación maestra.")
                                 st.cache_data.clear(); st.rerun()
                             except Exception as e:
@@ -1111,7 +1128,7 @@ def ejecutar():
                 elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
                 elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
                 elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
-                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
+                elif "OBSER" in c_up: col_config[c] = st.column_config.TextColumn("📝 OBS", width="medium")
                 elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
 
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
@@ -1148,7 +1165,7 @@ def ejecutar():
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
                             st.error(f"🚨 Error crítico al ejecutar borrado masivo: {e}")
-        else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
+            else: st.info("ℹ️ No marcaste ninguna fila con la acción de '💥 ELIMINAR REGISTRO'.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
