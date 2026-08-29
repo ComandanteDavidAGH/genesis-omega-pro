@@ -106,31 +106,58 @@ def fecha_fallback(val):
     return pd.to_datetime(val, errors='coerce', dayfirst=True)
 
 # =================================================================
-# ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS (MODO BLINDADO)
+# ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS (MODO CEBO)
 # =================================================================
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 1er intento: Busca credenciales en los "Secrets" de Streamlit Cloud
-    if "gcp_service_account" in st.secrets:
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
-            return gspread.authorize(creds)
-        except Exception: pass
-        
-    if "gcp_credentials" in st.secrets:
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
-            return gspread.authorize(creds)
-        except Exception: pass
-        
-    # 2do intento: Si estás trabajando en tu PC local, usa el archivo
+    st.warning("🪤 INICIANDO CEBO DE CONEXIÓN A GOOGLE CLOUD...")
+    
+    # 1. Revisar qué hay guardado en la memoria segura de Streamlit Cloud
     try:
-        return gspread.service_account(filename='credenciales.json')
+        secrets_keys = list(st.secrets.keys())
+        st.info(f"🪤 Llaves encontradas en st.secrets de Streamlit: {secrets_keys}")
     except Exception as e:
-        st.error("🚨 ALERTA ROJA: No hay conexión con Google Cloud. Como estás en Streamlit Cloud (Web), el servidor no puede leer tu PC. Debes configurar los 'Secrets' de tu app.")
-        return None
+        st.error(f"🪤 Fallo total al leer st.secrets: {e}")
+        secrets_keys = []
+
+    # 2. Intentar usar la llave principal
+    if "gcp_service_account" in secrets_keys:
+        st.info("🪤 'gcp_service_account' detectado en la nube. Intentando inyectar...")
+        try:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            gc = gspread.authorize(creds)
+            st.success("🪤 ¡Conexión gspread exitosa con gcp_service_account!")
+            return gc
+        except Exception as e:
+            st.error(f"🪤 El servidor encontró la llave, pero falló al usarla: {e}")
+            
+    # 3. Intentar usar la llave alternativa
+    elif "gcp_credentials" in secrets_keys:
+        st.info("🪤 'gcp_credentials' detectado en la nube. Intentando inyectar...")
+        try:
+            creds_dict = dict(st.secrets["gcp_credentials"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            gc = gspread.authorize(creds)
+            st.success("🪤 ¡Conexión gspread exitosa con gcp_credentials!")
+            return gc
+        except Exception as e:
+            st.error(f"🪤 El servidor encontró la llave alternativa, pero falló: {e}")
+    else:
+        st.error("🪤 RESULTADO: La nube de Streamlit está completamente vacía. No hay llaves guardadas en la configuración 'Secrets'.")
+
+    # 4. Último intento: Buscar el archivo físico (Solo funciona en tu PC local, fallará en la web)
+    st.info("🪤 Intentando buscar el archivo físico 'credenciales.json'...")
+    try:
+        gc = gspread.service_account(filename='credenciales.json')
+        st.success("🪤 ¡Conexión exitosa con el archivo credenciales.json!")
+        return gc
+    except Exception as e:
+        st.error(f"🪤 Fallo leyendo archivo físico (Lógico si estás en la web): {e}")
+
+    return None
 
 # =================================================================
 # 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO (VÍA API OFICIAL)
