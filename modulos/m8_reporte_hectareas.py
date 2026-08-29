@@ -1,4 +1,5 @@
 import streamlit as st
+import logging
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -14,8 +15,8 @@ from openpyxl.chart import BarChart, DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from oauth2client.service_account import ServiceAccountCredentials
-
+logging.basicConfig(level=logging.WARNING, filename="app_errors.log",
+                     format="%(asctime)s %(levelname)s %(message)s")
 # =================================================================
 # ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
 # =================================================================
@@ -107,6 +108,7 @@ def fecha_fallback(val):
 # =================================================================
 # ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS
 # =================================================================
+@st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" in st.secrets:
@@ -119,10 +121,9 @@ def obtener_cliente_gspread_unificado():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
             return gspread.authorize(creds)
         except Exception: pass
-    try:
-        return gspread.service_account(filename='credenciales.json')
-    except Exception:
-        return None
+    logging.error("No se encontraron credenciales válidas en st.secrets.")
+    st.error("🚨 No se pudo autenticar con Google Cloud. Verifica la configuración de secrets.")
+    return None
 
 # =================================================================
 # 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
@@ -143,7 +144,8 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
             df_vivos = pd.DataFrame([r[:len(columnas_t1)] for r in filas_limpias], columns=columnas_t1)
             df_vivos.rename(columns={'AREA_FUMIG': 'AREA_MAESTRA', 'COSTO_HA': 'AVION_MAESTRO', 'DOMINICAL_HA': 'DOMINIC_MAESTRO', 'FINCA': 'FINCA_MAESTRA', 'FECHA': 'FECHA_MAESTRA', 'OS': 'OS_MAESTRA', 'COCTEL': 'COCTEL_MAESTRO'}, inplace=True)
             df_vivos['ORIGEN_BI'] = 'ACTUAL'
-    except Exception: pass
+    except Exception as e:
+        logging.error(f"No se pudo cargar TABLA 1 (datos actuales): {e}")
 
     df_historico = pd.DataFrame()
     boveda_hist = None
@@ -154,7 +156,8 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
             df_historico = pd.DataFrame(datos_brutos_hist[1:], columns=datos_brutos_hist[0])
             df_historico = estandarizar_base(limpiar_encabezados(df_historico))
             df_historico['ORIGEN_BI'] = 'HISTORICO'
-    except Exception: pass
+    except Exception as e:
+        logging.error(f"No se pudo cargar el histórico (hoja 'Datos'): {e}")
 
     ws_historico = None
     for bv in [boveda_act, boveda_hist]:
@@ -164,7 +167,8 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
                     if "HISTORICO" in ws.title.upper() and "PISTA" in ws.title.upper():
                         ws_historico = ws
                         break
-            except Exception: pass
+            except Exception as e:
+                logging.error(f"No se pudo listar hojas buscando histórico de pistas: {e}")
         if ws_historico: break
 
     if ws_historico:
@@ -204,7 +208,8 @@ def cargar_fuentes_maestras_bi(_descargar_matriz_rapida=None):
                     df_hp_clean['FECHA_MAESTRA'] = df_hp_clean.apply(lambda r: f"28/{int(r['MES_NUM']):02d}/{int(r['AÑO'])}", axis=1)
                     
                     df_historico = pd.concat([df_historico, df_hp_clean], ignore_index=True)
-        except Exception: pass
+        except Exception as e:
+            logging.error(f"No se pudo procesar el histórico de pistas: {e}")
 
     return df_vivos, df_historico
 
@@ -221,7 +226,8 @@ def cargar_matriz_tarifas():
             df = df.loc[:, df.columns.astype(str).str.strip() != '']
             df = df[df['PISTA'].str.strip() != '']
             return df
-    except Exception: pass
+    except Exception as e:
+        logging.error(f"No se pudo cargar MATRIZ_TARIFAS: {e}")
     return pd.DataFrame()
 
 # =================================================================
@@ -345,6 +351,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
+    st.caption(f"🕒 Última carga: {datetime.now().strftime('%H:%M:%S')} (caché de 10 min)")
 
     try:
         if procesar_fecha_pesada_app is None: procesar_fecha_pesada_app = fecha_fallback
@@ -1233,7 +1240,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             )                        
 
     except Exception as e:
-        st.error(f"🚨 Fallo procesando el reporte: {e}")
+        logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
+        st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
 
 if __name__ == "__main__":
     pass
