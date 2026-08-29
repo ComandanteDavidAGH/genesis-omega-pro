@@ -983,43 +983,25 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia:
         tipo_productor = "COOPERATIVA"
     
-    if not df_cfg.empty:
-        # 💥 ESCÁNER OMNISCIENTE 1: PRODUCTORES
-        fila_productor = pd.Series(dtype=object)
-        for r_idx in range(len(df_cfg)):
-            if (df_cfg.iloc[r_idx].astype(str).str.strip().str.upper() == tipo_productor).any():
-                fila_productor = df_cfg.iloc[r_idx]
-                break
-                
-        idx_mat, idx_st, idx_av = 2, 3, 5
-        for c_idx in range(len(df_cfg.columns)):
-            col_str = df_cfg.iloc[:, c_idx].astype(str).str.strip().str.upper()
-            col_name = str(df_cfg.columns[c_idx]).strip().upper()
-            if "MATERIAL MULT" in col_name or (col_str == "MATERIAL MULT").any(): idx_mat = c_idx
-            if "SERVICIO TEC" in col_name or (col_str.str.contains("SERVICIO TEC", na=False)).any(): idx_st = c_idx
-            if "AVION MULT" in col_name or (col_str == "AVION MULT").any(): idx_av = c_idx
+    # 💥 FRANCOTIRADOR 1: TARIFAS BASE (Extracción pura y directa de Sheets)
+    try:
+        gc_local = obtener_cliente_gspread_unificado()
+        boveda_local = gc_local.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        datos_cfg_puros = boveda_local.worksheet("Configuración").get_all_values()
+        df_cfg_puro = pd.DataFrame(datos_cfg_puros)
         
-        # ==========================================
-        # 🪤 INICIO DEL CEBO 1 (Imprime en pantalla)
-        # ==========================================
-        st.error(f"🪤 CEBO 1 | Productor: '{tipo_productor}' | ¿Lo encontró?: {not fila_productor.empty} | Índices detectados -> Mat: {idx_mat}, ST: {idx_st}, Av: {idx_av}")
-        if not fila_productor.empty:
-            st.json(fila_productor.astype(str).to_dict()) # Muestra la fila cruda capturada
-        # ==========================================
+        col_a = df_cfg_puro[0].astype(str).str.strip().str.upper()
+        fila_productor = df_cfg_puro[col_a == tipo_productor]
         
         if not fila_productor.empty:
-            try:
-                mult_material = limpiar_numero_estricto(fila_productor.iloc[idx_mat])
-                tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[idx_st])
-                mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[idx_av])
-                
-                # 🪤 CEBO 1.1: Imprime los valores finales que Python intentará usar
-                st.warning(f"🪤 CEBO 1.1 | Valores extraídos -> Mult Mat: {mult_material} | ST: {tarifa_serv_tec_base} | Mult Av: {mult_avion_base}")
-            except Exception as e:
-                st.error(f"🪤 CEBO ERROR LEYENDO MULTIPLICADORES: {e}")
-                pass
+            # Coordenadas exactas en Excel: C=2, D=3, F=5
+            mult_material = limpiar_numero_estricto(fila_productor.iloc[0, 2])
+            tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[0, 3])
+            mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[0, 5])
         else:
-            st.error(f"🚨 ALERTA FINANCIERA: El perfil «{tipo_productor}» NO EXISTE en TODA la pestaña Configuración.")
+            st.error(f"🚨 ALERTA FINANCIERA: El perfil «{tipo_productor}» NO EXISTE en la Columna A de Configuración.")
+    except Exception as e:
+        st.error(f"🚨 Error de conexión al cuartel general: {e}")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
         st.warning(f"⚠️ Tarifas para «{tipo_productor}» en cero. Usando valores por defecto.")
@@ -1031,7 +1013,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc
     st.session_state.finca_anterior = finca_sel
     st.session_state.fecha_sim_mem = fecha_operacion
-
     datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
     datos_raw = datos_vuelo.get('DATOS_FILA', {})
 
@@ -1290,30 +1271,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             if idx_saldo != -1:
                                 saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
+                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS (Extracción pura)
                 try:
-                    if not df_cfg.empty:
-                        # 💥 ESCÁNER OMNISCIENTE 2: PRECIOS BASE
-                        precio_maestro = 0.0
+                    if 'df_cfg_puro' in locals():
                         nombre_buscado = nombre_p.upper().strip()
-                        for r_i in range(len(df_cfg)):
-                            row_s = df_cfg.iloc[r_i].astype(str).str.strip().str.upper()
-                            if (row_s == nombre_buscado).any():
-                                # Encuentra la columna donde está el nombre y toma la celda de la derecha
-                                idx_col = list(row_s).index(nombre_buscado)
-                                if idx_col + 1 < len(df_cfg.columns):
-                                    precio_maestro = limpiar_dinero(df_cfg.iloc[r_i, idx_col + 1])
-                                
-                                # ==========================================
-                                # 🪤 INICIO DEL CEBO 2 (Imprime en pantalla)
-                                # ==========================================
-                                st.info(f"🪤 CEBO 2 | Producto buscado: '{nombre_buscado}' | Fila Excel: {r_i} | Columna Excel: {idx_col} | Precio capturado: {precio_maestro}")
-                                # ==========================================
-                                break
-                                
-                        if precio_maestro > 0:
-                            costo_unit = float(precio_maestro) 
-                except Exception as e:
-                    st.error(f"🪤 CEBO ERROR PRECIO: {e}")
+                        # Buscar producto exclusivamente en la Columna I (índice 8)
+                        col_i = df_cfg_puro[8].astype(str).str.strip().str.upper()
+                        match_precio = df_cfg_puro[col_i == nombre_buscado]
+                        
+                        if not match_precio.empty:
+                            # Extraer costo exclusivamente de la Columna J (índice 9)
+                            precio_maestro = limpiar_dinero(match_precio.iloc[0, 9])
+                            if precio_maestro > 0:
+                                costo_unit = float(precio_maestro)
+                except Exception:
                     pass
 
                 dosis_teorica = None
