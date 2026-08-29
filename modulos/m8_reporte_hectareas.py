@@ -111,20 +111,17 @@ def fecha_fallback(val):
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    if "gcp_service_account" in st.secrets:
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
-        except Exception: pass
-    if "gcp_credentials" in st.secrets:
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
-            return gspread.authorize(creds)
-        except Exception: pass
-    logging.error("No se encontraron credenciales válidas en st.secrets.")
-    st.error("🚨 No se pudo autenticar con Google Cloud. Verifica la configuración de secrets.")
-    return None
-
+        # 💥 EL SALVAVIDAS: Si no hay secrets en la nube, lee el archivo físico local
+        return gspread.service_account(filename='credenciales.json')
+    except Exception as e:
+        logging.error(f"Error de credenciales: {e}")
+        st.error("🚨 No se pudo autenticar con Google Cloud. Verifica tu archivo credenciales.json o st.secrets.")
+        return None
 # =================================================================
 # 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
 # =================================================================
