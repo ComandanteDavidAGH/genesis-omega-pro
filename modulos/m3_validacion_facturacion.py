@@ -997,16 +997,14 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         if not match_cfg.empty:
             fila_cfg = match_cfg.iloc[0]
             try:
-                mult_material = limpiar_numero_estricto(fila_cfg[col_map_cfg["MATERIAL MULT"]])
-                tarifa_serv_tec_base = limpiar_dinero(fila_cfg[col_map_cfg["SERVICIO TEC BASE"]])
-                mult_avion_base = limpiar_numero_estricto(fila_cfg[col_map_cfg["AVION MULT"]])
+                mult_material = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["MATERIAL MULT"]])
+                tarifa_serv_tec_base = limpiar_dinero(fila_cfg.iloc[col_pos_cfg["SERVICIO TEC BASE"]])
+                mult_avion_base = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["AVION MULT"]])
             except KeyError as e:
-                st.error(f"🚨 Falta la columna {e} en la hoja «Configuración». Revisa que los encabezados digan exactamente: Material Mult, Servicio Tec Base, Avion Mult.")
-                st.stop()
+                st.warning(f"⚠️ No se encontró la columna {e} en la fila «Grupos» de «Configuración». Usando valores por defecto (Material x{mult_material}, ST ${tarifa_serv_tec_base:,.0f}, Avión x{mult_avion_base}) — pulsa «🔄 Sincronizar Nube» para traer los datos más recientes antes de facturar.")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.error(f"🚨 La configuración financiera para el productor «{tipo_productor}» tiene un valor en cero o negativo. Verifica la hoja «Configuración» antes de facturar.")
-        st.stop()
+        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» parece incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube» y verifica antes de detonar la factura.")
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
 
