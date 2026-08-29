@@ -433,37 +433,58 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
 
                     st.markdown("##### 📊 2. Cuadro Comparativo (Vista Estructurada)")
                     
-                    # Configuración de columnas para Streamlit
+                    # 💥 TURBO VISUAL 1: Nombres cortos en la interfaz para evitar scroll horizontal
                     col_config = {
-                        "🤝 PERFIL": st.column_config.TextColumn("🤝 PERFIL", width="small"),
-                        "📊 CONCEPTO": st.column_config.TextColumn("📊 CONCEPTO", width="small")
+                        "🤝 PERFIL": st.column_config.TextColumn("🤝 PERFIL", width="medium"),
+                        "📊 CONCEPTO": st.column_config.TextColumn("📊 CONCEPTO", width="medium")
                     }
                     for p in prods_sel:
-                        col_config[f"🧪 {p}"] = st.column_config.NumberColumn(f"🧪 {p}", format="$ %d")
+                        col_config[f"🧪 {p}"] = st.column_config.TextColumn(f"🧪 {p}", width="medium")
                     for p_comp in prods_sel[1:]:
-                        col_config[f"⚖️ DIFERENCIA ($) [{p_comp} vs {prod_base}]"] = st.column_config.NumberColumn("⚖️ DIF. GANANCIA", format="$ %d")
-                        col_config[f"📉 DIFERENCIA (%) [{p_comp} vs {prod_base}]"] = st.column_config.NumberColumn("📉 DIF. GANANCIA (%)", format="%.2f %%")
-                        col_config[f"🎯 MARGEN REQ. (%) [{p_comp} -> Venta {prod_base}]"] = st.column_config.NumberColumn("🎯 MARGEN REQ. (%)", format="%.2f %%")
+                        col_config[f"⚖️ DIFERENCIA ($) [{p_comp} vs {prod_base}]"] = st.column_config.TextColumn(f"⚖️ DIF $", width="small")
+                        col_config[f"📉 DIFERENCIA (%) [{p_comp} vs {prod_base}]"] = st.column_config.TextColumn(f"📉 DIF %", width="small")
+                        col_config[f"🎯 MARGEN REQ. (%) [{p_comp} -> Venta {prod_base}]"] = st.column_config.TextColumn(f"🎯 M. REQ", width="small")
 
+                    # 💥 TURBO VISUAL 2: Estilos Premium y Alineación
                     def aplicar_estilos_gerenciales(row):
                         estilos = [''] * len(row)
                         es_ganancia = (row['📊 CONCEPTO'] == 'Ganancia')
                         
-                        base_style = 'background-color: #f8f9fa; font-weight: bold; color: #0d1b2a;' if es_ganancia else 'color: #333333;'
+                        # Fondo dorado sutil para la Ganancia, blanco para el resto
+                        base_style = 'background-color: #fff9e6; font-weight: 900; color: #0d1b2a; border-top: 2px solid #d4af37; border-bottom: 2px solid #d4af37;' if es_ganancia else 'background-color: #ffffff; color: #333333; font-weight: 600;'
                         
                         for i, col in enumerate(row.index):
                             cell_style = base_style
+                            if i > 1: # Columnas de dinero/porcentajes a la derecha
+                                cell_style += ' text-align: right;'
+                            else:
+                                cell_style += ' text-align: left;'
+                            
                             val = row[col]
                             if "DIFERENCIA" in col and isinstance(val, (int, float)):
-                                if val < 0: cell_style += ' color: #E74C3C; font-weight: bold;'
-                                elif val > 0: cell_style += ' color: #27AE60; font-weight: bold;'
-                                else: cell_style += ' color: #0d1b2a; font-weight: bold;'
+                                if val < 0: cell_style += ' color: #dc3545; font-weight: 900;' # Rojo intenso
+                                elif val > 0: cell_style += ' color: #28a745; font-weight: 900;' # Verde
+                                else: cell_style += ' color: #0d1b2a; font-weight: 900;'
                             elif "MARGEN REQ" in col and isinstance(val, (int, float)):
-                                cell_style += ' color: #8E44AD; font-weight: bold;' # Púrpura estratégico
+                                cell_style += ' color: #6f42c1; font-weight: 900;' # Púrpura estratégico
+                                
                             estilos[i] = cell_style
                         return estilos
+
+                    # 💥 TURBO VISUAL 3: Inyección de Puntos de Miles Latinos
+                    format_dict = {}
+                    for col in df_excel_export.columns:
+                        if col not in ["🤝 PERFIL", "📊 CONCEPTO"]:
+                            if "DIFERENCIA (%)" in col or "MARGEN REQ" in col:
+                                format_dict[col] = lambda x: f"{x:.2f} %".replace('.', ',') if pd.notna(x) else ""
+                            else:
+                                format_dict[col] = lambda x: f"$ {int(x):,}".replace(',', '.') if pd.notna(x) else ""
+
+                    # Ensamblaje Final
+                    df_styled = df_excel_export.style.apply(aplicar_estilos_gerenciales, axis=1).format(format_dict)
+
                     st.dataframe(
-                        df_excel_export.style.apply(aplicar_estilos_gerenciales, axis=1), 
+                        df_styled, 
                         use_container_width=True, 
                         hide_index=True, 
                         column_config=col_config
