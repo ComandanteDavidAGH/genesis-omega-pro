@@ -992,23 +992,43 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         tipo_productor = "COOPERATIVA"
     
     if not df_cfg.empty:
-        fila_header_grupos = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == "GRUPOS"]
-        col_pos_cfg = {}
+        # 💥 ESCÁNER OMNISCIENTE: Rastrea en toda la matriz sin depender de posiciones fijas
+        idx_fila_productor = -1
+        idx_mat = idx_st = idx_av = -1
         
-        if not fila_header_grupos.empty:
-            valores_header = fila_header_grupos.iloc[0].astype(str).str.strip().str.upper().tolist()
-            col_pos_cfg = {nombre: idx for idx, nombre in enumerate(valores_header) if nombre and nombre != "NAN"}
-
-        match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
-        
-        if not match_cfg.empty:
-            fila_cfg = match_cfg.iloc[0]
+        # 1. Encontrar en qué fila exacta está el productor (ej. "SOCIO")
+        for r_idx in range(len(df_cfg)):
+            if (df_cfg.iloc[r_idx].astype(str).str.strip().str.upper() == tipo_productor).any():
+                idx_fila_productor = r_idx
+                break
+                
+        # 2. Encontrar en qué columnas exactas están las tarifas
+        for c_idx in range(len(df_cfg.columns)):
+            col_data = df_cfg.iloc[:, c_idx].astype(str).str.strip().str.upper()
+            col_name = str(df_cfg.columns[c_idx]).strip().upper()
+            
+            if "MATERIAL MULT" in col_name or (col_data == "MATERIAL MULT").any(): idx_mat = c_idx
+            if "SERVICIO TEC" in col_name or (col_data.str.contains("SERVICIO TEC", na=False)).any(): idx_st = c_idx
+            if "AVION MULT" in col_name or (col_data == "AVION MULT").any(): idx_av = c_idx
+                
+        if idx_fila_productor != -1:
             try:
-                mult_material = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["MATERIAL MULT"]])
-                tarifa_serv_tec_base = limpiar_dinero(fila_cfg.iloc[col_pos_cfg["SERVICIO TEC BASE"]])
-                mult_avion_base = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["AVION MULT"]])
-            except KeyError as e:
-                st.warning(f"⚠️ No se encontró la columna {e} en la fila «Grupos» de «Configuración». Usando valores por defecto (Material x{mult_material}, ST ${tarifa_serv_tec_base:,.0f}, Avión x{mult_avion_base}) — pulsa «🔄 Sincronizar Nube» para traer los datos más recientes antes de facturar.")
+                # Si el escáner no encuentra el título, asume las posiciones por defecto (C=2, D=3, F=5)
+                if idx_mat == -1: idx_mat = 2
+                if idx_st == -1: idx_st = 3
+                if idx_av == -1: idx_av = 5
+                
+                mult_material = limpiar_numero_estricto(df_cfg.iloc[idx_fila_productor, idx_mat])
+                tarifa_serv_tec_base = limpiar_dinero(df_cfg.iloc[idx_fila_productor, idx_st])
+                mult_avion_base = limpiar_numero_estricto(df_cfg.iloc[idx_fila_productor, idx_av])
+            except Exception:
+                pass
+        else:
+            # 💥 BLINDAJE: Si el productor no existe en el Excel, frena el sistema
+            st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» NO EXISTE en ninguna celda de la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
+
+    if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
+        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» está incompleta o en cero. Pulsa «🔄 Sincronizar Nube» para refrescar los datos. Si el problema persiste, revisa los valores en tu hoja de Configuración.")
         else:
             # 💥 AQUÍ ESTÁ EL BLINDAJE: Si el productor no existe, frena el sistema y te avisa a gritos.
             st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» asignado a esta finca NO EXISTE en la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
