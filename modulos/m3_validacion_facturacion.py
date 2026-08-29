@@ -992,43 +992,26 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         tipo_productor = "COOPERATIVA"
     
     if not df_cfg.empty:
-        # 💥 ESCÁNER OMNISCIENTE: Rastrea en toda la matriz sin depender de posiciones fijas
-        idx_fila_productor = -1
-        idx_mat = idx_st = idx_av = -1
+        # 💥 RADAR FIJADO: Buscamos al productor ÚNICAMENTE en la Columna A (índice 0)
+        columna_a = df_cfg.iloc[:, 0].astype(str).str.strip().str.upper()
+        match_cfg = df_cfg[columna_a == tipo_productor]
         
-        # 1. Encontrar en qué fila exacta está el productor (ej. "SOCIO")
-        for r_idx in range(len(df_cfg)):
-            if (df_cfg.iloc[r_idx].astype(str).str.strip().str.upper() == tipo_productor).any():
-                idx_fila_productor = r_idx
-                break
-                
-        # 2. Encontrar en qué columnas exactas están las tarifas
-        for c_idx in range(len(df_cfg.columns)):
-            col_data = df_cfg.iloc[:, c_idx].astype(str).str.strip().str.upper()
-            col_name = str(df_cfg.columns[c_idx]).strip().upper()
-            
-            if "MATERIAL MULT" in col_name or (col_data == "MATERIAL MULT").any(): idx_mat = c_idx
-            if "SERVICIO TEC" in col_name or (col_data.str.contains("SERVICIO TEC", na=False)).any(): idx_st = c_idx
-            if "AVION MULT" in col_name or (col_data == "AVION MULT").any(): idx_av = c_idx
-                
-        if idx_fila_productor != -1:
+        if not match_cfg.empty:
+            fila_cfg = match_cfg.iloc[0]
             try:
-                # Si el escáner no encuentra el título, asume las posiciones por defecto (C=2, D=3, F=5)
-                if idx_mat == -1: idx_mat = 2
-                if idx_st == -1: idx_st = 3
-                if idx_av == -1: idx_av = 5
-                
-                mult_material = limpiar_numero_estricto(df_cfg.iloc[idx_fila_productor, idx_mat])
-                tarifa_serv_tec_base = limpiar_dinero(df_cfg.iloc[idx_fila_productor, idx_st])
-                mult_avion_base = limpiar_numero_estricto(df_cfg.iloc[idx_fila_productor, idx_av])
-            except Exception:
-                pass
+                # 💥 BISTURÍ FIJO: Forzamos la lectura en las columnas exactas (C=2, D=3, F=5)
+                # Esto evita que el sistema lea accidentalmente la columna B de los porcentajes (14.07%)
+                mult_material = limpiar_numero_estricto(fila_cfg.iloc[2]) 
+                tarifa_serv_tec_base = limpiar_dinero(fila_cfg.iloc[3])
+                mult_avion_base = limpiar_numero_estricto(fila_cfg.iloc[5])
+            except Exception as e:
+                st.warning(f"⚠️ Error interno extrayendo tarifas: {e}")
         else:
-            # 💥 BLINDAJE: Si el productor no existe en el Excel, frena el sistema
-            st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» NO EXISTE en ninguna celda de la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
+            # 💥 ALERTA ROJA: Si el productor realmente no está en la Columna A, frena todo.
+            st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» NO EXISTE en la Columna A de la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» está incompleta o en cero. Pulsa «🔄 Sincronizar Nube» para refrescar los datos.")
+        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» está incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube».")
 
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
