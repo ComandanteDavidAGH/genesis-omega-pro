@@ -677,11 +677,16 @@ def ejecutar(supabase_client=None):
                     estilos[i] = 'background-color: #f8f9fa; color: #333333; font-weight: 600; text-align: right;'
             return estilos
 
-        formato_dinero = {col: lambda x: f"$ {x:,.0f}".replace(",", ".") for col in ["PRECIO VUELO", "RECARGO ($/HA)", "Costo ST ($)", "Costo Vuelo ($)", "Costo Recargo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]}
+        # 💥 MOTOR VISUAL PREMIUM PARA RESULTADOS (Dinero, Hectáreas y Días)
+        formato_columnas = {col: lambda x: f"$ {x:,.0f}".replace(",", ".") for col in ["PRECIO VUELO", "RECARGO ($/HA)", "Costo ST ($)", "Costo Vuelo ($)", "Costo Recargo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]}
+        
+        # Inyectamos el formato estricto para Hectáreas y Días
+        formato_columnas["HECTAREAS"] = lambda x: f"{x:.2f}"
+        formato_columnas["DIAS CICLO"] = lambda x: f"{int(x)}"
 
         with tab1:
             st.dataframe(
-                df_filtro.style.apply(estilo_detalles, axis=1).format(formato_dinero), 
+                df_filtro.style.apply(estilo_detalles, axis=1).format(formato_columnas), 
                 use_container_width=True, 
                 hide_index=True
             )
