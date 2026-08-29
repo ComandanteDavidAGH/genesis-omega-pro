@@ -595,13 +595,13 @@ def ejecutar(purificar_lote, extraer_numero):
 
                         df_vista = df_oraculo.copy()
                         
-                        # Formato estricto para mantener la tabla viva y ordenable
+                        # 💥 CORRECCIÓN VIP: Uso del motor 'fmt_latino' para asegurar puntos y comas perfectos
                         formato_oraculo = {}
 
                         if modo_analisis == "Estándar (Autonomía Días)":
-                            formato_oraculo["📦 SALDO (SAP)"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
-                            formato_oraculo["📈 PROYECCIÓN MES (L/Kg)"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
-                            formato_oraculo["⏳ AUTONOMÍA (DÍAS)"] = lambda x: "∞" if x >= 9999 else f"{int(x)}"
+                            formato_oraculo["📦 SALDO (SAP)"] = lambda x: fmt_latino(x, 1) if pd.notna(x) else ""
+                            formato_oraculo["📈 PROYECCIÓN MES (L/Kg)"] = lambda x: fmt_latino(x, 1) if pd.notna(x) else ""
+                            formato_oraculo["⏳ AUTONOMÍA (DÍAS)"] = lambda x: "∞" if x >= 9999 else fmt_latino(x, 0)
                             
                             config_columnas = {
                                 "📍 PISTA": st.column_config.TextColumn("📍 PISTA", width="small"),
@@ -612,10 +612,10 @@ def ejecutar(purificar_lote, extraer_numero):
                                 "ESTADO": st.column_config.TextColumn("🛡️ ESTADO LOGÍSTICO", width="medium")
                             }
                         else:
-                            formato_oraculo["📦 SALDO (SAP)"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
-                            formato_oraculo["⏱️ DÍAS POR CICLO"] = lambda x: f"{x:.1f}" if pd.notna(x) else ""
-                            formato_oraculo["🔄 CONSUMO POR CICLO"] = lambda x: f"{x:,.1f}".replace(',', '.') if pd.notna(x) else ""
-                            formato_oraculo["🔋 CICLOS RESTANTES"] = lambda x: "∞" if x >= 99.9 else f"{x:.2f}"
+                            formato_oraculo["📦 SALDO (SAP)"] = lambda x: fmt_latino(x, 1) if pd.notna(x) else ""
+                            formato_oraculo["⏱️ DÍAS POR CICLO"] = lambda x: fmt_latino(x, 1) if pd.notna(x) else ""
+                            formato_oraculo["🔄 CONSUMO POR CICLO"] = lambda x: fmt_latino(x, 1) if pd.notna(x) else ""
+                            formato_oraculo["🔋 CICLOS RESTANTES"] = lambda x: "∞" if x >= 99.9 else fmt_latino(x, 2)
                             
                             config_columnas = {
                                 "📍 PISTA": st.column_config.TextColumn("📍 PISTA", width="small"),
@@ -628,6 +628,11 @@ def ejecutar(purificar_lote, extraer_numero):
                             }
 
                         st.dataframe(
+                            df_vista.style.apply(pintar_oraculo, axis=1).format(formato_oraculo), 
+                            use_container_width=True, 
+                            hide_index=True,
+                            column_config=config_columnas
+                        )
                             df_vista.style.apply(pintar_oraculo, axis=1).format(formato_oraculo), 
                             use_container_width=True, 
                             hide_index=True,
