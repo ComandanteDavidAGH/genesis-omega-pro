@@ -1028,16 +1028,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» NO EXISTE en ninguna celda de la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» está incompleta o en cero. Pulsa «🔄 Sincronizar Nube» para refrescar los datos. Si el problema persiste, revisa los valores en tu hoja de Configuración.")
-        else:
-            # 💥 AQUÍ ESTÁ EL BLINDAJE: Si el productor no existe, frena el sistema y te avisa a gritos.
-            st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» asignado a esta finca NO EXISTE en la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
+        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» está incompleta o en cero. Pulsa «🔄 Sincronizar Nube» para refrescar los datos.")
 
-    if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» parece incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube» y verifica antes de detonar la factura.")
-
-    if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» parece incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube» y verifica antes de detonar la factura.")
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
 
