@@ -580,7 +580,7 @@ def ejecutar():
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
         st.info("💡 Seleccione las fincas a exportar. El sistema generará la Matriz Comparativa (Pista A vs Pista B), el detalle de rendimiento y la Auditoría de vuelos, todo con formato corporativo.")
-        fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
+        fincas_a_descargar = st.multiselect("✈️ Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
             df_filtrado_fecha = df_base[(df_base['FECHA_DT'].dt.date >= start_date) & (df_base['FECHA_DT'].dt.date <= end_date)]
