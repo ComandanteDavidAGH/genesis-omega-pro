@@ -335,17 +335,40 @@ def ejecutar(*args, **kwargs):
 
     tab_vuelo, tab_total = st.tabs(["✈️ Tarifa Vuelo Pura (Operativo)", "💰 Facturación Total Operación"])
 
-    def formatear_pesos(val):
-        if pd.isna(val) or val == 0: return "-"
-        if val < 0: return f"-$ {abs(val):,.0f}".replace(",", ".")
-        return f"$ {val:,.0f}".replace(",", ".")
+    # ==========================================================
+    # 💎 MOTOR VISUAL PREMIUM PARA TABLAS
+    # ==========================================================
+    def aplicar_estilo_premium(row):
+        estilos = [''] * len(row)
+        dif = row.get('Diferencia ($)', 0)
+        
+        base_style = 'background-color: #ffffff; color: #0d1b2a; font-weight: 600;'
+        
+        for i, col in enumerate(row.index):
+            cell_style = base_style
+            if col in ['AVIÓN', 'DRONE', 'Diferencia ($)', 'Eficiencia (%)']:
+                cell_style += ' text-align: right;'
+            
+            # Sombreado de fondo agresivo para la columna de impacto económico
+            if col == 'Diferencia ($)':
+                if dif < 0: cell_style = 'background-color: #ffe5e5; color: #dc3545; font-weight: 900; text-align: right;'
+                elif dif > 0: cell_style = 'background-color: #e6f4ea; color: #28a745; font-weight: 900; text-align: right;'
+            elif col == 'Eficiencia (%)':
+                if dif < 0: cell_style = 'color: #dc3545; font-weight: 900; text-align: right;'
+                elif dif > 0: cell_style = 'color: #28a745; font-weight: 900; text-align: right;'
+                
+            estilos[i] = cell_style
+        return estilos
 
-    def semaforo_financiero(val):
-        if isinstance(val, str):
-            if '-' in val and val != '-': return 'color: #e53e3e; font-weight: bold;' 
-            elif val == '-': return 'color: #718096;' 
-            else: return 'color: #27ae60; font-weight: bold;' 
-        return ''
+    columnas_ui = {
+        "FINCA": st.column_config.TextColumn("🏡 FINCA", width="medium"),
+        "TIPO_ENTIDAD": st.column_config.TextColumn("🤝 PERFIL", width="small"),
+        "EQUIPO DRON": st.column_config.TextColumn("🛸 OPERADOR DRON", width="medium"),
+        "AVIÓN": st.column_config.NumberColumn("✈️ TARIFA AVIÓN", format="$ %d", width="small"),
+        "DRONE": st.column_config.NumberColumn("🛸 TARIFA DRON", format="$ %d", width="small"),
+        "Diferencia ($)": st.column_config.NumberColumn("⚖️ AHORRO ($)", format="$ %d", width="small"),
+        "Eficiencia (%)": st.column_config.NumberColumn("📈 EFICIENCIA", format="%.1f %%", width="small")
+    }
 
     # ==========================================================
     # PESTAÑA 1: TARIFA VUELO PURA
@@ -379,15 +402,13 @@ def ejecutar(*args, **kwargs):
             st.markdown("---")
             st.markdown("#### 📋 Matriz Detallada de Comparación")
             df_print_v = m_comp_v.copy()
-            df_print_v['AVIÓN'] = df_print_v['AVIÓN'].apply(formatear_pesos)
-            df_print_v['DRONE'] = df_print_v['DRONE'].apply(formatear_pesos)
-            df_print_v['Diferencia ($)'] = df_print_v['Diferencia ($)'].apply(formatear_pesos)
-            df_print_v['Eficiencia (%)'] = (df_print_v['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
+            df_print_v['Eficiencia (%)'] = df_print_v['Eficiencia (%)'] * 100
 
             st.dataframe(
-                df_print_v.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), 
+                df_print_v.style.apply(aplicar_estilo_premium, axis=1), 
                 use_container_width=True, 
-                hide_index=True
+                hide_index=True,
+                column_config=columnas_ui
             )
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
@@ -424,15 +445,13 @@ def ejecutar(*args, **kwargs):
             st.markdown("---")
             st.markdown("#### 📋 Matriz Detallada Facturación Total")
             df_print_t = m_comp_t.copy()
-            df_print_t['AVIÓN'] = df_print_t['AVIÓN'].apply(formatear_pesos)
-            df_print_t['DRONE'] = df_print_t['DRONE'].apply(formatear_pesos)
-            df_print_t['Diferencia ($)'] = df_print_t['Diferencia ($)'].apply(formatear_pesos)
-            df_print_t['Eficiencia (%)'] = (df_print_t['Eficiencia (%)'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
+            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'] * 100
 
             st.dataframe(
-                df_print_t.style.map(semaforo_financiero, subset=['Diferencia ($)', 'Eficiencia (%)']), 
+                df_print_t.style.apply(aplicar_estilo_premium, axis=1), 
                 use_container_width=True, 
-                hide_index=True
+                hide_index=True,
+                column_config=columnas_ui
             )
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
