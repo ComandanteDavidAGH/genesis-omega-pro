@@ -52,7 +52,7 @@ def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True)
         print(mensaje)
 
 # =================================================================
-# 🔌 CONEXIÓN, RELOJ Y MOTORES NUMÉRICOS
+# 🔌 CONEXIÓN, RELOJ Y MOTORES NUMÉRICOS (AQUÍ ESTÁ TU CURA)
 # =================================================================
 
 def obtener_hora_colombia():
@@ -78,7 +78,7 @@ def limpiar_dinero(val):
         if isinstance(val, (int, float)): return float(val)
         v = str(val).upper().replace("$", "").replace("COP", "").replace(" ", "").strip()
         if not v or v == '-': return 0.0
-
+        
         if '.' in v and ',' in v:
             if v.rfind(',') > v.rfind('.'): v = v.replace('.', '').replace(',', '.')
             else: v = v.replace(',', '')
@@ -89,7 +89,7 @@ def limpiar_dinero(val):
             partes = v.split('.')
             if len(partes) > 2: v = v.replace('.', '')
             elif len(partes[-1]) == 3: v = v.replace('.', '')
-
+        
         v = re.sub(r'[^\d\.\-]', '', v)
         return float(v) if v else 0.0
     except: return 0.0
@@ -118,7 +118,7 @@ def procesar_fecha_estricta(val):
     s = str(val).strip().lower()
     if s.isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(int(s), 'D')
     if s.replace('.', '', 1).isdigit(): return pd.to_datetime('1899-12-30') + pd.to_timedelta(float(s), 'D')
-
+    
     meses_es = {'enero':1, 'febrero':2, 'marzo':3, 'abril':4, 'mayo':5, 'junio':6, 'julio':7, 'agosto':8, 'septiembre':9, 'octubre':10, 'noviembre':11, 'diciembre':12}
     mes_encontrado = next((meses_es[m] for m in meses_es if m in s), None)
     if mes_encontrado:
@@ -135,10 +135,10 @@ def procesar_fecha_estricta(val):
     for fmt in ('%d/%m/%Y', '%Y/%m/%d', '%m/%d/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d/%m/%y'):
         try: return pd.to_datetime(s, format=fmt)
         except: pass
-    try:
+    try: 
         res = pd.to_datetime(s, dayfirst=True)
         return pd.NaT if pd.isna(res) else res
-    except: return pd.NaT
+    except: return pd.NaT 
 
 @st.cache_data(show_spinner=False, ttl=60)
 def obtener_historial_completo_ciclos_cached():
@@ -153,14 +153,14 @@ def obtener_historial_completo_ciclos_cached():
             if "FINCA" in [str(x).upper() for x in t1[i]]:
                 idx_t1 = i; break
         df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
-
+        
         apoyo = boveda.worksheet("TABLA DE APOYO2023").get_all_values()
         idx_ap = 0
         for i in range(min(20, len(apoyo))):
-            if any('FINCA' in str(c).upper() for c in apoyo[i]):
+            if any('FINCA' in str(c).upper() for c in apoyo[i]): 
                 idx_ap = i; break
         df_apoyo = pd.DataFrame(apoyo[idx_ap+1:], columns=apoyo[idx_ap]) if len(apoyo) > idx_ap else pd.DataFrame()
-
+        
         return df_t1, df_apoyo
     except Exception: return pd.DataFrame(), pd.DataFrame()
 
@@ -233,35 +233,35 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
         "TOPE SUR": {},
         "TOPE PARCELA INTER < 20HA": {}
     }
-
+    
     if df_tarifas.empty:
         return {"THRUS SR2": 4606562, "AIR TRACTOR": 4665109}, {"DRONE DATAROT": 84428}, dict_topes, None
-
+        
     anios_disp = [str(c) for c in df_tarifas.columns if str(c).isdigit()]
     col_anio = anio_str if anio_str in anios_disp else None
-
+    
     if not col_anio:
         valid_years = [y for y in anios_disp if int(y) <= int(anio_str)]
         col_anio = max(valid_years) if valid_years else (max(anios_disp) if anios_disp else None)
-
+        
     if col_anio:
         for _, r in df_tarifas.iterrows():
             pista = str(r.get('PISTA', '')).strip().upper()
             equipo = str(r.get('EQUIPO_O_TOPE', '')).strip().upper()
-            tarifa_val = limpiar_dinero(r[col_anio])
-
+            tarifa_val = limpiar_dinero(r[col_anio]) 
+            
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
             elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
             elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
-                nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
-                dict_dr[nombre_dron] = tarifa_val
+                 nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
+                 dict_dr[nombre_dron] = tarifa_val
             elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
-                dict_av[equipo] = tarifa_val
-
+                 dict_av[equipo] = tarifa_val
+                 
     if not dict_av: dict_av = {"AIR TRACTOR": 4665109}
     if not dict_dr: dict_dr = {"DRONE DATAROT": 84428}
-
+    
     return dict_av, dict_dr, dict_topes, col_anio
 
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
@@ -272,7 +272,7 @@ def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
                 val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
     except Exception: pass
-    return 0.5
+    return 0.5 
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def obtener_matriz_fija_cruda_v2():
@@ -300,7 +300,7 @@ def obtener_dosis_global_robusta_v2(df_mez_dummy, nombre_producto_sap):
                         if val_num and val_num != ".":
                             dosis = float(val_num)
                             if 0 < dosis < 100: return dosis
-            except Exception: continue
+            except Exception: continue 
     return 0.0
 
 @st.cache_data(show_spinner=False, ttl=1800)
@@ -351,8 +351,8 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
             for k_sap in sap_dict_pista.keys():
                 if lider_db == k_sap or (len(k_sap) >= 4 and lider_db in k_sap) or (len(lider_db) >= 4 and k_sap in lider_db):
                     match_lider = True; break
-            if not match_lider: puntaje -= 1000
-
+            if not match_lider: puntaje -= 1000 
+        
         for p_receta, d_esperada in receta.items():
             match_receta, dose_matched, match_perfecto = False, False, False
             d_receta_esperada = d_esperada
@@ -363,21 +363,21 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                         d_receta_esperada = float(char); break
             elif "IMBIOSIL" in p_receta:
                 d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
-
+                
             for k_sap, d_sap in sap_dict_pista.items():
                 if p_receta == k_sap or (len(k_sap) >= 4 and p_receta in k_sap) or (len(p_receta) >= 4 and k_sap in p_receta):
                     match_receta = True
-                    error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15)
+                    error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15) 
                     if error <= 0.05: match_perfecto = True; dose_matched = True
-                    elif error <= tolerancia: dose_matched = True
+                    elif error <= tolerancia: dose_matched = True 
                     break
-
+            
             if match_receta:
                 puntaje += 100
-                if match_perfecto: puntaje += 100
-                elif dose_matched: puntaje += 40
-                else: puntaje -= 100
-            else: puntaje -= 100
+                if match_perfecto: puntaje += 100 
+                elif dose_matched: puntaje += 40  
+                else: puntaje -= 100 
+            else: puntaje -= 100 
 
         for k_sap in sap_dict_pista.keys():
             sap_en_receta = False
@@ -389,7 +389,7 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                 for f_name in dict_fertilizantes.keys():
                     if f_name == k_sap or (len(k_sap) >= 4 and f_name in k_sap) or (len(f_name) >= 4 and k_sap in f_name):
                         is_fert = True; break
-                if not is_fert: puntaje -= 100
+                if not is_fert: puntaje -= 100 
 
         if coctel_piloto_base and iter_id == coctel_piloto_base: puntaje += 50
         if puntaje > max_p:
@@ -416,32 +416,34 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     hoy_colombia_date = hora_oficial_col.date()
 
     st.header("", anchor="inicio_modulo")
-
+    
     st.markdown("""
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
-
-    div[data-testid="stSelectbox"] > div > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stTextInput"] > div,
-    div[data-testid="stNumberInput"] > div,
+    
+    /* 💥 Envoltorios con borde grueso (Ahora sí captura al calendario) */
+    div[data-testid="stSelectbox"] > div > div, 
+    div[data-testid="stSelectbox"] div[data-baseweb="select"], 
+    div[data-testid="stTextInput"] > div, 
+    div[data-testid="stNumberInput"] > div, 
     div[data-testid="stDateInput"] > div,
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {
-        background-color: #ffffff !important;
-        border: 3px solid #143521 !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important;
+    div[data-testid="stDateInput"] div[data-baseweb="input"] { 
+        background-color: #ffffff !important; 
+        border: 3px solid #143521 !important; 
+        border-radius: 8px !important; 
+        box-shadow: 0px 4px 8px rgba(0,0,0,0.06) !important; 
     }
-
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stDateInput"] input {
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
+    
+    /* 💥 Inputs sin doble borde */
+    div[data-testid="stTextInput"] input, 
+    div[data-testid="stNumberInput"] input, 
+    div[data-testid="stDateInput"] input { 
+        background-color: transparent !important; 
+        border: none !important; 
+        box-shadow: none !important; 
     }
-
+    
     div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { background-color: transparent !important; border: none !important; }
     div[data-testid="stSelectbox"] *, div[data-testid="stTextInput"] *, div[data-testid="stNumberInput"] *, div[data-testid="stDateInput"] * { color: #000000 !important; font-weight: bold !important; }
     div[data-testid="stMainBlockContainer"] label p { color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; }
@@ -980,31 +982,47 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia:
         tipo_productor = "COOPERATIVA"
-
-    # =================================================================
-    # 🔐 CONFIGURACIÓN FINANCIERA POR TIPO DE PRODUCTOR
-    # Busca la fila cuya primera celda diga "GRUPOS" y usa esa fila
-    # como mapa de posiciones -> tolera que la tabla se mueva en Sheets.
-    # =================================================================
+    
     if not df_cfg.empty:
-        fila_header_grupos = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == "GRUPOS"]
-        col_pos_cfg = {}
-        if not fila_header_grupos.empty:
-            valores_header = fila_header_grupos.iloc[0].astype(str).str.strip().str.upper().tolist()
-            col_pos_cfg = {nombre: idx for idx, nombre in enumerate(valores_header) if nombre and nombre != "NAN"}
-
-        match_cfg = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_productor]
-        if not match_cfg.empty:
-            fila_cfg = match_cfg.iloc[0]
+        # 💥 ESCÁNER OMNISCIENTE 1: PRODUCTORES
+        fila_productor = pd.Series(dtype=object)
+        for r_idx in range(len(df_cfg)):
+            if (df_cfg.iloc[r_idx].astype(str).str.strip().str.upper() == tipo_productor).any():
+                fila_productor = df_cfg.iloc[r_idx]
+                break
+                
+        idx_mat, idx_st, idx_av = 2, 3, 5
+        for c_idx in range(len(df_cfg.columns)):
+            col_str = df_cfg.iloc[:, c_idx].astype(str).str.strip().str.upper()
+            col_name = str(df_cfg.columns[c_idx]).strip().upper()
+            if "MATERIAL MULT" in col_name or (col_str == "MATERIAL MULT").any(): idx_mat = c_idx
+            if "SERVICIO TEC" in col_name or (col_str.str.contains("SERVICIO TEC", na=False)).any(): idx_st = c_idx
+            if "AVION MULT" in col_name or (col_str == "AVION MULT").any(): idx_av = c_idx
+        
+        # ==========================================
+        # 🪤 INICIO DEL CEBO 1 (Imprime en pantalla)
+        # ==========================================
+        st.error(f"🪤 CEBO 1 | Productor: '{tipo_productor}' | ¿Lo encontró?: {not fila_productor.empty} | Índices detectados -> Mat: {idx_mat}, ST: {idx_st}, Av: {idx_av}")
+        if not fila_productor.empty:
+            st.json(fila_productor.astype(str).to_dict()) # Muestra la fila cruda capturada
+        # ==========================================
+        
+        if not fila_productor.empty:
             try:
-                mult_material = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["MATERIAL MULT"]])
-                tarifa_serv_tec_base = limpiar_dinero(fila_cfg.iloc[col_pos_cfg["SERVICIO TEC BASE"]])
-                mult_avion_base = limpiar_numero_estricto(fila_cfg.iloc[col_pos_cfg["AVION MULT"]])
-            except KeyError as e:
-                st.warning(f"⚠️ No se encontró la columna {e} en la fila «Grupos» de «Configuración». Usando valores por defecto (Material x{mult_material}, ST ${tarifa_serv_tec_base:,.0f}, Avión x{mult_avion_base}) — pulsa «🔄 Sincronizar Nube» para traer los datos más recientes antes de facturar.")
+                mult_material = limpiar_numero_estricto(fila_productor.iloc[idx_mat])
+                tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[idx_st])
+                mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[idx_av])
+                
+                # 🪤 CEBO 1.1: Imprime los valores finales que Python intentará usar
+                st.warning(f"🪤 CEBO 1.1 | Valores extraídos -> Mult Mat: {mult_material} | ST: {tarifa_serv_tec_base} | Mult Av: {mult_avion_base}")
+            except Exception as e:
+                st.error(f"🪤 CEBO ERROR LEYENDO MULTIPLICADORES: {e}")
+                pass
+        else:
+            st.error(f"🚨 ALERTA FINANCIERA: El perfil «{tipo_productor}» NO EXISTE en TODA la pestaña Configuración.")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» parece incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube» y verifica antes de detonar la factura.")
+        st.warning(f"⚠️ Tarifas para «{tipo_productor}» en cero. Usando valores por defecto.")
 
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
@@ -1261,7 +1279,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                     costo_unit = v_t / c_t
 
                         if idx_almacen != -1:
-                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)]
+                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
                         else:
                             match_pista = match_sabana_global
 
@@ -1274,22 +1292,28 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 try:
                     if not df_cfg.empty:
-                        c_p_i, c_c_i = 8, 9
-                        for i_cfg in range(min(5, len(df_cfg))):
-                            r_c = df_cfg.iloc[i_cfg].astype(str).str.upper().tolist()
-                            if 'PRODUCTO' in r_c and 'COSTO' in r_c:
-                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
+                        # 💥 ESCÁNER OMNISCIENTE 2: PRECIOS BASE
+                        precio_maestro = 0.0
+                        nombre_buscado = nombre_p.upper().strip()
+                        for r_i in range(len(df_cfg)):
+                            row_s = df_cfg.iloc[r_i].astype(str).str.strip().str.upper()
+                            if (row_s == nombre_buscado).any():
+                                # Encuentra la columna donde está el nombre y toma la celda de la derecha
+                                idx_col = list(row_s).index(nombre_buscado)
+                                if idx_col + 1 < len(df_cfg.columns):
+                                    precio_maestro = limpiar_dinero(df_cfg.iloc[r_i, idx_col + 1])
+                                
+                                # ==========================================
+                                # 🪤 INICIO DEL CEBO 2 (Imprime en pantalla)
+                                # ==========================================
+                                st.info(f"🪤 CEBO 2 | Producto buscado: '{nombre_buscado}' | Fila Excel: {r_i} | Columna Excel: {idx_col} | Precio capturado: {precio_maestro}")
+                                # ==========================================
                                 break
-
-                        mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
-                        if not mask_cfg.any():
-                            mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
-
-                        if mask_cfg.any():
-                            precio_maestro = limpiar_dinero(df_cfg[mask_cfg].iloc[0, c_c_i])
-                            if precio_maestro > 0:
-                                costo_unit = float(precio_maestro)
-                except Exception:
+                                
+                        if precio_maestro > 0:
+                            costo_unit = float(precio_maestro) 
+                except Exception as e:
+                    st.error(f"🪤 CEBO ERROR PRECIO: {e}")
                     pass
 
                 dosis_teorica = None
