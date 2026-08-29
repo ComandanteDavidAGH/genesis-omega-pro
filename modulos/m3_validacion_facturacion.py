@@ -992,31 +992,37 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         tipo_productor = "COOPERATIVA"
     
     if not df_cfg.empty:
-        # 💥 RADAR FIJADO: Buscamos al productor ÚNICAMENTE en la Columna A (índice 0)
-        columna_a = df_cfg.iloc[:, 0].astype(str).str.strip().str.upper()
-        match_cfg = df_cfg[columna_a == tipo_productor]
+        # 💥 ESCÁNER OMNISCIENTE 1: PRODUCTORES (A prueba de balas)
+        fila_productor = pd.Series(dtype=object)
+        for r_idx in range(len(df_cfg)):
+            if (df_cfg.iloc[r_idx].astype(str).str.strip().str.upper() == tipo_productor).any():
+                fila_productor = df_cfg.iloc[r_idx]
+                break
+                
+        idx_mat, idx_st, idx_av = 2, 3, 5
+        for c_idx in range(len(df_cfg.columns)):
+            col_str = df_cfg.iloc[:, c_idx].astype(str).str.strip().str.upper()
+            col_name = str(df_cfg.columns[c_idx]).strip().upper()
+            if "MATERIAL MULT" in col_name or (col_str == "MATERIAL MULT").any(): idx_mat = c_idx
+            if "SERVICIO TEC" in col_name or (col_str.str.contains("SERVICIO TEC", na=False)).any(): idx_st = c_idx
+            if "AVION MULT" in col_name or (col_str == "AVION MULT").any(): idx_av = c_idx
         
-        if not match_cfg.empty:
-            fila_cfg = match_cfg.iloc[0]
+        if not fila_productor.empty:
             try:
-                # 💥 BISTURÍ FIJO: Forzamos la lectura en las columnas exactas (C=2, D=3, F=5)
-                # Esto evita que el sistema lea accidentalmente la columna B de los porcentajes (14.07%)
-                mult_material = limpiar_numero_estricto(fila_cfg.iloc[2]) 
-                tarifa_serv_tec_base = limpiar_dinero(fila_cfg.iloc[3])
-                mult_avion_base = limpiar_numero_estricto(fila_cfg.iloc[5])
-            except Exception as e:
-                st.warning(f"⚠️ Error interno extrayendo tarifas: {e}")
+                mult_material = limpiar_numero_estricto(fila_productor.iloc[idx_mat])
+                tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[idx_st])
+                mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[idx_av])
+            except Exception:
+                pass
         else:
-            # 💥 ALERTA ROJA: Si el productor realmente no está en la Columna A, frena todo.
-            st.error(f"🚨 ALERTA FINANCIERA: El perfil de productor «{tipo_productor}» NO EXISTE en la Columna A de la pestaña «Configuración». El sistema ha congelado la matriz para evitar errores. ¡Ajusta el perfil en la TABLA 2 o en Configuración!")
+            st.error(f"🚨 ALERTA FINANCIERA: El perfil «{tipo_productor}» NO EXISTE en TODA la pestaña Configuración.")
 
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
-        st.warning(f"⚠️ La configuración financiera para «{tipo_productor}» está incompleta (usando valores por defecto). Pulsa «🔄 Sincronizar Nube».")
+        st.warning(f"⚠️ Tarifas para «{tipo_productor}» en cero. Usando valores por defecto.")
 
     if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
     if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
 
-    # 💥 CURA CEBO PERMANENTE: Calculamos en vivo y quitamos el rerun() para ver el rastro
     dias_ciclo_calc = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
     st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc
     st.session_state.finca_anterior = finca_sel
@@ -1282,21 +1288,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 try:
                     if not df_cfg.empty:
-                        c_p_i, c_c_i = 8, 9
-                        for i_cfg in range(min(5, len(df_cfg))):
-                            r_c = df_cfg.iloc[i_cfg].astype(str).str.upper().tolist()
-                            if 'PRODUCTO' in r_c and 'COSTO' in r_c: 
-                                c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
+                        # 💥 ESCÁNER OMNISCIENTE 2: PRECIOS BASE
+                        precio_maestro = 0.0
+                        nombre_buscado = nombre_p.upper().strip()
+                        for r_i in range(len(df_cfg)):
+                            row_s = df_cfg.iloc[r_i].astype(str).str.strip().str.upper()
+                            if (row_s == nombre_buscado).any():
+                                # Encuentra la columna donde está el nombre y toma la celda de la derecha
+                                idx_col = list(row_s).index(nombre_buscado)
+                                if idx_col + 1 < len(df_cfg.columns):
+                                    precio_maestro = limpiar_dinero(df_cfg.iloc[r_i, idx_col + 1])
                                 break
-                        
-                        mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_limpio
-                        if not mask_cfg.any(): 
-                            mask_cfg = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == nombre_p.upper().strip()
-                        
-                        if mask_cfg.any():
-                            precio_maestro = limpiar_dinero(df_cfg[mask_cfg].iloc[0, c_c_i])
-                            if precio_maestro > 0:
-                                costo_unit = float(precio_maestro) 
+                                
+                        if precio_maestro > 0:
+                            costo_unit = float(precio_maestro) 
                 except Exception:
                     pass
 
