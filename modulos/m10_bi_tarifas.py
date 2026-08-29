@@ -1,4 +1,5 @@
 import streamlit as st
+import logging
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -11,6 +12,9 @@ import io
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from oauth2client.service_account import ServiceAccountCredentials
+
+logging.basicConfig(level=logging.WARNING, filename="app_errors.log",
+                     format="%(asctime)s %(levelname)s %(message)s")
 
 # =================================================================
 # ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
@@ -36,10 +40,9 @@ def obtener_cliente_gspread_unificado():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_credentials"]), scope)
             return gspread.authorize(creds)
         except Exception: pass
-    try:
-        return gspread.service_account(filename='credenciales.json')
-    except Exception:
-        return None
+    logging.error("No se encontraron credenciales válidas en st.secrets.")
+    st.error("🚨 No se pudo autenticar con Google Cloud. Verifica la configuración de secrets.")
+    return None
 
 def formato_latino(numero, decimales=0):
     if pd.isna(numero) or numero is None: return "0"
@@ -121,7 +124,9 @@ def limpiar_dinero(val):
             partes = v.rsplit('.', 1)
             v = partes[0].replace('.', '') + '.' + partes[1]
         num = float(v) if v else 0.0
-        if 5 < num < 2000: num = num * 1000
+        if 5 < num < 2000:
+            logging.warning(f"limpiar_dinero: valor {num} escalado x1000 (posible dato en miles)")
+            num = num * 1000
         return num
     except Exception: return 0.0
 
@@ -224,7 +229,9 @@ def cargar_boveda_recetas_y_precios():
             if data_mez:
                 df_mezclas = pd.DataFrame(data_mez[1:], columns=data_mez[0])
                 df_mezclas['COCTEL_CLEAN'] = df_mezclas.iloc[:, 0].astype(str).str.upper().str.replace(" ", "")
-        except Exception as e: st.error(f"🚨 Falla en DD_Mesclas: {e}")
+        except Exception as e:
+            logging.error(f"Fallo al cargar DD_Mesclas: {e}")
+            st.warning("⚠️ No se pudo cargar el catálogo de mezclas. Contacta al equipo técnico.")
 
         try: df_conf = pd.DataFrame(boveda_recetas.worksheet("Configuración").get_all_values()[1:], columns=boveda_recetas.worksheet("Configuración").get_all_values()[0])
         except Exception: pass
@@ -233,7 +240,8 @@ def cargar_boveda_recetas_y_precios():
         try: df_t2 = pd.DataFrame(boveda_recetas.worksheet("TABLA 2").get_all_values()[1:], columns=boveda_recetas.worksheet("TABLA 2").get_all_values()[0])
         except Exception: pass
     except Exception as e:
-        st.error(f"🚨 Error crítico de acceso a la Bóveda Principal: {e}")
+        logging.error(f"Fallo crítico de acceso a la Bóveda Principal: {e}")
+        st.warning("⚠️ No se pudo conectar a la fuente de datos principal. Contacta al equipo técnico.")
 
     try:
         sh_precios = gc.open_by_url(URL_BOVEDA_PRECIOS)
@@ -451,6 +459,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if st.button("🔄 Sincronizar Nube (Forzar Datos)", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
+    st.caption(f"🕒 Última carga: {datetime.now().strftime('%H:%M:%S')} (caché de 10 min)")
 
     try:
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
