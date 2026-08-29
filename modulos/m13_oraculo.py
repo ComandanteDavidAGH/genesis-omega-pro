@@ -87,7 +87,6 @@ def obtener_dosis_fertilizante(df_mezclas, fert_name):
     return None 
 
 def calcular_intervalo_pista(df_pista):
-    """ Calcula cuántos días tarda un ciclo de fumigación en una pista """
     if df_pista.empty: return 14.0
     fechas = sorted(df_pista['FECHA_DT'].dt.date.unique())
     if len(fechas) < 2: return 14.0
@@ -271,7 +270,6 @@ def ejecutar(purificar_lote, extraer_numero):
             st.cache_data.clear()
             st.rerun()
 
-    # 💾 MEMORIA RAM DE SESIÓN PARA LA HOMOLOGACIÓN
     if 'traductor_sap' not in st.session_state:
         st.session_state['traductor_sap'] = {
             "PLUC": "FUMIGARAY",
@@ -281,9 +279,6 @@ def ejecutar(purificar_lote, extraer_numero):
             "PDIV": "ASA"
         }
 
-    # =================================================================
-    # 🎯 AISLAMIENTO TÁCTICO: MODO CONFIGURACIÓN SAP
-    # =================================================================
     modo_config = st.toggle("⚙️ MODO CONFIGURACIÓN: Homologación Avanzada de Almacenes SAP", value=False)
     
     if modo_config:
@@ -299,13 +294,10 @@ def ejecutar(purificar_lote, extraer_numero):
             st.session_state['traductor_sap']["PDIV"] = c_h5.text_input("PDIV (Dron)", value=st.session_state['traductor_sap']["PDIV"]).upper()
             
             st.success("✅ Las homologaciones están sincronizadas. **Apaga este interruptor para volver al Radar del Oráculo.**")
-        st.stop() # 🛑 PARADA EN SECO: Oculta el resto de la interfaz
+        st.stop() 
 
     traductor_pistas = st.session_state['traductor_sap']
 
-    # =================================================================
-    # 🚀 INTERFAZ PRINCIPAL DEL ORÁCULO
-    # =================================================================
     with st.container(border=True):
         st.markdown("### 📥 1. Radar de Existencias Actuales (SAP)")
         archivo_sap = st.file_uploader("Cargue la Sábana SAP actualizada (.xlsx o .csv)", type=['xlsx', 'csv'], key="sap_oraculo")
@@ -334,7 +326,6 @@ def ejecutar(purificar_lote, extraer_numero):
         if st.button("🚀 EJECUTAR PREDICCIÓN DE RUPTURAS", type="primary", use_container_width=True):
             with st.spinner(f"Sincronizando lenguajes y analizando comportamiento agronómico..."):
                 try:
-                    # --- LECTURA DE SAP ---
                     if archivo_sap.name.lower().endswith('.xlsx') or archivo_sap.name.lower().endswith('.xls'):
                         df_sap = pd.read_excel(archivo_sap)
                     else:
@@ -376,7 +367,6 @@ def ejecutar(purificar_lote, extraer_numero):
                     if pista_objetivo != "TODAS":
                         df_sap_agrupado = df_sap_agrupado[df_sap_agrupado['PISTA_SAP'].str.contains(pista_objetivo, na=False)]
 
-                    # --- LECTURA DE BÓVEDA ---
                     df_t1, df_mezclas = extraer_datos_boveda_oraculo()
 
                     if df_t1.empty or df_mezclas.empty:
@@ -628,11 +618,6 @@ def ejecutar(purificar_lote, extraer_numero):
                             }
 
                         st.dataframe(
-                            df_vista.style.apply(pintar_oraculo, axis=1).format(formato_oraculo), 
-                            use_container_width=True, 
-                            hide_index=True,
-                            column_config=config_columnas
-                        )
                             df_vista.style.apply(pintar_oraculo, axis=1).format(formato_oraculo), 
                             use_container_width=True, 
                             hide_index=True,
