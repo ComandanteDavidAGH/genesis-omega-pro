@@ -992,7 +992,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         tipo_productor = "COOPERATIVA"
     
     if not df_cfg.empty:
-        # 💥 ESCÁNER OMNISCIENTE 1: PRODUCTORES (A prueba de balas)
+        # 💥 ESCÁNER OMNISCIENTE 1: PRODUCTORES
         fila_productor = pd.Series(dtype=object)
         for r_idx in range(len(df_cfg)):
             if (df_cfg.iloc[r_idx].astype(str).str.strip().str.upper() == tipo_productor).any():
@@ -1007,12 +1007,24 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             if "SERVICIO TEC" in col_name or (col_str.str.contains("SERVICIO TEC", na=False)).any(): idx_st = c_idx
             if "AVION MULT" in col_name or (col_str == "AVION MULT").any(): idx_av = c_idx
         
+        # ==========================================
+        # 🪤 INICIO DEL CEBO 1 (Imprime en pantalla)
+        # ==========================================
+        st.error(f"🪤 CEBO 1 | Productor: '{tipo_productor}' | ¿Lo encontró?: {not fila_productor.empty} | Índices detectados -> Mat: {idx_mat}, ST: {idx_st}, Av: {idx_av}")
+        if not fila_productor.empty:
+            st.json(fila_productor.astype(str).to_dict()) # Muestra la fila cruda capturada
+        # ==========================================
+        
         if not fila_productor.empty:
             try:
                 mult_material = limpiar_numero_estricto(fila_productor.iloc[idx_mat])
                 tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[idx_st])
                 mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[idx_av])
-            except Exception:
+                
+                # 🪤 CEBO 1.1: Imprime los valores finales que Python intentará usar
+                st.warning(f"🪤 CEBO 1.1 | Valores extraídos -> Mult Mat: {mult_material} | ST: {tarifa_serv_tec_base} | Mult Av: {mult_avion_base}")
+            except Exception as e:
+                st.error(f"🪤 CEBO ERROR LEYENDO MULTIPLICADORES: {e}")
                 pass
         else:
             st.error(f"🚨 ALERTA FINANCIERA: El perfil «{tipo_productor}» NO EXISTE en TODA la pestaña Configuración.")
@@ -1298,11 +1310,18 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                 idx_col = list(row_s).index(nombre_buscado)
                                 if idx_col + 1 < len(df_cfg.columns):
                                     precio_maestro = limpiar_dinero(df_cfg.iloc[r_i, idx_col + 1])
+                                
+                                # ==========================================
+                                # 🪤 INICIO DEL CEBO 2 (Imprime en pantalla)
+                                # ==========================================
+                                st.info(f"🪤 CEBO 2 | Producto buscado: '{nombre_buscado}' | Fila Excel: {r_i} | Columna Excel: {idx_col} | Precio capturado: {precio_maestro}")
+                                # ==========================================
                                 break
                                 
                         if precio_maestro > 0:
                             costo_unit = float(precio_maestro) 
-                except Exception:
+                except Exception as e:
+                    st.error(f"🪤 CEBO ERROR PRECIO: {e}")
                     pass
 
                 dosis_teorica = None
