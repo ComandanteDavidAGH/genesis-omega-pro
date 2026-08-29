@@ -1,9 +1,12 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 import gspread
-from datetime import datetime, timedelta
 import re
 import io
+from datetime import datetime, timedelta, date
 from oauth2client.service_account import ServiceAccountCredentials
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -630,11 +633,6 @@ def ejecutar(purificar_lote, extraer_numero):
                             hide_index=True,
                             column_config=config_columnas
                         )
-                            df_vista.style.apply(pintar_oraculo, axis=1), 
-                            use_container_width=True, 
-                            hide_index=True,
-                            column_config=config_columnas
-                        )
 
                         nombre_archivo = "Proyeccion_Lineal" if modo_analisis == "Estándar (Autonomía Días)" else "Proyeccion_Tactica_Ciclos"
                         excel_export = generar_excel_vip(df_vista, nombre_archivo)
@@ -646,7 +644,6 @@ def ejecutar(purificar_lote, extraer_numero):
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                             use_container_width=True
                         )
-                        
                 except Exception as e:
                     st.error(f"🚨 Falla en los cálculos predictivos o estructura de datos: {e}")
 
