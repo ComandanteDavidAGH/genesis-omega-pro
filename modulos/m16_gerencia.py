@@ -136,25 +136,45 @@ def cargar_datos_gerenciales():
     except Exception: return pd.DataFrame()
 
 # =================================================================
-# ⚙️ MOTOR EXCEL PROFESIONAL
+# ⚙️ MOTOR EXCEL PROFESIONAL (DISEÑO VIP)
 # =================================================================
 def generar_excel_maestro(df_total, df_vuelo):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_total.to_excel(writer, index=False, sheet_name='Facturación Total')
-        df_vuelo.to_excel(writer, index=False, sheet_name='Tarifa Vuelo Pura')
+        # 💥 Desplazamos la tabla a la fila 4 (startrow=3) para dejar espacio al título
+        df_total.to_excel(writer, index=False, sheet_name='Facturación Total', startrow=3)
+        df_vuelo.to_excel(writer, index=False, sheet_name='Tarifa Vuelo Pura', startrow=3)
+        
+        # Estilos corporativos
+        fill_titulo = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+        font_titulo = Font(color="FFFFFF", bold=True, size=14)
+        font_sub = Font(color="555555", italic=True, size=10)
         
         header_fill = PatternFill(start_color="1A365D", end_color="1A365D", fill_type="solid")
         header_font = Font(color="D4AF37", bold=True)
         align_center = Alignment(horizontal='center', vertical='center')
+        align_left = Alignment(horizontal='left', vertical='center')
         borde_fino = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
                             top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
         
         font_rojo = Font(color="C00000", bold=True) 
         font_verde = Font(color="00B050", bold=True) 
+        fecha_actual = datetime.now().strftime('%d/%m/%Y %H:%M')
         
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
+            
+            # 💥 Inyección de Títulos VIP en Fila 1 y 2
+            ws.merge_cells("A1:G1")
+            ws["A1"] = f"REPORTE GERENCIAL COMPARATIVO — {sheet_name.upper()}"
+            ws["A1"].fill = fill_titulo
+            ws["A1"].font = font_titulo
+            ws["A1"].alignment = align_center
+
+            ws.merge_cells("A2:G2")
+            ws["A2"] = f"Análisis de eficiencia Dron vs Avión | Generado el: {fecha_actual}"
+            ws["A2"].font = font_sub
+            ws["A2"].alignment = align_left
             
             ws.column_dimensions['A'].width = 32
             ws.column_dimensions['B'].width = 24
@@ -164,13 +184,15 @@ def generar_excel_maestro(df_total, df_vuelo):
             ws.column_dimensions['F'].width = 20
             ws.column_dimensions['G'].width = 16
             
-            for cell in ws[1]:
+            # Formato de Encabezados (Fila 4)
+            for cell in ws[4]:
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = align_center
                 cell.border = borde_fino
                 
-            for row in range(2, ws.max_row + 1):
+            # Formato de Datos (A partir de Fila 5)
+            for row in range(5, ws.max_row + 1):
                 ws[f'D{row}'].number_format = '"$"#,##0'
                 ws[f'E{row}'].number_format = '"$"#,##0'
                 
