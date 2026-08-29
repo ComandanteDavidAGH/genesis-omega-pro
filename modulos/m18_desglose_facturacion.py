@@ -346,47 +346,99 @@ def ejecutar(*args, **kwargs):
 
                 tab1, tab2 = st.tabs(["📊 Detalles Económicos Fila x Fila", "📑 Resumen Ejecutivo por Finca"])
                 
+                # 💥 MOTOR VISUAL PREMIUM PARA RESULTADOS (Sombreados y Formatos)
+                def estilo_detalles(row):
+                    estilos = ['background-color: #ffffff; color: #0d1b2a; font-weight: 500;'] * len(row)
+                    for i, col in enumerate(row.index):
+                        if col == 'RESULTADO TOTAL ($)':
+                            estilos[i] = 'background-color: #e6f4ea; color: #143521; font-weight: 900; border-left: 2px solid #28a745; text-align: right;'
+                        elif 'Costo' in col or col in ['PRECIO VUELO', 'RECARGO ($/HA)']:
+                            estilos[i] = 'background-color: #f8f9fa; color: #333333; font-weight: 600; text-align: right;'
+                    return estilos
+
+                def estilo_resumen(row):
+                    estilos = ['background-color: #ffffff; color: #0d1b2a; font-weight: 500;'] * len(row)
+                    for i, col in enumerate(row.index):
+                        if col == 'RESULTADO TOTAL ($)':
+                            estilos[i] = 'background-color: #fff9e6; color: #0d1b2a; font-weight: 900; border-left: 2px solid #d4af37; text-align: right;'
+                        elif 'Costo' in col:
+                            estilos[i] = 'background-color: #f8f9fa; color: #333333; font-weight: 600; text-align: right;'
+                    return estilos
+
+                formato_columnas = {col: lambda x: f"$ {x:,.0f}".replace(",", ".") for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]}
+                formato_columnas["HECTAREAS"] = lambda x: f"{x:.2f}"
+                formato_columnas["DIAS CICLO"] = lambda x: f"{int(x)}"
+                
                 with tab1:
-                    df_view = df_resultados.copy()
-                    df_view['HECTAREAS'] = df_view['HECTAREAS'].apply(lambda x: formato_latino(x, 2))
-                    for col in ["PRECIO VUELO", "Costo ST ($)", "Costo Vuelo ($)", "Costo Mezcla ($)", "Costo x Ha ($)", "RESULTADO TOTAL ($)"]:
-                        df_view[col] = df_view[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
-                    st.dataframe(df_view, use_container_width=True, hide_index=True)
+                    st.dataframe(
+                        df_resultados.style.apply(estilo_detalles, axis=1).format(formato_columnas), 
+                        use_container_width=True, 
+                        hide_index=True
+                    )
 
                 with tab2:
-                    df_resumen_view = df_resumen_finca.copy()
-                    for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']:
-                        df_resumen_view[col] = df_resumen_view[col].apply(lambda x: f"$ {formato_latino(x, 0)}")
-                    st.dataframe(df_resumen_view, use_container_width=True, hide_index=True)
+                    if not df_resumen_finca.empty:
+                        formato_dinero_res = {col: lambda x: f"$ {x:,.0f}".replace(",", ".") for col in ['Costo ST ($)', 'Costo Vuelo ($)', 'Costo Mezcla ($)', 'RESULTADO TOTAL ($)']}
+                        st.dataframe(
+                            df_resumen_finca.style.apply(estilo_resumen, axis=1).format(formato_dinero_res), 
+                            use_container_width=True, 
+                            hide_index=True
+                        )
+                    else: st.info("No hay datos para resumir.")
 
-                # 8. EXPORTADOR EXCEL PROFESIONAL
+                # 8. EXPORTADOR EXCEL PROFESIONAL (VIP)
                 st.markdown("<br>", unsafe_allow_html=True)
                 buffer = io.BytesIO()
                 
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_resultados.to_excel(writer, sheet_name='Detalle_Económico', index=False)
-                    df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False)
+                    df_resultados.to_excel(writer, sheet_name='Detalle_Económico', index=False, startrow=3)
+                    df_resumen_finca.to_excel(writer, sheet_name='Resumen_x_Finca', index=False, startrow=3)
                     
                     workbook = writer.book
-                    borde = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    header_font = Font(color="FFFFFF", bold=True)
+                    
+                    # Paleta de Estilos VIP
+                    fill_titulo = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    font_titulo = Font(color="FFFFFF", bold=True, size=14)
+                    font_sub = Font(color="555555", italic=True, size=10)
+                    
+                    header_fill = PatternFill(start_color="1A365D", end_color="1A365D", fill_type="solid")
+                    header_font = Font(color="D4AF37", bold=True)
+                    borde = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'), 
+                                   top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
+                    
+                    fecha_actual = datetime.now().strftime('%d/%m/%Y %H:%M')
 
                     for sheet_name in workbook.sheetnames:
                         ws = workbook[sheet_name]
                         ws.sheet_view.showGridLines = False
                         max_r, max_c = ws.max_row, ws.max_column
                         
+                        # Inyección de Títulos Combinados
+                        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_c)
+                        c_tit = ws.cell(row=1, column=1, value=f"REPORTE DE AUDITORÍA FINANCIERA — {sheet_name.upper().replace('_', ' ')}")
+                        c_tit.fill = fill_titulo
+                        c_tit.font = font_titulo
+                        c_tit.alignment = Alignment(horizontal='center', vertical='center')
+
+                        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max_c)
+                        c_sub = ws.cell(row=2, column=1, value=f"Desglose de Costos e Ingeniería Inversa | Generado el: {fecha_actual}")
+                        c_sub.font = font_sub
+                        c_sub.alignment = Alignment(horizontal='left', vertical='center')
+                        
+                        # Auto-ajuste de columnas
                         column_headers = {}
                         for col_idx in range(1, max_c + 1):
-                            ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = 20
-                            header_val = ws.cell(row=1, column=col_idx).value
+                            letra_columna = openpyxl.utils.get_column_letter(col_idx)
+                            header_val = ws.cell(row=4, column=col_idx).value
+                            valores_columna = [ws.cell(row=r, column=col_idx).value for r in range(4, min(max_r, 50) + 1)]
+                            ancho = max((len(str(v)) if v is not None else 0) for v in valores_columna) + 4
+                            ws.column_dimensions[letra_columna].width = min(max(ancho, 14), 35)
                             column_headers[col_idx] = str(header_val).upper() if header_val else ""
 
-                        for row in ws.iter_rows(min_row=1, max_row=max_r, min_col=1, max_col=max_c):
+                        for row in ws.iter_rows(min_row=4, max_row=max_r, min_col=1, max_col=max_c):
                             for cell in row:
                                 cell.border = borde
-                                if cell.row == 1:
+                                if cell.row == 4:
                                     cell.fill = header_fill
                                     cell.font = header_font
                                     cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -395,13 +447,13 @@ def ejecutar(*args, **kwargs):
                                     col_name = column_headers.get(cell.column, "")
                                     
                                     if isinstance(cell.value, (int, float)):
-                                        if "COSTO" in col_name or "PRECIO" in col_name or "RESULTADO" in col_name or "TOTAL" in col_name:
-                                            cell.number_format = '"$" #,##0' 
-                                        elif "HECTAREAS" in col_name:
+                                        if any(kw in col_name for kw in ["COSTO", "PRECIO", "RESULTADO", "TOTAL ($)", "RECARGO"]):
+                                            cell.number_format = '"$"#,##0' 
+                                        elif any(kw in col_name for kw in ["HECTAREAS", "VOLUMEN"]):
                                             cell.number_format = '#,##0.0'
 
                 st.download_button(
-                    label="💾 DESCARGAR AUDITORÍA GERENCIAL (EXCEL)",
+                    label="💾 DESCARGAR AUDITORÍA GERENCIAL (EXCEL VIP)",
                     data=buffer.getvalue(),
                     file_name=f"Auditoria_Facturacion_{fecha_ini}_{fecha_fin}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
