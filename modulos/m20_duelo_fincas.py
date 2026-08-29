@@ -14,6 +14,12 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
+# ⚙️ CONSTANTES CENTRALIZADAS
+# =================================================================
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
+SPREADSHEET_HISTORICO_URL = "https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit"
+
+# =================================================================
 # 🔌 CONEXIÓN Y FORMATO
 # =================================================================
 
@@ -112,22 +118,34 @@ def procesar_fecha_estricta(val):
 
 def extraer_diccionario_flota(gc):
     try:
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        sh = gc.open_by_url(SPREADSHEET_URL)
         for ws in sh.worksheets():
             try:
-                data = ws.get_all_values()
-                for row in data[:20]:
+                # 🩹 FIX: antes se llamaba ws.get_all_values() -- trae la hoja COMPLETA
+                # (miles de filas en pestañas como TABLA DE APOYO2023) solo para mirar
+                # las primeras filas. Multiplicado por cada pestaña del Drive, esto es
+                # lo que probablemente cuelga la carga inicial del módulo. Ahora se pide
+                # solo el rango A1:Z25 -- rapidísimo sin importar el tamaño real de la hoja.
+                muestra = ws.get('A1:Z25')
+                idx_header, idx_hk, idx_mod = -1, -1, -1
+                for i, row in enumerate(muestra):
                     row_upper = [str(x).upper().strip() for x in row]
                     if 'MATRICULA' in row_upper and ('TIPO AVION' in row_upper or 'MODELO' in row_upper):
+                        idx_header = i
                         idx_hk = row_upper.index('MATRICULA')
                         idx_mod = row_upper.index('TIPO AVION') if 'TIPO AVION' in row_upper else row_upper.index('MODELO')
-                        flota = {}
-                        for r in data[data.index(row)+1:]:
-                            if len(r) > max(idx_hk, idx_mod):
-                                hk = str(r[idx_hk]).strip().upper()
-                                mod = str(r[idx_mod]).strip().upper()
-                                if hk: flota[hk] = mod
-                        return flota
+                        break
+                if idx_header == -1:
+                    continue
+                # Ya localizamos la hoja correcta: recién aquí se justifica traerla completa.
+                data_completa = ws.get_all_values()
+                flota = {}
+                for r in data_completa[idx_header + 1:]:
+                    if len(r) > max(idx_hk, idx_mod):
+                        hk = str(r[idx_hk]).strip().upper()
+                        mod = str(r[idx_mod]).strip().upper()
+                        if hk: flota[hk] = mod
+                return flota
             except: continue
     except: pass
     return {}
@@ -140,7 +158,7 @@ def cargar_fuentes_maestras_duelo_v4():
     flota_dict = extraer_diccionario_flota(gc)
 
     try:
-        boveda_act = gc.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
+        boveda_act = gc.open_by_url(SPREADSHEET_URL)
         datos_brutos_act = boveda_act.worksheet("TABLA 1").get_all_values()
     except:
         datos_brutos_act = []
@@ -156,7 +174,7 @@ def cargar_fuentes_maestras_duelo_v4():
 
     datos_brutos_hist = []
     try:
-        boveda_hist = gc.open_by_url("https://docs.google.com/spreadsheets/d/16OZdiWwW7nLHyZBEnhiKlDTDttR7Tjhn37O9zm6wJOk/edit")
+        boveda_hist = gc.open_by_url(SPREADSHEET_HISTORICO_URL)
         datos_brutos_hist = boveda_hist.worksheet("Datos").get_all_values()
     except: pass
     
@@ -216,6 +234,171 @@ def cargar_fuentes_maestras_duelo_v4():
         return super_base
     else:
         return pd.DataFrame()
+
+
+# =================================================================
+# 🆚 MATRIZ COMPARATIVA PISTA VS PISTA (reemplaza la hoja plana)
+# -------------------------------------------------------------------
+# QUÉ: arma una hoja con Finca como grupo, la métrica como fila, y las
+# dos pistas del duelo como columnas lado a lado + diferencia + ganador.
+# POR QUÉ: la hoja "Resumen Gerencial" anterior era una lista plana
+# (una fila por Finca+Pista): para comparar A vs B el lector tenía que
+# ubicar dos filas separadas y restar mentalmente. Esta versión pone
+# la comparación completa en el mismo bloque visual, igual que el
+# modelo de referencia del usuario (MANCOL vs MANZATE), pero
+# reemplazando el color por una columna explícita "MEJOR OPCIÓN" para
+# no depender de que rojo/verde se interprete igual para todos.
+# =================================================================
+METRICAS_COMPARATIVO = [
+    ("TOTAL HECTÁREAS", "AREA", False, "area"),
+    ("CICLOS REALES (5 Días)", "CICLOS", False, "int"),
+    ("COSTO PROMEDIO X HA (Integral)", "COSTO_HA", True, "money"),
+    ("COSTO PROMEDIO X OS (Avión)", "COSTO_OS", True, "money"),
+    ("TOTAL FACTURADO", "FACTURADO", False, "money"),
+]
+
+
+def calcular_ciclos_reales(fechas_serie):
+    """
+    Único punto de verdad para la regla de 'ciclo real' (fechas
+    agrupadas cuando el salto entre vuelos es > 5 días). Antes esta
+    misma lógica estaba copiada dos veces en el archivo: una en
+    calcular_metricas() para pantalla, y otra en el bloque de
+    exportación. Un cambio de regla de negocio (ej. de 5 a 7 días)
+    solo se toca aquí ahora.
+    """
+    fechas_unicas = sorted(pd.Series(fechas_serie).dropna().unique())
+    if not fechas_unicas:
+        return 0
+    ciclos, inicio = 1, fechas_unicas[0]
+    for f in fechas_unicas[1:]:
+        if (f - inicio).days > 5:
+            ciclos += 1
+            inicio = f
+    return ciclos
+
+
+def agregar_hoja_comparativo_pistas(writer, df_export, pista_A, pista_B, fincas_a_descargar):
+    """
+    Construye la hoja 'Comparativo Pistas' en el Excel de salida.
+    Para cada finca seleccionada, compara la Pista A contra la Pista B
+    (las mismas del Duelo activo en pantalla) fila por métrica.
+    """
+    NAVY, GOLD = "0D1B2A", "D4AF37"
+    GREEN_FILL, GREEN_FONT, RED_FONT, GREY_ALT = "D4EDDA", "155724", "B02A2A", "F8F9FA"
+
+    fill_titulo = PatternFill(start_color=NAVY, end_color=NAVY, fill_type="solid")
+    font_titulo = Font(color="FFFFFF", bold=True, size=14)
+    fill_header = PatternFill(start_color=NAVY, end_color=NAVY, fill_type="solid")
+    font_header = Font(color="FFFFFF", bold=True, size=11)
+    fill_finca = PatternFill(start_color=GOLD, end_color=GOLD, fill_type="solid")
+    font_finca = Font(color="000000", bold=True, size=11)
+    fill_ganador = PatternFill(start_color=GREEN_FILL, end_color=GREEN_FILL, fill_type="solid")
+    font_ganador = Font(color=GREEN_FONT, bold=True)
+    font_diff_mal = Font(color=RED_FONT, bold=True)
+    fill_alt = PatternFill(start_color=GREY_ALT, end_color=GREY_ALT, fill_type="solid")
+    thin = Side(style="thin", color="D9D9D9")
+    borde = Border(left=thin, right=thin, top=thin, bottom=thin)
+    centro = Alignment(horizontal="center", vertical="center")
+    izq = Alignment(horizontal="left", vertical="center")
+
+    def fmt_money(v): return f"$ {v:,.0f}".replace(",", ".")
+    def fmt_area(v): return formato_latino(v, 2)
+
+    ws = writer.book.create_sheet("Comparativo Pistas")
+    headers = ["FINCA", "CONCEPTO", f"🔴 {pista_A}", f"🔵 {pista_B}", "DIFERENCIA ($)", "DIFERENCIA (%)", "MEJOR OPCIÓN"]
+
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "MATRIZ COMPARATIVA — DUELO LOGÍSTICO (PISTA vs PISTA)"
+    ws["A1"].fill, ws["A1"].font, ws["A1"].alignment = fill_titulo, font_titulo, centro
+    ws.merge_cells("A2:G2")
+    ws["A2"] = f"Comparativo: {pista_A} vs {pista_B}  |  En métricas de costo, gana la pista con menor valor"
+    ws["A2"].font = Font(italic=True, color="555555", size=10)
+    ws["A2"].alignment = izq
+
+    for c_idx, h in enumerate(headers, start=1):
+        cell = ws.cell(row=4, column=c_idx, value=h)
+        cell.fill, cell.font, cell.alignment, cell.border = fill_header, font_header, centro, borde
+
+    fila = 5
+    zebra = False
+    for finca in fincas_a_descargar:
+        df_f = df_export[df_export['FINCA_MAESTRA'] == finca]
+        df_a = df_f[df_f['PISTA_MAESTRA'] == pista_A]
+        df_b = df_f[df_f['PISTA_MAESTRA'] == pista_B]
+        if df_a.empty and df_b.empty:
+            continue
+
+        valores = {
+            "AREA": (df_a['AREA_NUM'].sum() if not df_a.empty else None,
+                     df_b['AREA_NUM'].sum() if not df_b.empty else None),
+            "CICLOS": (calcular_ciclos_reales(df_a['FECHA_DT']) if not df_a.empty else None,
+                       calcular_ciclos_reales(df_b['FECHA_DT']) if not df_b.empty else None),
+            "COSTO_HA": (df_a['VALOR_FACTURAR_NUM'].mean() if not df_a.empty else None,
+                         df_b['VALOR_FACTURAR_NUM'].mean() if not df_b.empty else None),
+            "COSTO_OS": (df_a['COSTO_HA_NUM'].mean() if not df_a.empty else None,
+                         df_b['COSTO_HA_NUM'].mean() if not df_b.empty else None),
+            "FACTURADO": (df_a['COSTO_TOTAL_NUM'].sum() if not df_a.empty else None,
+                          df_b['COSTO_TOTAL_NUM'].sum() if not df_b.empty else None),
+        }
+
+        fila_inicio_finca = fila
+        for etiqueta, clave, es_costo, formato in METRICAS_COMPARATIVO:
+            val_a, val_b = valores[clave]
+
+            c_finca = ws.cell(row=fila, column=1, value="")
+            c_concepto = ws.cell(row=fila, column=2, value=etiqueta)
+            c_a, c_b = ws.cell(row=fila, column=3), ws.cell(row=fila, column=4)
+            c_diff, c_pct, c_ganador = ws.cell(row=fila, column=5), ws.cell(row=fila, column=6), ws.cell(row=fila, column=7)
+
+            for cell in (c_finca, c_concepto, c_a, c_b, c_diff, c_pct, c_ganador):
+                cell.border = borde
+                if zebra: cell.fill = fill_alt
+            c_concepto.alignment = izq
+            for cell in (c_a, c_b, c_diff, c_pct, c_ganador): cell.alignment = centro
+
+            if formato == "money":
+                if val_a is not None: c_a.value = fmt_money(val_a)
+                if val_b is not None: c_b.value = fmt_money(val_b)
+            elif formato == "area":
+                if val_a is not None: c_a.value = f"{fmt_area(val_a)} ha"
+                if val_b is not None: c_b.value = f"{fmt_area(val_b)} ha"
+            else:
+                if val_a is not None: c_a.value = val_a
+                if val_b is not None: c_b.value = val_b
+
+            if es_costo and val_a is not None and val_b is not None:
+                if val_a == val_b:
+                    c_diff.value, c_pct.value, c_ganador.value = fmt_money(0), "0,0 %", "EMPATE"
+                else:
+                    menor, mayor = (val_a, val_b) if val_a < val_b else (val_b, val_a)
+                    ganador_nombre = pista_A if val_a < val_b else pista_B
+                    diff_abs = mayor - menor
+                    diff_pct = (diff_abs / menor) * 100
+                    c_diff.value = fmt_money(diff_abs)
+                    c_pct.value = f"{diff_pct:.1f} %".replace(".", ",")
+                    c_ganador.value = f"🏆 {ganador_nombre}"
+                    c_ganador.font, c_ganador.fill = font_ganador, fill_ganador
+                    c_diff.font = font_diff_mal
+                    (c_a if ganador_nombre == pista_A else c_b).fill = fill_ganador
+            else:
+                c_diff.value = c_pct.value = "—"
+                c_ganador.value = "Informativo"
+                c_ganador.font = Font(italic=True, color="888888")
+
+            fila += 1
+
+        ws.merge_cells(start_row=fila_inicio_finca, start_column=1, end_row=fila - 1, end_column=1)
+        top_left = ws.cell(row=fila_inicio_finca, column=1, value=finca)
+        top_left.fill, top_left.font = fill_finca, font_finca
+        top_left.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        zebra = not zebra
+
+    anchos = {"A": 16, "B": 30, "C": 20, "D": 20, "E": 16, "F": 14, "G": 18}
+    for col, w in anchos.items():
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "C5"
+
 
 # =================================================================
 # 👑 INTERFAZ PRINCIPAL (EL COLISEO LOGÍSTICO)
@@ -318,15 +501,8 @@ def ejecutar():
             html_mod += f"<li><b>{mod_nombre}:</b> {formato_latino(rend_ha_hr, 1)} Ha / Hora <i>({registros} líneas voladas)</i></li>"
         html_mod += "</ul></div>"
         
-        fechas_unicas = sorted(df_pista['FECHA_DT'].dropna().unique())
-        total_ciclos_reales = 0
-        if len(fechas_unicas) > 0:
-            total_ciclos_reales = 1
-            inicio_ciclo = fechas_unicas[0]
-            for f in fechas_unicas[1:]:
-                if (f - inicio_ciclo).days > 5:
-                    total_ciclos_reales += 1
-                    inicio_ciclo = f
+        # 🔁 Regla de ciclos centralizada — ver calcular_ciclos_reales()
+        total_ciclos_reales = calcular_ciclos_reales(df_pista['FECHA_DT'])
         
         html_ciclos = f"<div class='kpi-vs' style='padding: 10px; margin-top: 5px; border: 2px dashed #d4af37;'><p class='kpi-vs-title'>TOTAL CICLOS REALES (Agrupados a 5 días)</p><p class='kpi-vs-value' style='font-size:26px;'>{total_ciclos_reales} Ciclos</p></div>"
         return total_ha, total_facturado, costo_integral_ha, costo_tarifa_avion, html_mod, html_ciclos
@@ -334,6 +510,10 @@ def ejecutar():
     ha_A, inv_A, costo_integral_A, costo_os_A, html_mod_A, html_ciclos_A = calcular_metricas(df_A)
     ha_B, inv_B, costo_integral_B, costo_os_B, html_mod_B, html_ciclos_B = calcular_metricas(df_B)
 
+    # 🩹 FIX: antes, si AMBAS pistas estaban sin datos (costo=0 y costo=0),
+    # la condición "costo_integral_B == 0" se cumplía igual y coronaba a la
+    # Pista A como "ganadora" sin un solo vuelo real detrás. Ahora una pista
+    # solo puede ganar si tiene datos propios.
     tiene_datos_A, tiene_datos_B = costo_integral_A > 0, costo_integral_B > 0
     clase_win_A = "victoria" if tiene_datos_A and (not tiene_datos_B or costo_integral_A < costo_integral_B) else ""
     clase_win_B = "victoria" if tiene_datos_B and (not tiene_datos_A or costo_integral_B < costo_integral_A) else ""
@@ -399,7 +579,7 @@ def ejecutar():
     
     activar_descargas = st.toggle("🛸 HABILITAR PANEL DE EXPORTACIÓN", value=False)
     if activar_descargas:
-        st.info("💡 Seleccione las fincas a exportar. El sistema generará el comparativo Gerencial y la Auditoría de vuelos con formato corporativo.")
+        st.info("💡 Seleccione las fincas a exportar. El sistema generará la Matriz Comparativa (Pista A vs Pista B), el detalle de rendimiento y la Auditoría de vuelos, todo con formato corporativo.")
         fincas_a_descargar = st.multiselect("🚜 Seleccionar Fincas a Exportar:", lista_fincas, default=[finca_sel])
         
         if fincas_a_descargar:
@@ -416,15 +596,8 @@ def ejecutar():
                     df_p = df_f[df_f['PISTA_MAESTRA'] == pista]
                     if df_p.empty: continue
                     
-                    fechas_unicas = sorted(df_p['FECHA_DT'].dropna().unique())
-                    ciclos = 0
-                    if len(fechas_unicas) > 0:
-                        ciclos = 1
-                        inicio = fechas_unicas[0]
-                        for f in fechas_unicas[1:]:
-                            if (f - inicio).days > 5:
-                                ciclos += 1
-                                inicio = f
+                    # 🔁 Regla de ciclos centralizada — ver calcular_ciclos_reales()
+                    ciclos = calcular_ciclos_reales(df_p['FECHA_DT'])
                     
                     total_ha = df_p['AREA_NUM'].sum()
                     avg_ha = df_p['VALOR_FACTURAR_NUM'].mean()
@@ -517,7 +690,7 @@ def ejecutar():
                     align_left = Alignment(horizontal="left", vertical="center")
                     align_right = Alignment(horizontal="right", vertical="center")
                     
-                    for sheet_name in writer.sheets:
+                    for sheet_name in list(writer.sheets):
                         ws = writer.sheets[sheet_name]
                         max_col = ws.max_column
                         max_row = ws.max_row
@@ -567,6 +740,16 @@ def ejecutar():
                                 val_str = str(ws.cell(row=r_idx, column=c_idx).value or "")
                                 if len(val_str) > max_len: max_len = len(val_str)
                             ws.column_dimensions[get_column_letter(c_idx)].width = min(max((max_len * 1.2) + 2, 12), 45)
+
+                    # 🆕 Matriz Comparativa Pista vs Pista — aislada en su propio
+                    # try/except. Si algo en ESTA hoja específica falla, no se pierde
+                    # todo el reporte: las otras 3 hojas (Resumen, Rendimiento,
+                    # Auditoría) igual se descargan, en vez de caer al CSV de
+                    # emergencia, que se ve completamente distinto al Excel esperado.
+                    try:
+                        agregar_hoja_comparativo_pistas(writer, df_export, pista_A, pista_B, fincas_a_descargar)
+                    except Exception as e_comparativo:
+                        st.warning(f"⚠️ No se pudo generar la Matriz Comparativa (se conservan las demás hojas): {e_comparativo}")
                 
                 st.download_button(
                     label="💾 DESCARGAR REPORTE EJECUTIVO (.xlsx)",
@@ -577,6 +760,11 @@ def ejecutar():
                     type="primary"
                 )
             except Exception as e:
+                # 🩹 FIX: `sep= me` referenciaba una variable inexistente (NameError).
+                # Si el bloque de openpyxl fallaba, este "plan B" también reventaba y
+                # el usuario se quedaba sin ningún archivo. `;` es además el separador
+                # correcto para que Excel en configuración regional Latam abra el CSV
+                # con las columnas ya divididas.
                 st.warning(f"⚠️ Servidor sin openpyxl nativo. Generando CSV: {e}")
                 csv = df_resumen.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
                 st.download_button(
