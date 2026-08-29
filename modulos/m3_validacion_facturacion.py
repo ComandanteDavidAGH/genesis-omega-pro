@@ -407,6 +407,18 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
 
     return coctel_base + sigla_fertilizante if coctel_base != "SIN COINCIDENCIA" else "SIN COINCIDENCIA", dosis_oficiales_coctel
 
+@st.cache_data(show_spinner=False, ttl=60)
+def obtener_configuracion_cruda_cached():
+    gc_local = obtener_cliente_gspread_unificado()
+    if not gc_local:
+        return pd.DataFrame()
+    try:
+        boveda_local = gc_local.open_by_url(SPREADSHEET_URL)
+        datos_cfg_puros = boveda_local.worksheet("Configuración").get_all_values()
+        return pd.DataFrame(datos_cfg_puros)
+    except Exception:
+        return pd.DataFrame()
+
 # =================================================================
 # 👑 RENDERIZADO VISUAL PRINCIPAL
 # =================================================================
@@ -983,13 +995,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia:
         tipo_productor = "COOPERATIVA"
     
-    # 💥 FRANCOTIRADOR 1: TARIFAS BASE (Extracción pura y directa de Sheets)
+    # 💥 FRANCOTIRADOR 1: TARIFAS BASE (con caché para no golpear la API en cada clic)
     try:
-        gc_local = obtener_cliente_gspread_unificado()
-        boveda_local = gc_local.open_by_url("https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit")
-        datos_cfg_puros = boveda_local.worksheet("Configuración").get_all_values()
-        df_cfg_puro = pd.DataFrame(datos_cfg_puros)
-        
+        df_cfg_puro = obtener_configuracion_cruda_cached()
         col_a = df_cfg_puro[0].astype(str).str.strip().str.upper()
         fila_productor = df_cfg_puro[col_a == tipo_productor]
         
