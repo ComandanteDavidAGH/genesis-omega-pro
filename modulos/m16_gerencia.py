@@ -217,32 +217,26 @@ def generar_excel_maestro(df_total, df_vuelo):
 
 def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
-        
     df_plot = df_datos.copy()
-    df_plot['X_UNIQUE'] = df_plot['FINCA'].apply(lambda x: str(x)[:14] + '...' if len(str(x)) > 14 else str(x)) + " [" + df_plot.index.astype(str) + "]"
+    df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
+    df_plot = df_plot.sort_values('DIF', ascending=True)  # mayor ahorro arriba
     
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=df_plot['X_UNIQUE'], y=df_plot['AVIÓN'], name='Avión', marker_color='#0d1b2a',
-        customdata=df_plot['FINCA'], hovertemplate='<b>Finca:</b> %{customdata}<br><b>Avión:</b> $%{y:,.0f}<extra></extra>'
+        y=df_plot['FINCA'], x=df_plot['AVIÓN'], name='Avión', orientation='h',
+        marker_color='#0d1b2a'
     ))
-    
     fig.add_trace(go.Bar(
-        x=df_plot['X_UNIQUE'], y=df_plot['DRONE'], name='Dron', marker_color='#d4af37',
-        customdata=df_plot['FINCA'], hovertemplate='<b>Finca:</b> %{customdata}<br><b>Dron:</b> $%{y:,.0f}<extra></extra>'
+        y=df_plot['FINCA'], x=df_plot['DRONE'], name='Dron', orientation='h',
+        marker_color='#d4af37'
     ))
-    
-    vista_inicial = min(12.5, len(df_plot) - 0.5) 
-    
     fig.update_layout(
-        title=f"<b>{titulo_grafico}</b>", barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', height=380,
-        xaxis=dict(
-            tickangle=-90, tickfont=dict(size=10, color='#0d1b2a'),
-            range=[-0.5, vista_inicial],
-            rangeslider=dict(visible=True, thickness=0.05, bgcolor="#f1f5f9"), type='category'
-        ),
-        yaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)", showgrid=True, gridcolor='rgba(226, 232, 240, 0.8)'),
-        hovermode="closest", margin=dict(b=10, t=40, l=10, r=10)
+        title=f"<b>{titulo_grafico}</b>", barmode='group',
+        height=max(380, len(df_plot) * 28),  # crece con la cantidad de fincas
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)"),
+        yaxis=dict(tickfont=dict(size=11, color='#0d1b2a')),
+        margin=dict(l=10, r=10, t=40, b=10)
     )
     return fig
 
@@ -256,21 +250,20 @@ def ejecutar(*args, **kwargs):
     .titulo-gerencial {{ color: #0d1b2a; border-bottom: 2px solid {COLOR_DORADO}; padding-bottom: 4px; font-weight: 900; letter-spacing: 0.5px; }}
     
     /* REDISEÑO DE SELECTORES DE FECHA CON BORDE NÍTIDO */
-    div[data-testid="stDateInput"] {{
-        background-color: transparent !important;
-    }}
-    div[data-testid="stDateInput"] > div {{
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {
         background-color: #ffffff !important;
-        border: 2px solid {COLOR_NAVY} !important;
+        border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         box-shadow: 0px 2px 6px rgba(13, 27, 42, 0.08) !important;
-        padding: 2px 6px !important;
-    }}
-    div[data-testid="stDateInput"] input {{
+    }
+    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {
+        border-color: #d4af37 !important;
+        box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
+    }
+    div[data-testid="stDateInput"] input {
         color: #0d1b2a !important;
         font-weight: 800 !important;
-        font-size: 14px !important;
-    }}
+    }
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
@@ -283,11 +276,14 @@ def ejecutar(*args, **kwargs):
     def tarjeta_kpi(titulo, valor, delta_texto="", color_delta="#28a745"):
         delta_html = f"<span style='font-size: 13px; color: {color_delta}; margin-left: 6px; font-weight:bold;'>{delta_texto}</span>" if delta_texto else ""
         return f"""
-        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 4px solid {COLOR_DORADO}; padding: 12px 16px; border-radius: 8px; color: white; box-shadow: 0px 3px 8px rgba(0,0,0,0.1); margin-bottom: 15px;'>
-            <p style='font-size: 11px; font-weight: 800; color: {COLOR_DORADO}; text-transform: uppercase; margin:0 0 4px 0;'>{titulo}</p>
-            <p style='font-size: 20px; font-weight: 900; margin: 0; color: white; display: flex; align-items: center;'>{valor} {delta_html}</p>
-        </div>
-        """
+        <div style='background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); 
+             border-left: 4px solid {COLOR_DORADO}; padding: 14px 16px; 
+             border-radius: 8px; color: white; box-shadow: 0px 3px 8px rgba(0,0,0,0.1); 
+             margin-bottom: 15px; min-height: 92px; display: flex; flex-direction: column; justify-content: center;'>
+             <p style='font-size: 11px; font-weight: 800; color: {COLOR_DORADO}; text-transform: uppercase; margin:0 0 4px 0;'>{titulo}</p>
+             <p style='font-size: 20px; font-weight: 900; margin: 0; color: white; display: flex; align-items: center; flex-wrap: wrap;'>{valor} {delta_html}</p>
+         </div>
+         """
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
