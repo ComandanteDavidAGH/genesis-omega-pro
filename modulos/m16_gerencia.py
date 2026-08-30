@@ -212,20 +212,19 @@ def generar_excel_maestro(df_total, df_vuelo):
 
 def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
-    df_plot = df_datos.copy()
+    df_plot = df_datos.copy().reset_index(drop=True)
     
-    # 💥 Truncar nombres a 18 caracteres para que los textos fijos no saturen
+    # Truncar nombres
     limite = 18
     df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:limite] + ".." if len(str(x)) > limite else str(x))
     
-    # Ampliar un poco más el límite máximo para que los nombres de arriba no se corten
     max_val = max(df_plot['AVIÓN'].max(), df_plot['DRONE'].max()) * 1.15
     min_val = min(df_plot['AVIÓN'].min(), df_plot['DRONE'].min())
     if min_val > 0: min_val = min_val * 0.85
     
     fig = go.Figure()
 
-    # 1. LÍNEA DE EQUILIBRIO (Avión = Dron)
+    # 1. LÍNEA DE EQUILIBRIO
     fig.add_trace(go.Scatter(
         x=[min_val, max_val],
         y=[min_val, max_val],
@@ -235,22 +234,25 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         hoverinfo='skip'
     ))
 
-    # 2. PUNTOS Y NOMBRES VISIBLES
+    # 2. ALGORITMO ANTICOLISIÓN DE TEXTOS (Dispersión radial)
+    posiciones = ['top center', 'bottom center', 'middle right', 'middle left', 'top right', 'bottom left']
+    text_positions = [posiciones[i % len(posiciones)] for i in range(len(df_plot))]
+
     df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
     colores = ['#d4af37' if dif > 0 else '#0d1b2a' for dif in df_plot['DIF']]
     
     fig.add_trace(go.Scatter(
         x=df_plot['DRONE'],
         y=df_plot['AVIÓN'],
-        mode='markers+text', # <-- Inyecta los textos fijos sin depender del mouse
+        mode='markers+text',
         text=df_plot['FINCA_CORTA'], 
-        textposition='top center',
+        textposition=text_positions, # <-- Aplica las posiciones intercaladas
         textfont=dict(size=9, color='#0d1b2a', family="Arial"),
         marker=dict(
             size=12, 
             color=colores, 
             line=dict(color='white', width=1),
-            opacity=0.65 # <-- Opacidad al 65%: revela los puntos montados (se ven oscuros al cruzarse)
+            opacity=0.65 
         ),
         customdata=np.stack((df_plot['FINCA'], df_plot['DIF']), axis=-1),
         hovertemplate=(
@@ -261,21 +263,21 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         )
     ))
 
-    # 3. CONTORNO CLARO Y ÁREA DEL GRÁFICO (El "Radar")
+    # 3. CONTORNO CLARO Y ÁREA DEL GRÁFICO
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>",
         height=500, 
-        plot_bgcolor='#f8fafc', # <-- Fondo gris muy claro para diferenciar el área
+        plot_bgcolor='#f8fafc',
         paper_bgcolor='#ffffff',
         xaxis=dict(
             title="Costo 🛸 DRON ($/ha)", tickformat="$,.0f", 
             showgrid=True, gridcolor='#e2e8f0', range=[min_val, max_val],
-            linecolor='#0d1b2a', linewidth=2, mirror=True # <-- Marco oscuro y cerrado
+            linecolor='#0d1b2a', linewidth=2, mirror=True
         ),
         yaxis=dict(
             title="Costo ✈️ AVIÓN ($/ha)", tickformat="$,.0f", 
             showgrid=True, gridcolor='#e2e8f0', range=[min_val, max_val],
-            linecolor='#0d1b2a', linewidth=2, mirror=True # <-- Marco oscuro y cerrado
+            linecolor='#0d1b2a', linewidth=2, mirror=True
         ),
         margin=dict(l=20, r=20, t=50, b=20),
         showlegend=False
