@@ -214,10 +214,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy().reset_index(drop=True)
     
-    # Truncar nombres
-    limite = 18
-    df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:limite] + ".." if len(str(x)) > limite else str(x))
-    
+    # Calcular límites del gráfico
     max_val = max(df_plot['AVIÓN'].max(), df_plot['DRONE'].max()) * 1.15
     min_val = min(df_plot['AVIÓN'].min(), df_plot['DRONE'].min())
     if min_val > 0: min_val = min_val * 0.85
@@ -234,36 +231,31 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         hoverinfo='skip'
     ))
 
-    # 2. ALGORITMO ANTICOLISIÓN DE TEXTOS (Dispersión radial)
-    posiciones = ['top center', 'bottom center', 'middle right', 'middle left', 'top right', 'bottom left']
-    text_positions = [posiciones[i % len(posiciones)] for i in range(len(df_plot))]
-
+    # 2. PUNTOS LIMPIOS (Sin texto estático para evitar "empacho")
     df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
     colores = ['#d4af37' if dif > 0 else '#0d1b2a' for dif in df_plot['DIF']]
     
     fig.add_trace(go.Scatter(
         x=df_plot['DRONE'],
         y=df_plot['AVIÓN'],
-        mode='markers+text',
-        text=df_plot['FINCA_CORTA'], 
-        textposition=text_positions, # <-- Aplica las posiciones intercaladas
-        textfont=dict(size=9, color='#0d1b2a', family="Arial"),
+        mode='markers', # <-- CIRUGÍA: Quitamos el "+text" para limpiar la pantalla
         marker=dict(
             size=12, 
             color=colores, 
             line=dict(color='white', width=1),
-            opacity=0.65 
+            opacity=0.65 # La opacidad permite ver dónde hay puntos superpuestos
         ),
+        # Toda la información se va a la tarjeta flotante interactiva
         customdata=np.stack((df_plot['FINCA'], df_plot['DIF']), axis=-1),
         hovertemplate=(
-            "<b>%{customdata[0]}</b><br>"
+            "<b>🏡 %{customdata[0]}</b><br>"
             "🛸 Dron: $ %{x:,.0f}<br>"
             "✈️ Avión: $ %{y:,.0f}<br>"
             "⚖️ Ahorro (Dron): $ %{customdata[1]:,.0f}<extra></extra>"
         )
     ))
 
-    # 3. CONTORNO CLARO Y ÁREA DEL GRÁFICO
+    # 3. CONTORNO Y ÁREA DEL GRÁFICO PROFESIONAL
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>",
         height=500, 
