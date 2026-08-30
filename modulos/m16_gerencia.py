@@ -213,53 +213,66 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy()
     
-    # 1. TRUNCAR NOMBRES LARGOS (Max 28 caracteres + "...")
-    limite = 28
+    # Truncado elegante a 25 caracteres para mantener el eje limpio
+    limite = 25
     df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:limite] + "..." if len(str(x)) > limite else str(x))
     
     df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
     df_plot = df_plot.sort_values('DIF', ascending=True)
     
     fig = go.Figure()
-    
-    # BARRA AVIÓN (Azul Marino)
-    fig.add_trace(go.Bar(
-        y=df_plot['FINCA_CORTA'], 
-        x=df_plot['AVIÓN'], 
-        name='Avión', 
-        orientation='h',
-        marker_color='#0d1b2a',
-        text=df_plot['AVIÓN'], # Ponemos el valor numérico en la barra
-        texttemplate='$ %{text:,.0f}', # Formato financiero exacto
-        textposition='auto',
-        customdata=df_plot['FINCA'], # Guardamos el nombre completo oculto
-        hovertemplate="<b>Avión</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
-    ))
-    
-    # BARRA DRON (Dorado)
-    fig.add_trace(go.Bar(
-        y=df_plot['FINCA_CORTA'], 
-        x=df_plot['DRONE'], 
-        name='Dron', 
-        orientation='h',
-        marker_color='#d4af37',
+
+    # 1. LÍNEA CONECTORA (La "Brecha" visual entre ambas tecnologías)
+    for i, row in df_plot.iterrows():
+        fig.add_trace(go.Scatter(
+            x=[row['DRONE'], row['AVIÓN']],
+            y=[row['FINCA_CORTA'], row['FINCA_CORTA']],
+            mode='lines',
+            line=dict(color='rgba(13, 27, 42, 0.2)', width=4), # Línea tenue y limpia
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+    # 2. PUNTO DRON (Dorado táctico)
+    fig.add_trace(go.Scatter(
+        x=df_plot['DRONE'],
+        y=df_plot['FINCA_CORTA'],
+        mode='markers+text',
+        name='Dron',
+        marker=dict(color='#d4af37', size=12, symbol='circle', line=dict(color='white', width=1.5)),
         text=df_plot['DRONE'],
         texttemplate='$ %{text:,.0f}',
-        textposition='auto',
+        textposition='top center', # El valor vuela sobre el punto
+        textfont=dict(size=10, color='#d4af37'),
         customdata=df_plot['FINCA'],
-        hovertemplate="<b>Dron</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
+        hovertemplate="<b>🛸 Dron</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
     ))
-    
+
+    # 3. PUNTO AVIÓN (Azul Marino)
+    fig.add_trace(go.Scatter(
+        x=df_plot['AVIÓN'],
+        y=df_plot['FINCA_CORTA'],
+        mode='markers+text',
+        name='Avión',
+        marker=dict(color='#0d1b2a', size=12, symbol='circle', line=dict(color='white', width=1.5)),
+        text=df_plot['AVIÓN'],
+        texttemplate='$ %{text:,.0f}',
+        textposition='bottom center', # El valor vuela debajo del punto para no chocar
+        textfont=dict(size=10, color='#0d1b2a'),
+        customdata=df_plot['FINCA'],
+        hovertemplate="<b>✈️ Avión</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
+    ))
+
+    # 4. CONFIGURACIÓN DEL LIENZO MINIMALISTA
     fig.update_layout(
-        title=f"<b>{titulo_grafico}</b>", 
-        barmode='group',
-        height=max(400, len(df_plot) * 55), # Le damos más altura para que los textos respiren
+        title=f"<b>{titulo_grafico}</b> (Brecha Operativa)", 
+        height=max(350, len(df_plot) * 45), # Altura dinámica ajustada, más compacta
         plot_bgcolor='rgba(0,0,0,0)', 
         paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)", showgrid=True, gridcolor='#e5e5e5'),
-        yaxis=dict(tickfont=dict(size=11, color='#0d1b2a'), automargin=True),
+        xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+        yaxis=dict(tickfont=dict(size=11, color='#0d1b2a'), showgrid=False, automargin=True),
         margin=dict(l=10, r=20, t=50, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1) # Subimos la leyenda
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     return fig
 
