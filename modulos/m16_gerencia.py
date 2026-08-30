@@ -213,40 +213,44 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy()
     
-    # Calcular límites para que el gráfico sea un cuadrado perfecto
-    max_val = max(df_plot['AVIÓN'].max(), df_plot['DRONE'].max()) * 1.05
+    # 💥 Truncar nombres a 18 caracteres para que los textos fijos no saturen
+    limite = 18
+    df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:limite] + ".." if len(str(x)) > limite else str(x))
+    
+    # Ampliar un poco más el límite máximo para que los nombres de arriba no se corten
+    max_val = max(df_plot['AVIÓN'].max(), df_plot['DRONE'].max()) * 1.15
     min_val = min(df_plot['AVIÓN'].min(), df_plot['DRONE'].min())
-    if min_val > 0: min_val = min_val * 0.9 # Darle respiro visual
+    if min_val > 0: min_val = min_val * 0.85
     
     fig = go.Figure()
 
-    # 1. LÍNEA DE EQUILIBRIO (Diagonal donde Avión = Dron)
+    # 1. LÍNEA DE EQUILIBRIO (Avión = Dron)
     fig.add_trace(go.Scatter(
         x=[min_val, max_val],
         y=[min_val, max_val],
         mode='lines',
-        name='Punto de Equilibrio',
-        line=dict(color='#888888', width=2, dash='dash'),
+        name='Equilibrio',
+        line=dict(color='#888888', width=1.5, dash='dash'),
         hoverinfo='skip'
     ))
 
-    # 2. PUNTOS DE LAS FINCAS (Color según quién es más barato)
+    # 2. PUNTOS Y NOMBRES VISIBLES
     df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
-    
-    # Dorado si Dron es más barato, Azul Marino si Avión es más barato o igual
     colores = ['#d4af37' if dif > 0 else '#0d1b2a' for dif in df_plot['DIF']]
     
     fig.add_trace(go.Scatter(
         x=df_plot['DRONE'],
         y=df_plot['AVIÓN'],
-        mode='markers',
+        mode='markers+text', # <-- Inyecta los textos fijos sin depender del mouse
+        text=df_plot['FINCA_CORTA'], 
+        textposition='top center',
+        textfont=dict(size=9, color='#0d1b2a', family="Arial"),
         marker=dict(
-            size=14, 
+            size=12, 
             color=colores, 
-            line=dict(color='white', width=1.5),
-            opacity=0.85
+            line=dict(color='white', width=1),
+            opacity=0.65 # <-- Opacidad al 65%: revela los puntos montados (se ven oscuros al cruzarse)
         ),
-        # Guardamos datos extra para la caja flotante
         customdata=np.stack((df_plot['FINCA'], df_plot['DIF']), axis=-1),
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
@@ -256,30 +260,24 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         )
     ))
 
-    # 3. CONFIGURACIÓN DEL LIENZO MINIMALISTA
+    # 3. CONTORNO CLARO Y ÁREA DEL GRÁFICO (El "Radar")
     fig.update_layout(
-        title=f"<b>{titulo_grafico} (Cuadrante de Costos)</b>",
-        height=450, # 💥 ESTA ES LA CLAVE: Nunca crecerá de este tamaño, ahorrando pantalla
-        plot_bgcolor='rgba(0,0,0,0)', 
-        paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(title="Costo 🛸 DRON ($/ha)", tickformat="$,.0f", showgrid=True, gridcolor='#f0f0f0', range=[min_val, max_val]),
-        yaxis=dict(title="Costo ✈️ AVIÓN ($/ha)", tickformat="$,.0f", showgrid=True, gridcolor='#f0f0f0', range=[min_val, max_val]),
-        margin=dict(l=10, r=20, t=50, b=10),
-        showlegend=False,
-        annotations=[
-            dict(
-                x=0.15, y=0.9, xref="paper", yref="paper", 
-                text="<b>✅ ZONA AHORRO DRON</b>", 
-                showarrow=False, font=dict(color="#d4af37", size=13), 
-                bgcolor="rgba(255,255,255,0.7)", borderpad=4
-            ),
-            dict(
-                x=0.85, y=0.1, xref="paper", yref="paper", 
-                text="<b>✈️ ZONA AHORRO AVIÓN</b>", 
-                showarrow=False, font=dict(color="#0d1b2a", size=13), 
-                bgcolor="rgba(255,255,255,0.7)", borderpad=4
-            )
-        ]
+        title=f"<b>{titulo_grafico}</b>",
+        height=500, 
+        plot_bgcolor='#f8fafc', # <-- Fondo gris muy claro para diferenciar el área
+        paper_bgcolor='#ffffff',
+        xaxis=dict(
+            title="Costo 🛸 DRON ($/ha)", tickformat="$,.0f", 
+            showgrid=True, gridcolor='#e2e8f0', range=[min_val, max_val],
+            linecolor='#0d1b2a', linewidth=2, mirror=True # <-- Marco oscuro y cerrado
+        ),
+        yaxis=dict(
+            title="Costo ✈️ AVIÓN ($/ha)", tickformat="$,.0f", 
+            showgrid=True, gridcolor='#e2e8f0', range=[min_val, max_val],
+            linecolor='#0d1b2a', linewidth=2, mirror=True # <-- Marco oscuro y cerrado
+        ),
+        margin=dict(l=20, r=20, t=50, b=20),
+        showlegend=False
     )
     return fig
 
