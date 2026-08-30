@@ -241,42 +241,40 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* TITULO OK (Flexbox intacto) */
+    /* Título Alineado (Flexbox) */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 CIRUGÍA BLINDADA: Cajas y Selectores */
-    
-    /* 1. La caja de "Parámetros de Análisis" (El marco completo) */
+    /* 💥 CIRUGÍA POR FUERZA BRUTA: El único contenedor con borde será verde */
     div[data-testid="stVerticalBlockBorderWrapper"] {{
-        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro exterior */
+        background-color: #e6f4ea !important; /* Fondo verde tenue */
+        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
         border-radius: 8px !important;
-        background-color: #ffffff !important;
-        padding: 5px !important;
+        padding: 15px !important;
     }}
     
-    div[data-testid="stVerticalBlockBorderWrapper"] h4 {{
+    /* Colorear el título y etiquetas internas del contenedor */
+    div[data-testid="stVerticalBlockBorderWrapper"] h4,
+    div[data-testid="stVerticalBlockBorderWrapper"] label p {{
         color: {COLOR_VERDE} !important;
         font-weight: 900 !important;
-        margin-bottom: 10px !important;
     }}
-    
-    /* 2. Los contenedores exactos de las fechas */
+
+    /* Selectores de fecha: Fondo blanco puro y borde oscuro para contraste */
     .stDateInput div[data-baseweb="input"] {{
-        background-color: #e6f4ea !important; /* Fondo verde claro a los selectores */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro a los selectores */
+        background-color: #ffffff !important;
+        border: 2px solid {COLOR_VERDE} !important;
         border-radius: 6px !important;
     }}
     
-    /* Eliminar el gris nativo interno */
+    /* Eliminar gris interno de Streamlit */
     .stDateInput div[data-baseweb="input"] > div {{
         background-color: transparent !important;
     }}
     
-    /* 3. Textos y Focus */
     .stDateInput input {{
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
@@ -289,10 +287,8 @@ def ejecutar(*args, **kwargs):
         box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
     }}
     
-    div[data-testid="stMainBlockContainer"] label p {{ color: {COLOR_NAVY} !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
-    
-    /* Tablas y Pestañas */
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
+    
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
     </style>
