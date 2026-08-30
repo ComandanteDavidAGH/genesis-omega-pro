@@ -241,50 +241,58 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* Título Alineado (Flexbox) */
+    /* TITULO OK (Flexbox intacto) */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 CIRUGÍA: Disfrazar el contenedor de fechas para imitar a st.success */
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stDateInput"]) {{
-        background-color: #e6f4ea !important; /* Fondo verde tenue idéntico a st.success */
-        border: 1px solid #143521 !important; /* Borde verde oscuro elegante */
+    /* 💥 CIRUGÍA BLINDADA: Cajas y Selectores */
+    
+    /* 1. La caja de "Parámetros de Análisis" (El marco completo) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {{
+        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro exterior */
         border-radius: 8px !important;
-    }}
-    
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stDateInput"]) h4 {{
-        color: #143521 !important; /* Título interno en verde oscuro */
-    }}
-    
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stDateInput"]) label p {{
-        color: #143521 !important; /* Letras de DESDE y HASTA en verde oscuro */
-    }}
-
-    /* Estilizar las cajas de fecha en blanco para que resalten sobre el verde */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
         background-color: #ffffff !important;
-        border: 2px solid #143521 !important;
+        padding: 5px !important;
+    }}
+    
+    div[data-testid="stVerticalBlockBorderWrapper"] h4 {{
+        color: {COLOR_VERDE} !important;
+        font-weight: 900 !important;
+        margin-bottom: 10px !important;
+    }}
+    
+    /* 2. Los contenedores exactos de las fechas */
+    .stDateInput div[data-baseweb="input"] {{
+        background-color: #e6f4ea !important; /* Fondo verde claro a los selectores */
+        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro a los selectores */
         border-radius: 6px !important;
     }}
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div {{
+    
+    /* Eliminar el gris nativo interno */
+    .stDateInput div[data-baseweb="input"] > div {{
         background-color: transparent !important;
     }}
-    div[data-testid="stDateInput"] input {{
+    
+    /* 3. Textos y Focus */
+    .stDateInput input {{
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
         font-size: 15px !important;
         background-color: transparent !important;
     }}
-    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
+    
+    .stDateInput div[data-baseweb="input"]:focus-within {{
         border-color: {COLOR_DORADO} !important;
         box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
     }}
     
-    div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
+    div[data-testid="stMainBlockContainer"] label p {{ color: {COLOR_NAVY} !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
     
+    /* Tablas y Pestañas */
+    div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
     </style>
@@ -321,7 +329,7 @@ def ejecutar(*args, **kwargs):
             st.rerun()
 
     with st.container(border=True):
-        st.markdown("#### 📅 Parámetros de Análisis")
+        st.markdown("#### 🗓️ Parámetros de Análisis")
         c_f1, c_f2 = st.columns(2)
         fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
         fecha_fin = c_f2.date_input("Hasta:", value=date(2026, 12, 31))
