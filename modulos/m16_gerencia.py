@@ -247,28 +247,29 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* Título Alineado (Flexbox) - ¡ÉXITO! */
+    /* Título Alineado (Flexbox) */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 EL CEBO AGRESIVO PARA LOS SELECTORES DE FECHA */
+    /* 💥 CEBO NIVEL 2: PERFORANDO TODAS LAS CAPAS DEL INPUT */
     div[data-testid="stDateInput"] > div {{
-        background-color: #e6f4ea !important; /* Fondo verde tenue */
+        background-color: #e6f4ea !important; /* El verde claro de fondo */
         border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
         border-radius: 6px !important;
     }}
     
-    /* Hacemos transparente el input interno para no duplicar fondos y forzamos el color del texto */
+    /* Hacemos "de cristal" absolutamente TODO lo que está adentro para que se vea el verde */
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div,
     div[data-testid="stDateInput"] input {{
         background-color: transparent !important;
-        color: {COLOR_NAVY} !important;
-        font-weight: 900 !important;
-        font-size: 15px !important;
         border: none !important;
         box-shadow: none !important;
+        color: {COLOR_NAVY} !important;
+        font-weight: 900 !important;
     }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
@@ -293,7 +294,7 @@ def ejecutar(*args, **kwargs):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        # 💥 ESTRUCTURA HTML SEPARADA (TEXTO VS EMOJI)
+        # ESTRUCTURA HTML SEPARADA (TEXTO VS EMOJI)
         st.markdown("""
         <div class='titulo-contenedor'>
             <div class='titulo-icono'>⚖️</div>
@@ -312,8 +313,8 @@ def ejecutar(*args, **kwargs):
             st.rerun()
 
     with st.container(border=True):
-        # 💥 EMOJI NUEVO VIBRANTE
-        st.markdown("#### 🗓️ Parámetros de Análisis")
+        # 💥 EMOJI NUEVO VIBRANTE (El rojo)
+        st.markdown("#### 📅 Parámetros de Análisis")
         c_f1, c_f2 = st.columns(2)
         fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
         fecha_fin = c_f2.date_input("Hasta:", value=date(2026, 12, 31))
