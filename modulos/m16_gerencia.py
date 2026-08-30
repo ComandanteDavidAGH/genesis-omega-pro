@@ -212,25 +212,54 @@ def generar_excel_maestro(df_total, df_vuelo):
 def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy()
+    
+    # 1. TRUNCAR NOMBRES LARGOS (Max 28 caracteres + "...")
+    limite = 28
+    df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:limite] + "..." if len(str(x)) > limite else str(x))
+    
     df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
     df_plot = df_plot.sort_values('DIF', ascending=True)
     
     fig = go.Figure()
+    
+    # BARRA AVIÓN (Azul Marino)
     fig.add_trace(go.Bar(
-        y=df_plot['FINCA'], x=df_plot['AVIÓN'], name='Avión', orientation='h',
-        marker_color='#0d1b2a'
+        y=df_plot['FINCA_CORTA'], 
+        x=df_plot['AVIÓN'], 
+        name='Avión', 
+        orientation='h',
+        marker_color='#0d1b2a',
+        text=df_plot['AVIÓN'], # Ponemos el valor numérico en la barra
+        texttemplate='$ %{text:,.0f}', # Formato financiero exacto
+        textposition='auto',
+        customdata=df_plot['FINCA'], # Guardamos el nombre completo oculto
+        hovertemplate="<b>Avión</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
     ))
+    
+    # BARRA DRON (Dorado)
     fig.add_trace(go.Bar(
-        y=df_plot['FINCA'], x=df_plot['DRONE'], name='Dron', orientation='h',
-        marker_color='#d4af37'
+        y=df_plot['FINCA_CORTA'], 
+        x=df_plot['DRONE'], 
+        name='Dron', 
+        orientation='h',
+        marker_color='#d4af37',
+        text=df_plot['DRONE'],
+        texttemplate='$ %{text:,.0f}',
+        textposition='auto',
+        customdata=df_plot['FINCA'],
+        hovertemplate="<b>Dron</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
     ))
+    
     fig.update_layout(
-        title=f"<b>{titulo_grafico}</b>", barmode='group',
-        height=max(380, len(df_plot) * 28),
-        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)"),
-        yaxis=dict(tickfont=dict(size=11, color='#0d1b2a')),
-        margin=dict(l=10, r=10, t=40, b=10)
+        title=f"<b>{titulo_grafico}</b>", 
+        barmode='group',
+        height=max(400, len(df_plot) * 55), # Le damos más altura para que los textos respiren
+        plot_bgcolor='rgba(0,0,0,0)', 
+        paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)", showgrid=True, gridcolor='#e5e5e5'),
+        yaxis=dict(tickfont=dict(size=11, color='#0d1b2a'), automargin=True),
+        margin=dict(l=10, r=20, t=50, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1) # Subimos la leyenda
     )
     return fig
 
