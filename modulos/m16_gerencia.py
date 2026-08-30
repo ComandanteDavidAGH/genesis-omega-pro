@@ -249,21 +249,21 @@ def ejecutar(*args, **kwargs):
     <style>
     .titulo-gerencial {{ color: #0d1b2a; border-bottom: 2px solid {COLOR_DORADO}; padding-bottom: 4px; font-weight: 900; letter-spacing: 0.5px; }}
     
-    /* REDISEÑO DE SELECTORES DE FECHA CON BORDE NÍTIDO */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {
+    /* REDISEÑO DE SELECTORES DE FECHA CON BORDE NÍTIDO (LLAVES DOBLES CORREGIDAS) */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
         background-color: #ffffff !important;
         border: 2px solid #0d1b2a !important;
         border-radius: 8px !important;
         box-shadow: 0px 2px 6px rgba(13, 27, 42, 0.08) !important;
-    }
-    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {
+    }}
+    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
         border-color: #d4af37 !important;
         box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
-    }
-    div[data-testid="stDateInput"] input {
+    }}
+    div[data-testid="stDateInput"] input {{
         color: #0d1b2a !important;
         font-weight: 800 !important;
-    }
+    }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
