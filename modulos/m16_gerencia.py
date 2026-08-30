@@ -248,36 +248,36 @@ def ejecutar(*args, **kwargs):
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 CIRUGIA EXACTA: CAJA Y SELECTORES */
+    /* 💥 DISEÑO PREMIUM DIRECTO A LOS SELECTORES (SIN DERRAMES) */
     
-    /* Atacamos a cualquier bloque vertical que contenga los inputs de fecha */
-    div[data-testid="stVerticalBlock"]:has(div[data-testid="stDateInput"]) {{
-        background-color: #e6f4ea !important; /* Fondo verde claro */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
+    /* 1. Cajita de la fecha: fondo verde tenue y borde oscuro */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
+        background-color: #e6f4ea !important; 
+        border: 2px solid {COLOR_VERDE} !important;
         border-radius: 8px !important;
-        padding: 15px !important;
     }}
     
-    /* Color oscuro para el título y textos "Desde" / "Hasta" */
-    div[data-testid="stVerticalBlock"]:has(div[data-testid="stDateInput"]) h4,
+    /* 2. Forzamos transparencia en la sub-capa blanca molesta */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div {{
+        background-color: transparent !important;
+    }}
+    
+    /* 3. NÚMEROS DE LA FECHA: Oscuros y en NEGRITA EXTREMA */
+    div[data-testid="stDateInput"] input {{
+        color: #000000 !important;
+        font-weight: 900 !important;
+        font-size: 16px !important;
+        -webkit-text-fill-color: #000000 !important; /* Blindaje para Safari/Chrome */
+        background-color: transparent !important;
+    }}
+    
+    /* 4. Textos de "Desde" y "Hasta" */
     div[data-testid="stDateInput"] label p {{
         color: {COLOR_VERDE} !important;
-        font-weight: 900 !important;
+        font-weight: 800 !important;
+        font-size: 13px !important;
     }}
 
-    /* Selectores blancos con borde verde para que resalten */
-    div[data-testid="stDateInput"] > div > div {{
-        background-color: #ffffff !important;
-        border: 2px solid {COLOR_VERDE} !important;
-        border-radius: 6px !important;
-    }}
-    
-    /* Textos internos de la fecha */
-    div[data-testid="stDateInput"] input {{
-        color: {COLOR_NAVY} !important;
-        font-weight: 900 !important;
-    }}
-    
     /* Tablas y pestañas */
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
@@ -315,7 +315,7 @@ def ejecutar(*args, **kwargs):
             st.cache_data.clear()
             st.rerun()
 
-    with st.container():
+    with st.container(border=True):
         st.markdown("#### 📅 Parámetros de Análisis")
         c_f1, c_f2 = st.columns(2)
         fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
