@@ -124,7 +124,6 @@ def cargar_datos_gerenciales():
             df['COSTO_TOTAL_HA'] = df['VALOR_FACTURAR'].apply(limpiar_tarifa_excel)
             df['COSTO_VUELO_HA'] = df['COSTO_HA'].apply(limpiar_tarifa_excel)
             
-            # Saneamiento de Errores de Digitación
             df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
             df['COSTO_TOTAL_HA'] = df['COSTO_TOTAL_HA'].apply(lambda x: x * 1000 if 0 < x < 2500 else x)
             df['COSTO_VUELO_HA'] = df['COSTO_VUELO_HA'].apply(lambda x: 75000 if x > 150000 else x)
@@ -141,11 +140,9 @@ def cargar_datos_gerenciales():
 def generar_excel_maestro(df_total, df_vuelo):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # 💥 Desplazamos la tabla a la fila 4 (startrow=3) para dejar espacio al título
         df_total.to_excel(writer, index=False, sheet_name='Facturación Total', startrow=3)
         df_vuelo.to_excel(writer, index=False, sheet_name='Tarifa Vuelo Pura', startrow=3)
         
-        # Estilos corporativos
         fill_titulo = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
         font_titulo = Font(color="FFFFFF", bold=True, size=14)
         font_sub = Font(color="555555", italic=True, size=10)
@@ -164,7 +161,6 @@ def generar_excel_maestro(df_total, df_vuelo):
         for sheet_name in writer.sheets:
             ws = writer.sheets[sheet_name]
             
-            # 💥 Inyección de Títulos VIP en Fila 1 y 2
             ws.merge_cells("A1:G1")
             ws["A1"] = f"REPORTE GERENCIAL COMPARATIVO — {sheet_name.upper()}"
             ws["A1"].fill = fill_titulo
@@ -184,14 +180,12 @@ def generar_excel_maestro(df_total, df_vuelo):
             ws.column_dimensions['F'].width = 20
             ws.column_dimensions['G'].width = 16
             
-            # Formato de Encabezados (Fila 4)
             for cell in ws[4]:
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = align_center
                 cell.border = borde_fino
                 
-            # Formato de Datos (A partir de Fila 5)
             for row in range(5, ws.max_row + 1):
                 ws[f'D{row}'].number_format = '"$"#,##0'
                 ws[f'E{row}'].number_format = '"$"#,##0'
@@ -219,7 +213,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy()
     df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
-    df_plot = df_plot.sort_values('DIF', ascending=True)  # mayor ahorro arriba
+    df_plot = df_plot.sort_values('DIF', ascending=True)
     
     fig = go.Figure()
     fig.add_trace(go.Bar(
@@ -232,7 +226,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     ))
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>", barmode='group',
-        height=max(380, len(df_plot) * 28),  # crece con la cantidad de fincas
+        height=max(380, len(df_plot) * 28),
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)"),
         yaxis=dict(tickfont=dict(size=11, color='#0d1b2a')),
@@ -254,41 +248,42 @@ def ejecutar(*args, **kwargs):
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 SOLUCIÓN DEFINITIVA: SATURACIÓN CSS PARA DATEINPUT */
+    /* 💥 CIRUGÍA: Disfrazar el contenedor de fechas para imitar a st.success */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stDateInput"]) {{
+        background-color: #e6f4ea !important; /* Fondo verde tenue idéntico a st.success */
+        border: 1px solid #143521 !important; /* Borde verde oscuro elegante */
+        border-radius: 8px !important;
+    }}
     
-    /* 1. Atacar el contenedor principal visible */
-    div[data-testid="stDateInput"] > div {{
-        background-color: #e6f4ea !important; /* Verde tenue */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stDateInput"]) h4 {{
+        color: #143521 !important; /* Título interno en verde oscuro */
+    }}
+    
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(div[data-testid="stDateInput"]) label p {{
+        color: #143521 !important; /* Letras de DESDE y HASTA en verde oscuro */
+    }}
+
+    /* Estilizar las cajas de fecha en blanco para que resalten sobre el verde */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
+        background-color: #ffffff !important;
+        border: 2px solid #143521 !important;
         border-radius: 6px !important;
-        box-shadow: 0px 2px 6px rgba(20,53,33,0.15) !important;
     }}
-
-    /* 2. Forzar transparencia extrema en todas las capas internas ocultas */
-    div[data-testid="stDateInput"] div[data-baseweb="input"],
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div,
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div > div {{
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div {{
         background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
     }}
-
-    /* 3. Estilizar el texto del campo de fecha */
     div[data-testid="stDateInput"] input {{
-        background-color: transparent !important;
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
         font-size: 15px !important;
+        background-color: transparent !important;
     }}
-
-    /* 4. Estado Focus: dorado al hacer clic */
-    div[data-testid="stDateInput"] > div:focus-within {{
+    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
         border-color: {COLOR_DORADO} !important;
         box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
     }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
-    div[data-testid="stMainBlockContainer"] label p {{ color: {COLOR_NAVY} !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
     
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
@@ -344,7 +339,6 @@ def ejecutar(*args, **kwargs):
     df_aviones = df_base[df_base['TECNOLOGIA'] == 'AVIÓN'].copy()
     df_drones = df_base[df_base['TECNOLOGIA'] == 'DRONE'].copy()
 
-    # PREPARAR DATA: COSTO VUELO PURA
     df_vuelo_avion = df_aviones.groupby(['FINCA', 'TIPO_ENTIDAD'])['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'AVIÓN'})
     df_vuelo_dron = df_drones.groupby(['FINCA', 'TIPO_ENTIDAD', 'OPERADOR_DRON'])['COSTO_VUELO_HA'].max().reset_index().rename(columns={'COSTO_VUELO_HA': 'DRONE'})
     m_comp_v = pd.merge(df_vuelo_dron, df_vuelo_avion, on=['FINCA', 'TIPO_ENTIDAD'], how='inner')
@@ -355,7 +349,6 @@ def ejecutar(*args, **kwargs):
         m_comp_v['Diferencia ($)'] = m_comp_v['AVIÓN'] - m_comp_v['DRONE']
         m_comp_v['Eficiencia (%)'] = m_comp_v['Diferencia ($)'] / m_comp_v['AVIÓN']
 
-    # PREPARAR DATA: COSTO TOTAL
     df_total_avion = df_aviones.groupby(['FINCA', 'TIPO_ENTIDAD'])['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'AVIÓN'})
     df_total_dron = df_drones.groupby(['FINCA', 'TIPO_ENTIDAD', 'OPERADOR_DRON'])['COSTO_TOTAL_HA'].max().reset_index().rename(columns={'COSTO_TOTAL_HA': 'DRONE'})
     m_comp_t = pd.merge(df_total_dron, df_total_avion, on=['FINCA', 'TIPO_ENTIDAD'], how='inner')
@@ -366,9 +359,6 @@ def ejecutar(*args, **kwargs):
         m_comp_t['Diferencia ($)'] = m_comp_t['AVIÓN'] - m_comp_t['DRONE']
         m_comp_t['Eficiencia (%)'] = m_comp_t['Diferencia ($)'] / m_comp_t['AVIÓN'] 
 
-    # ==========================================================
-    # 💎 TARJETAS KPI DE IMPACTO DIRECTO
-    # ==========================================================
     st.markdown("---")
     if not m_comp_v.empty:
         ahorro_prom_vuelo = m_comp_v['Diferencia ($)'].mean()
@@ -383,9 +373,6 @@ def ejecutar(*args, **kwargs):
 
     tab_vuelo, tab_total = st.tabs(["✈️ Tarifa Vuelo Pura (Operativo)", "💰 Facturación Total Operación"])
 
-    # ==========================================================
-    # 💎 MOTOR VISUAL PREMIUM PARA TABLAS
-    # ==========================================================
     def aplicar_estilo_premium(row):
         estilos = [''] * len(row)
         dif = row.get('Diferencia ($)', 0)
@@ -397,7 +384,6 @@ def ejecutar(*args, **kwargs):
             if col in ['AVIÓN', 'DRONE', 'Diferencia ($)', 'Eficiencia (%)']:
                 cell_style += ' text-align: right;'
             
-            # Sombreado de fondo agresivo para la columna de impacto económico
             if col == 'Diferencia ($)':
                 if dif < 0: cell_style = 'background-color: #ffe5e5; color: #dc3545; font-weight: 900; text-align: right;'
                 elif dif > 0: cell_style = 'background-color: #e6f4ea; color: #28a745; font-weight: 900; text-align: right;'
@@ -418,9 +404,6 @@ def ejecutar(*args, **kwargs):
         "Eficiencia (%)": st.column_config.NumberColumn("📈 EFICIENCIA", format="%.1f %%", width="small")
     }
 
-    # ==========================================================
-    # PESTAÑA 1: TARIFA VUELO PURA
-    # ==========================================================
     with tab_vuelo:
         st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs. Fincas Especiales y Lotes Piloto.")
         
@@ -428,7 +411,6 @@ def ejecutar(*args, **kwargs):
             m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
             m_comp_v_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
             
-            # --- 🌾 GRÁFICO 1: COOPERATIVAS ---
             st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas")
             if not m_comp_v_coop.empty:
                 fig_coop = construir_grafico_comparativo(m_comp_v_coop, "Cooperativas: Avión vs Dron")
@@ -438,7 +420,6 @@ def ejecutar(*args, **kwargs):
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- 🍌 GRÁFICO 2: FINCAS ESPECIALES ---
             st.markdown("### 🍌 2. Fincas Especiales y Lotes Piloto")
             if not m_comp_v_indep.empty:
                 fig_indep = construir_grafico_comparativo(m_comp_v_indep, "Especiales/Piloto: Avión vs Dron")
@@ -446,7 +427,6 @@ def ejecutar(*args, **kwargs):
             else:
                 st.info("No se registraron Fincas Especiales en el rango.")
 
-            # TABLA GENERAL DETALLADA
             st.markdown("---")
             st.markdown("#### 📋 Matriz Detallada de Comparación")
             df_print_v = m_comp_v.copy()
@@ -461,9 +441,6 @@ def ejecutar(*args, **kwargs):
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
-    # ==========================================================
-    # PESTAÑA 2: COSTO TOTAL FACTURADO
-    # ==========================================================
     with tab_total:
         st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs. Fincas Especiales.")
         
@@ -471,7 +448,6 @@ def ejecutar(*args, **kwargs):
             m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
             m_comp_t_indep = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
             
-            # --- 🌾 GRÁFICO 1: COOPERATIVAS (TOTAL) ---
             st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas (Total Facturado)")
             if not m_comp_t_coop.empty:
                 fig_t_coop = construir_grafico_comparativo(m_comp_t_coop, "Facturación Total: Cooperativas")
@@ -481,7 +457,6 @@ def ejecutar(*args, **kwargs):
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # --- 🍌 GRÁFICO 2: FINCAS ESPECIALES (TOTAL) ---
             st.markdown("### 🍌 2. Fincas Especiales y Lotes Piloto (Total Facturado)")
             if not m_comp_t_indep.empty:
                 fig_t_indep = construir_grafico_comparativo(m_comp_t_indep, "Facturación Total: Especiales y Pilotos")
@@ -489,7 +464,6 @@ def ejecutar(*args, **kwargs):
             else:
                 st.info("No se registraron Fincas Especiales en el rango.")
 
-            # TABLA GENERAL DETALLADA TOTAL
             st.markdown("---")
             st.markdown("#### 📋 Matriz Detallada Facturación Total")
             df_print_t = m_comp_t.copy()
@@ -504,7 +478,6 @@ def ejecutar(*args, **kwargs):
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
-    # Botón de Descarga Excel VIP
     if not m_comp_t.empty and not m_comp_v.empty:
         st.markdown("---")
         excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
