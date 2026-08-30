@@ -82,9 +82,10 @@ def normalizar_a_fecha_pura(val):
 
 def es_cooperativa(finca_nombre):
     f_up = str(finca_nombre).upper().strip()
+    # Filtro estricto: Solo entidades que sean verdaderamente Cooperativas
     patrones_coop = [
         'BANAFRUCOOP', 'COOMULBANANO', 'COOBAMAG', 'EMPREBANCOOP', 
-        'COOBAFRIO', 'BANAORGANICO', 'COOP', 'ASOCIACION', 'ASO'
+        'COOBAFRIO', 'COOP'
     ]
     return any(p in f_up for p in patrones_coop)
 
