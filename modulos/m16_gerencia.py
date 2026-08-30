@@ -254,22 +254,29 @@ def ejecutar(*args, **kwargs):
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 CEBO NIVEL 2: PERFORANDO TODAS LAS CAPAS DEL INPUT */
+    /* 💥 OPCIÓN NUCLEAR: PERFORANDO BASEWEB */
     div[data-testid="stDateInput"] > div {{
-        background-color: #e6f4ea !important; /* El verde claro de fondo */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
-        border-radius: 6px !important;
-    }}
-    
-    /* Hacemos "de cristal" absolutamente TODO lo que está adentro para que se vea el verde */
-    div[data-testid="stDateInput"] div[data-baseweb="input"],
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div,
-    div[data-testid="stDateInput"] input {{
         background-color: transparent !important;
         border: none !important;
-        box-shadow: none !important;
+    }}
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
+        background-color: #e6f4ea !important; /* Fondo verde tenue forzado */
+        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
+        border-radius: 6px !important;
+        overflow: hidden !important;
+    }}
+    /* Cristalizar todas las subcapas internas de golpe */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] * {{
+        background-color: transparent !important;
+    }}
+    div[data-testid="stDateInput"] input {{
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
+        font-size: 15px !important;
+    }}
+    /* Teñir el ícono interno del calendario para que combine con el borde */
+    div[data-testid="stDateInput"] svg {{
+        fill: {COLOR_VERDE} !important;
     }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
@@ -294,7 +301,6 @@ def ejecutar(*args, **kwargs):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        # ESTRUCTURA HTML SEPARADA (TEXTO VS EMOJI)
         st.markdown("""
         <div class='titulo-contenedor'>
             <div class='titulo-icono'>⚖️</div>
@@ -307,13 +313,12 @@ def ejecutar(*args, **kwargs):
         
     with c_sync:
         st.write("")
-        st.write("") # Alineación extra para el botón
+        st.write("")
         if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
     with st.container(border=True):
-        # 💥 EMOJI NUEVO VIBRANTE (El rojo)
         st.markdown("#### 📅 Parámetros de Análisis")
         c_f1, c_f2 = st.columns(2)
         fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
