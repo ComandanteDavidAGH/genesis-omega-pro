@@ -241,44 +241,45 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* TITULO OK */
+    /* TITULO ALINEADO */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 DISEÑO PREMIUM DIRECTO A LOS SELECTORES (SIN DERRAMES) */
+    /* 💥 CIRUGÍA UNIVERSAL: Cajas de Fecha */
     
-    /* 1. Cajita de la fecha: fondo verde tenue y borde oscuro */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
-        background-color: #e6f4ea !important; 
-        border: 2px solid {COLOR_VERDE} !important;
+    /* 1. Atacamos la caja exterior universal de Streamlit */
+    .stDateInput > div {{
+        background-color: #e6f4ea !important; /* Fondo verde tenue */
+        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro */
         border-radius: 8px !important;
     }}
     
-    /* 2. Forzamos transparencia en la sub-capa blanca molesta */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div {{
+    /* 2. Forzamos transparencia en la caja interior que bloqueaba el color */
+    .stDateInput > div > div {{
         background-color: transparent !important;
+        border: none !important;
     }}
     
-    /* 3. NÚMEROS DE LA FECHA: Oscuros y en NEGRITA EXTREMA */
-    div[data-testid="stDateInput"] input {{
+    /* 3. NÚMEROS: Negros, grandes y en negrita extrema */
+    .stDateInput input {{
         color: #000000 !important;
         font-weight: 900 !important;
         font-size: 16px !important;
-        -webkit-text-fill-color: #000000 !important; /* Blindaje para Safari/Chrome */
+        -webkit-text-fill-color: #000000 !important; /* Fuerza el color en todos los navegadores */
         background-color: transparent !important;
     }}
     
-    /* 4. Textos de "Desde" y "Hasta" */
-    div[data-testid="stDateInput"] label p {{
+    /* 4. Etiquetas "Desde" y "Hasta" */
+    .stDateInput label p {{
         color: {COLOR_VERDE} !important;
         font-weight: 800 !important;
         font-size: 13px !important;
     }}
 
-    /* Tablas y pestañas */
+    /* Tablas y Pestañas */
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
