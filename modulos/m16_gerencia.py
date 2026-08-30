@@ -213,66 +213,73 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy()
     
-    # Truncado elegante a 25 caracteres para mantener el eje limpio
-    limite = 25
-    df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:limite] + "..." if len(str(x)) > limite else str(x))
-    
-    df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
-    df_plot = df_plot.sort_values('DIF', ascending=True)
+    # Calcular límites para que el gráfico sea un cuadrado perfecto
+    max_val = max(df_plot['AVIÓN'].max(), df_plot['DRONE'].max()) * 1.05
+    min_val = min(df_plot['AVIÓN'].min(), df_plot['DRONE'].min())
+    if min_val > 0: min_val = min_val * 0.9 # Darle respiro visual
     
     fig = go.Figure()
 
-    # 1. LÍNEA CONECTORA (La "Brecha" visual entre ambas tecnologías)
-    for i, row in df_plot.iterrows():
-        fig.add_trace(go.Scatter(
-            x=[row['DRONE'], row['AVIÓN']],
-            y=[row['FINCA_CORTA'], row['FINCA_CORTA']],
-            mode='lines',
-            line=dict(color='rgba(13, 27, 42, 0.2)', width=4), # Línea tenue y limpia
-            showlegend=False,
-            hoverinfo='skip'
-        ))
+    # 1. LÍNEA DE EQUILIBRIO (Diagonal donde Avión = Dron)
+    fig.add_trace(go.Scatter(
+        x=[min_val, max_val],
+        y=[min_val, max_val],
+        mode='lines',
+        name='Punto de Equilibrio',
+        line=dict(color='#888888', width=2, dash='dash'),
+        hoverinfo='skip'
+    ))
 
-    # 2. PUNTO DRON (Dorado táctico)
+    # 2. PUNTOS DE LAS FINCAS (Color según quién es más barato)
+    df_plot['DIF'] = df_plot['AVIÓN'] - df_plot['DRONE']
+    
+    # Dorado si Dron es más barato, Azul Marino si Avión es más barato o igual
+    colores = ['#d4af37' if dif > 0 else '#0d1b2a' for dif in df_plot['DIF']]
+    
     fig.add_trace(go.Scatter(
         x=df_plot['DRONE'],
-        y=df_plot['FINCA_CORTA'],
-        mode='markers+text',
-        name='Dron',
-        marker=dict(color='#d4af37', size=12, symbol='circle', line=dict(color='white', width=1.5)),
-        text=df_plot['DRONE'],
-        texttemplate='$ %{text:,.0f}',
-        textposition='top center', # El valor vuela sobre el punto
-        textfont=dict(size=10, color='#d4af37'),
-        customdata=df_plot['FINCA'],
-        hovertemplate="<b>🛸 Dron</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
+        y=df_plot['AVIÓN'],
+        mode='markers',
+        marker=dict(
+            size=14, 
+            color=colores, 
+            line=dict(color='white', width=1.5),
+            opacity=0.85
+        ),
+        # Guardamos datos extra para la caja flotante
+        customdata=np.stack((df_plot['FINCA'], df_plot['DIF']), axis=-1),
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "🛸 Dron: $ %{x:,.0f}<br>"
+            "✈️ Avión: $ %{y:,.0f}<br>"
+            "⚖️ Ahorro (Dron): $ %{customdata[1]:,.0f}<extra></extra>"
+        )
     ))
 
-    # 3. PUNTO AVIÓN (Azul Marino)
-    fig.add_trace(go.Scatter(
-        x=df_plot['AVIÓN'],
-        y=df_plot['FINCA_CORTA'],
-        mode='markers+text',
-        name='Avión',
-        marker=dict(color='#0d1b2a', size=12, symbol='circle', line=dict(color='white', width=1.5)),
-        text=df_plot['AVIÓN'],
-        texttemplate='$ %{text:,.0f}',
-        textposition='bottom center', # El valor vuela debajo del punto para no chocar
-        textfont=dict(size=10, color='#0d1b2a'),
-        customdata=df_plot['FINCA'],
-        hovertemplate="<b>✈️ Avión</b><br>Finca: %{customdata}<br>Costo: $ %{x:,.0f} COP<extra></extra>"
-    ))
-
-    # 4. CONFIGURACIÓN DEL LIENZO MINIMALISTA
+    # 3. CONFIGURACIÓN DEL LIENZO MINIMALISTA
     fig.update_layout(
-        title=f"<b>{titulo_grafico}</b> (Brecha Operativa)", 
-        height=max(350, len(df_plot) * 45), # Altura dinámica ajustada, más compacta
+        title=f"<b>{titulo_grafico} (Cuadrante de Costos)</b>",
+        height=450, # 💥 ESTA ES LA CLAVE: Nunca crecerá de este tamaño, ahorrando pantalla
         plot_bgcolor='rgba(0,0,0,0)', 
         paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(tickformat="$,.0f", title="Costo ($ COP / ha)", showgrid=True, gridcolor='#f0f0f0', zeroline=False),
-        yaxis=dict(tickfont=dict(size=11, color='#0d1b2a'), showgrid=False, automargin=True),
+        xaxis=dict(title="Costo 🛸 DRON ($/ha)", tickformat="$,.0f", showgrid=True, gridcolor='#f0f0f0', range=[min_val, max_val]),
+        yaxis=dict(title="Costo ✈️ AVIÓN ($/ha)", tickformat="$,.0f", showgrid=True, gridcolor='#f0f0f0', range=[min_val, max_val]),
         margin=dict(l=10, r=20, t=50, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        showlegend=False,
+        annotations=[
+            dict(
+                x=0.15, y=0.9, xref="paper", yref="paper", 
+                text="<b>✅ ZONA AHORRO DRON</b>", 
+                showarrow=False, font=dict(color="#d4af37", size=13), 
+                bgcolor="rgba(255,255,255,0.7)", borderpad=4
+            ),
+            dict(
+                x=0.85, y=0.1, xref="paper", yref="paper", 
+                text="<b>✈️ ZONA AHORRO AVIÓN</b>", 
+                showarrow=False, font=dict(color="#0d1b2a", size=13), 
+                bgcolor="rgba(255,255,255,0.7)", borderpad=4
+            )
+        ]
     )
     return fig
 
