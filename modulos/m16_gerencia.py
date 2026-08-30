@@ -247,28 +247,28 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* 💥 CIRUGÍA 1: Título Alineado (Flexbox) */
+    /* Título Alineado (Flexbox) - ¡ÉXITO! */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 CIRUGÍA 1: Selectores de Fecha con Fondo Verde Tenue y Bordes */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
-        background-color: #e6f4ea !important; /* Color tenue verde claro */
-        border: 2px solid {COLOR_VERDE} !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1) !important;
+    /* 💥 EL CEBO AGRESIVO PARA LOS SELECTORES DE FECHA */
+    div[data-testid="stDateInput"] > div {{
+        background-color: #e6f4ea !important; /* Fondo verde tenue */
+        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
+        border-radius: 6px !important;
     }}
-    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
-        border-color: {COLOR_DORADO} !important;
-        box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
-    }}
+    
+    /* Hacemos transparente el input interno para no duplicar fondos y forzamos el color del texto */
     div[data-testid="stDateInput"] input {{
+        background-color: transparent !important;
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
         font-size: 15px !important;
+        border: none !important;
+        box-shadow: none !important;
     }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
