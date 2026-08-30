@@ -254,35 +254,41 @@ def ejecutar(*args, **kwargs):
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 OPCIÓN NUCLEAR: PERFORANDO BASEWEB */
-    div[data-testid="stDateInput"] > div {{
+    /* 💥 SOLUCIÓN EXACTA: Cajas de Fecha (DateInput) */
+    
+    /* 1. La caja visible real: aquí va el color y el borde */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
+        background-color: #e6f4ea !important;
+        border: 2px solid {COLOR_VERDE} !important;
+        border-radius: 6px !important;
+        box-shadow: 0px 2px 6px rgba(20,53,33,0.15) !important;
+    }}
+
+    /* 2. Solo el div interno (uno más abajo) se hace transparente,
+       para que se vea el verde del contenedor padre */
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div {{
         background-color: transparent !important;
         border: none !important;
+        box-shadow: none !important;
     }}
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
-        background-color: #e6f4ea !important; /* Fondo verde tenue forzado */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
-        border-radius: 6px !important;
-        overflow: hidden !important;
-    }}
-    /* Cristalizar todas las subcapas internas de golpe */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] * {{
-        background-color: transparent !important;
-    }}
+
+    /* 3. El texto/número */
     div[data-testid="stDateInput"] input {{
+        background-color: transparent !important;
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
-        font-size: 15px !important;
     }}
-    /* Teñir el ícono interno del calendario para que combine con el borde */
-    div[data-testid="stDateInput"] svg {{
-        fill: {COLOR_VERDE} !important;
+
+    /* 4. Focus (cuando el usuario hace clic) */
+    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
+        border-color: {COLOR_DORADO} !important;
+        box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
     }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
-    div[data-testid="stMainBlockContainer"] label p {{ color: #0d1b2a !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
+    div[data-testid="stMainBlockContainer"] label p {{ color: {COLOR_NAVY} !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 12px !important; }}
     
-    div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: #0d1b2a; }}
+    div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
     </style>
     """, unsafe_allow_html=True)
