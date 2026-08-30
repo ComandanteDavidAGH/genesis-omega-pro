@@ -254,33 +254,35 @@ def ejecutar(*args, **kwargs):
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 SOLUCIÓN EXACTA: Cajas de Fecha (DateInput) */
+    /* 💥 SOLUCIÓN DEFINITIVA: SATURACIÓN CSS PARA DATEINPUT */
     
-    /* 1. La caja visible real: aquí va el color y el borde */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] {{
-        background-color: #e6f4ea !important;
-        border: 2px solid {COLOR_VERDE} !important;
+    /* 1. Atacar el contenedor principal visible */
+    div[data-testid="stDateInput"] > div {{
+        background-color: #e6f4ea !important; /* Verde tenue */
+        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro */
         border-radius: 6px !important;
         box-shadow: 0px 2px 6px rgba(20,53,33,0.15) !important;
     }}
 
-    /* 2. Solo el div interno (uno más abajo) se hace transparente,
-       para que se vea el verde del contenedor padre */
-    div[data-testid="stDateInput"] div[data-baseweb="input"] > div {{
+    /* 2. Forzar transparencia extrema en todas las capas internas ocultas */
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div,
+    div[data-testid="stDateInput"] div[data-baseweb="input"] > div > div {{
         background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;
     }}
 
-    /* 3. El texto/número */
+    /* 3. Estilizar el texto del campo de fecha */
     div[data-testid="stDateInput"] input {{
         background-color: transparent !important;
         color: {COLOR_NAVY} !important;
         font-weight: 900 !important;
+        font-size: 15px !important;
     }}
 
-    /* 4. Focus (cuando el usuario hace clic) */
-    div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
+    /* 4. Estado Focus: dorado al hacer clic */
+    div[data-testid="stDateInput"] > div:focus-within {{
         border-color: {COLOR_DORADO} !important;
         box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
     }}
@@ -316,7 +318,6 @@ def ejecutar(*args, **kwargs):
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
     with c_sync:
         st.write("")
         st.write("")
