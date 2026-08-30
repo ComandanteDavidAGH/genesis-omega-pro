@@ -241,54 +241,39 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* Título Alineado (Flexbox) */
+    /* TITULO OK */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* 💥 CIRUGÍA POR FUERZA BRUTA: El único contenedor con borde será verde */
+    /* 💥 TÁCTICA DE BOMBARDEO: Cajas de Fecha (Estilos Genéricos Blindados) */
+    
+    /* 1. Obligamos al contenedor exterior que rodea los inputs a tomar color */
     div[data-testid="stVerticalBlockBorderWrapper"] {{
-        background-color: #e6f4ea !important; /* Fondo verde tenue */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde verde oscuro */
+        background-color: #e6f4ea !important;
+        border: 2px solid {COLOR_VERDE} !important;
         border-radius: 8px !important;
-        padding: 15px !important;
+        padding: 10px !important;
     }}
     
-    /* Colorear el título y etiquetas internas del contenedor */
-    div[data-testid="stVerticalBlockBorderWrapper"] h4,
-    div[data-testid="stVerticalBlockBorderWrapper"] label p {{
-        color: {COLOR_VERDE} !important;
-        font-weight: 900 !important;
-    }}
-
-    /* Selectores de fecha: Fondo blanco puro y borde oscuro para contraste */
-    .stDateInput div[data-baseweb="input"] {{
+    /* 2. Forzamos el blanco y el borde verde en las cajitas donde se escribe la fecha */
+    .stDateInput > div,
+    .stDateInput > div > div {{
         background-color: #ffffff !important;
-        border: 2px solid {COLOR_VERDE} !important;
+        border: 1px solid {COLOR_VERDE} !important;
         border-radius: 6px !important;
     }}
     
-    /* Eliminar gris interno de Streamlit */
-    .stDateInput div[data-baseweb="input"] > div {{
-        background-color: transparent !important;
-    }}
-    
-    .stDateInput input {{
-        color: {COLOR_NAVY} !important;
+    /* 3. Aseguramos que los títulos y letras sean oscuros */
+    h4, label p, .stDateInput input {{
+        color: {COLOR_VERDE} !important;
         font-weight: 900 !important;
-        font-size: 15px !important;
-        background-color: transparent !important;
     }}
     
-    .stDateInput div[data-baseweb="input"]:focus-within {{
-        border-color: {COLOR_DORADO} !important;
-        box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
-    }}
-    
+    /* Otros componentes */
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
-    
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
     </style>
