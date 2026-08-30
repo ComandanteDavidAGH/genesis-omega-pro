@@ -247,22 +247,28 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    .titulo-gerencial {{ color: #0d1b2a; border-bottom: 2px solid {COLOR_DORADO}; padding-bottom: 4px; font-weight: 900; letter-spacing: 0.5px; }}
+    /* 💥 CIRUGÍA 1: Título Alineado (Flexbox) */
+    .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
+    .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
+    .titulo-texto {{ display: flex; flex-direction: column; }}
+    .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
+    .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
     
-    /* REDISEÑO DE SELECTORES DE FECHA CON BORDE NÍTIDO (LLAVES DOBLES CORREGIDAS) */
+    /* 💥 CIRUGÍA 1: Selectores de Fecha con Fondo Verde Tenue y Bordes */
     div[data-testid="stDateInput"] div[data-baseweb="input"] {{
-        background-color: #ffffff !important;
-        border: 2px solid #0d1b2a !important;
+        background-color: #e6f4ea !important; /* Color tenue verde claro */
+        border: 2px solid {COLOR_VERDE} !important;
         border-radius: 8px !important;
-        box-shadow: 0px 2px 6px rgba(13, 27, 42, 0.08) !important;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1) !important;
     }}
     div[data-testid="stDateInput"] div[data-baseweb="input"]:focus-within {{
-        border-color: #d4af37 !important;
+        border-color: {COLOR_DORADO} !important;
         box-shadow: 0 0 0 2px rgba(212,175,55,0.25) !important;
     }}
     div[data-testid="stDateInput"] input {{
-        color: #0d1b2a !important;
-        font-weight: 800 !important;
+        color: {COLOR_NAVY} !important;
+        font-weight: 900 !important;
+        font-size: 15px !important;
     }}
     
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
@@ -287,16 +293,27 @@ def ejecutar(*args, **kwargs):
 
     c_tit, c_sync = st.columns([3.5, 1.5])
     with c_tit:
-        st.markdown("<h2 class='titulo-gerencial'>⚖️ MÓDULO 16: COMPARATIVO GERENCIAL (DRON VS AVIÓN)</h2>", unsafe_allow_html=True)
-        st.caption("Análisis de costos y brecha de eficiencia: Cooperativas vs. Fincas Especiales y Lotes Piloto.")
+        # 💥 ESTRUCTURA HTML SEPARADA (TEXTO VS EMOJI)
+        st.markdown("""
+        <div class='titulo-contenedor'>
+            <div class='titulo-icono'>⚖️</div>
+            <div class='titulo-texto'>
+                <h2 class='titulo-gerencial-txt'>MÓDULO 16: COMPARATIVO GERENCIAL (DRON VS AVIÓN)</h2>
+                <p class='titulo-caption'>Análisis de costos y brecha de eficiencia: Cooperativas vs. Fincas Especiales y Lotes Piloto.</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
     with c_sync:
         st.write("")
+        st.write("") # Alineación extra para el botón
         if st.button("🔄 Sincronizar Base Datos", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
     with st.container(border=True):
-        st.markdown("#### 📅 Parámetros de Análisis")
+        # 💥 EMOJI NUEVO VIBRANTE
+        st.markdown("#### 🗓️ Parámetros de Análisis")
         c_f1, c_f2 = st.columns(2)
         fecha_inicio = c_f1.date_input("Desde:", value=date(2026, 1, 1))
         fecha_fin = c_f2.date_input("Hasta:", value=date(2026, 12, 31))
