@@ -408,7 +408,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (PARETO AGRO)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL (PARETO AGRO CORREGIDO)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN Y ACUMULADO — {titulo_finca}", unsafe_allow_html=True)
@@ -419,7 +419,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         fig4 = go.Figure()
         años_presentes = sorted(df_mes['AÑO'].unique())
         
-        # 💥 Asignación de colores Agro para que combine con el resto del tablero
         colores_barras = [COLOR_BOSQUE, COLOR_HOJA]
         colores_lineas = [COLOR_HOJA, COLOR_BROTE]
         
@@ -428,17 +427,21 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             c_barra = colores_barras[i % len(colores_barras)]
             c_linea = colores_lineas[i % len(colores_lineas)]
             
+            # Barras mensuales
             fig4.add_trace(go.Bar(
                 x=df_año['MES_NOMBRE'], y=df_año['COSTO_TOTAL'], 
                 name=f"Mensual ({año_map})", marker_color=c_barra,
                 hovertemplate='<b>%{x}</b><br>Mes: $ %{y:,.0f}<extra></extra>'
             ))
             
+            # Línea acumulada
             fig4.add_trace(go.Scatter(
                 x=df_año['MES_NOMBRE'], y=df_año['ACUMULADO'], 
                 name=f"Acum. ({año_map})", mode='lines+markers+text',
                 text=df_año['ACUMULADO'].apply(formato_gerencial_latino),
-                textposition='top center', textfont=dict(size=10, family="Arial Black", color=c_linea),
+                textposition='top center', 
+                # 💥 LA SOLUCIÓN: Texto en color oscuro de alto contraste (#0d1b2a) en lugar de heredar el verde
+                textfont=dict(size=11, family="Arial Black", color='#0d1b2a'),
                 line=dict(color=c_linea, width=3), marker=dict(size=8, color=c_linea),
                 yaxis='y2',
                 hovertemplate='<b>%{x}</b><br>Acumulado: $ %{y:,.0f}<extra></extra>'
@@ -457,7 +460,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             )
         )
         st.plotly_chart(fig4, use_container_width=True)
-
     # -----------------------------------------------------
     # GRÁFICO 5: RASTREO FINANCIERO DE RECARGOS DOMINICALES
     # -----------------------------------------------------
