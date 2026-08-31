@@ -214,46 +214,39 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy().reset_index(drop=True)
     
-    # 1. ORDENAMIENTO TÁCTICO
     if 'Diferencia ($)' not in df_plot.columns:
         df_plot['Diferencia ($)'] = df_plot['AVIÓN'] - df_plot['DRONE']
         
     df_plot = df_plot.sort_values(by='Diferencia ($)', ascending=True)
     
-    # 💥 FILTRO ANTI-APLASTAMIENTO: Recorta nombres a 30 caracteres máximo
-    df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:30] + '...' if len(str(x)) > 30 else str(x))
+    # Corte estricto a 25 caracteres para los nombres
+    df_plot['FINCA_CORTA'] = df_plot['FINCA'].astype(str).apply(lambda x: x[:25] + '...' if len(x) > 25 else x)
     
-    # 2. MOTOR DE COLORES
     colores = ['#28a745' if val > 0 else '#dc3545' for val in df_plot['Diferencia ($)']]
     
     fig = go.Figure()
 
-    # 3. CONSTRUCCIÓN DE BARRAS COMPACTAS
     fig.add_trace(go.Bar(
-        y=df_plot['FINCA_CORTA'], # Muestra el nombre corto en la pantalla
+        y=df_plot['FINCA_CORTA'],
         x=df_plot['Diferencia ($)'],
         orientation='h',
-        marker=dict(
-            color=colores,
-            line=dict(color='#0d1b2a', width=1)
-        ),
+        marker=dict(color=colores, line=dict(color='#0d1b2a', width=1)),
         text=df_plot['Diferencia ($)'],
         texttemplate='<b>$ %{text:,.0f}</b>',
         textposition='auto',
-        hovertext=df_plot['FINCA'], # Envía el nombre completo al cuadro flotante
+        hovertext=df_plot['FINCA'],
         customdata=np.stack((df_plot['DRONE'], df_plot['AVIÓN']), axis=-1),
         hovertemplate=(
             "<div style='font-family: Arial;'><b>🏡 Finca: %{hovertext}</b><br><br>"
             "🛸 Costo Dron: $ %{customdata[0]:,.0f}<br>"
             "✈️ Costo Avión: $ %{customdata[1]:,.0f}<br>"
-            "<b>⚖️ Impacto (Brecha): $ %{x:,.0f} / ha</b></div><extra></extra>"
+            "<b>⚖️ Impacto: $ %{x:,.0f} / ha</b></div><extra></extra>"
         )
     ))
 
-    # 4. DISEÑO FIJO PARA PANTALLA
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>",
-        title_font=dict(color="#0d1b2a", size=15, family="Arial Black"),
+        title_font=dict(color="#0d1b2a", size=14, family="Arial Black"),
         height=380,
         plot_bgcolor='#f8fafc',
         paper_bgcolor='#ffffff',
@@ -267,9 +260,11 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         yaxis=dict(
             title="", 
             showgrid=False,
-            tickfont=dict(size=10, color='#0d1b2a', family='Arial')
+            tickfont=dict(size=10, color='#0d1b2a', family='Arial'),
+            automargin=False # 💥 LA CLAVE: Prohíbe a Plotly auto-ajustar el eje
         ),
-        margin=dict(l=10, r=20, t=40, b=40),
+        # 💥 FORZAMOS EL MARGEN IZQUIERDO (l=220) para el texto. El resto de la pantalla será para las barras.
+        margin=dict(l=220, r=40, t=40, b=40),
         showlegend=False
     )
     return fig
