@@ -490,25 +490,14 @@ def ejecutar(*args, **kwargs):
                     st.plotly_chart(fig_i_t, use_container_width=True)
                 else: st.info("No se registraron fincas especiales.")
 
-            st.markdown("---")
-            st.markdown("#### 📋 Matriz Detallada Facturación Total")
-            df_print_t = m_comp_t.copy()
-            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'] * 100
-
-            st.dataframe(
-                df_print_t.style.apply(aplicar_estilo_premium, axis=1), 
-                use_container_width=True, 
-                hide_index=True,
-                column_config=columnas_ui
-            )
-        else:
-            st.warning("📌 No hay datos cruzados en el rango seleccionado.")
-
+    # ==========================================
+    # BOTÓN DE EXCEL (FUERA DE LAS PESTAÑAS)
+    # ==========================================
     if not m_comp_t.empty and not m_comp_v.empty:
         st.markdown("---")
         excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
         st.download_button(
-            label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL (2 HOJAS CON TIPO DE ENTIDAD Y SEMÁFORO)", 
+            label="💾 DESCARGAR REPORTE GERENCIAL EN EXCEL", 
             data=excel_data, 
             file_name=f"Reporte_Eficiencia_Avion_vs_Dron.xlsx", 
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
