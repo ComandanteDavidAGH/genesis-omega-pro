@@ -250,37 +250,37 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (GRÁFICO DE ÁREA SUAVE)
+    # GRÁFICO 1: ÁREA ASPERJADA (LÍNEAS SUAVES DE ALTO CONTRASTE)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
-        df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
-        # 💥 Transformado a gráfico de área/líneas con relleno y curvas suaves
-        fig1 = px.area(
+        # 💥 Transformado a líneas puras, gruesas y limpias (sin textos que choquen)
+        fig1 = px.line(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
-            text='ETIQUETA', color_discrete_sequence=PALETA_YOY, markers=True
+            color_discrete_sequence=PALETA_YOY, markers=True
         )
         fig1.update_traces(
-            textposition='top center', textfont=dict(size=11, family="Arial Black"),
-            line=dict(shape='spline', width=3), # Curvas suaves y elegantes
-            fill='tozeroy' # Relleno translúcido
+            line=dict(shape='spline', width=4), # Línea suave y gruesa
+            marker=dict(size=8, line=dict(color='white', width=2)),
+            hovertemplate='<b>%{x}</b><br>Área: %{y:,.1f} ha<extra></extra>' # Información solo en hover
         )
         fig1.update_layout(
             xaxis_title="", yaxis_title="Hectáreas (ha)", 
             plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
-            margin=dict(t=50, b=20)
+            margin=dict(t=50, b=20),
+            hovermode="x unified"
         )
         if not df_area_chart.empty:
-            fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.3]) 
+            fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.1]) 
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SE MANTIENE BARRAS VS LÍNEA POR SER UMBRAL)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SE MANTIENE BARRAS VS LÍNEA)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE — {titulo_finca}", unsafe_allow_html=True)
@@ -303,7 +303,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 go_fig.add_trace(go.Bar(
                     x=df_año['ETIQUETA_X'], y=df_año['VALOR_FACTURAR'], name=f"Promedio ({año_map})", 
                     marker_color=color_asignado, customdata=custom_data_hover,
-                    hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Finca:</b> %{customdata[0]}<br><b>Promedio Facturado:</b> %{customdata[1]}<extra></extra>'
+                    hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Finca:</b> %{customdata[0]}<br><b>Promedio:</b> %{customdata[1]}<extra></extra>'
                 ))
                 
             go_fig.add_trace(go.Scatter(
@@ -365,7 +365,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO/HORA (LOLLIPOP CHART - PIRULETA)
+    # GRÁFICO 3: RENDIMIENTO/HORA (BARRA TIPO TERMÓMETRO/BULLET)
     # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
@@ -379,56 +379,53 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
         altura_dinamica = max(400, len(df_rend) * 22)
         
-        # 💥 Transformado a Lollipop Chart (Línea delgada + Punto)
+        # 💥 Transformado a Barra Bullet (Delgada pero sólida, color azul acero para variar)
+        COLOR_BARRA = '#2F75B5' 
         fig3 = go.Figure()
         
-        # El "tallo" de la piruleta (barra muy delgada)
         fig3.add_trace(go.Bar(
             y=df_rend['EJE_Y'], x=df_rend['REND_HR'], orientation='h', 
-            marker_color=VERDE_INTENSO, width=0.1, showlegend=False, hoverinfo='skip'
-        ))
-        
-        # La "cabeza" de la piruleta (punto con texto)
-        fig3.add_trace(go.Scatter(
-            x=df_rend['REND_HR'], y=df_rend['EJE_Y'], mode='markers+text',
-            marker=dict(color=VERDE_INTENSO, size=12, line=dict(color='white', width=2)),
-            text=df_rend['ETIQUETA'], textposition='middle right', textfont=dict(size=11, family="Arial Black"),
+            marker=dict(color=COLOR_BARRA, line=dict(color='#0d1b2a', width=0.5)), 
+            width=0.4, # Barra delgada estilo termómetro
+            text=df_rend['ETIQUETA'], textposition='outside', 
+            textfont=dict(size=11, color='#0d1b2a', family="Arial Black"),
             showlegend=False, hovertemplate="<b>%{y}</b><br>Rendimiento: %{x} Hr<extra></extra>"
         ))
         
         fig3.update_layout(height=altura_dinamica, yaxis_title="Matrícula | Semana", xaxis_title="Rendimiento (Horas)", plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=20, r=40))
         fig3.update_yaxes(type='category', autorange="reversed") 
         if not df_rend.empty:
-            fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.3]) # Espacio extra para que el texto no se corte
+            fig3.update_xaxes(range=[0, df_rend['REND_HR'].max() * 1.3])
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (LÍNEAS DE TRAYECTORIA)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL (LÍNEAS PURAS Y NÍTIDAS)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
         df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
         df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
         df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
-        df_mes['TEXTO_GERENCIAL'] = df_mes['COSTO_TOTAL'].apply(formato_gerencial_latino)
         
-        # 💥 Transformado a gráfico de Líneas Suaves
+        # 💥 Limpieza visual: Líneas puras, sin textos fijos colisionando
         fig4 = px.line(
             df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', 
-            text='TEXTO_GERENCIAL', color_discrete_sequence=PALETA_YOY, markers=True
+            color_discrete_sequence=PALETA_YOY, markers=True
         )
         fig4.update_traces(
-            textposition='top center', textfont=dict(size=11, family="Arial Black"),
-            line=dict(shape='spline', width=3.5), marker=dict(size=8)
+            line=dict(shape='spline', width=4), # Línea suave y gruesa
+            marker=dict(size=8, line=dict(color='white', width=2)),
+            hovertemplate='<b>%{x}</b><br>Facturado: $ %{y:,.0f} COP<extra></extra>' # Texto interactivo
         )
         fig4.update_layout(
             xaxis_title="", yaxis_title="Total Facturado ($ COP)", 
             plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
-            margin=dict(t=50, b=20)
+            margin=dict(t=50, b=20),
+            hovermode="x unified"
         )
         if not df_mes.empty:
-            fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.3])
+            fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.1])
         st.plotly_chart(fig4, use_container_width=True)
 
     # -----------------------------------------------------
