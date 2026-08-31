@@ -634,60 +634,97 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         column_config=col_cfg
     )
 
-    st.markdown("---")
-    st.markdown("### 📈 Dashboard Analítico de Tendencias")
+    st.markdown("---")st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
-    df_graficos = df_agrupado.sort_values(by="Fecha Operación").copy().reset_index(drop=True)
-    df_graficos["Fecha Formateada"] = pd.to_datetime(df_graficos["Fecha Operación"], format='%Y-%m-%d', errors='coerce').dt.strftime('%d/%m/%Y')
+    # =================================================================
+    # 📊 GRÁFICO 1: EVOLUCIÓN CRONOLÓGICA (ÁREA Y LÍNEAS SUAVES)
+    # =================================================================
+    # Agrupamos por fecha para promediar y limpiar la saturación visual
+    df_tendencia = df_agrupado.groupby("Fecha Operación").agg({
+        "Tarifa Real Prom/Ha": "mean",
+        "Tarifa Ideal Prom/Ha": "mean"
+    }).reset_index().sort_values(by="Fecha Operación")
+    
+    df_tendencia["Fecha Formateada"] = pd.to_datetime(df_tendencia["Fecha Operación"]).dt.strftime('%d/%m/%Y')
 
-    fig_tarifas = px.bar(
-        df_graficos,
-        x="Fecha Formateada",
-        y=["Tarifa Real Prom/Ha", "Tarifa Ideal Prom/Ha"],
-        barmode="group",
-        hover_data=["Finca", "Equipo", "Hectareas"],
-        labels={"value": "Tarifa ($/ha)", "Fecha Formateada": "Fecha de Vuelo"},
-        title="<b>Evolución Cronológica: Tarifa Cobrada vs Costo OS Calculado</b>"
-    )
-    
-    fig_tarifas.update_traces(marker_line_width=0)
-    
-    if len(fig_tarifas.data) >= 2:
-        fig_tarifas.data[0].marker.color = "#0D1B2A"  
-        fig_tarifas.data[0].name = "Cobro Real Facturado"
-        fig_tarifas.data[1].marker.color = "#D4AF37"  
-        fig_tarifas.data[1].name = "Costo Base OS Ideal"
-    
+    fig_tarifas = go.Figure()
+
+    # Sombra Base (Costo Ideal)
+    fig_tarifas.add_trace(go.Scatter(
+        x=df_tendencia["Fecha Formateada"],
+        y=df_tendencia["Tarifa Ideal Prom/Ha"],
+        mode='lines',
+        name='Costo Base OS Ideal',
+        line=dict(color='#d4af37', width=2, dash='dot'),
+        fill='tozeroy', 
+        fillcolor='rgba(212, 175, 55, 0.15)', # Relleno dorado transparente
+        hovertemplate='Ideal: $ %{y:,.0f}/ha<extra></extra>'
+    ))
+
+    # Línea Sólida (Cobro Real)
+    fig_tarifas.add_trace(go.Scatter(
+        x=df_tendencia["Fecha Formateada"],
+        y=df_tendencia["Tarifa Real Prom/Ha"],
+        mode='lines+markers',
+        name='Cobro Real Facturado',
+        line=dict(color='#0d1b2a', width=3),
+        marker=dict(size=6, color='#0d1b2a', line=dict(color='white', width=1)),
+        hovertemplate='Real: $ %{y:,.0f}/ha<extra></extra>'
+    ))
+
     fig_tarifas.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white",
-        font=dict(family="Segoe UI, Arial", size=12, color="#333333"),
-        xaxis=dict(showgrid=False, tickangle=-45, title=None),
-        yaxis=dict(showgrid=True, gridcolor="#EAEAEA", zeroline=True, zerolinecolor="#CCCCCC", title="Valor por Hectárea ($)"),
+        title="<b>Evolución Promedio: Cobro Real vs Costo Ideal</b>",
+        title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
+        height=400,
+        plot_bgcolor="#f8fafc", paper_bgcolor="#ffffff",
+        xaxis=dict(showgrid=False, tickangle=-45, title="", tickfont=dict(size=10, color='#555555')),
+        yaxis=dict(showgrid=True, gridcolor="#e2e8f0", zeroline=False, title="Valor Promedio por Hectárea ($)", tickformat="$,.0f"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=30, t=70, b=70),
-        hovermode="closest"
+        margin=dict(l=50, r=20, t=70, b=40),
+        hovermode="x unified" # Muestra ambos valores en la misma tarjeta al pasar el mouse
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # =================================================================
+    # 📊 GRÁFICO 2: FUGA OPERATIVA (BARRAS DIVERGENTES)
+    # =================================================================
     df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
     
-    fig_lucro = px.bar(
-        df_lucro_sem,
-        x="Semana",
-        y="Lucro Cesante",
-        labels={"Lucro Cesante": "Pérdida Total ($)", "Semana": "Semana del Año"},
-        title="<b>Fuga Operativa Consolidada Semanal (Lucro Cesante Puro)</b>"
-    )
+    # Motor de Color VIP: Rojo = Pérdida (Fuga), Verde = Ganancia/Ahorro (Excedente a nuestro favor)
+    colores_fuga = ['#dc3545' if val > 0 else '#28a745' for val in df_lucro_sem["Lucro Cesante"]]
     
-    fig_lucro.update_traces(marker_color="#A31D1D", marker_line_width=0)
+    fig_lucro = go.Figure()
+    
+    fig_lucro.add_trace(go.Bar(
+        x=df_lucro_sem["Semana"],
+        y=df_lucro_sem["Lucro Cesante"],
+        marker=dict(color=colores_fuga, line=dict(color='#0d1b2a', width=1.5)),
+        text=df_lucro_sem["Lucro Cesante"],
+        texttemplate='<b>$%{text:,.0f}</b>',
+        textposition='outside',
+        textfont=dict(size=10, color='#0d1b2a'),
+        hovertemplate="<b>%{x}</b><br>Impacto: $ %{y:,.0f}<extra></extra>"
+    ))
+
     fig_lucro.update_layout(
-        plot_bgcolor="white", paper_bgcolor="white",
-        font=dict(family="Segoe UI, Arial", size=12, color="#333333"),
-        xaxis=dict(showgrid=False, title=None),
-        yaxis=dict(showgrid=True, gridcolor="#EAEAEA", title="Monto de Fuga ($)"),
-        margin=dict(l=50, r=30, t=70, b=50),
-        hovermode="closest"
+        title="<b>Fuga Operativa Consolidada Semanal (Lucro Cesante Puro)</b>",
+        title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
+        height=450,
+        plot_bgcolor='#f8fafc', paper_bgcolor='#ffffff',
+        xaxis=dict(showgrid=False, tickangle=-45, title="", tickfont=dict(size=10, color='#555555')),
+        yaxis=dict(
+            showgrid=True, gridcolor='#e2e8f0', 
+            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2.5, # Eje cero marcado fuertemente
+            title="Monto de Fuga ($)", tickformat="$,.0f"
+        ),
+        margin=dict(l=50, r=20, t=70, b=40),
+        showlegend=False
     )
+    # Ajuste para evitar que el texto "outside" se corte en la cima
+    fig_lucro.update_yaxes(automargin=True)
+    
     st.plotly_chart(fig_lucro, use_container_width=True)
 
     st.markdown("---")
