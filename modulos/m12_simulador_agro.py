@@ -627,19 +627,21 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
     # =================================================================
-    # 📊 GRÁFICO 1: EVOLUCIÓN CRONOLÓGICA (ÁREA Y LÍNEAS SUAVES)
+    # 📊 GRÁFICO 1: EVOLUCIÓN CRONOLÓGICA (AHORA AGRUPADO POR SEMANA)
     # =================================================================
-    df_tendencia = df_agrupado.groupby("Fecha Operación").agg({
+    # Agrupamos por Semana en lugar de Día para limpiar el ruido visual
+    df_tendencia = df_agrupado.groupby("Semana").agg({
         "Tarifa Real Prom/Ha": "mean",
         "Tarifa Ideal Prom/Ha": "mean"
-    }).reset_index().sort_values(by="Fecha Operación")
+    }).reset_index().sort_values(by="Semana")
     
-    df_tendencia["Fecha Formateada"] = pd.to_datetime(df_tendencia["Fecha Operación"]).dt.strftime('%d/%m/%Y')
+    # 💥 MAGIA VISUAL: Transformar "Semana 05" a "S5"
+    df_tendencia["Semana Corta"] = df_tendencia["Semana"].apply(lambda x: f"S{int(str(x).replace('Semana ', ''))}")
 
     fig_tarifas = go.Figure()
 
     fig_tarifas.add_trace(go.Scatter(
-        x=df_tendencia["Fecha Formateada"],
+        x=df_tendencia["Semana Corta"],
         y=df_tendencia["Tarifa Ideal Prom/Ha"],
         mode='lines',
         name='Costo Base OS Ideal',
@@ -650,7 +652,7 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     ))
 
     fig_tarifas.add_trace(go.Scatter(
-        x=df_tendencia["Fecha Formateada"],
+        x=df_tendencia["Semana Corta"],
         y=df_tendencia["Tarifa Real Prom/Ha"],
         mode='lines+markers',
         name='Cobro Real Facturado',
@@ -660,17 +662,62 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     ))
 
     fig_tarifas.update_layout(
-        title="<b>Evolución Promedio: Cobro Real vs Costo Ideal</b>",
+        title="<b>Evolución Promedio Semanal: Cobro Real vs Costo Ideal</b>",
         title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
         height=400,
         plot_bgcolor="#f8fafc", paper_bgcolor="#ffffff",
-        xaxis=dict(showgrid=False, tickangle=-45, title="", tickfont=dict(size=10, color='#555555')),
+        # Al ser textos cortos (S1, S2), quitamos la inclinación (tickangle) para que se lean derechos
+        xaxis=dict(showgrid=False, title="", tickfont=dict(size=11, color='#555555')), 
         yaxis=dict(showgrid=True, gridcolor="#e2e8f0", zeroline=False, title="Valor Promedio por Hectárea ($)", tickformat="$,.0f"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=20, t=70, b=40),
         hovermode="x unified"
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # =================================================================
+    # 📊 GRÁFICO 2: FUGA OPERATIVA (CASCADA FINANCIERA / WATERFALL)
+    # =================================================================
+    df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
+    
+    # 💥 Aplicamos la misma reducción (S1, S2) a la cascada
+    df_lucro_sem["Semana Corta"] = df_lucro_sem["Semana"].apply(lambda x: f"S{int(str(x).replace('Semana ', ''))}")
+    
+    fig_lucro = go.Figure(go.Waterfall(
+        name="Fuga Operativa",
+        orientation="v",
+        measure=["relative"] * len(df_lucro_sem),
+        x=df_lucro_sem["Semana Corta"],
+        y=df_lucro_sem["Lucro Cesante"],
+        text=df_lucro_sem["Lucro Cesante"],
+        texttemplate='<b>$%{text:,.0f}</b>',
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Impacto Semanal: $ %{y:,.0f}<extra></extra>",
+        connector={"line": {"color": "#b3b3b3", "width": 1.5, "dash": "dot"}},
+        increasing={"marker": {"color": "#dc3545"}}, 
+        decreasing={"marker": {"color": "#28a745"}}, 
+        totals={"marker": {"color": "#0d1b2a"}}
+    ))
+
+    fig_lucro.update_layout(
+        title="<b>Acumulación de Fuga Operativa Semanal (Efecto Cascada)</b>",
+        title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
+        height=450,
+        plot_bgcolor='#f8fafc', paper_bgcolor='#ffffff',
+        # Eje X derecho y limpio
+        xaxis=dict(showgrid=False, title="", tickfont=dict(size=11, color='#555555')),
+        yaxis=dict(
+            showgrid=True, gridcolor='#e2e8f0', 
+            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2,
+            title="Monto Acumulado de Fuga ($)", tickformat="$,.0f"
+        ),
+        margin=dict(l=50, r=20, t=70, b=40),
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig_lucro, use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
