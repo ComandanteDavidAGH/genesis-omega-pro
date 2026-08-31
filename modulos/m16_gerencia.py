@@ -214,62 +214,62 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     if df_datos.empty: return None
     df_plot = df_datos.copy().reset_index(drop=True)
     
-    # 1. ORDENAMIENTO TÁCTICO: De mayor ahorro a mayor sobrecosto
+    # 1. ORDENAMIENTO TÁCTICO
     if 'Diferencia ($)' not in df_plot.columns:
         df_plot['Diferencia ($)'] = df_plot['AVIÓN'] - df_plot['DRONE']
         
     df_plot = df_plot.sort_values(by='Diferencia ($)', ascending=True)
     
-    # 2. MOTOR DE COLORES: Verde/Dorado (Ahorro/Ganancia) - Rojo (Pérdida)
+    # 💥 FILTRO ANTI-APLASTAMIENTO: Recorta nombres a 30 caracteres máximo
+    df_plot['FINCA_CORTA'] = df_plot['FINCA'].apply(lambda x: str(x)[:30] + '...' if len(str(x)) > 30 else str(x))
+    
+    # 2. MOTOR DE COLORES
     colores = ['#28a745' if val > 0 else '#dc3545' for val in df_plot['Diferencia ($)']]
     
     fig = go.Figure()
 
-    # 3. CONSTRUCCIÓN DE LAS BARRAS DIVERGENTES
+    # 3. CONSTRUCCIÓN DE BARRAS COMPACTAS
     fig.add_trace(go.Bar(
-        y=df_plot['FINCA'],
+        y=df_plot['FINCA_CORTA'], # Muestra el nombre corto en la pantalla
         x=df_plot['Diferencia ($)'],
         orientation='h',
         marker=dict(
             color=colores,
-            line=dict(color='#0d1b2a', width=1.5) # Borde elegante
+            line=dict(color='#0d1b2a', width=1)
         ),
         text=df_plot['Diferencia ($)'],
         texttemplate='<b>$ %{text:,.0f}</b>',
-        textposition='outside',
-        cliponaxis=False, # Evita que el texto se corte en los bordes
-        # Datos ocultos para mostrar en el cuadro flotante (Hover)
+        textposition='auto',
+        hovertext=df_plot['FINCA'], # Envía el nombre completo al cuadro flotante
         customdata=np.stack((df_plot['DRONE'], df_plot['AVIÓN']), axis=-1),
         hovertemplate=(
-            "<div style='font-family: Arial;'><b>🏡 Finca: %{y}</b><br><br>"
+            "<div style='font-family: Arial;'><b>🏡 Finca: %{hovertext}</b><br><br>"
             "🛸 Costo Dron: $ %{customdata[0]:,.0f}<br>"
             "✈️ Costo Avión: $ %{customdata[1]:,.0f}<br>"
             "<b>⚖️ Impacto (Brecha): $ %{x:,.0f} / ha</b></div><extra></extra>"
         )
     ))
 
-    # 4. DISEÑO CORPORATIVO DEL ENTORNO
-    altura_dinamica = max(350, len(df_plot) * 45) # La tabla crece sola si hay muchas fincas
-    
+    # 4. DISEÑO FIJO PARA PANTALLA
     fig.update_layout(
-        title=f"<b>{titulo_grafico}: Impacto de Rentabilidad por Hectárea</b>",
-        title_font=dict(color="#0d1b2a", size=18, family="Arial Black"),
-        height=altura_dinamica, 
+        title=f"<b>{titulo_grafico}</b>",
+        title_font=dict(color="#0d1b2a", size=15, family="Arial Black"),
+        height=380,
         plot_bgcolor='#f8fafc',
         paper_bgcolor='#ffffff',
         xaxis=dict(
-            title="← Dron más Costoso (Rojo)   |   Dron más Rentable (Verde) →", 
-            title_font=dict(size=13, color="#555555", family="Arial Black"),
+            title="← Dron Costoso (Rojo)  |  Dron Rentable (Verde) →", 
+            title_font=dict(size=11, color="#555555", family="Arial Black"),
             tickformat="$,.0f", 
             showgrid=True, gridcolor='#e2e8f0',
-            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=3 # Eje Central (Línea $0)
+            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2
         ),
         yaxis=dict(
             title="", 
             showgrid=False,
-            tickfont=dict(size=11, color='#0d1b2a', family='Arial Black')
+            tickfont=dict(size=10, color='#0d1b2a', family='Arial')
         ),
-        margin=dict(l=20, r=60, t=60, b=50),
+        margin=dict(l=10, r=20, t=40, b=40),
         showlegend=False
     )
     return fig
