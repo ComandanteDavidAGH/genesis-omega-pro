@@ -249,15 +249,15 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     g1, g2 = st.columns(2)
 
     # -----------------------------------------------------
-    # PALETA EJECUTIVA VIP
+    # PALETA EJECUTIVA AGRO (INSPIRACIÓN VEGETAL / FINCAS)
     # -----------------------------------------------------
-    COLOR_NAVY = '#0d1b2a'
-    COLOR_DORADO = '#d4af37'
-    COLOR_VERDE = '#143521'
-    PALETA_VIP = [COLOR_NAVY, COLOR_DORADO, COLOR_VERDE, '#8B0000']
+    COLOR_BOSQUE = '#143521'   # Verde oscuro, sólido y arraigado (Ej: 2025)
+    COLOR_HOJA = '#27AE60'     # Verde vibrante, vivo y de crecimiento (Ej: 2026)
+    COLOR_BROTE = '#A2D9CE'    # Verde claro suave (Ej: 2027)
+    PALETA_AGRO = [COLOR_BOSQUE, COLOR_HOJA, COLOR_BROTE, '#8B0000']
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (BARRAS AGRUPADAS EJECUTIVAS)
+    # GRÁFICO 1: ÁREA ASPERJADA (BARRAS AGRUPADAS AGRO)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -266,36 +266,34 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
         df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
-        # 💥 Usamos la paleta VIP corporativa (Navío, Dorado, Verde) en barras limpias
-        colores_barras = [COLOR_NAVY, COLOR_DORADO, '#27AE60'] 
-        
+        # 💥 Aplicamos la paleta de verdes de la finca
         fig1 = px.bar(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
-            barmode='group', text='ETIQUETA', color_discrete_sequence=colores_barras
+            barmode='group', text='ETIQUETA', color_discrete_sequence=PALETA_AGRO
         )
         fig1.update_traces(
             textposition='outside', 
             textfont=dict(size=11, family="Arial Black", color='#0d1b2a'),
-            marker_line_width=0, # Sin bordes para un look plano y moderno
+            marker_line_width=0,
             hovertemplate='<b>%{x}</b><br>Año: %{color}<br>Área: %{y:,.1f} ha<extra></extra>'
         )
         fig1.update_layout(
             xaxis_title="", yaxis_title="Hectáreas (ha)", 
-            plot_bgcolor='rgba(0,0,0,0)', # Fondo transparente/blanco
+            plot_bgcolor='rgba(0,0,0,0)', 
             paper_bgcolor='rgba(0,0,0,0)', 
             legend_title_text='', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50, b=20),
             hovermode="x unified",
             xaxis=dict(showgrid=False, tickfont=dict(color='#555555')),
-            yaxis=dict(showgrid=True, gridcolor='#e2e8f0', tickfont=dict(color='#555555')) # Cuadrícula gris sutil
+            yaxis=dict(showgrid=True, gridcolor='#e2e8f0', tickfont=dict(color='#555555')) 
         )
         if not df_area_chart.empty:
-            # 💥 Damos un 25% de espacio extra arriba para que las etiquetas no se corten
             fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.25]) 
         st.plotly_chart(fig1, use_container_width=True)
+
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (COMBO CON SEMANAS S1, S2...)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (COMBO AGRO)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE — {titulo_finca}", unsafe_allow_html=True)
@@ -306,7 +304,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             df_costo['LABEL_EJE'] = df_costo['FINCA'].apply(lambda x: str(x)[:10] + '..' if len(str(x)) > 10 else str(x))
             df_costo['ETIQUETA_HOVER'] = df_costo['FINCA']
         else:
-            # 💥 Agregamos la extracción numérica de la SEMANA
             df_filtrado['SEMANA_NUM'] = pd.to_numeric(df_filtrado['SEMANA'].astype(str).str.extract(r'(\d+)')[0], errors='coerce').fillna(0).astype(int)
             df_costo = df_filtrado.groupby(['AÑO', 'SEMANA_NUM', 'COCTEL']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
             df_costo = df_costo.sort_values(by=['AÑO', 'SEMANA_NUM'])
@@ -314,13 +311,11 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             limite_real = df_filtrado[df_filtrado['LIMITE'] > 0]['LIMITE'].max()
             if pd.isna(limite_real) or limite_real == 0: limite_real = 200000 
             df_costo['LIMITE'] = df_costo['LIMITE'].apply(lambda x: limite_real if x == 0 else x)
-            # 💥 Creamos el texto visible del eje X (Ej: S14, S15)
             df_costo['LABEL_EJE'] = "S" + df_costo['SEMANA_NUM'].astype(str)
             df_costo['ETIQUETA_HOVER'] = df_costo['COCTEL']
 
         if not df_costo.empty:
             df_costo = df_costo.reset_index(drop=True)
-            # 💥 ID invisible para separar los vuelos en el gráfico y evitar que se sumen
             df_costo['ID_EJE_X'] = df_costo.index.astype(str) 
             
             df_costo['HOVER_FACT'] = df_costo['VALOR_FACTURAR'].apply(lambda x: f"$ {formato_latino(x, 0)} COP")
@@ -331,7 +326,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             
             for i, año_map in enumerate(años_presentes):
                 df_año = df_costo[df_costo['AÑO'] == año_map]
-                color_asignado = PALETA_VIP[i % len(PALETA_VIP)]
+                # 💥 Aplicamos la paleta verde Agro
+                color_asignado = PALETA_AGRO[i % len(PALETA_AGRO)]
                 custom_data_hover = np.stack((df_año['ETIQUETA_HOVER'], df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
                 
                 go_fig.add_trace(go.Bar(
@@ -358,8 +354,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                     title="", 
                     type='category',
                     tickmode='array',
-                    tickvals=df_costo['ID_EJE_X'], # Forzamos la posición separada
-                    ticktext=df_costo['LABEL_EJE'], # Imprimimos "S1", "S2"
+                    tickvals=df_costo['ID_EJE_X'], 
+                    ticktext=df_costo['LABEL_EJE'], 
                     tickangle=-90,
                     tickfont=dict(size=10)
                 ), 
