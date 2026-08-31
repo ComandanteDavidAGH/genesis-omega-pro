@@ -219,7 +219,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         
     df_plot = df_plot.sort_values(by='Diferencia ($)', ascending=True)
     
-    # Corte estricto a 25 caracteres para los nombres
+    # Corte a 25 caracteres
     df_plot['FINCA_CORTA'] = df_plot['FINCA'].astype(str).apply(lambda x: x[:25] + '...' if len(x) > 25 else x)
     
     colores = ['#28a745' if val > 0 else '#dc3545' for val in df_plot['Diferencia ($)']]
@@ -234,6 +234,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         text=df_plot['Diferencia ($)'],
         texttemplate='<b>$ %{text:,.0f}</b>',
         textposition='auto',
+        textfont=dict(size=11, color='white'), # Letra blanca para mejor contraste dentro de la barra
         hovertext=df_plot['FINCA'],
         customdata=np.stack((df_plot['DRONE'], df_plot['AVIÓN']), axis=-1),
         hovertemplate=(
@@ -244,10 +245,13 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         )
     ))
 
+    # 💥 LA CLAVE: 35 píxeles de grosor garantizado por cada finca
+    altura_dinamica = max(350, len(df_plot) * 35)
+
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>",
         title_font=dict(color="#0d1b2a", size=14, family="Arial Black"),
-        height=380,
+        height=altura_dinamica, # Aplica la altura elástica
         plot_bgcolor='#f8fafc',
         paper_bgcolor='#ffffff',
         xaxis=dict(
@@ -261,9 +265,8 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
             title="", 
             showgrid=False,
             tickfont=dict(size=10, color='#0d1b2a', family='Arial'),
-            automargin=False # 💥 LA CLAVE: Prohíbe a Plotly auto-ajustar el eje
+            automargin=False 
         ),
-        # 💥 FORZAMOS EL MARGEN IZQUIERDO (l=220) para el texto. El resto de la pantalla será para las barras.
         margin=dict(l=220, r=40, t=40, b=40),
         showlegend=False
     )
