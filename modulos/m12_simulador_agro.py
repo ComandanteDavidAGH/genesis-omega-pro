@@ -626,22 +626,33 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     st.markdown("---")
     st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
+    # 💥 MOTOR DE ETIQUETAS INTELIGENTES (Corta nombres a 5 letras)
+    def resumir_fincas_etiqueta(nombres):
+        unicos = nombres.unique()
+        cortos = [str(x).strip()[:5] for x in unicos if str(x).strip()]
+        if len(cortos) > 2:
+            return ",".join(cortos[:2]) + "..."
+        return ",".join(cortos)
+
     # =================================================================
-    # 📊 GRÁFICO 1: EVOLUCIÓN CRONOLÓGICA (AHORA AGRUPADO POR SEMANA)
+    # 📊 GRÁFICO 1: EVOLUCIÓN CRONOLÓGICA (SEMANA + INICIALES)
     # =================================================================
-    # Agrupamos por Semana en lugar de Día para limpiar el ruido visual
     df_tendencia = df_agrupado.groupby("Semana").agg({
         "Tarifa Real Prom/Ha": "mean",
-        "Tarifa Ideal Prom/Ha": "mean"
+        "Tarifa Ideal Prom/Ha": "mean",
+        "Finca": resumir_fincas_etiqueta # Agrupa y extrae las iniciales
     }).reset_index().sort_values(by="Semana")
     
-    # 💥 MAGIA VISUAL: Transformar "Semana 05" a "S5"
-    df_tendencia["Semana Corta"] = df_tendencia["Semana"].apply(lambda x: f"S{int(str(x).replace('Semana ', ''))}")
+    # Construye la etiqueta: "S5" arriba, "COOMU,BANAF..." abajo en letra pequeña
+    df_tendencia["Etiqueta X"] = df_tendencia.apply(
+        lambda r: f"S{int(str(r['Semana']).replace('Semana ', ''))}<br><span style='font-size:9px; color:#888;'>{r['Finca']}</span>", 
+        axis=1
+    )
 
     fig_tarifas = go.Figure()
 
     fig_tarifas.add_trace(go.Scatter(
-        x=df_tendencia["Semana Corta"],
+        x=df_tendencia["Etiqueta X"],
         y=df_tendencia["Tarifa Ideal Prom/Ha"],
         mode='lines',
         name='Costo Base OS Ideal',
@@ -652,7 +663,7 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     ))
 
     fig_tarifas.add_trace(go.Scatter(
-        x=df_tendencia["Semana Corta"],
+        x=df_tendencia["Etiqueta X"],
         y=df_tendencia["Tarifa Real Prom/Ha"],
         mode='lines+markers',
         name='Cobro Real Facturado',
@@ -666,14 +677,62 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
         title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
         height=400,
         plot_bgcolor="#f8fafc", paper_bgcolor="#ffffff",
-        # Al ser textos cortos (S1, S2), quitamos la inclinación (tickangle) para que se lean derechos
         xaxis=dict(showgrid=False, title="", tickfont=dict(size=11, color='#555555')), 
-        yaxis=dict(showgrid=True, gridcolor="#e2e8f0", zeroline=False, title="Valor Promedio por Hectárea ($)", tickformat="$,.0f"),
+        yaxis=dict(showgrid=True, gridcolor="#e2e8f0", zeroline=False, title="Promedio/Ha ($)", tickformat="$,.0f"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=20, t=70, b=40),
+        margin=dict(l=50, r=20, t=70, b=50),
         hovermode="x unified"
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # =================================================================
+    # 📊 GRÁFICO 2: FUGA OPERATIVA (CASCADA FINANCIERA)
+    # =================================================================
+    df_lucro_sem = df_agrupado.groupby("Semana").agg({
+        "Lucro Cesante": "sum",
+        "Finca": resumir_fincas_etiqueta # Agrupa y extrae las iniciales
+    }).reset_index().sort_values(by="Semana")
+    
+    # Aplica la misma etiqueta al gráfico de Cascada
+    df_lucro_sem["Etiqueta X"] = df_lucro_sem.apply(
+        lambda r: f"S{int(str(r['Semana']).replace('Semana ', ''))}<br><span style='font-size:9px; color:#888;'>{r['Finca']}</span>", 
+        axis=1
+    )
+    
+    fig_lucro = go.Figure(go.Waterfall(
+        name="Fuga Operativa",
+        orientation="v",
+        measure=["relative"] * len(df_lucro_sem),
+        x=df_lucro_sem["Etiqueta X"],
+        y=df_lucro_sem["Lucro Cesante"],
+        text=df_lucro_sem["Lucro Cesante"],
+        texttemplate='<b>$%{text:,.0f}</b>',
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Impacto Semanal: $ %{y:,.0f}<extra></extra>",
+        connector={"line": {"color": "#b3b3b3", "width": 1.5, "dash": "dot"}},
+        increasing={"marker": {"color": "#dc3545"}}, 
+        decreasing={"marker": {"color": "#28a745"}}, 
+        totals={"marker": {"color": "#0d1b2a"}}
+    ))
+
+    fig_lucro.update_layout(
+        title="<b>Acumulación de Fuga Operativa Semanal (Efecto Cascada)</b>",
+        title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
+        height=450,
+        plot_bgcolor='#f8fafc', paper_bgcolor='#ffffff',
+        xaxis=dict(showgrid=False, title="", tickfont=dict(size=11, color='#555555')),
+        yaxis=dict(
+            showgrid=True, gridcolor='#e2e8f0', 
+            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2,
+            title="Monto Acumulado ($)", tickformat="$,.0f"
+        ),
+        margin=dict(l=50, r=20, t=70, b=60),
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig_lucro, use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
