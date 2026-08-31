@@ -230,11 +230,11 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         y=df_plot['FINCA_CORTA'],
         x=df_plot['Diferencia ($)'],
         orientation='h',
-        marker=dict(color=colores, line=dict(color='#0d1b2a', width=1)),
+        marker=dict(color=colores, line=dict(color='#0d1b2a', width=0.5)), # Borde más fino
         text=df_plot['Diferencia ($)'],
         texttemplate='<b>$ %{text:,.0f}</b>',
         textposition='auto',
-        textfont=dict(size=11, color='white'), # Letra blanca para mejor contraste dentro de la barra
+        textfont=dict(size=10, color='white'),
         hovertext=df_plot['FINCA'],
         customdata=np.stack((df_plot['DRONE'], df_plot['AVIÓN']), axis=-1),
         hovertemplate=(
@@ -245,13 +245,10 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         )
     ))
 
-    # 💥 LA CLAVE: 35 píxeles de grosor garantizado por cada finca
-    altura_dinamica = max(350, len(df_plot) * 35)
-
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>",
         title_font=dict(color="#0d1b2a", size=14, family="Arial Black"),
-        height=altura_dinamica, # Aplica la altura elástica
+        height=550, # 💥 FIJO: Tamaño ideal de pantalla (adiós al scroll infinito)
         plot_bgcolor='#f8fafc',
         paper_bgcolor='#ffffff',
         xaxis=dict(
@@ -264,10 +261,11 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         yaxis=dict(
             title="", 
             showgrid=False,
-            tickfont=dict(size=10, color='#0d1b2a', family='Arial'),
+            tickfont=dict(size=9, color='#0d1b2a', family='Arial'), # 💥 Letra reducida para que quepan todas sin chocar
             automargin=False 
         ),
-        margin=dict(l=220, r=40, t=40, b=40),
+        margin=dict(l=180, r=30, t=40, b=40), # 💥 Margen calibrado
+        bargap=0.15, # Espaciado elegante entre barras delgadas
         showlegend=False
     )
     return fig
