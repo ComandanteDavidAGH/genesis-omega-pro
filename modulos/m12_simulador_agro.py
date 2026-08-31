@@ -719,46 +719,7 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     
     st.plotly_chart(fig_lucro, use_container_width=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # =================================================================
-    # 📊 GRÁFICO 2: FUGA OPERATIVA (CASCADA FINANCIERA / WATERFALL)
-    # =================================================================
-    df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
     
-    fig_lucro = go.Figure(go.Waterfall(
-        name="Fuga Operativa",
-        orientation="v",
-        measure=["relative"] * len(df_lucro_sem),
-        x=df_lucro_sem["Semana"],
-        y=df_lucro_sem["Lucro Cesante"],
-        text=df_lucro_sem["Lucro Cesante"],
-        texttemplate='<b>$%{text:,.0f}</b>',
-        textposition="outside",
-        # 💥 ESTA ES LA LÍNEA NUEVA QUE LIMPIA EL CUADRO FLOTANTE
-        hovertemplate="<b>%{x}</b><br>Impacto Semanal: $ %{y:,.0f}<extra></extra>",
-        connector={"line": {"color": "#b3b3b3", "width": 1.5, "dash": "dot"}},
-        increasing={"marker": {"color": "#dc3545"}}, 
-        decreasing={"marker": {"color": "#28a745"}}, 
-        totals={"marker": {"color": "#0d1b2a"}}
-    ))
-
-    fig_lucro.update_layout(
-        title="<b>Acumulación de Fuga Operativa Semanal (Efecto Cascada)</b>",
-        title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
-        height=450,
-        plot_bgcolor='#f8fafc', paper_bgcolor='#ffffff',
-        xaxis=dict(showgrid=False, tickangle=-45, title="", tickfont=dict(size=10, color='#555555')),
-        yaxis=dict(
-            showgrid=True, gridcolor='#e2e8f0', 
-            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2,
-            title="Monto Acumulado de Fuga ($)", tickformat="$,.0f"
-        ),
-        margin=dict(l=50, r=20, t=70, b=40),
-        showlegend=False
-    )
-    
-    st.plotly_chart(fig_lucro, use_container_width=True)
 
     st.markdown("---")
     st.markdown("### 📤 Exportar Datos Consolidados Autorizados")
