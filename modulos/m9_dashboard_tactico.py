@@ -258,45 +258,49 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     PALETA_VIP = [COLOR_NAVY, COLOR_DORADO, COLOR_VERDE, '#8B0000']
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (ÁREA CON GRADIENTE ELEGANTE)
+    # GRÁFICO 1: ÁREA ASPERJADA (ESTILO VANGUARDIA / DARK MODE)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
-        df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
-        # 💥 Gráfico de Área con relleno translúcido (Efecto Inversión)
+        # 💥 Paleta Cian/Azul brillante para contrastar con el fondo oscuro
+        colores_area = ['#00b4d8', '#48cae4', '#90e0ef'] 
+        
         fig1 = px.area(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
-            color_discrete_sequence=PALETA_VIP, markers=True
+            color_discrete_sequence=colores_area
         )
         fig1.update_traces(
             mode='lines+markers',
-            line=dict(shape='spline', width=3), 
-            marker=dict(size=8, line=dict(color='white', width=1.5)),
+            line=dict(shape='linear', width=3), # Trazos rectos y geométricos (como tu imagen 1)
+            marker=dict(size=9, color='white', line=dict(width=2, color='#00b4d8')), # Nodos blancos resaltados
             fill='tozeroy',
             hovertemplate='<b>%{x}</b><br>Área: %{y:,.1f} ha<extra></extra>'
         )
         fig1.update_layout(
             xaxis_title="", yaxis_title="Hectáreas (ha)", 
-            plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
+            plot_bgcolor='#0a1128', # 💥 Fondo azul medianoche interior exclusivo
+            paper_bgcolor='rgba(0,0,0,0)', 
+            legend_title_text='', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50, b=20),
-            hovermode="x unified"
+            hovermode="x unified",
+            xaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a')), # Cuadrícula sutil
+            yaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a'))
         )
         if not df_area_chart.empty:
             fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.2]) 
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (SCATTER DE PRECISIÓN)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (COMBO: BARRAS + LÍNEA SUPERIOR)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE — {titulo_finca}", unsafe_allow_html=True)
         
-        # 💥 Transformamos las barras densas en puntos precisos (Scatter) para no saturar la vista
         if finca_filtro == "TODAS":
             df_costo = df_filtrado.groupby(['AÑO', 'FINCA']).agg({'VALOR_FACTURAR': 'mean', 'LIMITE': 'max'}).reset_index()
             df_costo = df_costo.sort_values(by=['AÑO', 'FINCA'])
@@ -323,18 +327,18 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 item_name = df_año['FINCA'] if finca_filtro == "TODAS" else df_año['COCTEL']
                 custom_data_hover = np.stack((item_name, df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
                 
-                # En lugar de barras, usamos marcadores elegantes
-                go_fig.add_trace(go.Scatter(
+                # 💥 Retornamos a las Barras Sólidas (Como tu imagen de referencia 2)
+                go_fig.add_trace(go.Bar(
                     x=df_año['ETIQUETA_X'], y=df_año['VALOR_FACTURAR'], name=f"Fact. ({año_map})", 
-                    mode='markers', marker=dict(size=9, color=color_asignado, line=dict(color='white', width=1)),
+                    marker_color=color_asignado,
                     customdata=custom_data_hover,
                     hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Dato:</b> %{customdata[0]}<br><b>Facturación:</b> %{customdata[1]}<extra></extra>'
                 ))
                 
-            # Línea Roja de Límite (Más fina y limpia)
+            # 💥 Línea Sólida Gruesa cruzando por encima de las barras (Efecto Combo Chart)
             go_fig.add_trace(go.Scatter(
-                x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite",
-                mode='lines', line=dict(color='#ff3333', width=2, dash='dot'),
+                x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Autorizado",
+                mode='lines', line=dict(color='#e63946', width=4), # Línea roja gruesa
                 customdata=df_costo['HOVER_LIMITE'],
                 hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
             ))
@@ -343,7 +347,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             go_fig.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
-                yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, max_y * 1.2], showgrid=True, gridcolor='#f0f0f0'), 
+                yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, max_y * 1.2], showgrid=True, gridcolor='#e2e8f0'), 
                 xaxis=dict(showticklabels=False, title="Vuelos Individuales (Pase el cursor para ver)"),
                 margin=dict(b=20, t=50)
             )
