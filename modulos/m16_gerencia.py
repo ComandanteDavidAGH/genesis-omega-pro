@@ -404,6 +404,37 @@ def ejecutar(*args, **kwargs):
         with k2: st.markdown(tarjeta_kpi("Brecha Promedio Vuelo", f"$ {ahorro_prom_vuelo:,.0f} /ha".replace(",", "."), "Ahorro Dron vs Avión", "#28a745" if ahorro_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
         with k3: st.markdown(tarjeta_kpi("Eficiencia Financiera", f"{eficiencia_prom_vuelo:.1f}%", "vs Tarifa Avión", "#28a745" if eficiencia_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
 
+def aplicar_estilo_premium(row):
+        estilos = [''] * len(row)
+        dif = row.get('Diferencia ($)', 0)
+        
+        base_style = 'background-color: #ffffff; color: #0d1b2a; font-weight: 600;'
+        
+        for i, col in enumerate(row.index):
+            cell_style = base_style
+            if col in ['AVIÓN', 'DRONE', 'Diferencia ($)', 'Eficiencia (%)']:
+                cell_style += ' text-align: right;'
+            
+            if col == 'Diferencia ($)':
+                if dif < 0: cell_style = 'background-color: #ffe5e5; color: #dc3545; font-weight: 900; text-align: right;'
+                elif dif > 0: cell_style = 'background-color: #e6f4ea; color: #28a745; font-weight: 900; text-align: right;'
+            elif col == 'Eficiencia (%)':
+                if dif < 0: cell_style = 'color: #dc3545; font-weight: 900; text-align: right;'
+                elif dif > 0: cell_style = 'color: #28a745; font-weight: 900; text-align: right;'
+                
+            estilos[i] = cell_style
+        return estilos
+
+    columnas_ui = {
+        "FINCA": st.column_config.TextColumn("🏡 FINCA", width="medium"),
+        "TIPO_ENTIDAD": st.column_config.TextColumn("🤝 PERFIL", width="small"),
+        "EQUIPO DRON": st.column_config.TextColumn("🛸 OPERADOR DRON", width="medium"),
+        "AVIÓN": st.column_config.NumberColumn("✈️ TARIFA AVIÓN", format="$ %d", width="small"),
+        "DRONE": st.column_config.NumberColumn("🛸 TARIFA DRON", format="$ %d", width="small"),
+        "Diferencia ($)": st.column_config.NumberColumn("⚖️ AHORRO ($)", format="$ %d", width="small"),
+        "Eficiencia (%)": st.column_config.NumberColumn("📈 EFICIENCIA", format="%.1f %%", width="small")
+    }
+    
     # 💥 CREAMOS LA TERCERA PESTAÑA PARA GRÁFICOS
     tab_vuelo, tab_total, tab_graficos = st.tabs([
         "✈️ Matrices de Vuelo (Datos)", 
