@@ -688,9 +688,11 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
         text=df_lucro_sem["Lucro Cesante"],
         texttemplate='<b>$%{text:,.0f}</b>',
         textposition="outside",
+        # 💥 ESTA ES LA LÍNEA NUEVA QUE LIMPIA EL CUADRO FLOTANTE
+        hovertemplate="<b>%{x}</b><br>Impacto Semanal: $ %{y:,.0f}<extra></extra>",
         connector={"line": {"color": "#b3b3b3", "width": 1.5, "dash": "dot"}},
-        increasing={"marker": {"color": "#dc3545"}}, # Rojo: Pérdida (Lucro Cesante Positivo)
-        decreasing={"marker": {"color": "#28a745"}}, # Verde: Ahorro (Lucro Cesante Negativo)
+        increasing={"marker": {"color": "#dc3545"}}, 
+        decreasing={"marker": {"color": "#28a745"}}, 
         totals={"marker": {"color": "#0d1b2a"}}
     ))
 
