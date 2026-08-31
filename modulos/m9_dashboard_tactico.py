@@ -368,7 +368,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
-    # GRÁFICO 3: RENDIMIENTO/HORA (LOLLIPOP CHART VERDADERO)
+    # GRÁFICO 3: RENDIMIENTO/HORA (LOLLIPOP CHART AGRO)
     # -----------------------------------------------------
     with g3:
         st.markdown(f"#### ⏱️ RENDIMIENTO/Hora — {titulo_finca}", unsafe_allow_html=True)
@@ -384,14 +384,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         fig3 = go.Figure()
         
+        # Tallo (Línea muy fina en Verde Bosque)
         fig3.add_trace(go.Bar(
             y=df_rend['EJE_Y'], x=df_rend['REND_HR'], orientation='h', 
-            marker_color=COLOR_NAVY, width=0.08, hoverinfo='skip'
+            marker_color=COLOR_BOSQUE, width=0.08, hoverinfo='skip'
         ))
         
+        # Cabeza (Punto en Verde Hoja vibrante)
         fig3.add_trace(go.Scatter(
             x=df_rend['REND_HR'], y=df_rend['EJE_Y'], mode='markers+text',
-            marker=dict(color=COLOR_DORADO, size=14, line=dict(color='white', width=2)),
+            marker=dict(color=COLOR_HOJA, size=14, line=dict(color='white', width=2)),
             text=df_rend['ETIQUETA'], textposition='middle right', textfont=dict(size=11, color='#333', family="Arial Black"),
             hovertemplate="<b>%{y}</b><br>Rendimiento: %{x} Hr<extra></extra>"
         ))
@@ -406,7 +408,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (PARETO DE ALTO IMPACTO)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL (PARETO AGRO)
     # -----------------------------------------------------
     with g4:
         st.markdown(f"#### 💵 FACTURACIÓN Y ACUMULADO — {titulo_finca}", unsafe_allow_html=True)
@@ -417,8 +419,9 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         fig4 = go.Figure()
         años_presentes = sorted(df_mes['AÑO'].unique())
         
-        colores_barras = [COLOR_NAVY, COLOR_VERDE]
-        colores_lineas = [COLOR_DORADO, '#27AE60']
+        # 💥 Asignación de colores Agro para que combine con el resto del tablero
+        colores_barras = [COLOR_BOSQUE, COLOR_HOJA]
+        colores_lineas = [COLOR_HOJA, COLOR_BROTE]
         
         for i, año_map in enumerate(años_presentes):
             df_año = df_mes[df_mes['AÑO'] == año_map]
