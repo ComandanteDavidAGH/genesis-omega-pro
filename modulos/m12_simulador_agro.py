@@ -5,24 +5,22 @@ import plotly.graph_objects as go
 import gspread
 import io
 import re
-import math
-from datetime import datetime
+from datetime import datetime, date
 from oauth2client.service_account import ServiceAccountCredentials
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =================================================================
-# ⚙️ CONSTANTES CENTRALIZADAS (ÚNICA FUENTE DE VERDAD)
+# ⚙️ CONSTANTES CENTRALIZADAS
 # =================================================================
 URL_BOVEDA_MAESTRA = "https://docs.google.com/spreadsheets/d/1gTu6mAec1qJrxAhw7F-Gl3fVcHaIOnmFUJQYFgqARP4/edit"
 
 # =================================================================
-# ⚡ MOTOR DE CONEXIÓN UNIFICADO (V41)
+# ⚡ MOTOR DE CONEXIÓN UNIFICADO
 # =================================================================
 @st.cache_resource(show_spinner=False)
 def obtener_cliente_gspread_unificado():
-    """ Centraliza la autenticación unificada con Google Cloud una sola vez en RAM """
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if "gcp_service_account" in st.secrets:
         try:
@@ -144,7 +142,6 @@ def extraer_datos_boveda():
     try:
         boveda = gc.open_by_url(URL_BOVEDA_MAESTRA)
         
-        # Extracción TABLA 1
         try:
             t1 = boveda.worksheet("TABLA 1").get_all_values()
             idx_t1 = 4
@@ -156,7 +153,6 @@ def extraer_datos_boveda():
             df_t1 = pd.DataFrame(t1[idx_t1+1:], columns=t1[idx_t1]) if len(t1) > idx_t1 else pd.DataFrame()
         except Exception: pass
         
-        # Extracción TABLA 2
         try:
             hojas = [ws.title for ws in boveda.worksheets()]
             nombre_t2 = "TABLA 2" if "TABLA 2" in hojas else hojas[1]
@@ -164,7 +160,6 @@ def extraer_datos_boveda():
             df_t2 = pd.DataFrame(t2[1:], columns=t2[0]) if len(t2)>1 else pd.DataFrame()
         except Exception: pass
 
-        # 🎯 CONEXIÓN EN VIVO A PESTAÑA CONFIGURACIÓN PARA TARIFAS DE FLOTA
         try:
             if "Configuración" in [ws.title for ws in boveda.worksheets()]:
                 conf_data = boveda.worksheet("Configuración").get_all_values()
@@ -265,7 +260,7 @@ def generar_excel_multi_hoja(df_filtrado_base, df_diario_agrupado, t_real, t_ide
 # =================================================================
 # 🛩️ MOTOR DEL SIMULADOR PRINCIPAL
 # =================================================================
-def ejecutar(procesar_fecha_pesada, extraer_numero):
+def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     VERDE_INTENSO = '#143521'
     DORADO = '#d4af37'
 
@@ -273,12 +268,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     <style>
     .titulo-simulador {{ color: #0d1b2a; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black'; }}
     
-    [data-testid="column"] {{
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: flex-start !important;
-        align-items: stretch !important;
-    }}
+    [data-testid="column"] {{ display: flex !important; flex-direction: column !important; justify-content: flex-start !important; align-items: stretch !important; }}
     
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{
         border: 3px solid #0d1b2a !important; 
@@ -423,7 +413,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         "DRONE DATAROT": 84427.0, "DRONE GENESYS": 71280.0, "DRONE NORTE": 75518.0, "DRONE AVIL": 71280.0
     }
 
-    # Sincronización dinámica desde pestaña Configuración si existe
     if dict_tarifas_conf:
         for k_conf, v_conf in dict_tarifas_conf.items():
             if k_conf in tarifas_base_oficiales:
@@ -634,12 +623,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         column_config=col_cfg
     )
 
-    st.markdown("---")st.markdown("### 📈 Dashboard Analítico de Tendencias")
+    st.markdown("---")
+    st.markdown("### 📈 Dashboard Analítico de Tendencias")
 
     # =================================================================
     # 📊 GRÁFICO 1: EVOLUCIÓN CRONOLÓGICA (ÁREA Y LÍNEAS SUAVES)
     # =================================================================
-    # Agrupamos por fecha para promediar y limpiar la saturación visual
     df_tendencia = df_agrupado.groupby("Fecha Operación").agg({
         "Tarifa Real Prom/Ha": "mean",
         "Tarifa Ideal Prom/Ha": "mean"
@@ -649,7 +638,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
 
     fig_tarifas = go.Figure()
 
-    # Sombra Base (Costo Ideal)
     fig_tarifas.add_trace(go.Scatter(
         x=df_tendencia["Fecha Formateada"],
         y=df_tendencia["Tarifa Ideal Prom/Ha"],
@@ -657,11 +645,10 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         name='Costo Base OS Ideal',
         line=dict(color='#d4af37', width=2, dash='dot'),
         fill='tozeroy', 
-        fillcolor='rgba(212, 175, 55, 0.15)', # Relleno dorado transparente
+        fillcolor='rgba(212, 175, 55, 0.15)',
         hovertemplate='Ideal: $ %{y:,.0f}/ha<extra></extra>'
     ))
 
-    # Línea Sólida (Cobro Real)
     fig_tarifas.add_trace(go.Scatter(
         x=df_tendencia["Fecha Formateada"],
         y=df_tendencia["Tarifa Real Prom/Ha"],
@@ -681,7 +668,7 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         yaxis=dict(showgrid=True, gridcolor="#e2e8f0", zeroline=False, title="Valor Promedio por Hectárea ($)", tickformat="$,.0f"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=20, t=70, b=40),
-        hovermode="x unified" # Muestra ambos valores en la misma tarjeta al pasar el mouse
+        hovermode="x unified"
     )
     st.plotly_chart(fig_tarifas, use_container_width=True)
 
@@ -692,7 +679,6 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
     # =================================================================
     df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
     
-    # Motor de Color VIP: Rojo = Pérdida (Fuga), Verde = Ganancia/Ahorro (Excedente a nuestro favor)
     colores_fuga = ['#dc3545' if val > 0 else '#28a745' for val in df_lucro_sem["Lucro Cesante"]]
     
     fig_lucro = go.Figure()
@@ -716,13 +702,12 @@ def ejecutar(procesar_fecha_pesada, extraer_numero):
         xaxis=dict(showgrid=False, tickangle=-45, title="", tickfont=dict(size=10, color='#555555')),
         yaxis=dict(
             showgrid=True, gridcolor='#e2e8f0', 
-            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2.5, # Eje cero marcado fuertemente
+            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2.5,
             title="Monto de Fuga ($)", tickformat="$,.0f"
         ),
         margin=dict(l=50, r=20, t=70, b=40),
         showlegend=False
     )
-    # Ajuste para evitar que el texto "outside" se corte en la cima
     fig_lucro.update_yaxes(automargin=True)
     
     st.plotly_chart(fig_lucro, use_container_width=True)
