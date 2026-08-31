@@ -219,8 +219,8 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         
     df_plot = df_plot.sort_values(by='Diferencia ($)', ascending=True)
     
-    # Corte a 25 caracteres
-    df_plot['FINCA_CORTA'] = df_plot['FINCA'].astype(str).apply(lambda x: x[:25] + '...' if len(x) > 25 else x)
+    # 💥 AJUSTE 1: Aumentamos el límite de lectura de 25 a 38 caracteres
+    df_plot['FINCA_CORTA'] = df_plot['FINCA'].astype(str).apply(lambda x: x[:38] + '...' if len(x) > 38 else x)
     
     colores = ['#28a745' if val > 0 else '#dc3545' for val in df_plot['Diferencia ($)']]
     
@@ -230,7 +230,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         y=df_plot['FINCA_CORTA'],
         x=df_plot['Diferencia ($)'],
         orientation='h',
-        marker=dict(color=colores, line=dict(color='#0d1b2a', width=0.5)), # Borde más fino
+        marker=dict(color=colores, line=dict(color='#0d1b2a', width=0.5)),
         text=df_plot['Diferencia ($)'],
         texttemplate='<b>$ %{text:,.0f}</b>',
         textposition='auto',
@@ -248,7 +248,7 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
     fig.update_layout(
         title=f"<b>{titulo_grafico}</b>",
         title_font=dict(color="#0d1b2a", size=14, family="Arial Black"),
-        height=550, # 💥 FIJO: Tamaño ideal de pantalla (adiós al scroll infinito)
+        height=550, 
         plot_bgcolor='#f8fafc',
         paper_bgcolor='#ffffff',
         xaxis=dict(
@@ -261,11 +261,12 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         yaxis=dict(
             title="", 
             showgrid=False,
-            tickfont=dict(size=9, color='#0d1b2a', family='Arial'), # 💥 Letra reducida para que quepan todas sin chocar
+            tickfont=dict(size=9, color='#0d1b2a', family='Arial'), 
             automargin=False 
         ),
-        margin=dict(l=180, r=30, t=40, b=40), # 💥 Margen calibrado
-        bargap=0.15, # Espaciado elegante entre barras delgadas
+        # 💥 AJUSTE 2: Ampliamos el margen izquierdo (l) de 180 a 260 píxeles
+        margin=dict(l=260, r=30, t=40, b=40), 
+        bargap=0.15, 
         showlegend=False
     )
     return fig
