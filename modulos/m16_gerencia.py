@@ -404,67 +404,21 @@ def ejecutar(*args, **kwargs):
         with k2: st.markdown(tarjeta_kpi("Brecha Promedio Vuelo", f"$ {ahorro_prom_vuelo:,.0f} /ha".replace(",", "."), "Ahorro Dron vs Avión", "#28a745" if ahorro_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
         with k3: st.markdown(tarjeta_kpi("Eficiencia Financiera", f"{eficiencia_prom_vuelo:.1f}%", "vs Tarifa Avión", "#28a745" if eficiencia_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
 
-    tab_vuelo, tab_total = st.tabs(["✈️ Tarifa Vuelo Pura (Operativo)", "💰 Facturación Total Operación"])
+    # 💥 CREAMOS LA TERCERA PESTAÑA PARA GRÁFICOS
+    tab_vuelo, tab_total, tab_graficos = st.tabs([
+        "✈️ Matrices de Vuelo (Datos)", 
+        "💰 Matrices de Facturación (Datos)", 
+        "📊 Centro de Análisis Gráfico"
+    ])
 
-    def aplicar_estilo_premium(row):
-        estilos = [''] * len(row)
-        dif = row.get('Diferencia ($)', 0)
-        
-        base_style = 'background-color: #ffffff; color: #0d1b2a; font-weight: 600;'
-        
-        for i, col in enumerate(row.index):
-            cell_style = base_style
-            if col in ['AVIÓN', 'DRONE', 'Diferencia ($)', 'Eficiencia (%)']:
-                cell_style += ' text-align: right;'
-            
-            if col == 'Diferencia ($)':
-                if dif < 0: cell_style = 'background-color: #ffe5e5; color: #dc3545; font-weight: 900; text-align: right;'
-                elif dif > 0: cell_style = 'background-color: #e6f4ea; color: #28a745; font-weight: 900; text-align: right;'
-            elif col == 'Eficiencia (%)':
-                if dif < 0: cell_style = 'color: #dc3545; font-weight: 900; text-align: right;'
-                elif dif > 0: cell_style = 'color: #28a745; font-weight: 900; text-align: right;'
-                
-            estilos[i] = cell_style
-        return estilos
-
-    columnas_ui = {
-        "FINCA": st.column_config.TextColumn("🏡 FINCA", width="medium"),
-        "TIPO_ENTIDAD": st.column_config.TextColumn("🤝 PERFIL", width="small"),
-        "EQUIPO DRON": st.column_config.TextColumn("🛸 OPERADOR DRON", width="medium"),
-        "AVIÓN": st.column_config.NumberColumn("✈️ TARIFA AVIÓN", format="$ %d", width="small"),
-        "DRONE": st.column_config.NumberColumn("🛸 TARIFA DRON", format="$ %d", width="small"),
-        "Diferencia ($)": st.column_config.NumberColumn("⚖️ AHORRO ($)", format="$ %d", width="small"),
-        "Eficiencia (%)": st.column_config.NumberColumn("📈 EFICIENCIA", format="%.1f %%", width="small")
-    }
-
+    # ==========================================
+    # 1. PESTAÑA: SOLO DATOS DE VUELO
+    # ==========================================
     with tab_vuelo:
-        st.success("🔬 Análisis de Tarifas Vuelo Pura: Cooperativas vs. Fincas Especiales y Lotes Piloto.")
-        
+        st.success("🔬 Matriz Detallada: Tarifas de Vuelo Pura (Cooperativas vs Especiales)")
         if not m_comp_v.empty:
-            m_comp_v_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
-            m_comp_v_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
-            
-            st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas")
-            if not m_comp_v_coop.empty:
-                fig_coop = construir_grafico_comparativo(m_comp_v_coop, "Cooperativas: Avión vs Dron")
-                if fig_coop: st.plotly_chart(fig_coop, use_container_width=True)
-            else:
-                st.info("No se registraron fincas asociadas a Cooperativas en el rango.")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            st.markdown("### 🍌 2. Fincas Especiales y Lotes Piloto")
-            if not m_comp_v_indep.empty:
-                fig_indep = construir_grafico_comparativo(m_comp_v_indep, "Especiales/Piloto: Avión vs Dron")
-                if fig_indep: st.plotly_chart(fig_indep, use_container_width=True)
-            else:
-                st.info("No se registraron Fincas Especiales en el rango.")
-
-            st.markdown("---")
-            st.markdown("#### 📋 Matriz Detallada de Comparación")
             df_print_v = m_comp_v.copy()
             df_print_v['Eficiencia (%)'] = df_print_v['Eficiencia (%)'] * 100
-
             st.dataframe(
                 df_print_v.style.apply(aplicar_estilo_premium, axis=1), 
                 use_container_width=True, 
@@ -474,28 +428,67 @@ def ejecutar(*args, **kwargs):
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
+    # ==========================================
+    # 2. PESTAÑA: SOLO DATOS DE FACTURACIÓN
+    # ==========================================
     with tab_total:
-        st.info("📊 Impacto Macro en Facturación Total: Cooperativas vs. Fincas Especiales.")
-        
+        st.info("📊 Matriz Detallada: Impacto Macro en Facturación Total")
         if not m_comp_t.empty:
-            m_comp_t_coop = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
-            m_comp_t_indep = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
+            df_print_t = m_comp_t.copy()
+            df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'] * 100
+            st.dataframe(
+                df_print_t.style.apply(aplicar_estilo_premium, axis=1), 
+                use_container_width=True, 
+                hide_index=True,
+                column_config=columnas_ui
+            )
+        else:
+            st.warning("📌 No hay datos cruzados en el rango seleccionado.")
+
+    # ==========================================
+    # 3. PESTAÑA: CENTRO EXCLUSIVO DE GRÁFICOS
+    # ==========================================
+    with tab_graficos:
+        st.markdown("### 🎛️ Panel de Visualización Estratégica")
+        
+        # Selector para ver gráficos de Vuelo Puro o de Facturación Total
+        tipo_grafico = st.radio("Seleccione la Métrica a Graficar:", ["✈️ Tarifa Vuelo Pura", "💰 Facturación Total"], horizontal=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 💥 SUB-PESTAÑAS INDEPENDIENTES PARA COOPERATIVAS Y PILOTOS
+        sub_tab_coop, sub_tab_indep = st.tabs(["🌾 Ver Cooperativas y Asociativas", "🍌 Ver Fincas Especiales y Lotes Piloto"])
+        
+        # DATOS PARA COOPERATIVAS
+        with sub_tab_coop:
+            if tipo_grafico == "✈️ Tarifa Vuelo Pura" and not m_comp_v.empty:
+                m_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
+                if not m_coop.empty:
+                    fig_c = construir_grafico_comparativo(m_coop, "Cooperativas: Vuelo Puro (Avión vs Dron)")
+                    st.plotly_chart(fig_c, use_container_width=True)
+                else: st.info("No se registraron fincas cooperativas.")
             
-            st.markdown("### 🌾 1. Fincas Cooperativas y Asociativas (Total Facturado)")
-            if not m_comp_t_coop.empty:
-                fig_t_coop = construir_grafico_comparativo(m_comp_t_coop, "Facturación Total: Cooperativas")
-                if fig_t_coop: st.plotly_chart(fig_t_coop, use_container_width=True)
-            else:
-                st.info("No se registraron Cooperativas en el rango.")
+            elif tipo_grafico == "💰 Facturación Total" and not m_comp_t.empty:
+                m_coop_t = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
+                if not m_coop_t.empty:
+                    fig_c_t = construir_grafico_comparativo(m_coop_t, "Cooperativas: Facturación Total (Avión vs Dron)")
+                    st.plotly_chart(fig_c_t, use_container_width=True)
+                else: st.info("No se registraron fincas cooperativas.")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            st.markdown("### 🍌 2. Fincas Especiales y Lotes Piloto (Total Facturado)")
-            if not m_comp_t_indep.empty:
-                fig_t_indep = construir_grafico_comparativo(m_comp_t_indep, "Facturación Total: Especiales y Pilotos")
-                if fig_t_indep: st.plotly_chart(fig_t_indep, use_container_width=True)
-            else:
-                st.info("No se registraron Fincas Especiales en el rango.")
+        # DATOS PARA FINCAS ESPECIALES
+        with sub_tab_indep:
+            if tipo_grafico == "✈️ Tarifa Vuelo Pura" and not m_comp_v.empty:
+                m_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
+                if not m_indep.empty:
+                    fig_i = construir_grafico_comparativo(m_indep, "Especiales/Piloto: Vuelo Puro (Avión vs Dron)")
+                    st.plotly_chart(fig_i, use_container_width=True)
+                else: st.info("No se registraron fincas especiales.")
+                
+            elif tipo_grafico == "💰 Facturación Total" and not m_comp_t.empty:
+                m_indep_t = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
+                if not m_indep_t.empty:
+                    fig_i_t = construir_grafico_comparativo(m_indep_t, "Especiales/Piloto: Facturación Total (Avión vs Dron)")
+                    st.plotly_chart(fig_i_t, use_container_width=True)
+                else: st.info("No se registraron fincas especiales.")
 
             st.markdown("---")
             st.markdown("#### 📋 Matriz Detallada Facturación Total")
