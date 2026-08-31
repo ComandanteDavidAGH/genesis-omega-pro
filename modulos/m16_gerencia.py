@@ -278,45 +278,15 @@ def ejecutar(*args, **kwargs):
 
     st.markdown(f"""
     <style>
-    /* TITULO ALINEADO */
     .titulo-contenedor {{ display: flex; align-items: flex-start; gap: 15px; border-bottom: 3px solid {COLOR_DORADO}; padding-bottom: 10px; margin-bottom: 15px; }}
     .titulo-icono {{ font-size: 34px; line-height: 1.2; }}
     .titulo-texto {{ display: flex; flex-direction: column; }}
     .titulo-gerencial-txt {{ color: {COLOR_NAVY}; margin: 0; font-weight: 900; letter-spacing: 0.5px; line-height: 1.2; font-size: 26px; font-family: 'Arial Black', sans-serif; }}
     .titulo-caption {{ color: #555555; font-size: 14px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; }}
-    
-    /* 💥 CIRUGÍA UNIVERSAL: Cajas de Fecha */
-    
-    /* 1. Atacamos la caja exterior universal de Streamlit */
-    .stDateInput > div {{
-        background-color: #e6f4ea !important; /* Fondo verde tenue */
-        border: 2px solid {COLOR_VERDE} !important; /* Borde oscuro */
-        border-radius: 8px !important;
-    }}
-    
-    /* 2. Forzamos transparencia en la caja interior que bloqueaba el color */
-    .stDateInput > div > div {{
-        background-color: transparent !important;
-        border: none !important;
-    }}
-    
-    /* 3. NÚMEROS: Negros, grandes y en negrita extrema */
-    .stDateInput input {{
-        color: #000000 !important;
-        font-weight: 900 !important;
-        font-size: 16px !important;
-        -webkit-text-fill-color: #000000 !important; /* Fuerza el color en todos los navegadores */
-        background-color: transparent !important;
-    }}
-    
-    /* 4. Etiquetas "Desde" y "Hasta" */
-    .stDateInput label p {{
-        color: {COLOR_VERDE} !important;
-        font-weight: 800 !important;
-        font-size: 13px !important;
-    }}
-
-    /* Tablas y Pestañas */
+    .stDateInput > div {{ background-color: #e6f4ea !important; border: 2px solid {COLOR_VERDE} !important; border-radius: 8px !important; }}
+    .stDateInput > div > div {{ background-color: transparent !important; border: none !important; }}
+    .stDateInput input {{ color: #000000 !important; font-weight: 900 !important; font-size: 16px !important; -webkit-text-fill-color: #000000 !important; background-color: transparent !important; }}
+    .stDateInput label p {{ color: {COLOR_VERDE} !important; font-weight: 800 !important; font-size: 13px !important; }}
     div[data-testid="stDataFrame"] {{ border: 2px solid {COLOR_NAVY} !important; border-radius: 8px !important; overflow: hidden !important; }}
     div[data-testid="stTabs"] button[role="tab"] {{ font-weight: 800; font-size: 13px; color: {COLOR_NAVY}; }}
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ border-bottom-color: {COLOR_DORADO}; background-color: rgba(212, 175, 55, 0.08); }}
@@ -404,24 +374,20 @@ def ejecutar(*args, **kwargs):
         with k2: st.markdown(tarjeta_kpi("Brecha Promedio Vuelo", f"$ {ahorro_prom_vuelo:,.0f} /ha".replace(",", "."), "Ahorro Dron vs Avión", "#28a745" if ahorro_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
         with k3: st.markdown(tarjeta_kpi("Eficiencia Financiera", f"{eficiencia_prom_vuelo:.1f}%", "vs Tarifa Avión", "#28a745" if eficiencia_prom_vuelo >= 0 else "#dc3545"), unsafe_allow_html=True)
 
-def aplicar_estilo_premium(row):
+    def aplicar_estilo_premium(row):
         estilos = [''] * len(row)
         dif = row.get('Diferencia ($)', 0)
-        
         base_style = 'background-color: #ffffff; color: #0d1b2a; font-weight: 600;'
-        
         for i, col in enumerate(row.index):
             cell_style = base_style
             if col in ['AVIÓN', 'DRONE', 'Diferencia ($)', 'Eficiencia (%)']:
                 cell_style += ' text-align: right;'
-            
             if col == 'Diferencia ($)':
                 if dif < 0: cell_style = 'background-color: #ffe5e5; color: #dc3545; font-weight: 900; text-align: right;'
                 elif dif > 0: cell_style = 'background-color: #e6f4ea; color: #28a745; font-weight: 900; text-align: right;'
             elif col == 'Eficiencia (%)':
                 if dif < 0: cell_style = 'color: #dc3545; font-weight: 900; text-align: right;'
                 elif dif > 0: cell_style = 'color: #28a745; font-weight: 900; text-align: right;'
-                
             estilos[i] = cell_style
         return estilos
 
@@ -434,62 +400,37 @@ def aplicar_estilo_premium(row):
         "Diferencia ($)": st.column_config.NumberColumn("⚖️ AHORRO ($)", format="$ %d", width="small"),
         "Eficiencia (%)": st.column_config.NumberColumn("📈 EFICIENCIA", format="%.1f %%", width="small")
     }
-    
-    # 💥 CREAMOS LA TERCERA PESTAÑA PARA GRÁFICOS
+
     tab_vuelo, tab_total, tab_graficos = st.tabs([
         "✈️ Matrices de Vuelo (Datos)", 
         "💰 Matrices de Facturación (Datos)", 
         "📊 Centro de Análisis Gráfico"
     ])
 
-    # ==========================================
-    # 1. PESTAÑA: SOLO DATOS DE VUELO
-    # ==========================================
     with tab_vuelo:
         st.success("🔬 Matriz Detallada: Tarifas de Vuelo Pura (Cooperativas vs Especiales)")
         if not m_comp_v.empty:
             df_print_v = m_comp_v.copy()
             df_print_v['Eficiencia (%)'] = df_print_v['Eficiencia (%)'] * 100
-            st.dataframe(
-                df_print_v.style.apply(aplicar_estilo_premium, axis=1), 
-                use_container_width=True, 
-                hide_index=True,
-                column_config=columnas_ui
-            )
+            st.dataframe(df_print_v.style.apply(aplicar_estilo_premium, axis=1), use_container_width=True, hide_index=True, column_config=columnas_ui)
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
-    # ==========================================
-    # 2. PESTAÑA: SOLO DATOS DE FACTURACIÓN
-    # ==========================================
     with tab_total:
         st.info("📊 Matriz Detallada: Impacto Macro en Facturación Total")
         if not m_comp_t.empty:
             df_print_t = m_comp_t.copy()
             df_print_t['Eficiencia (%)'] = df_print_t['Eficiencia (%)'] * 100
-            st.dataframe(
-                df_print_t.style.apply(aplicar_estilo_premium, axis=1), 
-                use_container_width=True, 
-                hide_index=True,
-                column_config=columnas_ui
-            )
+            st.dataframe(df_print_t.style.apply(aplicar_estilo_premium, axis=1), use_container_width=True, hide_index=True, column_config=columnas_ui)
         else:
             st.warning("📌 No hay datos cruzados en el rango seleccionado.")
 
-    # ==========================================
-    # 3. PESTAÑA: CENTRO EXCLUSIVO DE GRÁFICOS
-    # ==========================================
     with tab_graficos:
         st.markdown("### 🎛️ Panel de Visualización Estratégica")
-        
-        # Selector para ver gráficos de Vuelo Puro o de Facturación Total
         tipo_grafico = st.radio("Seleccione la Métrica a Graficar:", ["✈️ Tarifa Vuelo Pura", "💰 Facturación Total"], horizontal=True)
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        # 💥 SUB-PESTAÑAS INDEPENDIENTES PARA COOPERATIVAS Y PILOTOS
         sub_tab_coop, sub_tab_indep = st.tabs(["🌾 Ver Cooperativas y Asociativas", "🍌 Ver Fincas Especiales y Lotes Piloto"])
         
-        # DATOS PARA COOPERATIVAS
         with sub_tab_coop:
             if tipo_grafico == "✈️ Tarifa Vuelo Pura" and not m_comp_v.empty:
                 m_coop = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
@@ -497,7 +438,6 @@ def aplicar_estilo_premium(row):
                     fig_c = construir_grafico_comparativo(m_coop, "Cooperativas: Vuelo Puro (Avión vs Dron)")
                     st.plotly_chart(fig_c, use_container_width=True)
                 else: st.info("No se registraron fincas cooperativas.")
-            
             elif tipo_grafico == "💰 Facturación Total" and not m_comp_t.empty:
                 m_coop_t = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'COOPERATIVAS'].copy()
                 if not m_coop_t.empty:
@@ -505,7 +445,6 @@ def aplicar_estilo_premium(row):
                     st.plotly_chart(fig_c_t, use_container_width=True)
                 else: st.info("No se registraron fincas cooperativas.")
 
-        # DATOS PARA FINCAS ESPECIALES
         with sub_tab_indep:
             if tipo_grafico == "✈️ Tarifa Vuelo Pura" and not m_comp_v.empty:
                 m_indep = m_comp_v[m_comp_v['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
@@ -513,7 +452,6 @@ def aplicar_estilo_premium(row):
                     fig_i = construir_grafico_comparativo(m_indep, "Especiales/Piloto: Vuelo Puro (Avión vs Dron)")
                     st.plotly_chart(fig_i, use_container_width=True)
                 else: st.info("No se registraron fincas especiales.")
-                
             elif tipo_grafico == "💰 Facturación Total" and not m_comp_t.empty:
                 m_indep_t = m_comp_t[m_comp_t['TIPO_ENTIDAD'] == 'ESPECIALES / PILOTOS'].copy()
                 if not m_indep_t.empty:
@@ -521,9 +459,6 @@ def aplicar_estilo_premium(row):
                     st.plotly_chart(fig_i_t, use_container_width=True)
                 else: st.info("No se registraron fincas especiales.")
 
-    # ==========================================
-    # BOTÓN DE EXCEL (FUERA DE LAS PESTAÑAS)
-    # ==========================================
     if not m_comp_t.empty and not m_comp_v.empty:
         st.markdown("---")
         excel_data = generar_excel_maestro(m_comp_t, m_comp_v)
