@@ -258,7 +258,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     PALETA_VIP = [COLOR_NAVY, COLOR_DORADO, COLOR_VERDE, '#8B0000']
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (ESTILO VANGUARDIA / DARK MODE)
+    # GRÁFICO 1: ÁREA ASPERJADA (MODO DARK - SIN APILAMIENTO)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
@@ -266,29 +266,30 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
         
-        # 💥 Paleta Cian/Azul brillante para contrastar con el fondo oscuro
         colores_area = ['#00b4d8', '#48cae4', '#90e0ef'] 
         
-        fig1 = px.area(
+        # 💥 CLAVE: Usamos px.line en vez de px.area para evitar que Plotly sume los años
+        fig1 = px.line(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
             color_discrete_sequence=colores_area
         )
         fig1.update_traces(
             mode='lines+markers',
-            line=dict(shape='linear', width=3), # Trazos rectos y geométricos (como tu imagen 1)
-            marker=dict(size=9, color='white', line=dict(width=2, color='#00b4d8')), # Nodos blancos resaltados
+            line=dict(shape='linear', width=3), 
+            marker=dict(size=8, color='white', line=dict(width=2, color='#00b4d8')), 
             fill='tozeroy',
+            opacity=0.6, # 💥 Transparencia para poder ver las curvas que quedan detrás
             hovertemplate='<b>%{x}</b><br>Área: %{y:,.1f} ha<extra></extra>'
         )
         fig1.update_layout(
             xaxis_title="", yaxis_title="Hectáreas (ha)", 
-            plot_bgcolor='#0a1128', # 💥 Fondo azul medianoche interior exclusivo
+            plot_bgcolor='#0a1128', 
             paper_bgcolor='rgba(0,0,0,0)', 
             legend_title_text='', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50, b=20),
             hovermode="x unified",
-            xaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a')), # Cuadrícula sutil
+            xaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a')),
             yaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a'))
         )
         if not df_area_chart.empty:
@@ -296,7 +297,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig1, use_container_width=True)
 
     # -----------------------------------------------------
-    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (COMBO: BARRAS + LÍNEA SUPERIOR)
+    # GRÁFICO 2: FACTURACIÓN vs LÍMITE (COMBO - SIN APILAMIENTO)
     # -----------------------------------------------------
     with g2:
         st.markdown(f"#### ⚖️ FACTURACIÓN/ha vs LÍMITE — {titulo_finca}", unsafe_allow_html=True)
@@ -327,7 +328,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                 item_name = df_año['FINCA'] if finca_filtro == "TODAS" else df_año['COCTEL']
                 custom_data_hover = np.stack((item_name, df_año['HOVER_FACT'], df_año['AÑO']), axis=-1)
                 
-                # 💥 Retornamos a las Barras Sólidas (Como tu imagen de referencia 2)
                 go_fig.add_trace(go.Bar(
                     x=df_año['ETIQUETA_X'], y=df_año['VALOR_FACTURAR'], name=f"Fact. ({año_map})", 
                     marker_color=color_asignado,
@@ -335,16 +335,16 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
                     hovertemplate='<b>Año:</b> %{customdata[2]}<br><b>Dato:</b> %{customdata[0]}<br><b>Facturación:</b> %{customdata[1]}<extra></extra>'
                 ))
                 
-            # 💥 Línea Sólida Gruesa cruzando por encima de las barras (Efecto Combo Chart)
             go_fig.add_trace(go.Scatter(
                 x=df_costo['ETIQUETA_X'], y=df_costo['LIMITE'], name="Límite Autorizado",
-                mode='lines', line=dict(color='#e63946', width=4), # Línea roja gruesa
+                mode='lines', line=dict(color='#e63946', width=4), 
                 customdata=df_costo['HOVER_LIMITE'],
                 hovertemplate='<b>Límite Fijo:</b> %{customdata}<extra></extra>'
             ))
             
             max_y = df_costo['LIMITE'].max() if df_costo['LIMITE'].max() > df_costo['VALOR_FACTURAR'].max() else df_costo['VALOR_FACTURAR'].max()
             go_fig.update_layout(
+                barmode='group', # 💥 LA SOLUCIÓN: Agrupa las barras lado a lado en vez de apilarlas
                 plot_bgcolor='rgba(0,0,0,0)', 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
                 yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, max_y * 1.2], showgrid=True, gridcolor='#e2e8f0'), 
@@ -353,7 +353,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             )
             st.plotly_chart(go_fig, use_container_width=True)
         else:
-            st.info("Sin datos de facturación para graficar.")
+            st.info("Sin datos de facturación para graficar."))
         
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
