@@ -257,45 +257,43 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     PALETA_VIP = [COLOR_NAVY, COLOR_DORADO, COLOR_VERDE, '#8B0000']
 
     # -----------------------------------------------------
-    # GRÁFICO 1: ÁREA ASPERJADA (MODO DARK VANGUARDIA CORREGIDO)
+    # GRÁFICO 1: ÁREA ASPERJADA (BARRAS AGRUPADAS EJECUTIVAS)
     # -----------------------------------------------------
     with g1:
         st.markdown(f"#### ✈️ ÁREA ASPERJADA POR MES — {titulo_finca}", unsafe_allow_html=True)
         df_area_chart = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['AREA_FUMIG'].sum().reset_index()
         df_area_chart = df_area_chart.sort_values(by=['AÑO', 'MES_NUM']) 
         df_area_chart['AÑO_STR'] = df_area_chart['AÑO'].astype(str)
+        df_area_chart['ETIQUETA'] = df_area_chart['AREA_FUMIG'].apply(lambda x: f"{formato_latino(x, 1)} ha")
         
-        # 💥 Paleta Cian/Azul brillante para fondo oscuro
-        colores_area = ['#00b4d8', '#48cae4', '#90e0ef'] 
+        # 💥 Usamos la paleta VIP corporativa (Navío, Dorado, Verde) en barras limpias
+        colores_barras = [COLOR_NAVY, COLOR_DORADO, '#27AE60'] 
         
-        # Usamos px.line con relleno para evitar el apilamiento automático
-        fig1 = px.line(
+        fig1 = px.bar(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
-            color_discrete_sequence=colores_area
+            barmode='group', text='ETIQUETA', color_discrete_sequence=colores_barras
         )
         fig1.update_traces(
-            mode='lines+markers',
-            line=dict(shape='linear', width=3), 
-            marker=dict(size=8, color='white', line=dict(width=2, color='#00b4d8')), 
-            fill='tozeroy',
-            opacity=0.5, # 💥 Transparencia para ver el cruce de años
-            hovertemplate='<b>%{x}</b><br>Área: %{y:,.1f} ha<extra></extra>'
+            textposition='outside', 
+            textfont=dict(size=11, family="Arial Black", color='#0d1b2a'),
+            marker_line_width=0, # Sin bordes para un look plano y moderno
+            hovertemplate='<b>%{x}</b><br>Año: %{color}<br>Área: %{y:,.1f} ha<extra></extra>'
         )
         fig1.update_layout(
             xaxis_title="", yaxis_title="Hectáreas (ha)", 
-            plot_bgcolor='#0a1128', # 💥 Fondo azul medianoche
+            plot_bgcolor='rgba(0,0,0,0)', # Fondo transparente/blanco
             paper_bgcolor='rgba(0,0,0,0)', 
             legend_title_text='', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50, b=20),
             hovermode="x unified",
-            xaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a')),
-            yaxis=dict(showgrid=True, gridcolor='#1c2d4a', tickfont=dict(color='#0d1b2a'))
+            xaxis=dict(showgrid=False, tickfont=dict(color='#555555')),
+            yaxis=dict(showgrid=True, gridcolor='#e2e8f0', tickfont=dict(color='#555555')) # Cuadrícula gris sutil
         )
         if not df_area_chart.empty:
+            # 💥 Damos un 25% de espacio extra arriba para que las etiquetas no se corten
             fig1.update_yaxes(range=[0, df_area_chart['AREA_FUMIG'].max() * 1.25]) 
         st.plotly_chart(fig1, use_container_width=True)
-
     # -----------------------------------------------------
     # GRÁFICO 2: FACTURACIÓN vs LÍMITE (COMBO CON SEMANAS S1, S2...)
     # -----------------------------------------------------
