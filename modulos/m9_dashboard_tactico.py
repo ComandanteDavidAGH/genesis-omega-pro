@@ -399,33 +399,58 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         st.plotly_chart(fig3, use_container_width=True)
         
     # -----------------------------------------------------
-    # GRÁFICO 4: FACTURACIÓN MENSUAL (LÍNEAS PURAS Y NÍTIDAS)
+    # GRÁFICO 4: FACTURACIÓN MENSUAL (BARRAS + ACUMULADO)
     # -----------------------------------------------------
     with g4:
-        st.markdown(f"#### 💵 FACTURACIÓN MENSUAL BASE — {titulo_finca}", unsafe_allow_html=True)
+        st.markdown(f"#### 💵 FACTURACIÓN MENSUAL Y ACUMULADA — {titulo_finca}", unsafe_allow_html=True)
         df_mes = df_filtrado.groupby(['MES_NUM', 'MES_NOMBRE', 'AÑO'])['COSTO_TOTAL'].sum().reset_index()
         df_mes = df_mes.sort_values(by=['AÑO', 'MES_NUM'])
-        df_mes['AÑO_STR'] = df_mes['AÑO'].astype(str)
         
-        # 💥 Limpieza visual: Líneas puras, sin textos fijos colisionando
-        fig4 = px.line(
-            df_mes, x='MES_NOMBRE', y='COSTO_TOTAL', color='AÑO_STR', 
-            color_discrete_sequence=PALETA_YOY, markers=True
-        )
-        fig4.update_traces(
-            line=dict(shape='spline', width=4), # Línea suave y gruesa
-            marker=dict(size=8, line=dict(color='white', width=2)),
-            hovertemplate='<b>%{x}</b><br>Facturado: $ %{y:,.0f} COP<extra></extra>' # Texto interactivo
-        )
+        # Calculamos el acumulado anual para la línea de tendencia
+        df_mes['ACUMULADO'] = df_mes.groupby('AÑO')['COSTO_TOTAL'].cumsum()
+        
+        fig4 = go.Figure()
+        años_presentes = sorted(df_mes['AÑO'].unique())
+        
+        for i, año_map in enumerate(años_presentes):
+            df_año = df_mes[df_mes['AÑO'] == año_map]
+            color_asignado = PALETA_YOY[i % len(PALETA_YOY)]
+            
+            # Barras (Facturación del mes)
+            fig4.add_trace(go.Bar(
+                x=df_año['MES_NOMBRE'], y=df_año['COSTO_TOTAL'], 
+                name=f"Mensual ({año_map})", marker_color=color_asignado,
+                hovertemplate='<b>%{x}</b><br>Mes: $ %{y:,.0f} COP<extra></extra>'
+            ))
+            
+            # Línea (Acumulado del año)
+            fig4.add_trace(go.Scatter(
+                x=df_año['MES_NOMBRE'], y=df_año['ACUMULADO'], 
+                name=f"Acum. ({año_map})", mode='lines+markers',
+                line=dict(color=color_asignado, width=2, dash='dot'),
+                marker=dict(size=6),
+                yaxis='y2', # 💥 Lo mandamos a un eje secundario
+                hovertemplate='<b>%{x}</b><br>Acumulado: $ %{y:,.0f} COP<extra></extra>'
+            ))
+
         fig4.update_layout(
-            xaxis_title="", yaxis_title="Total Facturado ($ COP)", 
-            plot_bgcolor='rgba(0,0,0,0)', legend_title_text='', 
+            plot_bgcolor='rgba(0,0,0,0)', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50, b=20),
-            hovermode="x unified"
+            hovermode="x unified",
+            yaxis=dict(
+                title="Mensual ($ COP)", 
+                rangemode='tozero',
+                showgrid=False
+            ),
+            yaxis2=dict(
+                title="Acumulado ($ COP)",
+                overlaying='y',
+                side='right',
+                rangemode='tozero',
+                showgrid=True, gridcolor="#e2e8f0"
+            )
         )
-        if not df_mes.empty:
-            fig4.update_yaxes(range=[0, df_mes['COSTO_TOTAL'].max() * 1.1])
         st.plotly_chart(fig4, use_container_width=True)
 
     # -----------------------------------------------------
