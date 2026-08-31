@@ -207,7 +207,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
     pilotos_disp = ["TODOS"] + sorted(df_dash['PILOTO'].astype(str).unique().tolist())
     hks_disp = ["TODAS"] + sorted(df_dash['HK'].astype(str).unique().tolist())
     
-    # 🎯 MEJORA VIP: El índice arranca en 1 (La primera finca real) para evitar el empacho visual inicial
     idx_finca_defecto = 1 if len(fincas_disp) > 1 else 0
     finca_filtro = f1.selectbox("📍 FINCA", fincas_disp, index=idx_finca_defecto)
     piloto_filtro = f2.selectbox("👨‍✈️ PILOTO", pilotos_disp)
@@ -268,7 +267,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         colores_area = ['#00b4d8', '#48cae4', '#90e0ef'] 
         
-        # 💥 CLAVE: Usamos px.line en vez de px.area para evitar que Plotly sume los años
         fig1 = px.line(
             df_area_chart, x='MES_NOMBRE', y='AREA_FUMIG', color='AÑO_STR', 
             color_discrete_sequence=colores_area
@@ -278,7 +276,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             line=dict(shape='linear', width=3), 
             marker=dict(size=8, color='white', line=dict(width=2, color='#00b4d8')), 
             fill='tozeroy',
-            opacity=0.6, # 💥 Transparencia para poder ver las curvas que quedan detrás
+            opacity=0.6, 
             hovertemplate='<b>%{x}</b><br>Área: %{y:,.1f} ha<extra></extra>'
         )
         fig1.update_layout(
@@ -344,7 +342,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             
             max_y = df_costo['LIMITE'].max() if df_costo['LIMITE'].max() > df_costo['VALOR_FACTURAR'].max() else df_costo['VALOR_FACTURAR'].max()
             go_fig.update_layout(
-                barmode='group', # 💥 LA SOLUCIÓN: Agrupa las barras lado a lado en vez de apilarlas
+                barmode='group', 
                 plot_bgcolor='rgba(0,0,0,0)', 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
                 yaxis=dict(title="Valor ($ COP / ha)", rangemode='tozero', range=[0, max_y * 1.2], showgrid=True, gridcolor='#e2e8f0'), 
@@ -353,8 +351,8 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             )
             st.plotly_chart(go_fig, use_container_width=True)
         else:
-            st.info("Sin datos de facturación para graficar."))
-        
+            st.info("Sin datos de facturación para graficar.")
+            
     st.markdown("<br>", unsafe_allow_html=True); g3, g4 = st.columns(2)
 
     # -----------------------------------------------------
@@ -370,18 +368,15 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         
         df_rend['EJE_Y'] = df_rend['HK'] + " | S" + df_rend['SEMANA_NUM'].astype(str)
         df_rend['ETIQUETA'] = df_rend['REND_HR'].apply(lambda x: f"{formato_latino(x, 2)} Hr")
-        altura_dinamica = max(400, len(df_rend) * 25) # Más respiro entre líneas
+        altura_dinamica = max(400, len(df_rend) * 25) 
         
-        # 💥 Construcción manual de un verdadero Lollipop (Piruleta)
         fig3 = go.Figure()
         
-        # Tallo (Línea muy fina en Azul Navío)
         fig3.add_trace(go.Bar(
             y=df_rend['EJE_Y'], x=df_rend['REND_HR'], orientation='h', 
             marker_color=COLOR_NAVY, width=0.08, hoverinfo='skip'
         ))
         
-        # Cabeza (Punto Dorado)
         fig3.add_trace(go.Scatter(
             x=df_rend['REND_HR'], y=df_rend['EJE_Y'], mode='markers+text',
             marker=dict(color=COLOR_DORADO, size=14, line=dict(color='white', width=2)),
@@ -410,7 +405,6 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
         fig4 = go.Figure()
         años_presentes = sorted(df_mes['AÑO'].unique())
         
-        # 💥 Asignación estricta de colores: Barras Azul Navío, Líneas Doradas/Verdes
         colores_barras = [COLOR_NAVY, COLOR_VERDE]
         colores_lineas = [COLOR_DORADO, '#27AE60']
         
@@ -419,14 +413,12 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             c_barra = colores_barras[i % len(colores_barras)]
             c_linea = colores_lineas[i % len(colores_lineas)]
             
-            # Facturación Mensual (Barras Sólidas)
             fig4.add_trace(go.Bar(
                 x=df_año['MES_NOMBRE'], y=df_año['COSTO_TOTAL'], 
                 name=f"Mensual ({año_map})", marker_color=c_barra,
                 hovertemplate='<b>%{x}</b><br>Mes: $ %{y:,.0f}<extra></extra>'
             ))
             
-            # Facturación Acumulada (Línea en eje secundario)
             fig4.add_trace(go.Scatter(
                 x=df_año['MES_NOMBRE'], y=df_año['ACUMULADO'], 
                 name=f"Acum. ({año_map})", mode='lines+markers+text',
@@ -438,6 +430,7 @@ def ejecutar(descargar_matriz_rapida, extraer_numero, procesar_fecha_pesada):
             ))
 
         fig4.update_layout(
+            barmode='group',
             plot_bgcolor='rgba(0,0,0,0)', 
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5), 
             margin=dict(t=50, b=20),
