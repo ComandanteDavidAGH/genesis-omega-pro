@@ -238,10 +238,10 @@ def construir_grafico_comparativo(df_datos, titulo_grafico):
         hovertext=df_plot['FINCA'],
         customdata=np.stack((df_plot['DRONE'], df_plot['AVIÓN']), axis=-1),
         hovertemplate=(
-            "<div style='font-family: Arial;'><b>🏡 Finca: %{hovertext}</b><br><br>"
+            "<b>🏡 Finca: %{hovertext}</b><br><br>"
             "🛸 Costo Dron: $ %{customdata[0]:,.0f}<br>"
             "✈️ Costo Avión: $ %{customdata[1]:,.0f}<br>"
-            "<b>⚖️ Impacto: $ %{x:,.0f} / ha</b></div><extra></extra>"
+            "<b>⚖️ Impacto: $ %{x:,.0f} / ha</b><extra></extra>"
         )
     ))
 
