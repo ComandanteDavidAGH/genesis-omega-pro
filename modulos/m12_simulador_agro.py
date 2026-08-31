@@ -675,40 +675,39 @@ def ejecutar(procesar_fecha_pesada=None, extraer_numero=None):
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =================================================================
-    # 📊 GRÁFICO 2: FUGA OPERATIVA (BARRAS DIVERGENTES)
+    # 📊 GRÁFICO 2: FUGA OPERATIVA (CASCADA FINANCIERA / WATERFALL)
     # =================================================================
     df_lucro_sem = df_agrupado.groupby("Semana")["Lucro Cesante"].sum().reset_index().sort_values(by="Semana")
     
-    colores_fuga = ['#dc3545' if val > 0 else '#28a745' for val in df_lucro_sem["Lucro Cesante"]]
-    
-    fig_lucro = go.Figure()
-    
-    fig_lucro.add_trace(go.Bar(
+    fig_lucro = go.Figure(go.Waterfall(
+        name="Fuga Operativa",
+        orientation="v",
+        measure=["relative"] * len(df_lucro_sem),
         x=df_lucro_sem["Semana"],
         y=df_lucro_sem["Lucro Cesante"],
-        marker=dict(color=colores_fuga, line=dict(color='#0d1b2a', width=1.5)),
         text=df_lucro_sem["Lucro Cesante"],
         texttemplate='<b>$%{text:,.0f}</b>',
-        textposition='outside',
-        textfont=dict(size=10, color='#0d1b2a'),
-        hovertemplate="<b>%{x}</b><br>Impacto: $ %{y:,.0f}<extra></extra>"
+        textposition="outside",
+        connector={"line": {"color": "#b3b3b3", "width": 1.5, "dash": "dot"}},
+        increasing={"marker": {"color": "#dc3545"}}, # Rojo: Pérdida (Lucro Cesante Positivo)
+        decreasing={"marker": {"color": "#28a745"}}, # Verde: Ahorro (Lucro Cesante Negativo)
+        totals={"marker": {"color": "#0d1b2a"}}
     ))
 
     fig_lucro.update_layout(
-        title="<b>Fuga Operativa Consolidada Semanal (Lucro Cesante Puro)</b>",
+        title="<b>Acumulación de Fuga Operativa Semanal (Efecto Cascada)</b>",
         title_font=dict(color="#0d1b2a", size=16, family="Arial Black"),
         height=450,
         plot_bgcolor='#f8fafc', paper_bgcolor='#ffffff',
         xaxis=dict(showgrid=False, tickangle=-45, title="", tickfont=dict(size=10, color='#555555')),
         yaxis=dict(
             showgrid=True, gridcolor='#e2e8f0', 
-            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2.5,
-            title="Monto de Fuga ($)", tickformat="$,.0f"
+            zeroline=True, zerolinecolor='#0d1b2a', zerolinewidth=2,
+            title="Monto Acumulado de Fuga ($)", tickformat="$,.0f"
         ),
         margin=dict(l=50, r=20, t=70, b=40),
         showlegend=False
     )
-    fig_lucro.update_yaxes(automargin=True)
     
     st.plotly_chart(fig_lucro, use_container_width=True)
 
