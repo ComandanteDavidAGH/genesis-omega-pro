@@ -1078,9 +1078,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
         with r1c1:
-            st.number_input("📅 Ciclo (SISTEMA)", value=int(dias_ciclo_calc), disabled=True, key=llave_sistema)
+            st.metric("📅 Ciclo (SISTEMA)", f"{int(dias_ciclo_calc)} días")
         with r1c2:
-            d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), step=1, key=llave_cobro)
+            llave_cobro_track = f"cob_track_{casilla_key}"
+            if st.session_state.get(llave_cobro_track) != dias_ciclo_calc:
+                st.session_state[llave_cobro] = int(dias_ciclo_calc)
+                st.session_state[llave_cobro_track] = dias_ciclo_calc
+            d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", step=1, key=llave_cobro)
         with r1c3:
             ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
             if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
