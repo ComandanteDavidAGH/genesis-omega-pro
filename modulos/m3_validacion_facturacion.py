@@ -138,6 +138,11 @@ def procesar_fecha_estricta(val):
         return pd.NaT if pd.isna(res) else res
     except: return pd.NaT 
 
+# 💥 HERRAMIENTA ROBUSTA PARA LIMPIAR CÓDIGOS SAP
+def limpiar_codigo_sap(val):
+    if pd.isna(val): return ""
+    return str(val).split('.')[0].strip().upper().lstrip('0')
+
 @st.cache_data(show_spinner=False, ttl=60)
 def obtener_historial_completo_ciclos_cached():
     df_t1, df_apoyo = pd.DataFrame(), pd.DataFrame()
@@ -505,7 +510,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             c_conf1, c_conf2 = st.columns(2)
             if c_conf1.button("✅ SÍ", type="primary", use_container_width=True, key="btn_sync_confirmar"):
                 st.cache_data.clear()
-                claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2', 'df_pedidos', 'df_sabana', 'df_mezclas', 'df_pistas']
+                # 💥 SOLUCIÓN DE MEMORIA: Solo se borran los catálogos en la nube, NO las sábanas ni pedidos locales.
+                claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2']
                 for key in claves_a_purgar:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -692,7 +698,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
                 
-                # 💥 SOLUCIÓN DE CADENA .STR (LAMBDA A PRUEBA DE FALLOS)
                 col0_recetas = df_recetas.iloc[:,0].apply(lambda x: str(x).upper().strip())
                 receta_c = df_recetas[col0_recetas == base_c]
                 if receta_c.empty:
@@ -875,7 +880,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     if pedido_sap and 'df_pedidos' in st.session_state:
         df_p = st.session_state['df_pedidos']
-        # 💥 SOLUCIÓN DE CADENA .STR (LAMBDA A PRUEBA DE FALLOS)
+        # 💥 SOLUCIÓN A PRUEBA DE FALLOS: LAMBDA LIMPIA Y ROBUSTA
         match_sap = df_p[df_p.apply(lambda row: any(str(pedido_sap).strip() in str(val) for val in row), axis=1)]
 
         if not match_sap.empty:
@@ -973,10 +978,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if "COOP" in finca_limpia or "EMPREBANCOOP" in finca_limpia:
         tipo_productor = "COOPERATIVA"
     
-    # 💥 FRANCOTIRADOR 1: TARIFAS BASE (con caché para no golpear la API en cada clic)
+    # 💥 FRANCOTIRADOR 1: TARIFAS BASE (con caché)
     try:
         df_cfg_puro = obtener_configuracion_cruda_cached()
-        # 💥 SOLUCIÓN DE CADENA .STR
         col_a = df_cfg_puro[0].apply(lambda x: str(x).strip().upper())
         fila_productor = df_cfg_puro[col_a == tipo_productor]
         
@@ -1015,8 +1019,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     match_ped = pd.DataFrame()
 
     if not df_ped.empty and num_pedido != "S/N":
-        # 💥 SOLUCIÓN DE CADENA .STR (LAMBDA A PRUEBA DE FALLOS)
-        match_ped = df_ped[df_ped.apply(lambda row: any(num_pedido in str(val) for val in row), axis=1)]
+        match_ped = df_ped[df_ped.apply(lambda row: any(str(num_pedido) in str(val) for val in row), axis=1)]
         if not match_ped.empty:
             texto_pedido = match_ped.to_string().upper()
             for p_val in lista_pistas_validas:
@@ -1180,7 +1183,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 if "459" in texto_material or "429" in texto_material:
                     continue
 
-                cod_item = texto_material.split('.')[0].lstrip('0')
+                cod_item = limpiar_codigo_sap(texto_material)
 
                 col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
                 if col_cant_real:
@@ -1192,8 +1195,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 nombre_p = f"Item {cod_item}"
                 if not df_sab.empty:
-                    # 💥 SOLUCIÓN DE CADENA .STR
-                    df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
+                    # 💥 SOLUCIÓN BLINDADA DE EXTRACCIÓN (NATIVA DE PYTHON)
+                    df_sab_col0_clean = df_sab.iloc[:, 0].apply(limpiar_codigo_sap)
                     match_sabana = df_sab[df_sab_col0_clean == cod_item]
                     if not match_sabana.empty:
                         col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
@@ -1212,8 +1215,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
 
             if not df_sab.empty:
-                # 💥 SOLUCIÓN DE CADENA .STR
-                df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
+                df_sab_col0_clean = df_sab.iloc[:, 0].apply(limpiar_codigo_sap)
             else:
                 df_sab_col0_clean = pd.Series(dtype=str)
 
@@ -1228,7 +1230,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                     if not match_sabana_global.empty:
                         if idx_almacen != -1:
-                            # 💥 SOLUCIÓN DE CADENA .STR
                             match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].apply(lambda x: str(pista_sel).strip().upper() in str(x).strip().upper())]
                         else:
                             match_pista_precio = match_sabana_global
@@ -1246,7 +1247,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                     costo_unit = v_t / c_t
 
                         if idx_almacen != -1:
-                            # 💥 SOLUCIÓN DE CADENA .STR
                             match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].apply(lambda x: str(pista_sel).strip().upper() in str(x).strip().upper())] 
                         else:
                             match_pista = match_sabana_global
@@ -1258,11 +1258,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             if idx_saldo != -1:
                                 saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
-                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS
+                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS DESDE MATRIZ BASE
                 try:
                     if 'df_cfg_puro' in locals():
                         nombre_buscado = nombre_p.upper().strip()
-                        # 💥 SOLUCIÓN DE CADENA .STR
                         col_i = df_cfg_puro[8].apply(lambda x: str(x).strip().upper())
                         match_precio = df_cfg_puro[col_i == nombre_buscado]
                         
