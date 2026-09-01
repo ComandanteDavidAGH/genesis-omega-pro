@@ -52,13 +52,12 @@ def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True)
         print(mensaje)
 
 # =================================================================
-# 🔌 CONEXIÓN, RELOJ Y MOTORES NUMÉRICOS (AQUÍ ESTÁ TU CURA)
+# 🔌 CONEXIÓN, RELOJ Y MOTORES NUMÉRICOS
 # =================================================================
 
 def obtener_hora_colombia():
     return datetime.utcnow() + timedelta(hours=-5)
 
-# 💥 ESCÁNER 1: PARA DOSIS Y MULTIPLICADORES
 def limpiar_numero_estricto(val):
     try:
         if pd.isna(val) or val is None: return 0.0
@@ -71,7 +70,6 @@ def limpiar_numero_estricto(val):
         return float(v) if v else 0.0
     except: return 0.0
 
-# 💥 ESCÁNER 2: PARA DINERO Y TARIFAS
 def limpiar_dinero(val):
     try:
         if pd.isna(val) or val is None: return 0.0
@@ -171,7 +169,7 @@ def _extraer_fechas_de_tabla(df_temp, f_obj_alpha, fechas_encontradas):
     if not (col_f and col_d):
         return
 
-    fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
+    fincas_alpha = df_temp[col_f].apply(lambda x: re.sub(r'[^A-Z0-9]', '', str(x).upper()))
 
     mask = fincas_alpha == f_obj_alpha
     if not mask.any():
@@ -265,7 +263,7 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
 def obtener_dosis_exacta_fertilizante(df_hoja, nombre_prod):
     try:
         for col_idx in range(len(df_hoja.columns) - 1):
-            mask = df_hoja.iloc[:, col_idx].astype(str).str.strip().str.upper() == nombre_prod
+            mask = df_hoja.iloc[:, col_idx].apply(lambda x: str(x).strip().upper()) == nombre_prod
             if mask.any():
                 val = pd.to_numeric(df_hoja[mask].iloc[0, col_idx+1], errors='coerce')
                 if pd.notna(val) and val > 0: return float(val)
@@ -585,6 +583,16 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             lista_fincas = ["NUEVO MUNDO"]
         lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
 
+        if 'finca_anterior_sim' not in st.session_state:
+            st.session_state.finca_anterior_sim = lista_fincas[0]
+            st.session_state.idx_prod_sim = 3
+
+        if 'fecha_sim_mem' not in st.session_state:
+            st.session_state.fecha_sim_mem = datetime.now().date()
+
+        if 'dias_ciclo_sim_mem' not in st.session_state:
+            st.session_state.dias_ciclo_sim_mem = 14
+
         with st.container(border=True):
             st.markdown("#### 📝 Parámetros de la Operación")
             cs1, cs3, cs4 = st.columns(3)
@@ -683,12 +691,15 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 coctel_u = coctel_sim.upper().strip()
                 partes = coctel_u.split(" ")
                 base_c = partes[0]
-                col0_recetas = df_recetas.iloc[:,0].astype(str).str.upper().str.strip()
+                
+                # 💥 SOLUCIÓN DE CADENA .STR (LAMBDA A PRUEBA DE FALLOS)
+                col0_recetas = df_recetas.iloc[:,0].apply(lambda x: str(x).upper().strip())
                 receta_c = df_recetas[col0_recetas == base_c]
                 if receta_c.empty:
-                    receta_c = df_recetas[col0_recetas.str.startswith(base_c, na=False)]
+                    receta_c = df_recetas[col0_recetas.apply(lambda x: x.startswith(base_c))]
                 if receta_c.empty:
-                    receta_c = df_recetas[col0_recetas.str.contains(base_c, na=False, regex=False)]
+                    receta_c = df_recetas[col0_recetas.apply(lambda x: base_c in x)]
+                
                 prods_f = []
                 for idx, row in receta_c.iterrows():
                     p = str(row.iloc[1]).upper().strip()
@@ -742,7 +753,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 c_p_i, c_c_i = 8, 9
 
                 for i in range(5):
-                    r_c = df_cfg.iloc[i].astype(str).str.upper().tolist()
+                    r_c = df_cfg.iloc[i].apply(lambda x: str(x).upper()).tolist()
                     if 'PRODUCTO' in r_c and 'COSTO' in r_c:
                         c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
                         break
@@ -750,9 +761,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 for item in prods_f:
                     p, d = item["PRODUCTO"], item["DOSIS"]
 
-                    mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                    mask = df_cfg.iloc[:, c_p_i].apply(lambda x: str(x).upper().strip()) == p
                     if not mask.any() and "NEMATICIDA" in p:
-                        mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
+                        mask = df_cfg.iloc[:, c_p_i].apply(lambda x: "NEMATI" in str(x).upper())
                         if mask.any():
                             p = df_cfg[mask].iloc[0, c_p_i]
 
@@ -864,7 +875,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     if pedido_sap and 'df_pedidos' in st.session_state:
         df_p = st.session_state['df_pedidos']
-        match_sap = df_p[df_p.astype(str).apply(lambda x: x.str.contains(str(pedido_sap).strip())).any(axis=1)]
+        # 💥 SOLUCIÓN DE CADENA .STR (LAMBDA A PRUEBA DE FALLOS)
+        match_sap = df_p[df_p.apply(lambda row: any(str(pedido_sap).strip() in str(val) for val in row), axis=1)]
 
         if not match_sap.empty:
             try:
@@ -964,7 +976,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     # 💥 FRANCOTIRADOR 1: TARIFAS BASE (con caché para no golpear la API en cada clic)
     try:
         df_cfg_puro = obtener_configuracion_cruda_cached()
-        col_a = df_cfg_puro[0].astype(str).str.strip().str.upper()
+        # 💥 SOLUCIÓN DE CADENA .STR
+        col_a = df_cfg_puro[0].apply(lambda x: str(x).strip().upper())
         fila_productor = df_cfg_puro[col_a == tipo_productor]
         
         if not fila_productor.empty:
@@ -979,7 +992,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
         st.warning(f"⚠️ Tarifas para «{tipo_productor}» en cero. Usando valores por defecto.")
 
-    # 💥 CÁLCULO DE CICLOS EN VIVO, CERO CONDICIONALES ESTANCADOS
     dias_ciclo_calc = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
 
     datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
@@ -1003,7 +1015,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     match_ped = pd.DataFrame()
 
     if not df_ped.empty and num_pedido != "S/N":
-        match_ped = df_ped[df_ped.astype(str).apply(lambda x: x.str.contains(num_pedido)).any(axis=1)]
+        # 💥 SOLUCIÓN DE CADENA .STR (LAMBDA A PRUEBA DE FALLOS)
+        match_ped = df_ped[df_ped.apply(lambda row: any(num_pedido in str(val) for val in row), axis=1)]
         if not match_ped.empty:
             texto_pedido = match_ped.to_string().upper()
             for p_val in lista_pistas_validas:
@@ -1179,7 +1192,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 nombre_p = f"Item {cod_item}"
                 if not df_sab.empty:
-                    df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
+                    # 💥 SOLUCIÓN DE CADENA .STR
+                    df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
                     match_sabana = df_sab[df_sab_col0_clean == cod_item]
                     if not match_sabana.empty:
                         col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
@@ -1198,7 +1212,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
 
             if not df_sab.empty:
-                df_sab_col0_clean = df_sab.iloc[:, 0].astype(str).str.split('.').str[0].str.strip().str.upper().str.lstrip('0')
+                # 💥 SOLUCIÓN DE CADENA .STR
+                df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
             else:
                 df_sab_col0_clean = pd.Series(dtype=str)
 
@@ -1213,7 +1228,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                     if not match_sabana_global.empty:
                         if idx_almacen != -1:
-                            match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)]
+                            # 💥 SOLUCIÓN DE CADENA .STR
+                            match_pista_precio = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].apply(lambda x: str(pista_sel).strip().upper() in str(x).strip().upper())]
                         else:
                             match_pista_precio = match_sabana_global
 
@@ -1230,7 +1246,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                     costo_unit = v_t / c_t
 
                         if idx_almacen != -1:
-                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].astype(str).str.strip().str.upper().str.contains(str(pista_sel).strip().upper(), na=False)] 
+                            # 💥 SOLUCIÓN DE CADENA .STR
+                            match_pista = match_sabana_global[match_sabana_global.iloc[:, idx_almacen].apply(lambda x: str(pista_sel).strip().upper() in str(x).strip().upper())] 
                         else:
                             match_pista = match_sabana_global
 
@@ -1241,16 +1258,15 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             if idx_saldo != -1:
                                 saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
-                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS (Extracción pura)
+                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS
                 try:
                     if 'df_cfg_puro' in locals():
                         nombre_buscado = nombre_p.upper().strip()
-                        # Buscar producto exclusivamente en la Columna I (índice 8)
-                        col_i = df_cfg_puro[8].astype(str).str.strip().str.upper()
+                        # 💥 SOLUCIÓN DE CADENA .STR
+                        col_i = df_cfg_puro[8].apply(lambda x: str(x).strip().upper())
                         match_precio = df_cfg_puro[col_i == nombre_buscado]
                         
                         if not match_precio.empty:
-                            # Extraer costo exclusivamente de la Columna J (índice 9)
                             precio_maestro = limpiar_dinero(match_precio.iloc[0, 9])
                             if precio_maestro > 0:
                                 costo_unit = float(precio_maestro)
@@ -1283,7 +1299,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
-                # 🎯 EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG (VALIDACIÓN SAP)
                 precio_marginado_final = costo_unit * mult_material
                 precio_marginado_final = aplicar_excepcion_manzate(precio_marginado_final, f"{nombre_limpio} {nombre_p}", tipo_productor)
 
