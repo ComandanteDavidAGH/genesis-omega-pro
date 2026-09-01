@@ -1021,6 +1021,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc
     st.session_state.finca_anterior = finca_sel
     st.session_state.fecha_sim_mem = fecha_operacion
+    llave_cobro_track = f"cob_track_{casilla_key}"
+    if st.session_state.get(llave_cobro_track) != dias_ciclo_calc:
+        st.session_state[llave_cobro] = int(dias_ciclo_calc)
+        st.session_state[llave_cobro_track] = dias_ciclo_calc
     datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
     datos_raw = datos_vuelo.get('DATOS_FILA', {})
 
