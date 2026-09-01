@@ -1163,6 +1163,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         costo_mezcla_total = 0.0
 
         if not match_ped.empty:
+            if df_sab.empty:
+                st.error("🚨 **CAUSA RAÍZ DETECTADA:** La hoja 'sábana' de precios (`df_sabana`) está vacía en memoria. Por eso todos los productos aparecen como 'Item XXXX' con Costo Unit = 0 y Dosis = 0. Ve al módulo **'5. Sincronización Precios'** (o el que cargue `st.session_state['df_sabana']`) y ejecútalo antes de validar esta misión.")
+
             idx_precio, idx_lote, idx_saldo, idx_almacen = -1, -1, -1, -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
