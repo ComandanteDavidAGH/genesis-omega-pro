@@ -173,8 +173,6 @@ def _extraer_fechas_de_tabla(df_temp, f_obj_alpha, fechas_encontradas):
 
     fincas_alpha = df_temp[col_f].astype(str).str.upper().apply(lambda x: re.sub(r'[^A-Z0-9]', '', x))
 
-    # 🛡️ CASCADA DE SEGURIDAD: exacto primero, luego "empieza con",
-    # y "contiene" solo como último recurso (evita mezclar fincas con nombres parecidos)
     mask = fincas_alpha == f_obj_alpha
     if not mask.any():
         mask = fincas_alpha.str.startswith(f_obj_alpha, na=False)
@@ -369,7 +367,7 @@ def emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base):
                     match_receta = True
                     error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15) 
                     if error <= 0.05: match_perfecto = True; dose_matched = True
-                    elif error <= tolerancia: dose_matched = True 
+                    elif error <= tolerancia: dose_matched = True  
                     break
             
             if match_receta:
@@ -434,7 +432,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black'; }
     div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { border: 3px solid #143521 !important; border-radius: 8px !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.1) !important; overflow: hidden !important; }
     
-    /* 💥 Envoltorios con borde grueso (Ahora sí captura al calendario) */
+    /* 💥 Envoltorios con borde grueso */
     div[data-testid="stSelectbox"] > div > div, 
     div[data-testid="stSelectbox"] div[data-baseweb="select"], 
     div[data-testid="stTextInput"] > div, 
@@ -491,7 +489,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         </div>
         """
 
-    # 💥 CABECERA LIMPIA Y BLINDADA
     col_tit_principal, col_btn_master = st.columns([3.5, 1.2])
     with col_tit_principal:
         st.markdown("<h1 class='titulo-principal'>Análisis de Validación y Facturación</h1>", unsafe_allow_html=True)
@@ -588,42 +585,28 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             lista_fincas = ["NUEVO MUNDO"]
         lista_productores = ["SOCIO", "AGRICOLA", "AFILIADO", "TERCERO", "ORGANICO", "COOPERATIVA"]
 
-        if 'finca_anterior_sim' not in st.session_state:
-            st.session_state.finca_anterior_sim = lista_fincas[0]
-            st.session_state.idx_prod_sim = 3
-
-        if 'fecha_sim_mem' not in st.session_state:
-            st.session_state.fecha_sim_mem = datetime.now().date()
-
-        if 'dias_ciclo_sim_mem' not in st.session_state:
-            st.session_state.dias_ciclo_sim_mem = 14
-
         with st.container(border=True):
             st.markdown("#### 📝 Parámetros de la Operación")
             cs1, cs3, cs4 = st.columns(3)
             coctel_sim = cs1.text_input("🧪 Cóctel (Ej: IN6 ZN)", value="IN6")
             finca_sim = cs3.selectbox("🏡 Finca", lista_fincas)
 
-            if finca_sim != st.session_state.finca_anterior_sim:
-                datos = diccionario_fincas.get(finca_sim, {})
-                if datos.get("Productor") in lista_productores:
-                    st.session_state.idx_prod_sim = lista_productores.index(datos.get("Productor"))
+            idx_prod_sim = 3
+            datos = diccionario_fincas.get(finca_sim, {})
+            if datos.get("Productor") in lista_productores:
+                idx_prod_sim = lista_productores.index(datos.get("Productor"))
 
-            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=st.session_state.idx_prod_sim)
+            tipo_prod_sim = cs4.selectbox("🧑‍🌾 Productor (Márgenes)", lista_productores, index=idx_prod_sim)
 
             c_f4_sim, _ = st.columns([1, 3])
-            fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_eval_sim_key")
-
-            if (finca_sim != st.session_state.finca_anterior_sim) or (fecha_eval_sim != st.session_state.fecha_sim_mem):
-                st.session_state.dias_ciclo_sim_mem = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
-                st.session_state.finca_anterior_sim = finca_sim
-                st.session_state.fecha_sim_mem = fecha_eval_sim
-                st.rerun()
+            
+            fecha_eval_sim = c_f4_sim.date_input("📅 Fecha de Misión (Cálculo de Ciclos y Tarifas)", value=hoy_colombia_date, format="DD/MM/YYYY")
+            dias_ciclo_sim_calc = calcular_dias_ciclo_real(finca_sim, fecha_eval_sim)
 
             st.markdown("##### 🗺️ Desglose de Áreas y Ciclos (Soporta Finca Partida)")
             st.caption("Por defecto, el sistema asigna el total de hectáreas y el ciclo automático. Si la finca está partida en lotes con diferentes días, edite o añada filas. El ST se cobrará línea por línea.")
 
-            df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(st.session_state.dias_ciclo_sim_mem)}])
+            df_areas_def = pd.DataFrame([{"Hectáreas": float(143.0), "Días Ciclo": int(dias_ciclo_sim_calc)}])
             df_areas_in = st.data_editor(
                 df_areas_def,
                 num_rows="dynamic",
@@ -632,7 +615,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     "Días Ciclo": st.column_config.NumberColumn("⏳ Días Ciclo", min_value=0, step=1)
                 },
                 use_container_width=True,
-                key=f"areas_simulador_{finca_sim}_{st.session_state.fecha_sim_mem}",
+                key=f"areas_sim_{finca_sim}_{fecha_eval_sim}",
                 hide_index=True
             )
 
@@ -908,9 +891,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     c_finca, c_pedido, c_fecha = st.columns([2, 2.2, 1.3])
 
-    if 'fecha_sim_mem' not in st.session_state:
-        st.session_state.fecha_sim_mem = hoy_colombia_date
-
     df_t2 = st.session_state.get('df_config', pd.DataFrame())
 
     col_prod_idx_op, col_tope_idx_op = 5, 6
@@ -942,19 +922,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     vuelo_ref = c_pedido.selectbox("📄 Referencia Pedido/Informe:", ["---"] + lista_origenes)
 
-    if 'mem_trigger' not in st.session_state:
-        st.session_state['mem_trigger'] = f"{finca_sel}_{vuelo_ref}_{pedido_sap}"
-
-    current_trigger = f"{finca_sel}_{vuelo_ref}_{pedido_sap}"
-
-    if st.session_state['mem_trigger'] != current_trigger:
-        st.session_state['mem_trigger'] = current_trigger
-        st.session_state.fecha_sim_mem = hoy_colombia_date
-        if 'fecha_vuelo_master' in st.session_state:
-            del st.session_state['fecha_vuelo_master']
-        st.rerun()
-
-    fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=st.session_state.fecha_sim_mem, format="DD/MM/YYYY", key="fecha_vuelo_master")
+    fecha_operacion = c_fecha.date_input("📅 Fecha de Vuelo", value=hoy_colombia_date, format="DD/MM/YYYY")
     anio_vuelo = str(fecha_operacion.year)
 
     dict_aviones, dict_drones, dict_topes, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo)
@@ -969,8 +937,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         st.stop()
 
     casilla_key = f"{finca_sel}_{vuelo_ref}_{fecha_operacion}"
-    llave_sistema = f"sys_limpio_v2_{casilla_key}"
-    llave_cobro = f"cob_limpio_v2_{casilla_key}"
     llave_editor_casilla = f"editor_valid_{casilla_key}"
     edited_df = pd.DataFrame()
 
@@ -1002,7 +968,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         fila_productor = df_cfg_puro[col_a == tipo_productor]
         
         if not fila_productor.empty:
-            # 💥 COORDENADAS CORREGIDAS SALTANDO LA COLUMNA B (D=3, E=4, G=6)
             mult_material = limpiar_numero_estricto(fila_productor.iloc[0, 3])
             tarifa_serv_tec_base = limpiar_dinero(fila_productor.iloc[0, 4])
             mult_avion_base = limpiar_numero_estricto(fila_productor.iloc[0, 6])
@@ -1014,17 +979,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     if mult_material <= 0 or tarifa_serv_tec_base <= 0 or mult_avion_base <= 0:
         st.warning(f"⚠️ Tarifas para «{tipo_productor}» en cero. Usando valores por defecto.")
 
-    if 'finca_anterior' not in st.session_state: st.session_state.finca_anterior = finca_sel
-    if 'dias_ciclo_sim_mem' not in st.session_state: st.session_state.dias_ciclo_sim_mem = 14
-
+    # 💥 CÁLCULO DE CICLOS EN VIVO, CERO CONDICIONALES ESTANCADOS
     dias_ciclo_calc = calcular_dias_ciclo_real(finca_sel, fecha_operacion)
-    st.session_state.dias_ciclo_sim_mem = dias_ciclo_calc
-    st.session_state.finca_anterior = finca_sel
-    st.session_state.fecha_sim_mem = fecha_operacion
-    llave_cobro_track = f"cob_track_{casilla_key}"
-    if st.session_state.get(llave_cobro_track) != dias_ciclo_calc:
-        st.session_state[llave_cobro] = int(dias_ciclo_calc)
-        st.session_state[llave_cobro_track] = dias_ciclo_calc
+
     datos_vuelo = vuegos_informe[vuegos_informe['ORIGEN'] == vuelo_ref].iloc[0]
     datos_raw = datos_vuelo.get('DATOS_FILA', {})
 
@@ -1084,8 +1041,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         with r1c1:
             st.metric("📅 Ciclo (SISTEMA)", f"{int(dias_ciclo_calc)} días")
         with r1c2:
-            # 💥 LA CURA DEL CERO: Pasamos el 'value' directamente. 
-            # Streamlit lo usará por defecto y el 'key' recordará si lo editas a mano.
+            llave_cobro = f"cob_limpio_v2_{casilla_key}"
             d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), min_value=0, step=1, key=llave_cobro)
         with r1c3:
             ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
