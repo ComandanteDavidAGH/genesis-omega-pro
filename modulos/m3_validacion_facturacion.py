@@ -1025,22 +1025,20 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                # 💥 SOLUCIÓN DE NOMBRES DESDE EL PEDIDO: Garantiza que NO salga "Item 101910"
-                col_desc = [c for c in fila_sap.index if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper() or 'DENOMINA' in str(c).upper()]
+                # 💥 CIRUGÍA 1: Extraer nombre DIRECTAMENTE del pedido SAP cargado
+                col_desc = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['TEXTO', 'DESC', 'DENOMINA', 'NOMBRE'])]
                 if col_desc and str(fila_sap[col_desc[0]]).strip() not in ["", "NAN", "NONE"]:
                     nombre_p = str(fila_sap[col_desc[0]]).strip().upper()
                 else:
                     nombre_p = f"Item {cod_item}"
 
-                # Intento de mejora de nombre con Sábana
-                if not df_sab.empty:
-                    col_mat_sab_cands = [c for c in df_sab.columns if 'MATERIAL' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                    col_mat_sab = col_mat_sab_cands[0] if col_mat_sab_cands else df_sab.columns[0]
-                    df_sab_col_clean = df_sab[col_mat_sab].apply(limpiar_codigo_sap)
-                    match_sabana = df_sab[df_sab_col_clean == cod_item]
+                # Rescate con la sábana si por alguna razón falla el pedido
+                if nombre_p.startswith("Item") and not df_sab.empty:
+                    df_sab_col0_clean = df_sab.iloc[:, 0].apply(limpiar_codigo_sap)
+                    match_sabana = df_sab[df_sab_col0_clean == cod_item]
                     if not match_sabana.empty:
                         col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
-                        if col_nombre_sab and nombre_p.startswith("Item"):
+                        if col_nombre_sab:
                             nombre_p = str(match_sabana.iloc[0][col_nombre_sab[0]]).upper()
 
                 nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
@@ -1096,7 +1094,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             if idx_saldo != -1:
                                 saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
-                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS CON BUSCADOR FLEXIBLE (Adiós $0)
+                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS CON BUSCADOR FLEXIBLE
                 try:
                     if 'df_cfg_puro' in locals() and costo_unit == 0.0:
                         nombre_buscado = nombre_p.upper().strip()
@@ -1105,8 +1103,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         
                         match_precio = df_cfg_puro[col_i == nombre_buscado]
                         
+                        # Si no encuentra el nombre exacto, busca coincidencias flexibles (Ej: "MERLIN 1L" == "MERLIN")
                         if match_precio.empty and len(nombre_buscado_alpha) > 3:
-                            # Buscador Flexible: Encuentra "ZINTRAC 1L" aunque en la base diga "ZINTRAC"
                             match_precio = df_cfg_puro[col_i.apply(lambda x: re.sub(r'[^A-Z0-9]', '', x) in nombre_buscado_alpha or nombre_buscado_alpha in re.sub(r'[^A-Z0-9]', '', x) if len(re.sub(r'[^A-Z0-9]', '', x)) > 3 else False)]
                         
                         if not match_precio.empty:
