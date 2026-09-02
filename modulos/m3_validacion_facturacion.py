@@ -528,7 +528,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
     
-    # 💥 INICIO CIRUGÍA: Calculadora Neta Multi-Avión
+    # 💥 INICIO CIRUGÍA: Calculadora Neta Multi-Avión (Aislada y Formateada)
     modo_calc_neta = st.toggle("🧮 ACTIVAR CALCULADORA NETA MULTI-AVIÓN (Sin Margen)")
     if modo_calc_neta:
         st.info("💡 **CALCULADORA NETA:** Útil para calcular rápidamente los costos operativos puros (sin márgenes de facturación) cuando varios aviones trabajan en un mismo bloque.")
@@ -580,9 +580,25 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     res2.metric("🎯 Promedio Neto / Ha", f"$ {(total_neto/total_ha):,.0f}".replace(",", "."))
                     res3.metric("💰 COSTO NETO TOTAL", f"$ {total_neto:,.0f}".replace(",", "."))
                     
-                    st.dataframe(pd.DataFrame(detalles).style.format({"Tarifa Neta / Ha": "$ {:,.0f}", "Costo Total Neto": "$ {:,.0f}"}), use_container_width=True, hide_index=True)
+                    # 💥 CIRUGÍA: Tabla estilizada profesionalmente con 2 decimales y formato COP
+                    df_detalles = pd.DataFrame(detalles)
+                    st.dataframe(
+                        df_detalles, 
+                        use_container_width=True, 
+                        hide_index=True,
+                        column_config={
+                            "Aeronave": st.column_config.TextColumn("🛩️ Aeronave"),
+                            "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", format="%.2f"),
+                            "Horómetro": st.column_config.NumberColumn("⏱️ Horómetro", format="%.2f"),
+                            "Tarifa Neta / Ha": st.column_config.NumberColumn("🏷️ Tarifa Neta / Ha", format="$ %.0f"),
+                            "Costo Total Neto": st.column_config.NumberColumn("💰 Costo Total Neto", format="$ %.0f")
+                        }
+                    )
                 else:
                     st.warning("⚠️ Agrega aeronaves válidas en la tabla.")
+        
+        # 💥 CIRUGÍA: Aislamiento total. Detiene la ejecución para no dibujar el resto del módulo.
+        st.stop()
     # 💥 FIN CIRUGÍA
 
     if modo_simulacro:
