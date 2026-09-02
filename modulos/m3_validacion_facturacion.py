@@ -1015,7 +1015,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 if "459" in texto_material or "429" in texto_material:
                     continue
 
-                cod_item = limpiar_codigo_sap(texto_material)
+                cod_item = texto_material.split('.')[0].lstrip('0')
 
                 col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
                 if col_cant_real:
@@ -1025,16 +1025,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
-                # 💥 CIRUGÍA 1: Extraer nombre DIRECTAMENTE del pedido SAP cargado
-                col_desc = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['TEXTO', 'DESC', 'DENOMINA', 'NOMBRE'])]
-                if col_desc and str(fila_sap[col_desc[0]]).strip() not in ["", "NAN", "NONE"]:
-                    nombre_p = str(fila_sap[col_desc[0]]).strip().upper()
-                else:
-                    nombre_p = f"Item {cod_item}"
-
-                # Rescate con la sábana si por alguna razón falla el pedido
-                if nombre_p.startswith("Item") and not df_sab.empty:
-                    df_sab_col0_clean = df_sab.iloc[:, 0].apply(limpiar_codigo_sap)
+                nombre_p = f"Item {cod_item}"
+                if not df_sab.empty:
+                    # 💥 TU LÓGICA ORIGINAL (Blindada con Lambda para evitar el AttributeError)
+                    df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
                     match_sabana = df_sab[df_sab_col0_clean == cod_item]
                     if not match_sabana.empty:
                         col_nombre_sab = [c for c in match_sabana.columns if 'TEXTO' in str(c).upper() or 'DESC' in str(c).upper()]
@@ -1052,6 +1046,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             else:
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
 
+            if not df_sab.empty:
+                # 💥 TU LÓGICA ORIGINAL RESTAURADA
+                df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
+            else:
+                df_sab_col0_clean = pd.Series(dtype=str)
+
             matriz_datos = []
             for item_data in datos_extraidos_sap:
                 cod_item = str(item_data['cod']).strip().upper().lstrip('0')
@@ -1059,10 +1059,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 costo_unit, lote_sap, saldo_sap = 0.0, "SIN LOTE EN PISTA", 0.0
 
                 if not df_sab.empty:
-                    col_mat_sab_cands = [c for c in df_sab.columns if 'MATERIAL' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                    col_mat_sab = col_mat_sab_cands[0] if col_mat_sab_cands else df_sab.columns[0]
-                    df_sab_col_clean = df_sab[col_mat_sab].apply(limpiar_codigo_sap)
-                    match_sabana_global = df_sab[df_sab_col_clean == cod_item]
+                    match_sabana_global = df_sab[df_sab_col0_clean == cod_item]
 
                     if not match_sabana_global.empty:
                         if idx_almacen != -1:
@@ -1094,26 +1091,21 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             if idx_saldo != -1:
                                 saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
-                # 💥 FRANCOTIRADOR 2: PRECIOS UNITARIOS CON BUSCADOR FLEXIBLE
+                # 💥 FRANCOTIRADOR 2: TU EXTRACCIÓN PURA ORIGINAL
                 try:
-                    if 'df_cfg_puro' in locals() and costo_unit == 0.0:
+                    if 'df_cfg_puro' in locals():
                         nombre_buscado = nombre_p.upper().strip()
-                        nombre_buscado_alpha = re.sub(r'[^A-Z0-9]', '', nombre_buscado)
+                        # Buscar producto exclusivamente en la Columna I (índice 8)
                         col_i = df_cfg_puro[8].apply(lambda x: str(x).strip().upper())
-                        
                         match_precio = df_cfg_puro[col_i == nombre_buscado]
                         
-                        # Si no encuentra el nombre exacto, busca coincidencias flexibles (Ej: "MERLIN 1L" == "MERLIN")
-                        if match_precio.empty and len(nombre_buscado_alpha) > 3:
-                            match_precio = df_cfg_puro[col_i.apply(lambda x: re.sub(r'[^A-Z0-9]', '', x) in nombre_buscado_alpha or nombre_buscado_alpha in re.sub(r'[^A-Z0-9]', '', x) if len(re.sub(r'[^A-Z0-9]', '', x)) > 3 else False)]
-                        
                         if not match_precio.empty:
+                            # Extraer costo exclusivamente de la Columna J (índice 9)
                             precio_maestro = limpiar_dinero(match_precio.iloc[0, 9])
                             if precio_maestro > 0:
                                 costo_unit = float(precio_maestro)
                 except Exception:
                     pass
-
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
