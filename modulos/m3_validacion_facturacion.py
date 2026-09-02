@@ -527,6 +527,63 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     df_tarifas_maestras = cargar_matriz_tarifas_mod3()
 
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
+    
+    # 💥 INICIO CIRUGÍA: Calculadora Neta Multi-Avión
+    modo_calc_neta = st.toggle("🧮 ACTIVAR CALCULADORA NETA MULTI-AVIÓN (Sin Margen)")
+    if modo_calc_neta:
+        st.info("💡 **CALCULADORA NETA:** Útil para calcular rápidamente los costos operativos puros (sin márgenes de facturación) cuando varios aviones trabajan en un mismo bloque.")
+        with st.container(border=True):
+            st.markdown("#### ⚙️ Parámetros de Cálculo")
+            c_cn1, c_cn2 = st.columns(2)
+            calc_fecha = c_cn1.date_input("📅 Fecha de Misión (Extrae Tarifas)", value=hoy_colombia_date, key="calc_fecha")
+            calc_pista = c_cn2.selectbox("🛣️ Pista Base (Para Topes)", PISTAS_VALIDAS, key="calc_pista")
+            
+            calc_dict_av, _, calc_dict_topes, _ = extraer_tarifas_dinamicas(df_tarifas_maestras, str(calc_fecha.year))
+            
+            calc_tope_sel = st.radio("🚧 Aplicar Tope Tarifario Automático:", ["TOPE MAX GENERAL", "TOPE SUR", "TOPE PARCELA INTER < 20HA", "SIN TOPE"], horizontal=True, key="calc_tope_sel")
+            val_tope_calc = 999999
+            if calc_tope_sel != "SIN TOPE":
+                val_tope_calc = calc_dict_topes.get(calc_tope_sel, {}).get(calc_pista, 999999)
+                if val_tope_calc == 0: val_tope_calc = 999999
+            
+            st.markdown("#### 🛩️ Hangar de Aviones (Multi-Flota)")
+            df_calc_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
+            calc_aviones = st.data_editor(df_calc_def, key="calc_aviones_multi", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(calc_dict_av.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+            
+            if st.button("⚡ CALCULAR COSTO NETO", type="primary", use_container_width=True, key="btn_calc_neta"):
+                total_neto = 0.0
+                total_ha = 0.0
+                detalles = []
+                for _, row in calc_aviones.iterrows():
+                    av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
+                    if pd.isna(av_sel) or pd.isna(ha_av) or pd.isna(horo) or float(ha_av) <= 0: continue
+                    
+                    ha_av, horo = float(ha_av), float(horo)
+                    tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_av
+                    tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
+                    
+                    costo_linea = tarifa_base_tope * ha_av
+                    total_neto += costo_linea
+                    total_ha += ha_av
+                    detalles.append({
+                        "Aeronave": av_sel, 
+                        "Hectáreas": ha_av, 
+                        "Horómetro": horo, 
+                        "Tarifa Neta / Ha": tarifa_base_tope, 
+                        "Costo Total Neto": costo_linea
+                    })
+                
+                if total_ha > 0:
+                    st.markdown("---")
+                    res1, res2, res3 = st.columns(3)
+                    res1.metric("🗺️ Hectáreas Totales", f"{total_ha:.2f} Ha")
+                    res2.metric("🎯 Promedio Neto / Ha", f"$ {(total_neto/total_ha):,.0f}".replace(",", "."))
+                    res3.metric("💰 COSTO NETO TOTAL", f"$ {total_neto:,.0f}".replace(",", "."))
+                    
+                    st.dataframe(pd.DataFrame(detalles).style.format({"Tarifa Neta / Ha": "$ {:,.0f}", "Costo Total Neto": "$ {:,.0f}"}), use_container_width=True, hide_index=True)
+                else:
+                    st.warning("⚠️ Agrega aeronaves válidas en la tabla.")
+    # 💥 FIN CIRUGÍA
 
     if modo_simulacro:
         st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico de Tarifas.")
