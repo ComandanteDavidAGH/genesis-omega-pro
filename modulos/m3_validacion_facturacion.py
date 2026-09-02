@@ -766,12 +766,15 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     idx_finca = 0
     if finca_sap:
-        # 💥 CIRUGÍA: Extracción estricta del nombre (Ej: "FABLISKA / AGRO..." -> Solo "FABLISKA")
+        # 💥 CIRUGÍA: Extracción de nombre blindada contra la opción vacía "---"
         finca_sap_corta = finca_sap.split('/')[0].strip()
+        fsap_limpia = re.sub(r'[^A-Z0-9]', '', finca_sap_corta.upper())
         for i, f in enumerate(opciones_finca):
+            if f == "---": 
+                continue # 🔥 Evitamos que el texto vacío cause un falso positivo
+                
             f_limpia = re.sub(r'[^A-Z0-9]', '', f.upper())
-            fsap_limpia = re.sub(r'[^A-Z0-9]', '', finca_sap_corta)
-            if fsap_limpia and (f_limpia in fsap_limpia or fsap_limpia in f_limpia):
+            if f_limpia and fsap_limpia and (f_limpia in fsap_limpia or fsap_limpia in f_limpia):
                 idx_finca = i
                 break
 
