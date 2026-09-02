@@ -579,23 +579,31 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 
                 if total_ha > 0:
                     st.markdown("---")
+                    st.caption("🟡 **ESCENARIO ACTUAL (TARIFA BASE 8%)**")
                     res1, res2, res3 = st.columns(3)
                     res1.metric("🗺️ Hectáreas Totales", f"{total_ha:.2f} Ha")
                     res2.metric("🎯 Promedio Neto / Ha", f"$ {(total_neto/total_ha):,.0f}".replace(",", "."))
                     res3.metric("💰 COSTO NETO TOTAL", f"$ {total_neto:,.0f}".replace(",", "."))
                     
-                    # 💥 CIRUGÍA: Descompone el 8% incluido en tarifa y proyecta el 11%
+                    # 💥 CIRUGÍA: Clona exactamente la misma vista pero al 11%
                     if simular_aeropenort:
                         costo_11 = (total_neto / 1.08) * 1.11
-                        ganancia_extra = costo_11 - total_neto
+                        promedio_11 = costo_11 / total_ha
                         
-                        st.markdown("<div style='margin-top:15px; padding:15px; border-radius:8px; border:2px solid #0d1b2a; background-color:#f8f9fa;'>", unsafe_allow_html=True)
-                        st.markdown("<h4 style='color:#0d1b2a; margin-top:0;'>🏢 Comparativa Comercial AEROPENORT</h4>", unsafe_allow_html=True)
-                        cp1, cp2, cp3 = st.columns(3)
-                        cp1.metric("🟡 Costo Base Tarifa (8%)", f"$ {total_neto:,.0f}".replace(",", "."))
-                        cp2.metric("🟢 Proyección Margen (11%)", f"$ {costo_11:,.0f}".replace(",", "."))
-                        cp3.metric("🚀 Diferencia a Favor", f"+ $ {ganancia_extra:,.0f}".replace(",", "."))
-                        st.markdown("</div><br>", unsafe_allow_html=True)
+                        ganancia_extra = costo_11 - total_neto
+                        dif_promedio = promedio_11 - (total_neto / total_ha)
+                        
+                        # Formateo de los deltas (Indicadores verdes)
+                        delta_promedio = f"{dif_promedio:,.0f}".replace(",", ".")
+                        delta_total = f"{ganancia_extra:,.0f}".replace(",", ".")
+                        
+                        st.markdown("---")
+                        st.caption("🟢 **PROYECCIÓN AEROPENORT (TARIFA 11%)**")
+                        res4, res5, res6 = st.columns(3)
+                        res4.metric("🗺️ Hectáreas Totales", f"{total_ha:.2f} Ha")
+                        res5.metric("🎯 Promedio Neto / Ha", f"$ {promedio_11:,.0f}".replace(",", "."), f"{delta_promedio} / Ha")
+                        res6.metric("💰 COSTO NETO TOTAL", f"$ {costo_11:,.0f}".replace(",", "."), f"{delta_total} Extra")
+                        st.markdown("<br>", unsafe_allow_html=True)
 
                     df_detalles = pd.DataFrame(detalles)
                     st.dataframe(
