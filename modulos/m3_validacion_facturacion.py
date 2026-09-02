@@ -550,6 +550,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             df_calc_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
             calc_aviones = st.data_editor(df_calc_def, key="calc_aviones_multi", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(calc_dict_av.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
             
+            # 💥 CIRUGÍA: Interruptor de Proyección Aeropenort (Matemática Ajustada)
+            simular_aeropenort = st.toggle("🏢 Proyección AEROPENORT (Comparativa 8% vs 11%)")
+            st.markdown("<br>", unsafe_allow_html=True)
+
             if st.button("⚡ CALCULAR COSTO NETO", type="primary", use_container_width=True, key="btn_calc_neta"):
                 total_neto = 0.0
                 total_ha = 0.0
@@ -580,7 +584,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     res2.metric("🎯 Promedio Neto / Ha", f"$ {(total_neto/total_ha):,.0f}".replace(",", "."))
                     res3.metric("💰 COSTO NETO TOTAL", f"$ {total_neto:,.0f}".replace(",", "."))
                     
-                    # 💥 CIRUGÍA: Tabla estilizada profesionalmente con 2 decimales y formato COP
+                    # 💥 CIRUGÍA: Descompone el 8% incluido en tarifa y proyecta el 11%
+                    if simular_aeropenort:
+                        costo_11 = (total_neto / 1.08) * 1.11
+                        ganancia_extra = costo_11 - total_neto
+                        
+                        st.markdown("<div style='margin-top:15px; padding:15px; border-radius:8px; border:2px solid #0d1b2a; background-color:#f8f9fa;'>", unsafe_allow_html=True)
+                        st.markdown("<h4 style='color:#0d1b2a; margin-top:0;'>🏢 Comparativa Comercial AEROPENORT</h4>", unsafe_allow_html=True)
+                        cp1, cp2, cp3 = st.columns(3)
+                        cp1.metric("🟡 Costo Base Tarifa (8%)", f"$ {total_neto:,.0f}".replace(",", "."))
+                        cp2.metric("🟢 Proyección Margen (11%)", f"$ {costo_11:,.0f}".replace(",", "."))
+                        cp3.metric("🚀 Diferencia a Favor", f"+ $ {ganancia_extra:,.0f}".replace(",", "."))
+                        st.markdown("</div><br>", unsafe_allow_html=True)
+
                     df_detalles = pd.DataFrame(detalles)
                     st.dataframe(
                         df_detalles, 
