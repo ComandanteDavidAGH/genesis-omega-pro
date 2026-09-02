@@ -1065,31 +1065,69 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                             
                         buffer_sim = io.BytesIO()
                         with pd.ExcelWriter(buffer_sim, engine='openpyxl') as writer:
-                            df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False)
-                            df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False)
+                            # 💥 CIRUGÍA: Desplazamos la tabla a la fila 4 para dejar espacio al mega-encabezado
+                            df_semanal.to_excel(writer, sheet_name='Resumen_Semanal', index=False, startrow=3)
+                            df_resultados.to_excel(writer, sheet_name='Detalle_OS', index=False, startrow=3)
+                            
                             workbook = writer.book
                             borde_fino = Border(left=Side(style='thin', color='D1D1D1'), right=Side(style='thin', color='D1D1D1'), top=Side(style='thin', color='D1D1D1'), bottom=Side(style='thin', color='D1D1D1'))
-                            fondo_header = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                            fuente_header = Font(color="FFFFFF", bold=True, size=11)
+                            
+                            # Paleta VIP extraída de tu imagen de referencia
+                            fondo_titulo = PatternFill(start_color="001529", end_color="001529", fill_type="solid")
+                            fondo_header_dorado = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                            fuente_titulo = Font(color="FFFFFF", bold=True, size=13)
+                            fuente_sub = Font(italic=True, size=11, color="333333")
+                            fuente_header_negra = Font(color="000000", bold=True, size=11)
+                            
+                            # Diccionario para meses en español
+                            meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+                            rango_fechas = f"Período Analizado: {sim_fecha_inicio.day} de {meses[sim_fecha_inicio.month]} {sim_fecha_inicio.year} ⇌ {sim_fecha_fin.day} de {meses[sim_fecha_fin.month]} {sim_fecha_fin.year}"
+                            
                             for sheet_name in ['Resumen_Semanal', 'Detalle_OS']:
                                 ws = writer.sheets[sheet_name]
                                 ws.sheet_view.showGridLines = False
                                 max_row = ws.max_row
                                 max_col = ws.max_column
+                                
+                                # 1. Construir Encabezado Gerencial (Filas 1 y 2 combinadas)
+                                titulo_reporte = "REPORTE GERENCIAL - SIMULADOR" if sheet_name == "Resumen_Semanal" else "REPORTE GERENCIAL - DETALLE OPERATIVO"
+                                ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=max_col)
+                                cell_tit = ws.cell(row=1, column=1, value=titulo_reporte)
+                                cell_tit.fill = fondo_titulo
+                                cell_tit.font = fuente_titulo
+                                cell_tit.alignment = Alignment(horizontal='center', vertical='center')
+                                
+                                # 2. Construir Subtítulo de fechas (Fila 3)
+                                ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=max_col)
+                                cell_sub = ws.cell(row=3, column=1, value=rango_fechas)
+                                cell_sub.font = fuente_sub
+                                cell_sub.alignment = Alignment(horizontal='left', vertical='center')
+                                
+                                # Ajuste de columnas
                                 for col_idx in range(1, max_col + 1):
                                     letra = openpyxl.utils.get_column_letter(col_idx)
-                                    ws.column_dimensions[letra].width = 20
-                                for row in ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
+                                    ws.column_dimensions[letra].width = 22
+                                
+                                # 3. Formateo de la tabla de datos (A partir de la fila 4)
+                                for row in ws.iter_rows(min_row=4, max_row=max_row, min_col=1, max_col=max_col):
                                     for cell in row:
                                         cell.border = borde_fino
-                                        if cell.row == 1:
-                                            cell.fill = fondo_header; cell.font = fuente_header; cell.alignment = Alignment(horizontal='center', vertical='center')
+                                        if cell.row == 4:
+                                            # Cabeceras de columnas en Dorado
+                                            cell.fill = fondo_header_dorado
+                                            cell.font = fuente_header_negra
+                                            cell.alignment = Alignment(horizontal='center', vertical='center')
                                         else:
-                                            cell.alignment = Alignment(vertical='center'); col_name = str(ws.cell(row=1, column=cell.column).value).upper()
+                                            cell.alignment = Alignment(vertical='center')
+                                            col_name = str(ws.cell(row=4, column=cell.column).value).upper()
                                             if isinstance(cell.value, (int, float)):
-                                                if "TOTAL" in col_name or "DIFERENCIA" in col_name or "TARIFA" in col_name: cell.number_format = '"$" #,##0' 
-                                                elif "HECT" in col_name: cell.number_format = '#,##0.00' 
-                                                elif "SEMANA" in col_name: cell.number_format = '0'; cell.alignment = Alignment(horizontal='center', vertical='center')
+                                                if "TOTAL" in col_name or "DIFERENCIA" in col_name or "TARIFA" in col_name: 
+                                                    cell.number_format = '"$" #,##0' 
+                                                elif "HECT" in col_name: 
+                                                    cell.number_format = '#,##0.00' 
+                                                elif "SEMANA" in col_name: 
+                                                    cell.number_format = '0'
+                                                    cell.alignment = Alignment(horizontal='center', vertical='center')
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL VIP)", data=buffer_sim.getvalue(), file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
