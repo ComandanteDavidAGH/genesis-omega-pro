@@ -720,14 +720,15 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
         if not match_sap.empty:
             try:
-                col_finca_cands = [c for c in df_p.columns if any(x in str(c).upper() for x in ['FINCA', 'CLIENTE', 'DESTINATARIO', 'NOMBRE', 'SOLICITANTE'])]
-                col_finca = col_finca_cands[0] if col_finca_cands else df_p.columns[8]
+                # 💥 CIRUGÍA: Corrección de df_p a df_ped (esto causaba el fallo silencioso)
+                col_finca_cands = [c for c in df_ped.columns if any(x in str(c).upper() for x in ['FINCA', 'CLIENTE', 'DESTINATARIO', 'NOMBRE', 'SOLICITANTE'])]
+                col_finca = col_finca_cands[0] if col_finca_cands else df_ped.columns[8]
 
-                col_ha_cands = [c for c in df_p.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
-                col_ha = col_ha_cands[0] if col_ha_cands else df_p.columns[6]
+                col_ha_cands = [c for c in df_ped.columns if 'CANT' in str(c).upper() or 'HECT' in str(c).upper()]
+                col_ha = col_ha_cands[0] if col_ha_cands else df_ped.columns[6]
 
-                col_mat_cands = [c for c in df_p.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                col_mat = col_mat_cands[0] if col_mat_cands else df_p.columns[5]
+                col_mat_cands = [c for c in df_ped.columns if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
+                col_mat = col_mat_cands[0] if col_mat_cands else df_ped.columns[5]
 
                 finca_sap = str(match_sap.iloc[0][col_finca]).strip().upper()
                 ha_correcta = 0.0
@@ -738,8 +739,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         break
 
                 st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else limpiar_numero_estricto(match_sap.iloc[0][col_ha])
-                st.success(f"✅ **SAP CONFIRMADO:** {finca_sap} | {st.session_state['ha_radar_sap']} Ha")
             except Exception: pass
+
+    # 💥 CIRUGÍA: Mostrar el banner de SAP arriba de los selectores de forma elegante
+    if finca_sap:
+        st.info(f"✅ **DATOS SAP DETECTADOS:** Finca: **{finca_sap}** | Hectáreas Dosis: **{st.session_state['ha_radar_sap']} Ha**")
 
     c_finca, c_pedido, c_fecha = st.columns([2, 2.2, 1.3])
 
@@ -762,8 +766,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     idx_finca = 0
     if finca_sap:
+        # 💥 CIRUGÍA: Extracción estricta del nombre (Ej: "FABLISKA / AGRO..." -> Solo "FABLISKA")
+        finca_sap_corta = finca_sap.split('/')[0].strip()
         for i, f in enumerate(opciones_finca):
-            if f.upper() in finca_sap or finca_sap in f.upper():
+            f_limpia = re.sub(r'[^A-Z0-9]', '', f.upper())
+            fsap_limpia = re.sub(r'[^A-Z0-9]', '', finca_sap_corta)
+            if fsap_limpia and (f_limpia in fsap_limpia or fsap_limpia in f_limpia):
                 idx_finca = i
                 break
 
