@@ -528,103 +528,141 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
     
-    # 💥 INICIO CIRUGÍA: Calculadora Neta Multi-Avión (Aislada y Formateada)
+    # 💥 INICIO CIRUGÍA: Calculadora Inteligente Smart Split (Distribución por Galones + Topes Independientes)
     modo_calc_neta = st.toggle("🧮 ACTIVAR CALCULADORA NETA MULTI-AVIÓN (Sin Margen)")
     if modo_calc_neta:
-        st.info("💡 **CALCULADORA NETA:** Útil para calcular rápidamente los costos operativos puros (sin márgenes de facturación) cuando varios aviones trabajan en un mismo bloque.")
+        st.info("💡 **ORÁCULO SMART SPLIT:** Ingresa el total de hectáreas de la misión y los galones aplicados por avión. El sistema distribuirá matemáticamente el área y aplicará la regla tarifaria seleccionada línea por línea.")
         with st.container(border=True):
-            st.markdown("#### ⚙️ Parámetros de Cálculo")
-            c_cn1, c_cn2 = st.columns(2)
-            calc_fecha = c_cn1.date_input("📅 Fecha de Misión (Extrae Tarifas)", value=hoy_colombia_date, key="calc_fecha")
-            calc_pista = c_cn2.selectbox("🛣️ Pista Base (Para Topes)", PISTAS_VALIDAS, key="calc_pista")
+            st.markdown("#### ⚙️ Parámetros Globales de la Misión")
+            c_cn1, c_cn2, c_cn3 = st.columns(3)
+            calc_fecha = c_cn1.date_input("📅 Fecha de Misión", value=hoy_colombia_date, key="calc_fecha")
+            calc_pista = c_cn2.selectbox("🛣️ Pista Base", PISTAS_VALIDAS, key="calc_pista")
+            calc_ha_global = c_cn3.number_input("🗺️ Total Hectáreas Misión", min_value=0.0, value=0.0, format="%.2f", key="calc_ha_global")
             
             calc_dict_av, _, calc_dict_topes, _ = extraer_tarifas_dinamicas(df_tarifas_maestras, str(calc_fecha.year))
             
-            calc_tope_sel = st.radio("🚧 Aplicar Tope Tarifario Automático:", ["TOPE MAX GENERAL", "TOPE SUR", "TOPE PARCELA INTER < 20HA", "SIN TOPE"], horizontal=True, key="calc_tope_sel")
-            val_tope_calc = 999999
-            if calc_tope_sel != "SIN TOPE":
-                val_tope_calc = calc_dict_topes.get(calc_tope_sel, {}).get(calc_pista, 999999)
-                if val_tope_calc == 0: val_tope_calc = 999999
+            # Las 4 reglas maestras que me pediste
+            reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tarifa Única)"]
             
-            st.markdown("#### 🛩️ Hangar de Aviones (Multi-Flota)")
-            df_calc_def = pd.DataFrame(columns=["Avión", "Hectáreas", "Horómetro"])
-            calc_aviones = st.data_editor(df_calc_def, key="calc_aviones_multi", num_rows="dynamic", column_config={"Avión": st.column_config.SelectboxColumn("Modelo", options=list(calc_dict_av.keys()), required=True), "Hectáreas": st.column_config.NumberColumn("Hectáreas", min_value=0.00, format="%.2f", required=True), "Horómetro": st.column_config.NumberColumn("Horómetro", min_value=0.00, format="%.2f", required=True)}, use_container_width=True, hide_index=True)
+            st.markdown("#### 🛩️ Diario de Vuelo Crudo (Hangar)")
+            df_calc_def = pd.DataFrame(columns=["Avión", "Horómetro", "Galones", "Regla de Cobro"])
             
-            # 💥 CIRUGÍA: Interruptor de Proyección Aeropenort (Matemática Ajustada)
+            calc_aviones = st.data_editor(
+                df_calc_def, 
+                key="calc_aviones_multi", 
+                num_rows="dynamic", 
+                column_config={
+                    "Avión": st.column_config.SelectboxColumn("Modelo", options=list(calc_dict_av.keys()), required=True), 
+                    "Horómetro": st.column_config.NumberColumn("Horómetro Final", min_value=0.00, format="%.2f", required=True),
+                    "Galones": st.column_config.NumberColumn("Galones Aplicados", min_value=0.00, format="%.2f", required=True),
+                    "Regla de Cobro": st.column_config.SelectboxColumn("Regla Aplicable", options=reglas_cobro, required=True)
+                }, 
+                use_container_width=True, 
+                hide_index=True
+            )
+            
             simular_aeropenort = st.toggle("🏢 Proyección AEROPENORT (Comparativa 8% vs 11%)")
             st.markdown("<br>", unsafe_allow_html=True)
 
-            if st.button("⚡ CALCULAR COSTO NETO", type="primary", use_container_width=True, key="btn_calc_neta"):
-                total_neto = 0.0
-                total_ha = 0.0
-                detalles = []
-                for _, row in calc_aviones.iterrows():
-                    av_sel, ha_av, horo = row.get("Avión"), row.get("Hectáreas"), row.get("Horómetro")
-                    if pd.isna(av_sel) or pd.isna(ha_av) or pd.isna(horo) or float(ha_av) <= 0: continue
-                    
-                    ha_av, horo = float(ha_av), float(horo)
-                    tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_av
-                    tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
-                    
-                    costo_linea = tarifa_base_tope * ha_av
-                    total_neto += costo_linea
-                    total_ha += ha_av
-                    detalles.append({
-                        "Aeronave": av_sel, 
-                        "Hectáreas": ha_av, 
-                        "Horómetro": horo, 
-                        "Tarifa Neta / Ha": tarifa_base_tope, 
-                        "Costo Total Neto": costo_linea
-                    })
+            if st.button("⚡ DISTRIBUIR CARGA Y CALCULAR COSTO NETO", type="primary", use_container_width=True, key="btn_calc_neta"):
+                total_galones = pd.to_numeric(calc_aviones["Galones"], errors='coerce').sum()
                 
-                if total_ha > 0:
-                    st.markdown("---")
-                    st.caption("🟡 **ESCENARIO ACTUAL (TARIFA BASE 8%)**")
-                    res1, res2, res3 = st.columns(3)
-                    res1.metric("🗺️ Hectáreas Totales", f"{total_ha:.2f} Ha")
-                    res2.metric("🎯 Promedio Neto / Ha", f"$ {(total_neto/total_ha):,.0f}".replace(",", "."))
-                    res3.metric("💰 COSTO NETO TOTAL", f"$ {total_neto:,.0f}".replace(",", "."))
-                    
-                    # 💥 CIRUGÍA: Clona exactamente la misma vista pero al 11%
-                    if simular_aeropenort:
-                        costo_11 = (total_neto / 1.08) * 1.11
-                        promedio_11 = costo_11 / total_ha
-                        
-                        ganancia_extra = costo_11 - total_neto
-                        dif_promedio = promedio_11 - (total_neto / total_ha)
-                        
-                        # Formateo de los deltas (Indicadores verdes)
-                        delta_promedio = f"{dif_promedio:,.0f}".replace(",", ".")
-                        delta_total = f"{ganancia_extra:,.0f}".replace(",", ".")
-                        
-                        st.markdown("---")
-                        st.caption("🟢 **PROYECCIÓN AEROPENORT (TARIFA 11%)**")
-                        res4, res5, res6 = st.columns(3)
-                        res4.metric("🗺️ Hectáreas Totales", f"{total_ha:.2f} Ha")
-                        res5.metric("🎯 Promedio Neto / Ha", f"$ {promedio_11:,.0f}".replace(",", "."), f"{delta_promedio} / Ha")
-                        res6.metric("💰 COSTO NETO TOTAL", f"$ {costo_11:,.0f}".replace(",", "."), f"{delta_total} Extra")
-                        st.markdown("<br>", unsafe_allow_html=True)
-
-                    df_detalles = pd.DataFrame(detalles)
-                    st.dataframe(
-                        df_detalles, 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "Aeronave": st.column_config.TextColumn("🛩️ Aeronave"),
-                            "Hectáreas": st.column_config.NumberColumn("🗺️ Hectáreas", format="%.2f"),
-                            "Horómetro": st.column_config.NumberColumn("⏱️ Horómetro", format="%.2f"),
-                            "Tarifa Neta / Ha": st.column_config.NumberColumn("🏷️ Tarifa Neta / Ha", format="$ %.0f"),
-                            "Costo Total Neto": st.column_config.NumberColumn("💰 Costo Total Neto", format="$ %.0f")
-                        }
-                    )
+                if calc_ha_global <= 0:
+                    st.error("🚨 **Error de Vuelo:** Debes ingresar el 'Total Hectáreas Misión' en la parte superior.")
+                elif total_galones <= 0:
+                    st.error("🚨 **Error de Vuelo:** Debes registrar los galones aplicados por al menos un avión para repartir el área.")
                 else:
-                    st.warning("⚠️ Agrega aeronaves válidas en la tabla.")
-        
-        # 💥 CIRUGÍA: Aislamiento total. Detiene la ejecución para no dibujar el resto del módulo.
-        st.stop()
-    # 💥 FIN CIRUGÍA
+                    total_neto = 0.0
+                    total_ha_repartida = 0.0
+                    detalles = []
+                    
+                    for _, row in calc_aviones.iterrows():
+                        av_sel = row.get("Avión")
+                        horo = row.get("Horómetro")
+                        galones = row.get("Galones")
+                        regla = row.get("Regla de Cobro")
+                        
+                        if pd.isna(av_sel) or pd.isna(horo) or pd.isna(galones) or float(galones) <= 0: continue
+                        
+                        horo = float(horo)
+                        galones = float(galones)
+                        
+                        # 1. SMART SPLIT: Repartir el área basados en la proporción de galones tirados
+                        proporcion = galones / total_galones
+                        ha_calculadas = calc_ha_global * proporcion
+                        
+                        # 2. MOTOR DE BLINDAJE: Detectar cuál Tope se debe aplicar a esta línea exacta
+                        llave_tope = "TOPE MAX GENERAL"
+                        if regla == "Normal - Tope Sur": llave_tope = "TOPE SUR"
+                        elif regla == "Normal - Parcela < 20Ha": llave_tope = "TOPE PARCELA INTER < 20HA"
+                        elif regla == "Cooperativa (Tarifa Única)": llave_tope = "TOPE MAX GENERAL" # Tarifa plana general
+                        
+                        val_tope_calc = calc_dict_topes.get(llave_tope, {}).get(calc_pista, 999999)
+                        if val_tope_calc == 0: val_tope_calc = 999999
+                        
+                        # 3. LIQUIDACIÓN NETA
+                        tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
+                        tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
+                        
+                        costo_linea = tarifa_base_tope * ha_calculadas
+                        total_neto += costo_linea
+                        total_ha_repartida += ha_calculadas
+                        
+                        detalles.append({
+                            "Aeronave": av_sel, 
+                            "Galones": galones,
+                            "Regla Tarifaria": regla,
+                            "Hectáreas (Split)": ha_calculadas, 
+                            "Horómetro": horo, 
+                            "Tarifa Neta / Ha": tarifa_base_tope, 
+                            "Costo Total Neto": costo_linea
+                        })
+                    
+                    if total_ha_repartida > 0:
+                        st.markdown("---")
+                        st.caption("🟡 **ESCENARIO ACTUAL (TARIFA BASE 8%)**")
+                        res1, res2, res3 = st.columns(3)
+                        res1.metric("🗺️ Hectáreas Misión", f"{total_ha_repartida:.2f} Ha")
+                        res2.metric("🎯 Promedio Neto / Ha", f"$ {(total_neto/total_ha_repartida):,.0f}".replace(",", "."))
+                        res3.metric("💰 COSTO NETO TOTAL", f"$ {total_neto:,.0f}".replace(",", "."))
+                        
+                        if simular_aeropenort:
+                            costo_11 = (total_neto / 1.08) * 1.11
+                            promedio_11 = costo_11 / total_ha_repartida
+                            
+                            ganancia_extra = costo_11 - total_neto
+                            dif_promedio = promedio_11 - (total_neto / total_ha_repartida)
+                            
+                            delta_promedio = f"{dif_promedio:,.0f}".replace(",", ".")
+                            delta_total = f"{ganancia_extra:,.0f}".replace(",", ".")
+                            
+                            st.markdown("---")
+                            st.caption("🟢 **PROYECCIÓN AEROPENORT (TARIFA 11%)**")
+                            res4, res5, res6 = st.columns(3)
+                            res4.metric("🗺️ Hectáreas Misión", f"{total_ha_repartida:.2f} Ha")
+                            res5.metric("🎯 Promedio Neto / Ha", f"$ {promedio_11:,.0f}".replace(",", "."), f"{delta_promedio} / Ha")
+                            res6.metric("💰 COSTO NETO TOTAL", f"$ {costo_11:,.0f}".replace(",", "."), f"{delta_total} Extra")
+                            st.markdown("<br>", unsafe_allow_html=True)
 
+                        df_detalles = pd.DataFrame(detalles)
+                        st.dataframe(
+                            df_detalles, 
+                            use_container_width=True, 
+                            hide_index=True,
+                            column_config={
+                                "Aeronave": st.column_config.TextColumn("🛩️ Aeronave"),
+                                "Galones": st.column_config.NumberColumn("💧 Galones", format="%.2f"),
+                                "Regla Tarifaria": st.column_config.TextColumn("📋 Regla"),
+                                "Hectáreas (Split)": st.column_config.NumberColumn("🗺️ Ha (Split)", format="%.2f"),
+                                "Horómetro": st.column_config.NumberColumn("⏱️ Horómetro", format="%.2f"),
+                                "Tarifa Neta / Ha": st.column_config.NumberColumn("🏷️ Tarifa Neta / Ha", format="$ %.0f"),
+                                "Costo Total Neto": st.column_config.NumberColumn("💰 Costo Total Neto", format="$ %.0f")
+                            }
+                        )
+        
+        # 💥 AISLAMIENTO TOTAL: Detiene la ejecución aquí mismo. 
+        st.stop()
+    # 💥 FIN CIRUGÍA MEGAZORD
     if modo_simulacro:
         st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico de Tarifas.")
 
