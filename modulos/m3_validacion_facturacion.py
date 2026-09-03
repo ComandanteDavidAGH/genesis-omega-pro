@@ -1150,8 +1150,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             else:
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
 
+            # 💥 CIRUGÍA: Escáner Dinámico de Material (Busca la columna sin importar dónde esté)
             if not df_sab.empty:
-                df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
+                col_mat_sab_cands = [c for c in df_sab.columns if 'MATERIAL' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
+                col_mat_sab = col_mat_sab_cands[0] if col_mat_sab_cands else df_sab.columns[0]
+                df_sab_col0_clean = df_sab[col_mat_sab].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
             else:
                 df_sab_col0_clean = pd.Series(dtype=str)
 
