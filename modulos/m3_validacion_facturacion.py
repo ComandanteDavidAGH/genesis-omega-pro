@@ -528,7 +528,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
     
-    # 💥 INICIO CIRUGÍA: Calculadora Inteligente Smart Split (Distribución por Galones + Topes Independientes)
+    # 💥 INICIO CIRUGÍA: Calculadora Inteligente Smart Split (Conectada al Cerebro Principal)
     modo_calc_neta = st.toggle("🧮 ACTIVAR CALCULADORA NETA MULTI-AVIÓN (Sin Margen)")
     if modo_calc_neta:
         st.info("💡 **ORÁCULO SMART SPLIT:** Ingresa el total de hectáreas de la misión y los galones aplicados por avión. El sistema distribuirá matemáticamente el área y aplicará la regla tarifaria seleccionada línea por línea.")
@@ -539,10 +539,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             calc_pista = c_cn2.selectbox("🛣️ Pista Base", PISTAS_VALIDAS, key="calc_pista")
             calc_ha_global = c_cn3.number_input("🗺️ Total Hectáreas Misión", min_value=0.0, value=0.0, format="%.2f", key="calc_ha_global")
             
+            # 🔥 El motor ahora usa la función original que lee la MATRIZ_TARIFAS
             calc_dict_av, _, calc_dict_topes, _ = extraer_tarifas_dinamicas(df_tarifas_maestras, str(calc_fecha.year))
             
-            # Las 4 reglas maestras que me pediste
-            reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tarifa Única)"]
+            reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tope General)"]
             
             st.markdown("#### 🛩️ Diario de Vuelo Crudo (Hangar)")
             df_calc_def = pd.DataFrame(columns=["Avión", "Horómetro", "Galones", "Regla de Cobro"])
@@ -572,12 +572,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 elif total_galones <= 0:
                     st.error("🚨 **Error de Vuelo:** Debes registrar los galones aplicados por al menos un avión para repartir el área.")
                 else:
-                    # 💥 CIRUGÍA: Conexión Directa y Blindada a la Matriz de Tarifas
-                    col_anio_calc = str(calc_fecha.year)
-                    if col_anio_calc not in df_tarifas_maestras.columns:
-                        valid_years = [y for y in df_tarifas_maestras.columns if str(y).isdigit() and int(y) <= int(col_anio_calc)]
-                        col_anio_calc = max(valid_years) if valid_years else None
-
                     total_neto = 0.0
                     total_ha_repartida = 0.0
                     detalles = []
@@ -597,41 +591,17 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         proporcion = galones / total_galones
                         ha_calculadas = calc_ha_global * proporcion
                         
-                        # 2. MOTOR DE BLINDAJE: Extracción precisa de la regla
-                        val_tope_calc = 999999
-                        es_tarifa_plana = False
+                        # 2. MOTOR DE BLINDAJE (Conectado directo al Cerebro Tarifario Original)
+                        llave_tope = "TOPE MAX GENERAL"
+                        if regla == "Normal - Tope Sur": llave_tope = "TOPE SUR"
+                        elif regla == "Normal - Parcela < 20Ha": llave_tope = "TOPE PARCELA INTER < 20HA"
                         
-                        if col_anio_calc:
-                            for _, r_tar in df_tarifas_maestras.iterrows():
-                                eq = str(r_tar.get('EQUIPO_O_TOPE', '')).upper()
-                                p = str(r_tar.get('PISTA', '')).upper().strip()
-                                val_t = limpiar_dinero(r_tar.get(col_anio_calc, 0))
-                                
-                                if val_t > 0 and (p == calc_pista or p == "TODAS" or p == ""):
-                                    if regla == "Normal - Tope Sur" and "SUR" in eq: val_tope_calc = val_t
-                                    elif regla == "Normal - Parcela < 20Ha" and ("PARCELA" in eq or "20" in eq): val_tope_calc = val_t
-                                    elif regla == "Normal - Tope General" and ("MAX" in eq or "GENERAL" in eq): val_tope_calc = val_t
-                                    elif regla == "Cooperativa (Tarifa Única)" and ("COOP" in eq or "UNICA" in eq or "ÚNICA" in eq): 
-                                        val_tope_calc = val_t
-                                        es_tarifa_plana = True
-
-                        # Fallbacks por si la matriz no tiene la palabra exacta
-                        if val_tope_calc == 999999:
-                            if regla == "Normal - Tope Sur": val_tope_calc = TOPES_PISTA.get("TOPE SUR", {}).get(calc_pista, 999999)
-                            elif regla == "Normal - Parcela < 20Ha": val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
-                            elif regla == "Normal - Tope General": val_tope_calc = TOPES_PISTA.get("TOPE MAX GENERAL", {}).get(calc_pista, 999999)
-                            elif regla == "Cooperativa (Tarifa Única)": 
-                                val_tope_calc = TOPES_PISTA.get("TOPE MAX GENERAL", {}).get(calc_pista, 999999)
-                                es_tarifa_plana = True
+                        val_tope_calc = calc_dict_topes.get(llave_tope, {}).get(calc_pista, 999999)
+                        if val_tope_calc == 0: val_tope_calc = 999999
                         
                         # 3. LIQUIDACIÓN NETA
                         tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
-                        
-                        # Si es tarifa plana, ignoramos el horómetro y cobramos exacto el valor dictado
-                        if es_tarifa_plana and val_tope_calc != 999999:
-                            tarifa_base_tope = val_tope_calc
-                        else:
-                            tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
+                        tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
                         
                         costo_linea = tarifa_base_tope * ha_calculadas
                         total_neto += costo_linea
