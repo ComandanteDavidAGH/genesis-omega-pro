@@ -542,7 +542,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             # 🔥 El motor ahora usa la función original que lee la MATRIZ_TARIFAS
             calc_dict_av, _, calc_dict_topes, _ = extraer_tarifas_dinamicas(df_tarifas_maestras, str(calc_fecha.year))
             
-            reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tope General)"]
+            # 💥 CIRUGÍA: Reglas ajustadas para enlazar Cooperativa con Parcela
+            reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tarifa Única)"]
             
             st.markdown("#### 🛩️ Diario de Vuelo Crudo (Hangar)")
             df_calc_def = pd.DataFrame(columns=["Avión", "Horómetro", "Galones", "Regla de Cobro"])
@@ -572,6 +573,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 elif total_galones <= 0:
                     st.error("🚨 **Error de Vuelo:** Debes registrar los galones aplicados por al menos un avión para repartir el área.")
                 else:
+                    col_anio_calc = str(calc_fecha.year)
+                    if col_anio_calc not in df_tarifas_maestras.columns:
+                        valid_years = [y for y in df_tarifas_maestras.columns if str(y).isdigit() and int(y) <= int(col_anio_calc)]
+                        col_anio_calc = max(valid_years) if valid_years else None
+
                     total_neto = 0.0
                     total_ha_repartida = 0.0
                     detalles = []
@@ -591,13 +597,32 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         proporcion = galones / total_galones
                         ha_calculadas = calc_ha_global * proporcion
                         
-                        # 2. MOTOR DE BLINDAJE (Conectado directo al Cerebro Tarifario Original)
-                        llave_tope = "TOPE MAX GENERAL"
-                        if regla == "Normal - Tope Sur": llave_tope = "TOPE SUR"
-                        elif regla == "Normal - Parcela < 20Ha": llave_tope = "TOPE PARCELA INTER < 20HA"
+                        # 2. MOTOR DE BLINDAJE: Extracción precisa
+                        val_tope_calc = 999999
+                        es_tarifa_plana = False
                         
-                        val_tope_calc = calc_dict_topes.get(llave_tope, {}).get(calc_pista, 999999)
-                        if val_tope_calc == 0: val_tope_calc = 999999
+                        if col_anio_calc:
+                            for _, r_tar in df_tarifas_maestras.iterrows():
+                                eq = str(r_tar.get('EQUIPO_O_TOPE', '')).upper()
+                                p = str(r_tar.get('PISTA', '')).upper().strip()
+                                val_t = limpiar_dinero(r_tar.get(col_anio_calc, 0))
+                                
+                                if val_t > 0 and (p == calc_pista or p == "TODAS" or p == ""):
+                                    if regla == "Normal - Tope Sur" and "SUR" in eq: val_tope_calc = val_t
+                                    elif regla == "Normal - Parcela < 20Ha" and ("PARCELA" in eq or "20" in eq): val_tope_calc = val_t
+                                    elif regla == "Normal - Tope General" and ("MAX" in eq or "GENERAL" in eq): val_tope_calc = val_t
+                                    elif regla == "Cooperativa (Tarifa Única)" and ("PARCELA" in eq or "20" in eq): 
+                                        val_tope_calc = val_t
+                                        es_tarifa_plana = True
+
+                        # Fallbacks
+                        if val_tope_calc == 999999:
+                            if regla == "Normal - Tope Sur": val_tope_calc = TOPES_PISTA.get("TOPE SUR", {}).get(calc_pista, 999999)
+                            elif regla == "Normal - Parcela < 20Ha": val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
+                            elif regla == "Normal - Tope General": val_tope_calc = TOPES_PISTA.get("TOPE MAX GENERAL", {}).get(calc_pista, 999999)
+                            elif regla == "Cooperativa (Tarifa Única)": 
+                                val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
+                                es_tarifa_plana = True
                         
                         # 3. LIQUIDACIÓN NETA
                         tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
