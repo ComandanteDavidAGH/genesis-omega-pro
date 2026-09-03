@@ -1142,78 +1142,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
                 datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
-            # 💥 CIRUGÍA 2: Motor IA 100% en RAM local (Bypassea Google y es inmune a bloqueos)
-            dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
-            df_recetas_local = st.session_state.get('df_recetas', pd.DataFrame())
-            
-            if not df_recetas_local.empty:
-                f_col = -1
-                for c in range(len(df_recetas_local.columns)):
-                    if 'FERTILIZANTE' in str(df_recetas_local.columns[c]).upper(): f_col = c; break
-                if f_col != -1 and f_col + 1 < len(df_recetas_local.columns):
-                    for _, r_mez in df_recetas_local.iterrows():
-                        nf, sf = str(r_mez.iloc[f_col]).strip().upper(), str(r_mez.iloc[f_col+1]).strip().upper()
-                        if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf: dict_fertilizantes[nf.replace(" ", "")] = sf
-                for _, r_mez in df_recetas_local.iterrows():
-                    cid, p_tabla, d_str = str(r_mez.iloc[0]).strip().upper(), str(r_mez.iloc[1]).strip().upper(), str(r_mez.iloc[2]).replace(",", ".")
-                    if cid and p_tabla and cid not in ["FINCA", "NAN"]:
-                        p_clean = p_tabla.replace(" ", "")
-                        num_str = re.sub(r'[^\d.]', '', d_str)
-                        d_tabla = float(num_str) if num_str and num_str != "." else 0.0
-                        es_lider = True if len(r_mez) >= 4 and str(r_mez.iloc[3]).strip().upper() == "X" else False
-                        if cid not in dict_recetas: dict_recetas[cid] = {}
-                        dict_recetas[cid][p_clean] = d_tabla
-                        if es_lider: dict_lideres[cid] = p_clean
-
-            coctel_ganador, dosis_oficiales_coctel, max_p = "SIN COINCIDENCIA", {}, -9999
-            tiene_acond_06 = any(x in k.upper() for k in sap_dict_pista.keys() for x in ["ZINTRAC", "ZITRON", "BANATREL"])
-            
-            for iter_id, receta in dict_recetas.items():
-                puntaje = 0
-                lider_db = dict_lideres.get(iter_id, "")
-                if lider_db:
-                    match_lider = any(lider_db == k or (len(k)>=4 and lider_db in k) or (len(lider_db)>=4 and k in lider_db) for k in sap_dict_pista.keys())
-                    if not match_lider: puntaje -= 1000 
-                for p_receta, d_esperada in receta.items():
-                    match_receta, dose_matched, match_perfecto = False, False, False
-                    d_receta_esperada = d_esperada
-                    if "ACONDICIONADOR" in p_receta: d_receta_esperada = 0.06 if tiene_acond_06 else 0.02
-                    elif "ACEITE" in p_receta:
-                        for char in iter_id:
-                            if char.isdigit(): d_receta_esperada = float(char); break
-                    elif "IMBIOSIL" in p_receta: d_receta_esperada = 1.5 if str(iter_id).startswith("IN") else 1.0
-                    
-                    for k_sap, d_sap in sap_dict_pista.items():
-                        if p_receta == k_sap or (len(k_sap)>=4 and p_receta in k_sap) or (len(p_receta)>=4 and k_sap in p_receta):
-                            match_receta = True
-                            error, tolerancia = abs(d_sap - d_receta_esperada), max(0.05, d_receta_esperada * 0.15) 
-                            if error <= 0.05: match_perfecto = True; dose_matched = True
-                            elif error <= tolerancia: dose_matched = True  
-                            break
-                    if match_receta:
-                        puntaje += 100
-                        if match_perfecto: puntaje += 100 
-                        elif dose_matched: puntaje += 40  
-                        else: puntaje -= 100 
-                    else: puntaje -= 100 
-                
-                for k_sap in sap_dict_pista.keys():
-                    sap_en_receta = any(p_receta == k_sap or (len(k_sap)>=4 and p_receta in k_sap) or (len(p_receta)>=4 and k_sap in p_receta) for p_receta in receta.keys())
-                    if not sap_en_receta:
-                        is_fert = any(f_name == k_sap or (len(k_sap)>=4 and f_name in k_sap) or (len(f_name)>=4 and k_sap in f_name) for f_name in dict_fertilizantes.keys())
-                        if not is_fert: puntaje -= 100 
-                
-                if coctel_piloto_base and iter_id == coctel_piloto_base: puntaje += 50
-                if puntaje > max_p: max_p, coctel_ganador, dosis_oficiales_coctel = puntaje, iter_id, receta.copy()
-
-            if coctel_ganador != "SIN COINCIDENCIA":
-                sigla_f = ""
-                for k_sap in sap_dict_pista.keys():
-                    for f_name, f_sigla in dict_fertilizantes.items():
-                        if f_name == k_sap or (len(k_sap)>=4 and f_name in k_sap) or (len(f_name)>=4 and k_sap in f_name):
-                            if not ("IMBIOSIL" in f_name and str(coctel_ganador).startswith("IN")): sigla_f = f" {f_sigla}"; break
-                    if sigla_f: break
-                coctel_ganador += sigla_f
+            # 💥 CIRUGÍA RESTAURADORA: Devolvemos el Motor IA a su función nativa (La que cruza perfecto y saca el 6.0 del Aceite)
+            coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base)
 
             if coctel_ganador == "SIN COINCIDENCIA":
                 st.error(f"🤖 **MOTOR IA MAESTRO (Guillotina):** Cóctel Oficial Determinado: **SIN COINCIDENCIA**")
