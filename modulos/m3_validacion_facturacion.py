@@ -1103,13 +1103,14 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         costo_mezcla_total = 0.0
 
         if not match_ped.empty:
+            # 💥 CIRUGÍA 1: Ampliamos el radar de búsqueda para "Lote" y "Almacén"
             idx_precio, idx_lote, idx_saldo, idx_almacen = -1, -1, -1, -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
                     col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                     if ('MAYOR' in col_str or 'PRECIO' in col_str) and idx_precio == -1: idx_precio = j
-                    if 'LOTE' in col_str and 'PROVEEDOR' not in col_str and idx_lote == -1: idx_lote = j
-                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and 'PB' not in col_str and idx_almacen == -1: idx_almacen = j
+                    if ('LOTE' in col_str or 'CHARG' in col_str) and 'PROVEEDOR' not in col_str and idx_lote == -1: idx_lote = j
+                    if ('ALMACEN' in col_str or 'PISTA' in col_str or 'ALM' in col_str) and 'PB' not in col_str and idx_almacen == -1: idx_almacen = j
                     if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str and idx_saldo == -1: idx_saldo = j
 
             sap_dict_pista = {}
@@ -1117,25 +1118,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
             for _, fila_sap in match_ped.iterrows():
                 col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                if not col_mat:
-                    continue
+                if not col_mat: continue
                 texto_material = str(fila_sap[col_mat[0]]).strip()
-                if "459" in texto_material or "429" in texto_material:
-                    continue
+                if "459" in texto_material or "429" in texto_material: continue
 
-                cod_item = texto_material.split('.')[0].lstrip('0')
+                cod_item = limpiar_codigo_sap(texto_material)
 
                 col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
-                if col_cant_real:
-                    cant_total = limpiar_numero_estricto(fila_sap[col_cant_real[0]])
-                else:
-                    cant_total = 0.0
+                cant_total = limpiar_numero_estricto(fila_sap[col_cant_real[0]]) if col_cant_real else 0.0
 
                 dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
                 nombre_p = f"Item {cod_item}"
                 if not df_sab.empty:
-                    # 💥 TU LÓGICA ORIGINAL (Blindada con Lambda para evitar el AttributeError)
                     df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
                     match_sabana = df_sab[df_sab_col0_clean == cod_item]
                     if not match_sabana.empty:
@@ -1147,17 +1142,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
                 datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
-            # 💥 CIRUGÍA 1: Motor IA trasladado a la memoria RAM (Adiós límites de Google Drive)
+            # 💥 CIRUGÍA 2: Motor IA 100% en RAM local (Bypassea Google y es inmune a bloqueos)
             dict_recetas, dict_lideres, dict_fertilizantes = {}, {}, {}
-            if not df_mez.empty:
+            df_recetas_local = st.session_state.get('df_recetas', pd.DataFrame())
+            
+            if not df_recetas_local.empty:
                 f_col = -1
-                for c in range(len(df_mez.columns)):
-                    if 'FERTILIZANTE' in str(df_mez.columns[c]).upper(): f_col = c; break
-                if f_col != -1 and f_col + 1 < len(df_mez.columns):
-                    for _, r_mez in df_mez.iterrows():
+                for c in range(len(df_recetas_local.columns)):
+                    if 'FERTILIZANTE' in str(df_recetas_local.columns[c]).upper(): f_col = c; break
+                if f_col != -1 and f_col + 1 < len(df_recetas_local.columns):
+                    for _, r_mez in df_recetas_local.iterrows():
                         nf, sf = str(r_mez.iloc[f_col]).strip().upper(), str(r_mez.iloc[f_col+1]).strip().upper()
                         if nf and nf not in ["", "NAN", "NONE", "FERTILIZANTES"] and sf: dict_fertilizantes[nf.replace(" ", "")] = sf
-                for _, r_mez in df_mez.iterrows():
+                for _, r_mez in df_recetas_local.iterrows():
                     cid, p_tabla, d_str = str(r_mez.iloc[0]).strip().upper(), str(r_mez.iloc[1]).strip().upper(), str(r_mez.iloc[2]).replace(",", ".")
                     if cid and p_tabla and cid not in ["FINCA", "NAN"]:
                         p_clean = p_tabla.replace(" ", "")
@@ -1223,11 +1220,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             else:
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
 
-            # 💥 CIRUGÍA 2: Escáner inteligente que localiza la columna de MATERIAL sin importar dónde esté
             if not df_sab.empty:
-                col_mat_sab_cands = [c for c in df_sab.columns if 'MATERIAL' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                col_mat_sab = col_mat_sab_cands[0] if col_mat_sab_cands else df_sab.columns[0]
-                df_sab_col0_clean = df_sab[col_mat_sab].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
+                df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
             else:
                 df_sab_col0_clean = pd.Series(dtype=str)
 
