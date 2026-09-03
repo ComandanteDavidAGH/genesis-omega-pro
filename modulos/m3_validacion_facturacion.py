@@ -1050,60 +1050,60 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
     coctel_piloto_base = partes_coctel[0]
 
     with st.container(border=True):
-            st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
-            c_sup1, c_sup2 = st.columns([3, 1])
-            c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
-            mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
+        st.markdown("#### ⚙️ Parámetros Base e Inteligencia de Ciclos")
+        c_sup1, c_sup2 = st.columns([3, 1])
+        c_sup1.info(f"🧑‍🌾 Productor: **{tipo_productor}** | 🛣️ Tope: **{tipo_de_tope_finca}**")
+        mision_solo_dron = c_sup2.toggle("🛸 MISIÓN 100% DRON", value=False, key=f"dron_toggle_{casilla_key}")
 
-            r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-            with r1c1:
-                st.metric("📅 Ciclo (SISTEMA)", f"{int(dias_ciclo_calc)} días")
-            with r1c2:
-                llave_cobro = f"cob_limpio_v2_{casilla_key}"
-                d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), min_value=0, step=1, key=llave_cobro)
-            with r1c3:
-                ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
-                if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
+        r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+        with r1c1:
+            st.metric("📅 Ciclo (SISTEMA)", f"{int(dias_ciclo_calc)} días")
+        with r1c2:
+            llave_cobro = f"cob_limpio_v2_{casilla_key}"
+            d_ciclo_factura = st.number_input("⏳ Ciclo (COBRO)", value=int(dias_ciclo_calc), min_value=0, step=1, key=llave_cobro)
+        with r1c3:
+            ha_sugerida = float(st.session_state.get('ha_radar_sap', 0.0))
+            if ha_sugerida == 0.0: ha_sugerida = float(ha_dosis_detectada)
 
-                widget_key = f"had_{casilla_key}"
-                sap_val = st.session_state.get('ha_radar_sap', 0.0)
-                if sap_val > 0 and st.session_state.get(f"sync_{widget_key}") != sap_val:
-                    st.session_state[widget_key] = float(sap_val)
-                    st.session_state[f"sync_{widget_key}"] = sap_val
+            widget_key = f"had_{casilla_key}"
+            sap_val = st.session_state.get('ha_radar_sap', 0.0)
+            if sap_val > 0 and st.session_state.get(f"sync_{widget_key}") != sap_val:
+                st.session_state[widget_key] = float(sap_val)
+                st.session_state[f"sync_{widget_key}"] = sap_val
 
-                ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=widget_key)
-            with r1c4:
-                multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
-                multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
-                interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
+            ha_dosis_final = st.number_input("🧪 Ha Dosis (Total 459)", value=ha_sugerida, key=widget_key)
+        with r1c4:
+            multi_aviones = st.toggle("✈️ Recargo Coord. Multi-Avión", value=False, key=f"ma_{casilla_key}")
+            multi_aviones_final = mult_avion_base + 0.1 if multi_aviones else mult_avion_base
+            interciclo_menor_20 = st.toggle("🔄 Interciclo < 20ha", value=False, key=f"inter_{casilla_key}")
 
-            st.markdown("##### 🛣️ Parámetros de Base / Empresa")
-            r2c1, r2c2, r2c3 = st.columns(3)
-            pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
-            pista_sel = r2c1.selectbox("Pista / Empresa", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
+        st.markdown("##### 🛣️ Parámetros de Base / Empresa")
+        r2c1, r2c2, r2c3 = st.columns(3)
+        pista_sugerida = next((p for p in lista_pistas_validas if p in pista_detectada), "PLUC")
+        pista_sel = r2c1.selectbox("Pista / Empresa", lista_pistas_validas, index=lista_pistas_validas.index(pista_sugerida), key=f"pi_{casilla_key}")
 
-            recargo_final = 0.0
-            if not mision_solo_dron:
-                opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
+        recargo_final = 0.0
+        if not mision_solo_dron:
+            opciones_rec = ["0 (Sin Recargo)", "8740 (Porción PDIV)", "45000 (Recargo T. General)", "Otro Valor Manual..."]
 
-                if f"pista_last_{casilla_key}" not in st.session_state:
-                    st.session_state[f"pista_last_{casilla_key}"] = pista_sel
-                    st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
-                elif st.session_state[f"pista_last_{casilla_key}"] != pista_sel:
-                    st.session_state[f"pista_last_{casilla_key}"] = pista_sel
-                    st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
-                    if f"rl_{casilla_key}" in st.session_state:
-                        del st.session_state[f"rl_{casilla_key}"]
+            if f"pista_last_{casilla_key}" not in st.session_state:
+                st.session_state[f"pista_last_{casilla_key}"] = pista_sel
+                st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
+            elif st.session_state[f"pista_last_{casilla_key}"] != pista_sel:
+                st.session_state[f"pista_last_{casilla_key}"] = pista_sel
+                st.session_state[f"default_rec_idx_{casilla_key}"] = 1 if pista_sel == "PDIV" else 0
+                if f"rl_{casilla_key}" in st.session_state:
+                    del st.session_state[f"rl_{casilla_key}"]
 
-                recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=st.session_state[f"default_rec_idx_{casilla_key}"], key=f"rl_{casilla_key}")
-                if recargo_lista == "Otro Valor Manual...":
-                    recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
-                else:
-                    recargo_final = float(recargo_lista.split(" ")[0])
+            recargo_lista = r2c2.selectbox("Cargo Terrestre:", opciones_rec, index=st.session_state[f"default_rec_idx_{casilla_key}"], key=f"rl_{casilla_key}")
+            if recargo_lista == "Otro Valor Manual...":
+                recargo_final = r2c3.number_input("✍️ Digite Recargo ($)", value=0, step=1000, key=f"rm_{casilla_key}")
+            else:
+                recargo_final = float(recargo_lista.split(" ")[0])
 
-            tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
-            val_tope = dict_topes.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
-            if val_tope == 0.0: val_tope = dict_topes.get(tope_clave_efectiva, {}).get("PLUC", 999999)
+        tope_clave_efectiva = "TOPE PARCELA INTER < 20HA" if interciclo_menor_20 else tipo_de_tope_finca
+        val_tope = dict_topes.get(tope_clave_efectiva, {}).get(pista_sel, 999999)
+        if val_tope == 0.0: val_tope = dict_topes.get(tope_clave_efectiva, {}).get("PLUC", 999999)
 
         with st.container(border=True):
             st.markdown("#### ✈️ Hangar de Despliegue")
