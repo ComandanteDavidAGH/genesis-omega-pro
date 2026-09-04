@@ -1291,7 +1291,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", ""):
                     dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
-                elif "ACEITE" in nombre_limpio:
+                
+                # Protegemos el valor del Excel. Solo lee el nombre del cóctel si no encontró tarifa oficial.
+                elif "ACEITE" in nombre_limpio and dosis_teorica is None:
                     if coctel_ganador != "SIN COINCIDENCIA":
                         for char in coctel_ganador.split()[0]:
                             if char.isdigit():
@@ -1305,7 +1307,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     else:
                         dosis_teorica = 0.0
 
-                # 👇 ESTA ES LA LÍNEA QUE BORRAMOS POR ACCIDENTE Y CAUSA EL ERROR
                 dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                 precio_marginado_final = costo_unit * mult_material
