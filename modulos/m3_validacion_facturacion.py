@@ -580,20 +580,23 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     total_ha_repartida = 0.0
                     detalles = []
                     
-                    for _, row in calc_aviones.iterrows():
+                    # 💥 Filtro previo para cuadrar los residuales matemáticos del último avión
+                    aviones_validos = [r for _, r in calc_aviones.iterrows() if pd.notna(r.get("Avión")) and pd.notna(r.get("Horómetro")) and pd.notna(r.get("Galones")) and float(r.get("Galones")) > 0]
+                    ha_acumulada = 0.0
+                    
+                    for i, row in enumerate(aviones_validos):
                         av_sel = row.get("Avión")
-                        horo = row.get("Horómetro")
-                        galones = row.get("Galones")
+                        horo = float(row.get("Horómetro"))
+                        galones = float(row.get("Galones"))
                         regla = row.get("Regla de Cobro")
                         
-                        if pd.isna(av_sel) or pd.isna(horo) or pd.isna(galones) or float(galones) <= 0: continue
-                        
-                        horo = float(horo)
-                        galones = float(galones)
-                        
-                        # 1. SMART SPLIT
-                        proporcion = galones / total_galones
-                        ha_calculadas = calc_ha_global * proporcion
+                        # 1. SMART SPLIT FINANCIERO (Redondeo para cruce perfecto de columnas)
+                        if i == len(aviones_validos) - 1:
+                            ha_calculadas = round(calc_ha_global - ha_acumulada, 2)
+                        else:
+                            proporcion = galones / total_galones
+                            ha_calculadas = round(calc_ha_global * proporcion, 2)
+                            ha_acumulada += ha_calculadas
                         
                         # 2. MOTOR DE BLINDAJE: Extracción precisa
                         val_tope_calc = 999999
