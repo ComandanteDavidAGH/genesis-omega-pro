@@ -1202,7 +1202,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
                 sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
-                datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
+                
+                # 💥 CIRUGÍA 1: Agrupación interna de cantidades para no duplicar filas por cambio de lote
+                producto_existente = next((item for item in datos_extraidos_sap if item['cod'] == cod_item), None)
+                if producto_existente:
+                    producto_existente['cant_total'] += cant_total
+                else:
+                    datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
             # 💥 CIRUGÍA RESTAURADORA: Devolvemos el Motor IA a su función nativa (La que cruza perfecto y saca el 6.0 del Aceite)
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base)
