@@ -576,7 +576,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         valid_years = [y for y in df_tarifas_maestras.columns if str(y).isdigit() and int(y) <= int(col_anio_calc)]
                         col_anio_calc = max(valid_years) if valid_years else None
 
-total_neto = 0.0
+                    total_neto = 0.0
                     total_ha_repartida = 0.0
                     detalles = []
                     
@@ -626,13 +626,17 @@ total_neto = 0.0
                             elif regla == "Cooperativa (Tarifa Única)": 
                                 val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
                         
-                        # 💥 3. LIQUIDACIÓN NETA (Restaurada la eficiencia por Horómetro)
-                        tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
-                        
-                        # Vuelve a cobrar lo justo: Si el avión fue rápido, usa su tarifa real calculada.
+                        # 💥 3. LIQUIDACIÓN NETA (Cálculo independiente detallado)
+                        # A. Costo independiente de ESTE avión por hora
+                        costo_bruto_avion = calc_dict_av.get(av_sel, 0) * horo
+                        # B. Tarifa real por hectárea de ESTE avión
+                        tarifa_base_ha = costo_bruto_avion / ha_calculadas if ha_calculadas > 0 else 0
+                        # C. Comparación inteligente con el Tope
                         tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
                         
+                        # D. Multiplicación final
                         costo_linea = tarifa_base_tope * ha_calculadas
+                        
                         total_neto += costo_linea
                         total_ha_repartida += ha_calculadas
                         
