@@ -1175,19 +1175,23 @@ def ejecutar():
                                 val_orig = str(df_traslados_vista.iloc[i][col]).strip()
                                 val_nuevo = str(df_editado_t.iloc[i][col]).strip()
                                 
+                                # Limpiar comilla de origen para evitar engaños al escáner en Lotes
+                                if "LOTE" in col.upper():
+                                    val_orig = val_orig.lstrip("'")
+                                
                                 if val_orig != val_nuevo:
                                     val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
                                     if col in idx_cols_t:
                                         cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
 
                 if cambios_actualizacion_t or eliminaciones_t:
-                    with st.spinner("Sincronizando la nube con un solo paquete de datos..."):
+                    with st.spinner(f"Sincronizando {len(cambios_actualizacion_t)} celdas modificadas y {len(eliminaciones_t)} eliminaciones..."):
                         try:
                             gc_temp = inicializar_cliente_gspread()
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
                             ws_t = sh_temp.worksheet(titulo_ws_traslados)
                             
-                            # 1. Inyectar Actualizaciones (Ediciones de texto/cantidades/lotes)
+                            # 1. Inyectar Actualizaciones (Cantidades, Lotes, Textos)
                             if cambios_actualizacion_t:
                                 celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
                                 ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
@@ -1209,12 +1213,12 @@ def ejecutar():
                                     })
                                 sh_temp.batch_update({"requests": peticiones_borrado})
                             
-                            st.success("✅ ¡Misión Cumplida! Movimientos internos sincronizados exitosamente.")
+                            st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(cambios_actualizacion_t)} celdas y se borraron {len(eliminaciones_t)} filas.")
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
                             st.error(f"🚨 Error crítico al ejecutar sincronización masiva: {e}")
                 else: 
-                    st.info("ℹ️ No se detectaron cambios en las celdas ni órdenes de eliminación.")
+                    st.info("ℹ️ El escáner rastreó la matriz completa pero no detectó ninguna celda modificada.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
