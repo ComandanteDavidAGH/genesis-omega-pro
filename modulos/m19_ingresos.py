@@ -1109,55 +1109,68 @@ def ejecutar():
                 df_traslados_vista = df_traslados_vista.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
             else: df_traslados_vista = df_traslados_vista.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
-            # 💥 CIRUGÍA 2: MODO DIOS PARA DESBLOQUEAR COLUMNAS EN TRASLADOS
+            # 💥 CIRUGÍA 2: MODO DIOS PARA DESBLOQUEAR COLUMNAS EN TRASLADOS (CLON EXACTO DE INGRESOS)
             modo_dios_t = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Modo Dios)", value=False, key="dios_traslados")
             
             if modo_dios_t:
-                st.warning("⚠️ **MODO DIOS ACTIVO:** Todas las columnas están desbloqueadas para copiar/pegar libremente.")
+                st.warning("⚠️ **MODO DIOS ACTIVO:** Todas las columnas están desbloqueadas. Edita con precaución.")
             else:
-                st.caption("🔒 Haz doble clic en la columna '🛡️ ACCIÓN' para marcar y **ELIMINAR** un traslado de la Bóveda de Google Sheets.")
-
+                st.caption("🔒 Haz doble clic en las columnas para **Copiar, Pegar o Editar**. Usa la columna Acción para ELIMINAR el registro físicamente.")
+            
+            # 1. Definición exacta de columnas editables (Igual que Ingresos)
+            columnas_editables_nombres_t = ["CANTIDAD", "LOTE", "CONSECUTIVO", "OBSERVACION"]
+            columnas_editables_reales_t = ["🛡️ ACCIÓN"]
+            
+            for col in df_traslados_vista.columns:
+                if modo_dios_t and col not in ['FILA_EXCEL', 'FECHA_SORT']:
+                    if col not in columnas_editables_reales_t:
+                        columnas_editables_reales_t.append(col)
+                else:
+                    for nom_edit in columnas_editables_nombres_t:
+                        if nom_edit in str(col).upper() and col not in columnas_editables_reales_t:
+                            columnas_editables_reales_t.append(col)
+                            
+            cols_disabled_t = [col for col in df_traslados_vista.columns if col not in columnas_editables_reales_t and col not in ['FILA_EXCEL', 'FECHA_SORT']]
+            
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in ['FILA_EXCEL', 'FECHA_SORT']]
             df_vista_t = df_traslados_vista[columnas_vista_t].copy()
             
             if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
-            cols_disabled_t = [] if modo_dios_t else [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
-            
-            # 💥 ETIQUETAS ESTÁTICAS: Esto evita que Streamlit borre la memoria si apagas el botón
             col_config_t = {"🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)}
             
             for c in df_vista_t.columns:
                 if c == "🛡️ ACCIÓN": continue
                 c_up = c.upper()
-                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
-                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
-                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
-                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
-                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
-                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
-                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+                
+                lbl_extra = " (Modo Dios)" if modo_dios_t else ""
+                lbl_edit = " (Modo Dios)" if modo_dios_t else " (Editable)"
+                
+                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📅 SEM{lbl_extra}", width="small")
+                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🗓️ FECHA{lbl_extra}", width="medium")
+                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🧪 PRODUCTO{lbl_extra}", width="large")
+                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📍 RUTA{lbl_extra}", width="medium")
+                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"⚖️ CANTIDAD{lbl_edit}", width="medium")
+                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📦 LOTE{lbl_edit}", width="medium")
+                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📝 OBS{lbl_edit}", width="medium")
+                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🔢 CONSECUTIVO{lbl_edit}", width="medium")
 
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 💥 MOTOR DE SINCRONIZACIÓN (CLONADO DE INGRESOS - 100% ESTABLE)
+            # 💥 CIRUGÍA 3: SINCRONIZADOR CLONADO DE INGRESOS
             if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
                 cambios_actualizacion_t = []
                 eliminaciones_t = []
                 
-                # Mapeo de columnas para saber a qué celda de Sheets apuntar
                 idx_cols_t = {}
-                for col in df_vista_t.columns:
-                    if col == "🛡️ ACCIÓN": continue
+                for col in columnas_editables_reales_t:
                     for idx_h, h in enumerate(encabezados_limpios_tras):
-                        if col.upper() == h.upper() or (col == "OBSERVACION" and "OBSERVAC" in h.upper()):
+                        if col.upper() == h.upper() or (col == "🛡️ ACCIÓN" and "OBSERVAC" in h.upper()) or (col == "OBSERVACION" and "OBSERVAC" in h.upper()):
                             idx_cols_t[col] = idx_h + 1
                             break
 
-                # Comparación Celda a Celda (Original vs Editado)
                 for i in range(len(df_traslados_vista)):
                     estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
                     fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
@@ -1165,30 +1178,25 @@ def ejecutar():
                     if "ELIMINAR REGISTRO" in estado_nuevo_t:
                         eliminaciones_t.append(fila_excel_t)
                     else:
-                        for col in df_vista_t.columns:
-                            if col == "🛡️ ACCIÓN": continue
-                            
-                            val_orig = str(df_vista_t.iloc[i][col]).strip()
-                            val_nuevo = str(df_editado_t.iloc[i][col]).strip()
-                            
-                            # Limpieza de comillas en lotes para no generar falsos positivos
-                            if "LOTE" in col.upper():
-                                val_orig = val_orig.lstrip("'")
-                                val_nuevo = val_nuevo.lstrip("'")
-                            
-                            # Si detecta que cambiaste algo (ej. 12.0 por 12.234)
-                            if val_orig != val_nuevo:
-                                val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
-                                if col in idx_cols_t:
-                                    cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
-
-                # Disparo a Google Sheets
+                        for col in columnas_editables_reales_t:
+                            if col in df_traslados_vista.columns and col in df_editado_t.columns:
+                                val_orig = str(df_traslados_vista.iloc[i][col]).strip()
+                                val_nuevo = str(df_editado_t.iloc[i][col]).strip()
+                                
+                                if "LOTE" in col.upper():
+                                    val_orig = val_orig.lstrip("'")
+                                
+                                if val_orig != val_nuevo:
+                                    val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                    if col in idx_cols_t:
+                                        cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
+                
                 if cambios_actualizacion_t or eliminaciones_t:
                     gc_temp = inicializar_cliente_gspread()
                     sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
                     ws_t = sh_temp.worksheet(titulo_ws_traslados)
                     
-                    with st.spinner(f"Sincronizando {len(cambios_actualizacion_t)} cambios y {len(eliminaciones_t)} eliminaciones..."):
+                    with st.spinner(f"Sincronizando la nube con un solo paquete de datos..."):
                         try:
                             if cambios_actualizacion_t:
                                 celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
@@ -1210,12 +1218,12 @@ def ejecutar():
                                     })
                                 sh_temp.batch_update({"requests": peticiones_borrado})
                             
-                            st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente en una sola operación.")
+                            st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente en una sola operación maestra.")
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
                             st.error(f"🚨 Error crítico en la sincronización masiva: {e}")
                 else: 
-                    st.info("ℹ️ No se detectaron cambios. (Recuerda presionar ENTER después de modificar una celda para que el sistema lo registre).")
+                    st.info("No se detectaron cambios ni órdenes de eliminación.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
