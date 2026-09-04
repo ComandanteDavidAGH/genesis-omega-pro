@@ -112,8 +112,9 @@ def formatear_numero_sap(val):
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
-        val_str = f"{f_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        return val_str[:-3] if val_str.endswith(",00") else val_str
+        # 💥 CIRUGÍA: 3 Decimales habilitados con limpieza de ceros a la derecha
+        val_str = f"{f_val:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return val_str.rstrip("0").rstrip(",") if "," in val_str else val_str
     except: return str(val)
 
 def estandarizar_pista(val):
@@ -902,7 +903,8 @@ def ejecutar():
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
             tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_cod_{fk_t}_{t_producto}")
 
-            t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=1.0, key=f"t_cantidad_{fk_t}")
+            # 💥 CIRUGÍA: Input numérico configurado para aceptar 3 decimales exactos
+            t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=0.001, format="%.3f", key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
             # --- 1. PRIMERA FILA: OBSERVACIÓN Y MÉTODO ---
@@ -1109,27 +1111,36 @@ def ejecutar():
                 df_traslados_vista = df_traslados_vista.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
             else: df_traslados_vista = df_traslados_vista.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
-            st.caption("🔒 Haz doble clic en la columna '🛡️ ACCIÓN' para marcar y **ELIMINAR** un traslado de la Bóveda de Google Sheets.")
+            # 💥 CIRUGÍA: MODO DIOS PARA DESBLOQUEAR COLUMNAS EN TRASLADOS
+            modo_dios_t = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Modo Dios)", value=False, key="dios_traslados")
+            
+            if modo_dios_t:
+                st.warning("⚠️ **MODO DIOS ACTIVO:** Todas las columnas están desbloqueadas para copiar/pegar libremente.")
+            else:
+                st.caption("🔒 Haz doble clic en la columna '🛡️ ACCIÓN' para marcar y **ELIMINAR** un traslado de la Bóveda de Google Sheets.")
 
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in ['FILA_EXCEL', 'FECHA_SORT']]
             df_vista_t = df_traslados_vista[columnas_vista_t].copy()
             
             if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
-            cols_disabled_t = [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
+            # Si Modo Dios está activo, la lista de columnas deshabilitadas queda vacía
+            cols_disabled_t = [] if modo_dios_t else [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
             col_config_t = {"🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)}
             
             for c in df_vista_t.columns:
                 if c == "🛡️ ACCIÓN": continue
                 c_up = c.upper()
-                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
-                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
-                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
-                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
-                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
-                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
-                elif "OBSER" in c_up: col_config[c] = st.column_config.TextColumn("📝 OBS", width="medium")
-                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
+                lbl_extra = " (Modo Dios)" if modo_dios_t else ""
+                
+                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📅 SEM{lbl_extra}", width="small")
+                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🗓️ FECHA{lbl_extra}", width="medium")
+                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🧪 PRODUCTO{lbl_extra}", width="large")
+                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📍 RUTA{lbl_extra}", width="medium")
+                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"⚖️ CANTIDAD{lbl_extra}", width="medium")
+                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📦 LOTE{lbl_extra}", width="medium")
+                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📝 OBS{lbl_extra}", width="medium")
+                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🔢 CONSECUTIVO{lbl_extra}", width="medium")
 
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
 
