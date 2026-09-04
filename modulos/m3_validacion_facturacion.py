@@ -1281,7 +1281,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     if coctel_ganador != "SIN COINCIDENCIA":
                         for char in coctel_ganador.split()[0]:
                             if char.isdigit():
-                                if char == '0': continue # 💥 Salta los ceros engañosos (Ej: KRMC01)
                                 dosis_teorica = float(char)
                                 break
 
