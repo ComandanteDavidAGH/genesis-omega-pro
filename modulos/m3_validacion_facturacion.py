@@ -1291,12 +1291,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", ""):
                     dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                 elif "ACEITE" in nombre_limpio:
-                    if coctel_ganador != "SIN COINCIDENCIA":
-                        for char in coctel_ganador.split()[0]:
-                            if char.isdigit():
-                                dosis_teorica = float(char)
-                                break
-
+                    # 💥 CIRUGÍA 2: Deducción nativa calculando Cantidad Total / Hectáreas (Como lo pediste)
+                    if ha_dosis_final > 0:
+                        dosis_teorica = round(cant_linea_sap / ha_dosis_final, 0)
+                        if dosis_teorica == 0: dosis_teorica = 1.0 # Respaldo mínimo de seguridad
+                    else:
+                        dosis_teorica = 1.0
                 if dosis_teorica is None:
                     dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
                     if dosis_rescatada > 0:
