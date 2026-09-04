@@ -1305,6 +1305,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     else:
                         dosis_teorica = 0.0
 
+                # 👇 ESTA ES LA LÍNEA QUE BORRAMOS POR ACCIDENTE Y CAUSA EL ERROR
+                dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
+
                 precio_marginado_final = costo_unit * mult_material
                 precio_marginado_final = aplicar_excepcion_manzate(precio_marginado_final, f"{nombre_limpio} {nombre_p}", tipo_productor)
 
