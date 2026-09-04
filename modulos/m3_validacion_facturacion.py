@@ -511,7 +511,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             c_conf1, c_conf2 = st.columns(2)
             if c_conf1.button("✅ SÍ", type="primary", use_container_width=True, key="btn_sync_confirmar"):
                 st.cache_data.clear()
-                # 💥 NO borramos ni df_sabana ni df_pedidos para evitar el error de $0
                 claves_a_purgar = ['df_config', 'df_config_base', 'df_cfg', 'df_recetas', 'df_vd', 'df_t2']
                 for key in claves_a_purgar:
                     if key in st.session_state:
@@ -539,10 +538,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             calc_pista = c_cn2.selectbox("🛣️ Pista Base", PISTAS_VALIDAS, key="calc_pista")
             calc_ha_global = c_cn3.number_input("🗺️ Total Hectáreas Misión", min_value=0.0, value=0.0, format="%.2f", key="calc_ha_global")
             
-            # 🔥 El motor ahora usa la función original que lee la MATRIZ_TARIFAS
             calc_dict_av, _, calc_dict_topes, _ = extraer_tarifas_dinamicas(df_tarifas_maestras, str(calc_fecha.year))
             
-            # 💥 CIRUGÍA: Reglas ajustadas para enlazar Cooperativa con Parcela
+            # 💥 CIRUGÍA COOPERATIVA: Reglas ajustadas para enlazar Cooperativa con Parcela
             reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tarifa Única)"]
             
             st.markdown("#### 🛩️ Diario de Vuelo Crudo (Hangar)")
@@ -626,7 +624,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         
                         # 3. LIQUIDACIÓN NETA
                         tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
-                        tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
+                        
+                        # 💥 CIRUGÍA COOPERATIVA: Aplica tarifa plana inamovible
+                        if es_tarifa_plana and val_tope_calc != 999999:
+                            tarifa_base_tope = val_tope_calc
+                        else:
+                            tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
                         
                         costo_linea = tarifa_base_tope * ha_calculadas
                         total_neto += costo_linea
@@ -684,9 +687,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             }
                         )
         
-        # 💥 AISLAMIENTO TOTAL: Detiene la ejecución aquí mismo. 
         st.stop()
-    # 💥 FIN CIRUGÍA MEGAZORD
+
     if modo_simulacro:
         st.info("💡 MODO CLON: Réplica exacta del Módulo de Validación con Cerebro Dinámico de Tarifas.")
 
@@ -879,7 +881,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
         if not match_sap.empty:
             try:
-                # 💥 CIRUGÍA: Corrección de df_p a df_ped (esto causaba el fallo silencioso)
                 col_finca_cands = [c for c in df_ped.columns if any(x in str(c).upper() for x in ['FINCA', 'CLIENTE', 'DESTINATARIO', 'NOMBRE', 'SOLICITANTE'])]
                 col_finca = col_finca_cands[0] if col_finca_cands else df_ped.columns[8]
 
@@ -900,7 +901,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 st.session_state['ha_radar_sap'] = ha_correcta if ha_correcta > 0 else limpiar_numero_estricto(match_sap.iloc[0][col_ha])
             except Exception: pass
 
-    # 💥 CIRUGÍA: Mostrar el banner de SAP arriba de los selectores de forma elegante
     if finca_sap:
         st.info(f"✅ **DATOS SAP DETECTADOS:** Finca: **{finca_sap}** | Hectáreas Dosis: **{st.session_state['ha_radar_sap']} Ha**")
 
@@ -925,12 +925,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     idx_finca = 0
     if finca_sap:
-        # 💥 CIRUGÍA: Extracción de nombre blindada contra la opción vacía "---"
         finca_sap_corta = finca_sap.split('/')[0].strip()
         fsap_limpia = re.sub(r'[^A-Z0-9]', '', finca_sap_corta.upper())
         for i, f in enumerate(opciones_finca):
             if f == "---": 
-                continue # 🔥 Evitamos que el texto vacío cause un falso positivo
+                continue 
                 
             f_limpia = re.sub(r'[^A-Z0-9]', '', f.upper())
             if f_limpia and fsap_limpia and (f_limpia in fsap_limpia or fsap_limpia in f_limpia):
@@ -1165,14 +1164,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
         costo_mezcla_total = 0.0
 
         if not match_ped.empty:
-            # 💥 CIRUGÍA 1: Ampliamos el radar de búsqueda para "Lote" y "Almacén"
             idx_precio, idx_lote, idx_saldo, idx_almacen = -1, -1, -1, -1
             if not df_sab.empty:
                 for j, col in enumerate(df_sab.columns):
                     col_str = str(col).upper().replace('Á','A').replace('É','E').replace('Í','I').replace('Ó','O').replace('Ú','U').strip()
                     if ('MAYOR' in col_str or 'PRECIO' in col_str) and idx_precio == -1: idx_precio = j
-                    if ('LOTE' in col_str or 'CHARG' in col_str) and 'PROVEEDOR' not in col_str and idx_lote == -1: idx_lote = j
-                    if ('ALMACEN' in col_str or 'PISTA' in col_str or 'ALM' in col_str) and 'PB' not in col_str and idx_almacen == -1: idx_almacen = j
+                    if 'LOTE' in col_str and 'PROVEEDOR' not in col_str and idx_lote == -1: idx_lote = j
+                    if ('ALMACEN' in col_str or 'PISTA' in col_str) and 'PB' not in col_str and idx_almacen == -1: idx_almacen = j
                     if ('LIBRE' in col_str or 'SALDO' in col_str) and 'VALOR' not in col_str and idx_saldo == -1: idx_saldo = j
 
             sap_dict_pista = {}
@@ -1180,14 +1178,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
             for _, fila_sap in match_ped.iterrows():
                 col_mat = [c for c in fila_sap.index if 'MATERIAL' in str(c).upper() or 'ITEM' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                if not col_mat: continue
+                if not col_mat:
+                    continue
                 texto_material = str(fila_sap[col_mat[0]]).strip()
-                if "459" in texto_material or "429" in texto_material: continue
+                if "459" in texto_material or "429" in texto_material:
+                    continue
 
-                cod_item = limpiar_codigo_sap(texto_material)
+                cod_item = texto_material.split('.')[0].lstrip('0')
 
                 col_cant_real = [c for c in fila_sap.index if any(x in str(c).upper() for x in ['CANT', 'HECT', 'DOSIS', 'CANTIDAD'])]
-                cant_total = limpiar_numero_estricto(fila_sap[col_cant_real[0]]) if col_cant_real else 0.0
+                if col_cant_real:
+                    cant_total = limpiar_numero_estricto(fila_sap[col_cant_real[0]])
+                else:
+                    cant_total = 0.0
 
                 dosis_pista = cant_total / ha_dosis_final if ha_dosis_final > 0 else 0.0
 
@@ -1267,6 +1270,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                 costo_unit = float(precio_maestro)
                 except Exception:
                     pass
+                
+                # CÓDIGO ORIGINAL INTACTO DE FÁBRICA
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
