@@ -1202,15 +1202,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
                 nombre_limpio = nombre_p.split('*')[0].strip().replace(" ", "")
                 sap_dict_pista[nombre_limpio] = sap_dict_pista.get(nombre_limpio, 0.0) + dosis_pista
-                
-                # 💥 CIRUGÍA 1: Agrupación interna de cantidades para no duplicar filas por cambio de lote
-                producto_existente = next((item for item in datos_extraidos_sap if item['cod'] == cod_item), None)
-                if producto_existente:
-                    producto_existente['cant_total'] += cant_total
-                else:
-                    datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
+                datos_extraidos_sap.append({"cod": cod_item, "nombre": nombre_p, "nombre_limpio": nombre_limpio, "cant_total": cant_total})
 
-            # 💥 CIRUGÍA RESTAURADORA: Devolvemos el Motor IA a su función nativa (La que cruza perfecto y saca el 6.0 del Aceite)
             coctel_ganador, dosis_oficiales_coctel = emparejar_coctel_ia(sap_dict_pista, coctel_piloto_base)
 
             if coctel_ganador == "SIN COINCIDENCIA":
@@ -1218,11 +1211,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             else:
                 st.success(f"🤖 **MOTOR IA MAESTRO:** Cóctel Oficial Determinado: **{coctel_ganador}**")
 
-            # 💥 CIRUGÍA: Escáner Dinámico de Material (Busca la columna sin importar dónde esté)
             if not df_sab.empty:
-                col_mat_sab_cands = [c for c in df_sab.columns if 'MATERIAL' in str(c).upper() or 'CÓDIGO' in str(c).upper() or 'COD' in str(c).upper()]
-                col_mat_sab = col_mat_sab_cands[0] if col_mat_sab_cands else df_sab.columns[0]
-                df_sab_col0_clean = df_sab[col_mat_sab].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
+                df_sab_col0_clean = df_sab.iloc[:, 0].apply(lambda x: str(x).split('.')[0].strip().upper().lstrip('0'))
             else:
                 df_sab_col0_clean = pd.Series(dtype=str)
 
@@ -1265,22 +1255,18 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             if idx_saldo != -1:
                                 saldo_sap = limpiar_numero_estricto(fila_final.iloc[idx_saldo])
 
-                # 💥 FRANCOTIRADOR 2: TU EXTRACCIÓN PURA ORIGINAL
                 try:
                     if 'df_cfg_puro' in locals():
                         nombre_buscado = nombre_p.upper().strip()
-                        # Buscar producto exclusivamente en la Columna I (índice 8)
                         col_i = df_cfg_puro[8].apply(lambda x: str(x).strip().upper())
                         match_precio = df_cfg_puro[col_i == nombre_buscado]
                         
                         if not match_precio.empty:
-                            # Extraer costo exclusivamente de la Columna J (índice 9)
                             precio_maestro = limpiar_dinero(match_precio.iloc[0, 9])
                             if precio_maestro > 0:
                                 costo_unit = float(precio_maestro)
                 except Exception:
                     pass
-                # 💥 CIRUGÍA: DEDUCCIÓN MENTAL Y UNIVERSAL
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
@@ -1291,12 +1277,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
                 elif "IMBIOSIL" in nombre_limpio.replace(" ", ""):
                     dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
-                
-                # Protegemos el valor del Excel. Solo lee el nombre del cóctel si no encontró tarifa oficial.
-                elif "ACEITE" in nombre_limpio and dosis_teorica is None:
+                elif "ACEITE" in nombre_limpio:
                     if coctel_ganador != "SIN COINCIDENCIA":
                         for char in coctel_ganador.split()[0]:
                             if char.isdigit():
+                                if char == '0': continue # 💥 Salta el cero inicial
                                 dosis_teorica = float(char)
                                 break
 
