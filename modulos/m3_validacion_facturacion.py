@@ -580,8 +580,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     total_ha_repartida = 0.0
                     detalles = []
                     
-                    # 💥 Filtro previo para cuadrar los residuales matemáticos del último avión
-                    aviones_validos = [r for _, r in calc_aviones.iterrows() if pd.notna(r.get("Avión")) and pd.notna(r.get("Horómetro")) and pd.notna(r.get("Galones")) and float(r.get("Galones")) > 0]
+                    # 💥 FILTRO PARA SABER CUÁL ES EL ÚLTIMO AVIÓN Y CUADRAR EL REDONDEO
+                    aviones_validos = []
+                    for _, row in calc_aviones.iterrows():
+                        if pd.notna(row.get("Avión")) and pd.notna(row.get("Horómetro")) and pd.notna(row.get("Galones")) and float(row.get("Galones")) > 0:
+                            aviones_validos.append(row)
+                            
                     ha_acumulada = 0.0
                     
                     for i, row in enumerate(aviones_validos):
@@ -590,7 +594,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         galones = float(row.get("Galones"))
                         regla = row.get("Regla de Cobro")
                         
-                        # 1. SMART SPLIT FINANCIERO (Redondeo para cruce perfecto de columnas)
+                        # 💥 1. SMART SPLIT FINANCIERO (Obliga 2 decimales para que cruce con la calculadora en mano)
                         if i == len(aviones_validos) - 1:
                             ha_calculadas = round(calc_ha_global - ha_acumulada, 2)
                         else:
@@ -625,10 +629,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                 val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
                                 es_tarifa_plana = True
                         
-                        # 3. LIQUIDACIÓN NETA
+                        # 💥 3. LIQUIDACIÓN NETA (Candado de Tarifa Plana Cooperativa)
                         tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
                         
-                        # 💥 CIRUGÍA COOPERATIVA: Aplica tarifa plana inamovible
                         if es_tarifa_plana and val_tope_calc != 999999:
                             tarifa_base_tope = val_tope_calc
                         else:
