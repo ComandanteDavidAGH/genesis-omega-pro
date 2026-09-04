@@ -576,7 +576,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         valid_years = [y for y in df_tarifas_maestras.columns if str(y).isdigit() and int(y) <= int(col_anio_calc)]
                         col_anio_calc = max(valid_years) if valid_years else None
 
-                    total_neto = 0.0
+total_neto = 0.0
                     total_ha_repartida = 0.0
                     detalles = []
                     
@@ -594,7 +594,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         galones = float(row.get("Galones"))
                         regla = row.get("Regla de Cobro")
                         
-                        # 💥 1. SMART SPLIT FINANCIERO (Obliga 2 decimales para que cruce con la calculadora en mano)
+                        # 💥 1. SMART SPLIT FINANCIERO (Obliga 2 decimales exactos)
                         if i == len(aviones_validos) - 1:
                             ha_calculadas = round(calc_ha_global - ha_acumulada, 2)
                         else:
@@ -602,9 +602,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             ha_calculadas = round(calc_ha_global * proporcion, 2)
                             ha_acumulada += ha_calculadas
                         
-                        # 2. MOTOR DE BLINDAJE: Extracción precisa
+                        # 2. MOTOR DE BLINDAJE: Extracción de tope
                         val_tope_calc = 999999
-                        es_tarifa_plana = False
                         
                         if col_anio_calc:
                             for _, r_tar in df_tarifas_maestras.iterrows():
@@ -618,7 +617,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                     elif regla == "Normal - Tope General" and ("MAX" in eq or "GENERAL" in eq): val_tope_calc = val_t
                                     elif regla == "Cooperativa (Tarifa Única)" and ("PARCELA" in eq or "20" in eq): 
                                         val_tope_calc = val_t
-                                        es_tarifa_plana = True
 
                         # Fallbacks
                         if val_tope_calc == 999999:
@@ -627,15 +625,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             elif regla == "Normal - Tope General": val_tope_calc = TOPES_PISTA.get("TOPE MAX GENERAL", {}).get(calc_pista, 999999)
                             elif regla == "Cooperativa (Tarifa Única)": 
                                 val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
-                                es_tarifa_plana = True
                         
-                        # 💥 3. LIQUIDACIÓN NETA (Candado de Tarifa Plana Cooperativa)
+                        # 💥 3. LIQUIDACIÓN NETA (Restaurada la eficiencia por Horómetro)
                         tarifa_base_ha = (calc_dict_av.get(av_sel, 0) * horo) / ha_calculadas if ha_calculadas > 0 else 0
                         
-                        if es_tarifa_plana and val_tope_calc != 999999:
-                            tarifa_base_tope = val_tope_calc
-                        else:
-                            tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
+                        # Vuelve a cobrar lo justo: Si el avión fue rápido, usa su tarifa real calculada.
+                        tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
                         
                         costo_linea = tarifa_base_tope * ha_calculadas
                         total_neto += costo_linea
