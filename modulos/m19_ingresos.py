@@ -1145,80 +1145,78 @@ def ejecutar():
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
 
             st.markdown("<br>", unsafe_allow_html=True)
-            
             # 💥 EJECUCIÓN BATCH PARA ACTUALIZACIONES Y ELIMINACIONES DE TRASLADOS
             if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
                 cambios_actualizacion_t = []
                 eliminaciones_t = []
                 
-                # Mapeo de columnas para saber a qué celda de Sheets corresponde cada cambio
-                idx_cols_t = {}
-                for col in df_vista_t.columns:
-                    if col == "🛡️ ACCIÓN": continue
-                    for idx_h, h in enumerate(encabezados_limpios_tras):
-                        if col.upper() == h.upper() or (col == "OBSERVACION" and "OBSERVAC" in h.upper()):
-                            idx_cols_t[col] = idx_h + 1
-                            break
-
-                # Escáner de cambios fila por fila
-                for i in range(len(df_traslados_vista)):
-                    estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
-                    fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
-                    
-                    if "ELIMINAR REGISTRO" in estado_nuevo_t:
-                        eliminaciones_t.append(fila_excel_t)
-                    else:
-                        # Rastrear si se editó alguna celda gracias al Modo Dios
-                        for col in df_vista_t.columns:
-                            if col == "🛡️ ACCIÓN": continue
-                            if col in df_traslados_vista.columns and col in df_editado_t.columns:
-                                val_orig = str(df_traslados_vista.iloc[i][col]).strip()
-                                val_nuevo = str(df_editado_t.iloc[i][col]).strip()
-                                
-                                # Limpiar comilla de origen para evitar engaños al escáner en Lotes
-                                if "LOTE" in col.upper():
-                                    val_orig = val_orig.lstrip("'")
-                                
-                                if val_orig != val_nuevo:
-                                    val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
-                                    if col in idx_cols_t:
-                                        cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
-
-                if cambios_actualizacion_t or eliminaciones_t:
-                    with st.spinner(f"Sincronizando {len(cambios_actualizacion_t)} celdas modificadas y {len(eliminaciones_t)} eliminaciones..."):
-                        try:
-                            gc_temp = inicializar_cliente_gspread()
-                            sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                            ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                # 💥 EXTRACCIÓN PURA: Leemos directamente la memoria caché interna de la tabla
+                memoria_edicion = st.session_state.get("editor_traslados", {}).get("edited_rows", {})
+                
+                if not memoria_edicion:
+                    st.warning("⚠️ No se detectó ninguna modificación. IMPORTANTE: Después de escribir el nuevo número, debes presionar la tecla 'ENTER' para que el sistema lo registre.")
+                else:
+                    for row_idx_str, cambios in memoria_edicion.items():
+                        row_idx = int(row_idx_str)
+                        fila_excel_t = int(df_traslados_vista.iloc[row_idx]['FILA_EXCEL'])
+                        
+                        # Si marcó eliminar en esta fila
+                        if "🛡️ ACCIÓN" in cambios and "ELIMINAR" in str(cambios["🛡️ ACCIÓN"]):
+                            eliminaciones_t.append(fila_excel_t)
+                            continue # Si se elimina, ignoramos las demás ediciones en esta fila
                             
-                            # 1. Inyectar Actualizaciones (Cantidades, Lotes, Textos)
-                            if cambios_actualizacion_t:
-                                celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
-                                ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
+                        # Si modificó celdas numéricas o textos
+                        for col_name, new_val in cambios.items():
+                            if col_name == "🛡️ ACCIÓN": continue
                             
-                            # 2. Ejecutar Eliminaciones
-                            if eliminaciones_t:
-                                eliminaciones_t = sorted(list(set(eliminaciones_t)), reverse=True)
-                                peticiones_borrado = []
-                                for eli in eliminaciones_t:
-                                    peticiones_borrado.append({
-                                        "deleteDimension": {
-                                            "range": {
-                                                "sheetId": ws_t.id,
-                                                "dimension": "ROWS",
-                                                "startIndex": eli - 1, 
-                                                "endIndex": eli
+                            # Rastrear a qué columna de Google Sheets corresponde
+                            idx_h_sheet = -1
+                            for idx_h, h in enumerate(encabezados_limpios_tras):
+                                if col_name.upper() == h.upper() or (col_name == "OBSERVACION" and "OBSERVAC" in h.upper()):
+                                    idx_h_sheet = idx_h + 1
+                                    break
+                                    
+                            if idx_h_sheet != -1:
+                                val_inyectar = f"'{new_val}" if "LOTE" in col_name.upper() else str(new_val)
+                                cambios_actualizacion_t.append({
+                                    'fila': fila_excel_t, 
+                                    'col_idx': idx_h_sheet, 
+                                    'nuevo': val_inyectar
+                                })
+
+                    if cambios_actualizacion_t or eliminaciones_t:
+                        with st.spinner(f"Inyectando {len(cambios_actualizacion_t)} celdas modificadas y {len(eliminaciones_t)} eliminaciones a la nube..."):
+                            try:
+                                gc_temp = inicializar_cliente_gspread()
+                                sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
+                                ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                                
+                                # 1. Inyectar Actualizaciones (Cantidades con 3 decimales, Lotes, etc.)
+                                if cambios_actualizacion_t:
+                                    celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
+                                    ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
+                                
+                                # 2. Ejecutar Eliminaciones
+                                if eliminaciones_t:
+                                    eliminaciones_t = sorted(list(set(eliminaciones_t)), reverse=True)
+                                    peticiones_borrado = []
+                                    for eli in eliminaciones_t:
+                                        peticiones_borrado.append({
+                                            "deleteDimension": {
+                                                "range": {
+                                                    "sheetId": ws_t.id,
+                                                    "dimension": "ROWS",
+                                                    "startIndex": eli - 1, 
+                                                    "endIndex": eli
+                                                }
                                             }
-                                        }
-                                    })
-                                sh_temp.batch_update({"requests": peticiones_borrado})
-                            
-                            st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(cambios_actualizacion_t)} celdas y se borraron {len(eliminaciones_t)} filas.")
-                            st.cache_data.clear(); st.rerun()
-                        except Exception as e:
-                            st.error(f"🚨 Error crítico al ejecutar sincronización masiva: {e}")
-                else: 
-                    st.info("ℹ️ El escáner rastreó la matriz completa pero no detectó ninguna celda modificada.")
+                                        })
+                                    sh_temp.batch_update({"requests": peticiones_borrado})
+                                
+                                st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(cambios_actualizacion_t)} celdas y se borraron {len(eliminaciones_t)} filas.")
+                                st.cache_data.clear(); st.rerun()
+                            except Exception as e:
+                                st.error(f"🚨 Error crítico al ejecutar sincronización masiva: {e}")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
