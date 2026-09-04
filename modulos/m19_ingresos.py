@@ -1143,11 +1143,12 @@ def ejecutar():
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 💥 CIRUGÍA 3: SINCRONIZADOR BLINDADO DE DOBLE BARRIL
+            # 💥 MOTOR DE SINCRONIZACIÓN (CLONADO DE INGRESOS - 100% ESTABLE)
             if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
                 cambios_actualizacion_t = []
                 eliminaciones_t = []
                 
+                # Mapeo de columnas para saber a qué celda de Sheets apuntar
                 idx_cols_t = {}
                 for col in df_vista_t.columns:
                     if col == "🛡️ ACCIÓN": continue
@@ -1156,57 +1157,41 @@ def ejecutar():
                             idx_cols_t[col] = idx_h + 1
                             break
 
-                # 1. Escáner de Memoria Profunda (Lee lo que escribiste antes de que Streamlit lo borre)
-                memoria = st.session_state.get("editor_traslados", {}).get("edited_rows", {})
-                
-                if memoria:
-                    for row_str, edits in memoria.items():
-                        row_idx = int(row_str)
-                        fila_excel = int(df_traslados_vista.iloc[row_idx]['FILA_EXCEL'])
-                        
-                        if "🛡️ ACCIÓN" in edits and "ELIMINAR" in str(edits["🛡️ ACCIÓN"]):
-                            eliminaciones_t.append(fila_excel)
-                        else:
-                            for col_name, new_val in edits.items():
-                                if col_name == "🛡️ ACCIÓN": continue
-                                val_inyectar = f"'{new_val}" if "LOTE" in col_name.upper() else str(new_val)
-                                if col_name in idx_cols_t:
-                                    cambios_actualizacion_t.append({'fila': fila_excel, 'col_idx': idx_cols_t[col_name], 'nuevo': val_inyectar})
-                
-                # 2. Escáner de Superficie (Copia de seguridad)
-                if not cambios_actualizacion_t and not eliminaciones_t:
-                    for i in range(len(df_vista_t)):
-                        estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
-                        fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
-                        
-                        if "ELIMINAR REGISTRO" in estado_nuevo_t:
-                            eliminaciones_t.append(fila_excel_t)
-                        else:
-                            for col in df_vista_t.columns:
-                                if col == "🛡️ ACCIÓN": continue
-                                val_orig = str(df_vista_t.iloc[i][col]).strip()
-                                val_nuevo = str(df_editado_t.iloc[i][col]).strip()
-                                
-                                if val_orig != val_nuevo:
-                                    val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
-                                    if col in idx_cols_t:
-                                        cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
-
-                # 3. Disparo a la Nube
-                if cambios_actualizacion_t or eliminaciones_t:
-                    with st.spinner(f"Sincronizando celdas modificadas y eliminaciones..."):
-                        try:
-                            gc_temp = inicializar_cliente_gspread()
-                            sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                            ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                # Comparación Celda a Celda (Original vs Editado)
+                for i in range(len(df_traslados_vista)):
+                    estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
+                    fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
+                    
+                    if "ELIMINAR REGISTRO" in estado_nuevo_t:
+                        eliminaciones_t.append(fila_excel_t)
+                    else:
+                        for col in df_vista_t.columns:
+                            if col == "🛡️ ACCIÓN": continue
                             
+                            val_orig = str(df_vista_t.iloc[i][col]).strip()
+                            val_nuevo = str(df_editado_t.iloc[i][col]).strip()
+                            
+                            # Limpieza de comillas en lotes para no generar falsos positivos
+                            if "LOTE" in col.upper():
+                                val_orig = val_orig.lstrip("'")
+                                val_nuevo = val_nuevo.lstrip("'")
+                            
+                            # Si detecta que cambiaste algo (ej. 12.0 por 12.234)
+                            if val_orig != val_nuevo:
+                                val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                if col in idx_cols_t:
+                                    cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
+
+                # Disparo a Google Sheets
+                if cambios_actualizacion_t or eliminaciones_t:
+                    gc_temp = inicializar_cliente_gspread()
+                    sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
+                    ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                    
+                    with st.spinner(f"Sincronizando {len(cambios_actualizacion_t)} cambios y {len(eliminaciones_t)} eliminaciones..."):
+                        try:
                             if cambios_actualizacion_t:
-                                # Evitar duplicados de celda en el mismo disparo
-                                celdas_unicas = {}
-                                for act in cambios_actualizacion_t:
-                                    celdas_unicas[(act['fila'], act['col_idx'])] = act['nuevo']
-                                
-                                celdas_a_enviar = [gspread.Cell(f, c, v) for (f, c), v in celdas_unicas.items()]
+                                celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
                                 ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
                             
                             if eliminaciones_t:
@@ -1225,12 +1210,12 @@ def ejecutar():
                                     })
                                 sh_temp.batch_update({"requests": peticiones_borrado})
                             
-                            st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(celdas_unicas) if cambios_actualizacion_t else 0} celdas y se borraron {len(eliminaciones_t)} filas.")
+                            st.success("✅ ¡Misión Cumplida! Base de datos sincronizada y purgada exitosamente en una sola operación.")
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
-                            st.error(f"🚨 Error crítico al ejecutar sincronización: {e}")
+                            st.error(f"🚨 Error crítico en la sincronización masiva: {e}")
                 else: 
-                    st.info("ℹ️ El escáner de doble barril no detectó celdas modificadas. Recuerda presionar ENTER después de cambiar un valor.")
+                    st.info("ℹ️ No se detectaron cambios. (Recuerda presionar ENTER después de modificar una celda para que el sistema lo registre).")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
