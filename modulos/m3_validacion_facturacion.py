@@ -1280,30 +1280,26 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                 costo_unit = float(precio_maestro)
                 except Exception:
                     pass
+                # 💥 CIRUGÍA: DEDUCCIÓN MENTAL Y UNIVERSAL
                 dosis_teorica = None
                 for p_receta, d_oficial in dosis_oficiales_coctel.items():
                     if p_receta == nombre_limpio or (len(nombre_limpio) >= 4 and p_receta in nombre_limpio) or (len(p_receta) >= 4 and nombre_limpio in p_receta):
                         dosis_teorica = d_oficial
                         break
 
-                if "ACONDICIONADOR" in nombre_limpio:
-                    dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
-                elif "IMBIOSIL" in nombre_limpio.replace(" ", ""):
-                    dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
-                elif "ACEITE" in nombre_limpio:
-                    # 💥 CIRUGÍA 2: Deducción nativa calculando Cantidad Total / Hectáreas (Como lo pediste)
-                    if ha_dosis_final > 0:
-                        dosis_teorica = round(cant_linea_sap / ha_dosis_final, 0)
-                        if dosis_teorica == 0: dosis_teorica = 1.0 # Respaldo mínimo de seguridad
-                    else:
-                        dosis_teorica = 1.0
                 if dosis_teorica is None:
-                    dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
-                    if dosis_rescatada > 0:
-                        dosis_teorica = dosis_rescatada
+                    if "ACONDICIONADOR" in nombre_limpio:
+                        dosis_teorica = 0.06 if any(x in coctel_ganador for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                    elif "IMBIOSIL" in nombre_limpio.replace(" ", ""):
+                        dosis_teorica = 1.5 if (coctel_ganador.strip().upper().split()[0].startswith("IN") or "IMBIOSIL" in coctel_ganador.strip().upper().split()[0]) else 1.0
                     else:
-                        dosis_teorica = 0.0
-
+                        # 🔥 LA SUMA MENTAL: Toma la dosis global sumada que el sistema ya agrupó matemáticamente
+                        suma_sap_total = sap_dict_pista.get(nombre_limpio, 0.0)
+                        if suma_sap_total > 0:
+                            dosis_teorica = round(suma_sap_total, 3)
+                        else:
+                            dosis_rescatada = obtener_dosis_global_robusta_v2(None, nombre_limpio)
+                            dosis_teorica = dosis_rescatada if dosis_rescatada > 0 else 0.0
                 dosis_ideal_pura = round(dosis_teorica * ha_dosis_final, 3)
 
                 precio_marginado_final = costo_unit * mult_material
