@@ -40,7 +40,6 @@ def obtener_datos_bovedas():
     except Exception as e: return None, None, None, None, str(e)
 
 # --- 🔍 RASTREADOR DE MATERIALES 100% ESTRICTO ---
-# 💥 TURBO 1: Guardamos la "Plantilla" en memoria por 1 hora para no descargarla en cada clic
 @st.cache_data(show_spinner=False, ttl=3600)
 def extraer_mapeo_materiales():
     gc = inicializar_cliente_gspread()
@@ -69,13 +68,11 @@ def buscar_codigo_material(producto_nombre, mapeo):
     if prod_clean in mapeo: return mapeo[prod_clean]
     return "S/N"
 
-# 💥 TURBO 2: Procesador de Fechas con "Memoria Fotográfica" (Caché local)
 _date_cache = {}
 def procesar_fecha_estricta(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return pd.NaT
     s = str(val).strip().lower()
     
-    # Si ya calculó esta fecha antes, la saca de la memoria al instante
     if s in _date_cache: return _date_cache[s]
     
     res = pd.NaT
@@ -104,17 +101,20 @@ def procesar_fecha_estricta(val):
                 try: res = pd.to_datetime(s_clean, dayfirst=True)
                 except: pass
                 
-    # Guarda el resultado en memoria para no volver a calcularlo
     _date_cache[s] = res
     return res 
 
+# 💥 CIRUGÍA 1A: Formateador blindado a 3 decimales
 def formatear_numero_sap(val):
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
-        # 💥 CIRUGÍA: 3 Decimales habilitados con limpieza de ceros a la derecha
         val_str = f"{f_val:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        return val_str.rstrip("0").rstrip(",") if "," in val_str else val_str
+        while val_str.endswith("0") and "," in val_str:
+            val_str = val_str[:-1]
+        if val_str.endswith(","):
+            val_str = val_str[:-1]
+        return val_str
     except: return str(val)
 
 def estandarizar_pista(val):
@@ -489,7 +489,7 @@ def ejecutar():
                     df_lotes_base = pd.DataFrame([{"CANTIDAD": 0.0, "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
                     
                     config_lotes = {
-                        "CANTIDAD": st.column_config.NumberColumn("⚖️ Cantidad", min_value=0.0, format="%.2f"),
+                        "CANTIDAD": st.column_config.NumberColumn("⚖️ Cantidad", min_value=0.0, format="%.3f"),
                         "LOTE": st.column_config.TextColumn("📦 Lote"),
                         "F_FABRICACION": st.column_config.DateColumn("⚙️ F. Fabricación (F/F)", format="YYYY-MM-DD"),
                         "F_VENCIMIENTO": st.column_config.DateColumn("⏳ F. Vencimiento (F/V)", format="YYYY-MM-DD")
@@ -710,7 +710,6 @@ def ejecutar():
 
                 st.markdown("### 🛠️ Matriz de Anulaciones y Edición Masiva")
                 
-                # 💥 CURA: INTERRUPTOR MODO DIOS (Desbloqueo Total)
                 modo_dios_edicion = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Modo Dios)", value=False)
                 
                 if modo_dios_edicion:
@@ -722,7 +721,6 @@ def ejecutar():
                 columnas_editables_reales = [COL_ESTADO]
                 
                 for col in df_filtrado.columns:
-                    # Si el Modo Dios está activo, todas las columnas se vuelven editables
                     if modo_dios_edicion and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']:
                         if col not in columnas_editables_reales:
                             columnas_editables_reales.append(col)
@@ -744,7 +742,6 @@ def ejecutar():
                 for c in df_vista.columns:
                     c_up = c.upper()
                     
-                    # 💥 Mejora visual: Etiquetas dinámicas según el Modo Dios
                     lbl_extra = " (Modo Dios)" if modo_dios_edicion else ""
                     lbl_edit = " (Modo Dios)" if modo_dios_edicion else " (Editable)"
                     
@@ -786,6 +783,9 @@ def ejecutar():
                                 if col in df_filtrado.columns and col in df_editado.columns:
                                     val_orig = str(df_filtrado.iloc[i][col]).strip()
                                     val_nuevo = str(df_editado.iloc[i][col]).strip()
+                                    
+                                    if "LOTE" in col.upper():
+                                        val_orig = val_orig.lstrip("'")
                                     
                                     if val_orig != val_nuevo:
                                         val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
@@ -903,7 +903,7 @@ def ejecutar():
             mat_item_tras = buscar_codigo_material(t_producto, mapeo_materiales)
             tr_mat.text_input("🔢 Cód. Material", value=mat_item_tras, disabled=True, key=f"t_mat_cod_{fk_t}_{t_producto}")
 
-            # 💥 CIRUGÍA: Input numérico configurado para aceptar 3 decimales exactos
+            # 💥 CIRUGÍA 1B: Input numérico configurado para 3 decimales
             t_cantidad = tr2.number_input("⚖️ Cantidad", min_value=0.0, step=0.001, format="%.3f", key=f"t_cantidad_{fk_t}")
             t_unidad = tr3.selectbox("📦 Unidad", ["LITROS", "KILOS", "GALONES", "UNIDADES"], key=f"t_unidad_{fk_t}")
 
@@ -1009,8 +1009,6 @@ def ejecutar():
             lote_final_print = t_lote_origen
             if t_observacion_sel in ["TRANSFORMACIÓN DE LOTE", "AJUSTE ENTRE LOTES"] and t_lote_nuevo.strip():
                 lote_final_print = f"{t_lote_origen} ➔ {t_lote_nuevo.strip()}"
-                
-            # A partir de aquí sigue el Panel de Copiado Rápido que ya está listo
 
             st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -1111,7 +1109,7 @@ def ejecutar():
                 df_traslados_vista = df_traslados_vista.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
             else: df_traslados_vista = df_traslados_vista.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
-            # 💥 CIRUGÍA: MODO DIOS PARA DESBLOQUEAR COLUMNAS EN TRASLADOS
+            # 💥 CIRUGÍA 2: MODO DIOS PARA DESBLOQUEAR COLUMNAS EN TRASLADOS
             modo_dios_t = st.toggle("🔓 DESBLOQUEAR TODAS LAS COLUMNAS (Modo Dios)", value=False, key="dios_traslados")
             
             if modo_dios_t:
@@ -1124,7 +1122,6 @@ def ejecutar():
             
             if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
-            # Si Modo Dios está activo, la lista de columnas deshabilitadas queda vacía
             cols_disabled_t = [] if modo_dios_t else [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
             col_config_t = {"🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)}
             
@@ -1145,78 +1142,70 @@ def ejecutar():
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
 
             st.markdown("<br>", unsafe_allow_html=True)
-            # 💥 EJECUCIÓN BATCH PARA ACTUALIZACIONES Y ELIMINACIONES DE TRASLADOS
+            
+            # 💥 CIRUGÍA 3: SINCRONIZADOR BLINDADO (Compara Tablas Directamente)
             if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
                 cambios_actualizacion_t = []
                 eliminaciones_t = []
                 
-                # 💥 EXTRACCIÓN PURA: Leemos directamente la memoria caché interna de la tabla
-                memoria_edicion = st.session_state.get("editor_traslados", {}).get("edited_rows", {})
-                
-                if not memoria_edicion:
-                    st.warning("⚠️ No se detectó ninguna modificación. IMPORTANTE: Después de escribir el nuevo número, debes presionar la tecla 'ENTER' para que el sistema lo registre.")
-                else:
-                    for row_idx_str, cambios in memoria_edicion.items():
-                        row_idx = int(row_idx_str)
-                        fila_excel_t = int(df_traslados_vista.iloc[row_idx]['FILA_EXCEL'])
-                        
-                        # Si marcó eliminar en esta fila
-                        if "🛡️ ACCIÓN" in cambios and "ELIMINAR" in str(cambios["🛡️ ACCIÓN"]):
-                            eliminaciones_t.append(fila_excel_t)
-                            continue # Si se elimina, ignoramos las demás ediciones en esta fila
-                            
-                        # Si modificó celdas numéricas o textos
-                        for col_name, new_val in cambios.items():
-                            if col_name == "🛡️ ACCIÓN": continue
-                            
-                            # Rastrear a qué columna de Google Sheets corresponde
-                            idx_h_sheet = -1
-                            for idx_h, h in enumerate(encabezados_limpios_tras):
-                                if col_name.upper() == h.upper() or (col_name == "OBSERVACION" and "OBSERVAC" in h.upper()):
-                                    idx_h_sheet = idx_h + 1
-                                    break
-                                    
-                            if idx_h_sheet != -1:
-                                val_inyectar = f"'{new_val}" if "LOTE" in col_name.upper() else str(new_val)
-                                cambios_actualizacion_t.append({
-                                    'fila': fila_excel_t, 
-                                    'col_idx': idx_h_sheet, 
-                                    'nuevo': val_inyectar
-                                })
+                idx_cols_t = {}
+                for col in df_vista_t.columns:
+                    if col == "🛡️ ACCIÓN": continue
+                    for idx_h, h in enumerate(encabezados_limpios_tras):
+                        if col.upper() == h.upper() or (col == "OBSERVACION" and "OBSERVAC" in h.upper()):
+                            idx_cols_t[col] = idx_h + 1
+                            break
 
-                    if cambios_actualizacion_t or eliminaciones_t:
-                        with st.spinner(f"Inyectando {len(cambios_actualizacion_t)} celdas modificadas y {len(eliminaciones_t)} eliminaciones a la nube..."):
-                            try:
-                                gc_temp = inicializar_cliente_gspread()
-                                sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
-                                ws_t = sh_temp.worksheet(titulo_ws_traslados)
-                                
-                                # 1. Inyectar Actualizaciones (Cantidades con 3 decimales, Lotes, etc.)
-                                if cambios_actualizacion_t:
-                                    celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
-                                    ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
-                                
-                                # 2. Ejecutar Eliminaciones
-                                if eliminaciones_t:
-                                    eliminaciones_t = sorted(list(set(eliminaciones_t)), reverse=True)
-                                    peticiones_borrado = []
-                                    for eli in eliminaciones_t:
-                                        peticiones_borrado.append({
-                                            "deleteDimension": {
-                                                "range": {
-                                                    "sheetId": ws_t.id,
-                                                    "dimension": "ROWS",
-                                                    "startIndex": eli - 1, 
-                                                    "endIndex": eli
-                                                }
+                for i in range(len(df_vista_t)):
+                    estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
+                    fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
+                    
+                    if "ELIMINAR REGISTRO" in estado_nuevo_t:
+                        eliminaciones_t.append(fila_excel_t)
+                    else:
+                        for col in df_vista_t.columns:
+                            if col == "🛡️ ACCIÓN": continue
+                            val_orig = str(df_vista_t.iloc[i][col]).strip()
+                            val_nuevo = str(df_editado_t.iloc[i][col]).strip()
+                            
+                            if val_orig != val_nuevo:
+                                val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                if col in idx_cols_t:
+                                    cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
+
+                if cambios_actualizacion_t or eliminaciones_t:
+                    with st.spinner(f"Sincronizando {len(cambios_actualizacion_t)} celdas modificadas y {len(eliminaciones_t)} eliminaciones..."):
+                        try:
+                            gc_temp = inicializar_cliente_gspread()
+                            sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
+                            ws_t = sh_temp.worksheet(titulo_ws_traslados)
+                            
+                            if cambios_actualizacion_t:
+                                celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
+                                ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
+                            
+                            if eliminaciones_t:
+                                eliminaciones_t = sorted(list(set(eliminaciones_t)), reverse=True)
+                                peticiones_borrado = []
+                                for eli in eliminaciones_t:
+                                    peticiones_borrado.append({
+                                        "deleteDimension": {
+                                            "range": {
+                                                "sheetId": ws_t.id,
+                                                "dimension": "ROWS",
+                                                "startIndex": eli - 1, 
+                                                "endIndex": eli
                                             }
-                                        })
-                                    sh_temp.batch_update({"requests": peticiones_borrado})
-                                
-                                st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(cambios_actualizacion_t)} celdas y se borraron {len(eliminaciones_t)} filas.")
-                                st.cache_data.clear(); st.rerun()
-                            except Exception as e:
-                                st.error(f"🚨 Error crítico al ejecutar sincronización masiva: {e}")
+                                        }
+                                    })
+                                sh_temp.batch_update({"requests": peticiones_borrado})
+                            
+                            st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(cambios_actualizacion_t)} celdas y se borraron {len(eliminaciones_t)} filas.")
+                            st.cache_data.clear(); st.rerun()
+                        except Exception as e:
+                            st.error(f"🚨 Error crítico al ejecutar sincronización: {e}")
+                else: 
+                    st.info("ℹ️ El escáner rastreó la matriz completa pero no detectó ninguna celda modificada.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
