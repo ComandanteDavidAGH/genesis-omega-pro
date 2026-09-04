@@ -1123,27 +1123,27 @@ def ejecutar():
             if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
             cols_disabled_t = [] if modo_dios_t else [c for c in df_vista_t.columns if c != "🛡️ ACCIÓN"]
+            
+            # 💥 ETIQUETAS ESTÁTICAS: Esto evita que Streamlit borre la memoria si apagas el botón
             col_config_t = {"🛡️ ACCIÓN": st.column_config.SelectboxColumn("🛡️ ACCIÓN", help="Selecciona ELIMINAR para borrar esta fila.", options=["✅ MANTENER", "💥 ELIMINAR REGISTRO"], required=True)}
             
             for c in df_vista_t.columns:
                 if c == "🛡️ ACCIÓN": continue
                 c_up = c.upper()
-                lbl_extra = " (Modo Dios)" if modo_dios_t else ""
-                
-                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📅 SEM{lbl_extra}", width="small")
-                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🗓️ FECHA{lbl_extra}", width="medium")
-                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🧪 PRODUCTO{lbl_extra}", width="large")
-                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📍 RUTA{lbl_extra}", width="medium")
-                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"⚖️ CANTIDAD{lbl_extra}", width="medium")
-                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📦 LOTE{lbl_extra}", width="medium")
-                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📝 OBS{lbl_extra}", width="medium")
-                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🔢 CONSECUTIVO{lbl_extra}", width="medium")
+                if "SEMANA" in c_up: col_config_t[c] = st.column_config.TextColumn("📅 SEM", width="small")
+                elif "FECHA" in c_up: col_config_t[c] = st.column_config.TextColumn("🗓️ FECHA", width="medium")
+                elif "PROD" in c_up: col_config_t[c] = st.column_config.TextColumn("🧪 PRODUCTO", width="large")
+                elif "PISTA" in c_up: col_config_t[c] = st.column_config.TextColumn("📍 RUTA", width="medium")
+                elif "CANT" in c_up: col_config_t[c] = st.column_config.TextColumn("⚖️ CANTIDAD", width="medium")
+                elif "LOTE" in c_up: col_config_t[c] = st.column_config.TextColumn("📦 LOTE", width="medium")
+                elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn("📝 OBS", width="medium")
+                elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn("🔢 CONSECUTIVO", width="medium")
 
             df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 💥 CIRUGÍA 3: SINCRONIZADOR BLINDADO (Compara Tablas Directamente)
+            # 💥 CIRUGÍA 3: SINCRONIZADOR BLINDADO DE DOBLE BARRIL
             if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
                 cambios_actualizacion_t = []
                 eliminaciones_t = []
@@ -1156,32 +1156,57 @@ def ejecutar():
                             idx_cols_t[col] = idx_h + 1
                             break
 
-                for i in range(len(df_vista_t)):
-                    estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
-                    fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
-                    
-                    if "ELIMINAR REGISTRO" in estado_nuevo_t:
-                        eliminaciones_t.append(fila_excel_t)
-                    else:
-                        for col in df_vista_t.columns:
-                            if col == "🛡️ ACCIÓN": continue
-                            val_orig = str(df_vista_t.iloc[i][col]).strip()
-                            val_nuevo = str(df_editado_t.iloc[i][col]).strip()
-                            
-                            if val_orig != val_nuevo:
-                                val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
-                                if col in idx_cols_t:
-                                    cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
+                # 1. Escáner de Memoria Profunda (Lee lo que escribiste antes de que Streamlit lo borre)
+                memoria = st.session_state.get("editor_traslados", {}).get("edited_rows", {})
+                
+                if memoria:
+                    for row_str, edits in memoria.items():
+                        row_idx = int(row_str)
+                        fila_excel = int(df_traslados_vista.iloc[row_idx]['FILA_EXCEL'])
+                        
+                        if "🛡️ ACCIÓN" in edits and "ELIMINAR" in str(edits["🛡️ ACCIÓN"]):
+                            eliminaciones_t.append(fila_excel)
+                        else:
+                            for col_name, new_val in edits.items():
+                                if col_name == "🛡️ ACCIÓN": continue
+                                val_inyectar = f"'{new_val}" if "LOTE" in col_name.upper() else str(new_val)
+                                if col_name in idx_cols_t:
+                                    cambios_actualizacion_t.append({'fila': fila_excel, 'col_idx': idx_cols_t[col_name], 'nuevo': val_inyectar})
+                
+                # 2. Escáner de Superficie (Copia de seguridad)
+                if not cambios_actualizacion_t and not eliminaciones_t:
+                    for i in range(len(df_vista_t)):
+                        estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
+                        fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
+                        
+                        if "ELIMINAR REGISTRO" in estado_nuevo_t:
+                            eliminaciones_t.append(fila_excel_t)
+                        else:
+                            for col in df_vista_t.columns:
+                                if col == "🛡️ ACCIÓN": continue
+                                val_orig = str(df_vista_t.iloc[i][col]).strip()
+                                val_nuevo = str(df_editado_t.iloc[i][col]).strip()
+                                
+                                if val_orig != val_nuevo:
+                                    val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                    if col in idx_cols_t:
+                                        cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
 
+                # 3. Disparo a la Nube
                 if cambios_actualizacion_t or eliminaciones_t:
-                    with st.spinner(f"Sincronizando {len(cambios_actualizacion_t)} celdas modificadas y {len(eliminaciones_t)} eliminaciones..."):
+                    with st.spinner(f"Sincronizando celdas modificadas y eliminaciones..."):
                         try:
                             gc_temp = inicializar_cliente_gspread()
                             sh_temp = gc_temp.open_by_url(URL_SHEET_TRASLADOS)
                             ws_t = sh_temp.worksheet(titulo_ws_traslados)
                             
                             if cambios_actualizacion_t:
-                                celdas_a_enviar = [gspread.Cell(act['fila'], act['col_idx'], act['nuevo']) for act in cambios_actualizacion_t]
+                                # Evitar duplicados de celda en el mismo disparo
+                                celdas_unicas = {}
+                                for act in cambios_actualizacion_t:
+                                    celdas_unicas[(act['fila'], act['col_idx'])] = act['nuevo']
+                                
+                                celdas_a_enviar = [gspread.Cell(f, c, v) for (f, c), v in celdas_unicas.items()]
                                 ws_t.update_cells(celdas_a_enviar, value_input_option='USER_ENTERED')
                             
                             if eliminaciones_t:
@@ -1200,12 +1225,12 @@ def ejecutar():
                                     })
                                 sh_temp.batch_update({"requests": peticiones_borrado})
                             
-                            st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(cambios_actualizacion_t)} celdas y se borraron {len(eliminaciones_t)} filas.")
+                            st.success(f"✅ ¡Misión Cumplida! Se actualizaron {len(celdas_unicas) if cambios_actualizacion_t else 0} celdas y se borraron {len(eliminaciones_t)} filas.")
                             st.cache_data.clear(); st.rerun()
                         except Exception as e:
                             st.error(f"🚨 Error crítico al ejecutar sincronización: {e}")
                 else: 
-                    st.info("ℹ️ El escáner rastreó la matriz completa pero no detectó ninguna celda modificada.")
+                    st.info("ℹ️ El escáner de doble barril no detectó celdas modificadas. Recuerda presionar ENTER después de cambiar un valor.")
 
     st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
 
