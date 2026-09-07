@@ -823,14 +823,14 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
-            if click_megazord and ha_sim > 0:
+            click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
+
+        if click_megazord and ha_sim > 0:
             with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
                 time.sleep(1)
                 
-                # --- 1. Cálculo de Hectáreas Puras ---
                 ha_vuelo_sim = ha_sim
                 
-                # --- 2. Costeo del Equipo de Vuelo ---
                 if vuelo_sim in dict_aviones_sim:
                     costo_base_equipo = dict_aviones_sim[vuelo_sim]
                     costo_bruto_vuelo = costo_base_equipo * horometro_sim
@@ -838,17 +838,14 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 else:
                     tarifa_base_ha = dict_drones_sim.get(vuelo_sim, 0)
 
-                # --- 3. Aplicación de Topes Tarifarios ---
                 val_tope_sim = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 999999)
                 if val_tope_sim == 0.0: val_tope_sim = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
                 
                 tarifa_base_tope = tarifa_base_ha if pista_sim == "PDIV" else min(tarifa_base_ha, val_tope_sim)
                 costo_neto_vuelo_total = (tarifa_base_tope + recargo_sim) * ha_vuelo_sim
 
-                # --- 4. Costeo de Servicio Técnico ---
                 costo_st_total = tarifa_serv_tec_base * ha_vuelo_sim
 
-                # --- 5. Costeo de Mezcla (Simulada o Real) ---
                 costo_mezcla_total_sim = 0.0
                 if 'df_matriz' in locals() and df_matriz is not None and not df_matriz.empty:
                     from decimal import Decimal, ROUND_HALF_UP
@@ -858,11 +855,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 else:
                     costo_mezcla_total_sim = 85000.0 * ha_vuelo_sim 
 
-                # --- 6. Totalización ---
                 gran_total_sim = costo_neto_vuelo_total + costo_st_total + costo_mezcla_total_sim
                 costo_por_ha_sim = gran_total_sim / ha_vuelo_sim if ha_vuelo_sim > 0 else 0
 
-                # --- 7. RENDERIZADO DEL MEGAZORD ---
                 st.markdown("### 🤖 MATRIZ MEGAZORD (Proyección Comercial)")
                 html_megazord = render_tarjetas_html(
                     st_val=costo_st_total, 
@@ -878,8 +873,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 c_mz2.success(f"🔥 **COSTO TOTAL PROYECTADO: $ {gran_total_sim:,.0f}**".replace(",", "."))
                 
                 st.markdown("---")
-        
-        # 🛑 EL MURO DE CONTENCIÓN: Detiene la impresión de la facturación real
+
         st.stop()
     def forzar_descarga_maestros():
         gc_maestro = obtener_cliente_gspread_unificado()
