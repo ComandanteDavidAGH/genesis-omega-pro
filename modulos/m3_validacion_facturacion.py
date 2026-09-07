@@ -839,9 +839,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 if not df_cfg.empty:
                     match_cfg_sim = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_prod_sim]
                     if not match_cfg_sim.empty:
-                        mult_m_sim = extraer_numero(match_cfg_sim.iloc[0].iloc[3])
-                        st_base_sim = extraer_numero(match_cfg_sim.iloc[0].iloc[4])
-                        mult_v_sim = extraer_numero(match_cfg_sim.iloc[0].iloc[6])
+                        # USAMOS TUS FUNCIONES LOCALES BLINDADAS
+                        mult_m_sim = limpiar_numero_estricto(match_cfg_sim.iloc[0].iloc[3])
+                        st_base_sim = limpiar_dinero(match_cfg_sim.iloc[0].iloc[4])
+                        mult_v_sim = limpiar_numero_estricto(match_cfg_sim.iloc[0].iloc[6])
 
                 # --- 2. DECONSTRUCCIÓN DEL CÓCTEL (LA INTELIGENCIA DEL SIMULADOR) ---
                 st.markdown("### 🧪 Matriz de Mezcla Simulada")
@@ -911,11 +912,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
                     
                     if mask.any():
-                        val_costo = extraer_numero(df_cfg[mask].iloc[0, c_c_i])
+                        val_costo = limpiar_dinero(df_cfg[mask].iloc[0, c_c_i])
                         if val_costo > 0:
                             p_base = val_costo
                     
-                    # Se multiplica el precio en bruto por el margen del productor y se revisa excepción de Manzate
                     p_m = p_base * mult_m_sim
                     p_m = aplicar_excepcion_manzate(p_m, p, tipo_prod_sim)
                     c_unit_redondeado = round(p_m, 0)
