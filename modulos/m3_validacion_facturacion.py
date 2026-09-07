@@ -831,6 +831,22 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 def sap_round_sim(n):
                     return int(Decimal(str(round(float(n), 4))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
                 
+                # --- 0. CAPTURA ROBUSTA DE VARIABLES (ANTI-ERRORES) ---
+                try:
+                    ciclo_final = dias_ciclo_sim
+                except NameError:
+                    try:
+                        ciclo_final = int(df_areas_in["Días Ciclo"].iloc[0])
+                    except:
+                        ciclo_final = dias_ciclo_sim_calc if 'dias_ciclo_sim_calc' in locals() else (dias_ciclo_calc if 'dias_ciclo_calc' in locals() else 14)
+                
+                try:
+                    aviones_locales = dict_aviones_sim
+                    drones_locales = dict_drones_sim
+                except NameError:
+                    aviones_locales = dict_aviones if 'dict_aviones' in locals() else {}
+                    drones_locales = dict_drones if 'dict_drones' in locals() else {}
+                
                 # --- 1. EXTRACCIÓN DE PARÁMETROS FINANCIEROS (MÁRGENES DEL PRODUCTOR) ---
                 mult_m_sim = 1.112
                 st_base_sim = 1337.0
@@ -839,7 +855,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 if not df_cfg.empty:
                     match_cfg_sim = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_prod_sim]
                     if not match_cfg_sim.empty:
-                        # USAMOS TUS FUNCIONES LOCALES BLINDADAS
                         mult_m_sim = limpiar_numero_estricto(match_cfg_sim.iloc[0].iloc[3])
                         st_base_sim = limpiar_dinero(match_cfg_sim.iloc[0].iloc[4])
                         mult_v_sim = limpiar_numero_estricto(match_cfg_sim.iloc[0].iloc[6])
@@ -859,7 +874,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     if pd.notna(d) and d > 0 and p not in ['NAN', '']:
                         prods_sim.append({"PRODUCTO": p, "DOSIS": float(d)})
 
-                # Búsqueda autónoma de fertilizante por la sigla
                 fert_sim_obj = None
                 if sigla_sim:
                     try:
@@ -880,10 +894,12 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     elif " QM" in coctel_texto_puro or coctel_texto_puro.endswith("QM"): fert_sim_obj = "QUELAMIX"
 
                 if fert_sim_obj:
-                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_sim_obj)
+                    try:
+                        dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_sim_obj)
+                    except:
+                        dosis_exacta = 0.5
                     prods_sim.append({"PRODUCTO": fert_sim_obj, "DOSIS": dosis_exacta})
 
-                # Inteligencia especial para Acondicionadores e Imbiosil
                 for item in prods_sim:
                     if "ACONDICIONADOR" in item["PRODUCTO"]:
                         item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
@@ -917,7 +933,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             p_base = val_costo
                     
                     p_m = p_base * mult_m_sim
-                    p_m = aplicar_excepcion_manzate(p_m, p, tipo_prod_sim)
+                    
+                    try:
+                        p_m = aplicar_excepcion_manzate(p_m, p, tipo_prod_sim)
+                    except: pass
+                        
                     c_unit_redondeado = round(p_m, 0)
                     
                     c_t_p = sap_round_sim(d_ideal * c_unit_redondeado)
@@ -963,12 +983,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 val_tope_sim = float(dict_topes_pista_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope_sim == 999999: val_tope_sim = 0.0
 
-                # MOTOR AUTÓNOMO DE TARIFAS DE VUELO
-                try:
-                    aviones_locales, drones_locales = preprocesar_flota_gspread()
-                except:
-                    aviones_locales, drones_locales = {}, {}
-
                 if vuelo_sim == "DRONE" or "DRONE" in str(vuelo_sim).upper(): 
                     if "PLUC" == pista_sim: base_dron = 84428
                     elif "PDIV" == pista_sim: base_dron = 76916
@@ -983,7 +997,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 
                 subtotal_vuelo_sim = sap_round_sim(unitario_vuelo_sim * ha_sim)
                 
-                unitario_st_sim = sap_round_sim(dias_ciclo_sim * st_base_sim)
+                unitario_st_sim = sap_round_sim(ciclo_final * st_base_sim)
                 subtotal_st_sim = sap_round_sim(unitario_st_sim * ha_sim)
                 
                 recargo_m_sim = round(recargo_sim * mult_v_sim, 0)
