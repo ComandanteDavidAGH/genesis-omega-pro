@@ -825,7 +825,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
             click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
 
-        if click_megazord and ha_sim > 0:
+if click_megazord and ha_sim > 0:
             with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
                 time.sleep(1)
                 
@@ -858,7 +858,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         return int(Decimal(str(round(float(n), 4))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
                     costo_mezcla_total_sim = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round_sim).sum()
                 else:
-                    # Fallback si no hay pedido SAP cargado
                     costo_mezcla_total_sim = 85000.0 * ha_vuelo_sim 
 
                 # --- 6. Totalización ---
@@ -881,6 +880,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 c_mz2.success(f"🔥 **COSTO TOTAL PROYECTADO: $ {gran_total_sim:,.0f}**".replace(",", "."))
                 
                 st.markdown("---")
+        
+        # 🛑 EL MURO DE CONTENCIÓN: Esto asegura que el interruptor oculte la facturación
+        st.stop())
     def forzar_descarga_maestros():
         gc_maestro = obtener_cliente_gspread_unificado()
         if not gc_maestro: return None, None
