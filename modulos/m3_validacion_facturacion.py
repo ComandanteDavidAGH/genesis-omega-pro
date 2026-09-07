@@ -829,6 +829,18 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
                 ha_vuelo_sim = ha_sim
                 
+                # --- EXTRACCIÓN AUTÓNOMA DE TARIFA ST ---
+                tarifa_serv_tec_base = 1337.0  # Valor por defecto
+                try:
+                    df_cfg_puro_sim = obtener_configuracion_cruda_cached()
+                    if not df_cfg_puro_sim.empty:
+                        col_a_sim = df_cfg_puro_sim[0].apply(lambda x: str(x).strip().upper())
+                        fila_productor_sim = df_cfg_puro_sim[col_a_sim == str(tipo_prod_sim).strip().upper()]
+                        if not fila_productor_sim.empty:
+                            tarifa_serv_tec_base = limpiar_dinero(fila_productor_sim.iloc[0, 4])
+                except Exception:
+                    pass
+                
                 if vuelo_sim in dict_aviones_sim:
                     costo_base_equipo = dict_aviones_sim[vuelo_sim]
                     costo_bruto_vuelo = costo_base_equipo * horometro_sim
