@@ -828,8 +828,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
         if click_megazord and ha_sim > 0:
             with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
-                time.sleep(1)
-                
                 ha_vuelo_sim = ha_sim
                 
                 if vuelo_sim in dict_aviones_sim:
@@ -875,6 +873,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 
                 st.markdown("---")
 
+        # 🛑 MURO DE CONTENCIÓN AISLADO
         st.stop()
     def forzar_descarga_maestros():
         gc_maestro = obtener_cliente_gspread_unificado()
