@@ -823,7 +823,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
-click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
+        click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
 
         if click_megazord and ha_sim > 0:
             with st.spinner("🚀 Construyendo Simulador Completo MEGAZORD..."):
