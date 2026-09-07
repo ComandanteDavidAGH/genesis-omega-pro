@@ -825,7 +825,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
             click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
 
-if click_megazord and ha_sim > 0:
+        if click_megazord and ha_sim > 0:
             with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
                 time.sleep(1)
                 
