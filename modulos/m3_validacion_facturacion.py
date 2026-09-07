@@ -829,18 +829,53 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
                 ha_vuelo_sim = ha_sim
                 
-                # --- EXTRACCIÓN AUTÓNOMA DE TARIFA ST ---
-                tarifa_serv_tec_base = 1337.0  # Valor por defecto
+                # --- EXTRACCIÓN AUTÓNOMA DE TARIFA ST Y MULTIPLICADORES ---
+                tarifa_serv_tec_base = 1337.0
+                mult_material_sim = 1.112
                 try:
                     df_cfg_puro_sim = obtener_configuracion_cruda_cached()
                     if not df_cfg_puro_sim.empty:
                         col_a_sim = df_cfg_puro_sim[0].apply(lambda x: str(x).strip().upper())
                         fila_productor_sim = df_cfg_puro_sim[col_a_sim == str(tipo_prod_sim).strip().upper()]
                         if not fila_productor_sim.empty:
+                            mult_material_sim = limpiar_numero_estricto(fila_productor_sim.iloc[0, 3])
                             tarifa_serv_tec_base = limpiar_dinero(fila_productor_sim.iloc[0, 4])
                 except Exception:
                     pass
                 
+                # --- 1. SIMULACIÓN DE RECETA (PRODUCTOS Y PRECIOS) ---
+                st.markdown("### 🧪 Matriz de Mezcla Simulada")
+                
+                costo_mezcla_total_sim = 0.0
+                if 'df_matriz' in locals() and df_matriz is not None and not df_matriz.empty:
+                    df_matriz_sim = df_matriz.copy()
+                    
+                    # Reconstruir columnas para la vista del Megazord
+                    df_matriz_sim = df_matriz_sim.rename(columns={
+                        "A: Producto": "Producto",
+                        "B: Dosis/Ha (SAP)": "Dosis/Ha",
+                        "E: Costo Unit (+Margen)": "Costo Unit (COP)"
+                    })
+                    df_matriz_sim["Dosis Total"] = (df_matriz_sim["Dosis/Ha"].fillna(0.0) * ha_vuelo_sim).round(3)
+                    df_matriz_sim["Costo Total SAP"] = (df_matriz_sim["Dosis Total"] * df_matriz_sim["Costo Unit (COP)"]).apply(lambda x: math.floor(x + 0.5))
+                    
+                    # Filtrar las columnas necesarias
+                    columnas_sim = ["Producto", "Dosis/Ha", "Dosis Total", "Costo Unit (COP)", "Costo Total SAP"]
+                    df_vista_sim = df_matriz_sim[[c for c in columnas_sim if c in df_matriz_sim.columns]]
+                    
+                    st.dataframe(df_vista_sim, use_container_width=True, hide_index=True)
+                    
+                    st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
+                    valores_formateados_sim = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz_sim['Costo Unit (COP)'].fillna(0).tolist()]
+                    st.code("\n".join(valores_formateados_sim), language="text")
+                    
+                    costo_mezcla_total_sim = df_matriz_sim["Costo Total SAP"].sum()
+                else:
+                    st.warning(f"⚠️ No se ha extraído receta del sistema SAP para el cóctel '{coctel_sim}'. Simulando con costo por defecto.")
+                    costo_mezcla_total_sim = 85000.0 * ha_vuelo_sim
+                    st.info("Asegúrate de buscar por N° de Pedido SAP primero.")
+
+                # --- 2. CÁLCULO DE VUELO Y TOPES ---
                 if vuelo_sim in dict_aviones_sim:
                     costo_base_equipo = dict_aviones_sim[vuelo_sim]
                     costo_bruto_vuelo = costo_base_equipo * horometro_sim
@@ -853,21 +888,13 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 
                 tarifa_base_tope = tarifa_base_ha if pista_sim == "PDIV" else min(tarifa_base_ha, val_tope_sim)
                 costo_neto_vuelo_total = (tarifa_base_tope + recargo_sim) * ha_vuelo_sim
-
                 costo_st_total = tarifa_serv_tec_base * ha_vuelo_sim
 
-                costo_mezcla_total_sim = 0.0
-                if 'df_matriz' in locals() and df_matriz is not None and not df_matriz.empty:
-                    from decimal import Decimal, ROUND_HALF_UP
-                    def sap_round_sim(n):
-                        return int(Decimal(str(round(float(n), 4))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
-                    costo_mezcla_total_sim = (df_matriz["I: Sugerido SAP (Total)"] * df_matriz["E: Costo Unit (+Margen)"]).apply(sap_round_sim).sum()
-                else:
-                    costo_mezcla_total_sim = 85000.0 * ha_vuelo_sim 
-
+                # --- 3. TOTALIZACIÓN ---
                 gran_total_sim = costo_neto_vuelo_total + costo_st_total + costo_mezcla_total_sim
                 costo_por_ha_sim = gran_total_sim / ha_vuelo_sim if ha_vuelo_sim > 0 else 0
 
+                # --- 4. RENDERIZADO FINAL MEGAZORD ---
                 st.markdown("### 🤖 MATRIZ MEGAZORD (Proyección Comercial)")
                 html_megazord = render_tarjetas_html(
                     st_val=costo_st_total, 
@@ -881,6 +908,28 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 c_mz1, c_mz2 = st.columns(2)
                 c_mz1.info(f"📍 Tope Detectado: **$ {val_tope_sim:,.0f}** | Tarifa Pura Calculada: **$ {tarifa_base_ha:,.0f}**".replace(",", "."))
                 c_mz2.success(f"🔥 **COSTO TOTAL PROYECTADO: $ {gran_total_sim:,.0f}**".replace(",", "."))
+                
+                # --- 5. CASILLAS DE COPIADO RÁPIDO FINALES ---
+                st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
+                cc1_s, cc2_s, cc3_s, cc4_s, cc5_s, cc6_s = st.columns(6)
+                with cc1_s:
+                    st.write("👨‍🔬 Serv. Tec")
+                    st.code(f"{int(costo_st_total)}", language="text")
+                with cc2_s:
+                    st.write("✈️ Vuelo")
+                    st.code(f"{int(costo_neto_vuelo_total)}", language="text")
+                with cc3_s:
+                    st.write("🧪 Mezcla")
+                    st.code(f"{int(costo_mezcla_total_sim)}", language="text")
+                with cc4_s:
+                    st.write("⚠️ Recargo")
+                    st.code(f"{int(recargo_sim * ha_vuelo_sim)}", language="text")
+                with cc5_s:
+                    st.write("💰 Costo x Ha")
+                    st.code(f"{int(costo_por_ha_sim)}", language="text")
+                with cc6_s:
+                    st.write("🔥 TOTAL")
+                    st.code(f"{int(gran_total_sim)}", language="text")
                 
                 st.markdown("---")
 
