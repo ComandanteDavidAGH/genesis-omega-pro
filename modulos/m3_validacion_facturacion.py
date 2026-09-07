@@ -823,7 +823,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
-            click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
+click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
 
         if click_megazord and ha_sim > 0:
             with st.spinner("🚀 Construyendo Simulador Completo MEGAZORD..."):
@@ -963,13 +963,19 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 val_tope_sim = float(dict_topes_pista_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope_sim == 999999: val_tope_sim = 0.0
 
+                # MOTOR AUTÓNOMO DE TARIFAS DE VUELO
+                try:
+                    aviones_locales, drones_locales = preprocesar_flota_gspread()
+                except:
+                    aviones_locales, drones_locales = {}, {}
+
                 if vuelo_sim == "DRONE" or "DRONE" in str(vuelo_sim).upper(): 
                     if "PLUC" == pista_sim: base_dron = 84428
                     elif "PDIV" == pista_sim: base_dron = 76916
                     else: base_dron = 72600
                     unitario_vuelo_sim = base_dron * mult_v_sim
                 else:
-                    tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
+                    tarifa_vuelo_base = float(aviones_locales.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
                     if val_tope_sim > 0 and pista_sim != "PDIV": 
                         costo_bruto = min(costo_bruto, val_tope_sim)
