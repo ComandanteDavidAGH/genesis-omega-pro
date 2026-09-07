@@ -826,113 +826,223 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             click_megazord = st.button("🚀 Construir Matriz MEGAZORD", use_container_width=True, type="primary")
 
         if click_megazord and ha_sim > 0:
-            with st.spinner("🚀 Construyendo Matriz MEGAZORD..."):
-                ha_vuelo_sim = ha_sim
+            with st.spinner("🚀 Construyendo Simulador Completo MEGAZORD..."):
+                from decimal import Decimal, ROUND_HALF_UP
+                def sap_round_sim(n):
+                    return int(Decimal(str(round(float(n), 4))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
                 
-                # --- EXTRACCIÓN AUTÓNOMA DE TARIFA ST Y MULTIPLICADORES ---
-                tarifa_serv_tec_base = 1337.0
-                mult_material_sim = 1.112
-                try:
-                    df_cfg_puro_sim = obtener_configuracion_cruda_cached()
-                    if not df_cfg_puro_sim.empty:
-                        col_a_sim = df_cfg_puro_sim[0].apply(lambda x: str(x).strip().upper())
-                        fila_productor_sim = df_cfg_puro_sim[col_a_sim == str(tipo_prod_sim).strip().upper()]
-                        if not fila_productor_sim.empty:
-                            mult_material_sim = limpiar_numero_estricto(fila_productor_sim.iloc[0, 3])
-                            tarifa_serv_tec_base = limpiar_dinero(fila_productor_sim.iloc[0, 4])
-                except Exception:
-                    pass
+                # --- 1. EXTRACCIÓN DE PARÁMETROS FINANCIEROS (MÁRGENES DEL PRODUCTOR) ---
+                mult_m_sim = 1.112
+                st_base_sim = 1337.0
+                mult_v_sim = 1.112
                 
-                # --- 1. SIMULACIÓN DE RECETA (PRODUCTOS Y PRECIOS) ---
+                if not df_cfg.empty:
+                    match_cfg_sim = df_cfg[df_cfg.iloc[:, 0].astype(str).str.strip().str.upper() == tipo_prod_sim]
+                    if not match_cfg_sim.empty:
+                        mult_m_sim = extraer_numero(match_cfg_sim.iloc[0].iloc[3])
+                        st_base_sim = extraer_numero(match_cfg_sim.iloc[0].iloc[4])
+                        mult_v_sim = extraer_numero(match_cfg_sim.iloc[0].iloc[6])
+
+                # --- 2. DECONSTRUCCIÓN DEL CÓCTEL (LA INTELIGENCIA DEL SIMULADOR) ---
                 st.markdown("### 🧪 Matriz de Mezcla Simulada")
+                coctel_u = coctel_sim.upper().strip()
+                partes = coctel_u.split(" ")
+                base_c = partes[0]
+                sigla_sim = partes[1] if len(partes) > 1 else ""
+
+                receta_c = df_recetas[df_recetas.iloc[:,0].astype(str).str.upper() == base_c]
+                prods_sim = []
+                for idx, row in receta_c.iterrows():
+                    p = str(row.iloc[1]).upper().strip()
+                    d = pd.to_numeric(row.iloc[2], errors='coerce')
+                    if pd.notna(d) and d > 0 and p not in ['NAN', '']:
+                        prods_sim.append({"PRODUCTO": p, "DOSIS": float(d)})
+
+                # Búsqueda autónoma de fertilizante por la sigla
+                fert_sim_obj = None
+                if sigla_sim:
+                    try:
+                        for idx, row in df_recetas.iterrows():
+                            if len(row) > 13:
+                                f_n = str(row.iloc[12]).strip().upper()
+                                f_s = str(row.iloc[13]).strip().upper()
+                                if f_s == sigla_sim and f_n not in ["NAN", "FERTILIZANTES", ""]:
+                                    fert_sim_obj = f_n
+                                    break
+                    except: pass
                 
+                if not fert_sim_obj:
+                    coctel_texto_puro = coctel_u.replace("-", " ").replace("+", " ")
+                    if " ZN" in coctel_texto_puro or coctel_texto_puro.endswith("ZN"): fert_sim_obj = "ZINTRAC X LITRO SV"
+                    elif " BT" in coctel_texto_puro or coctel_texto_puro.endswith("BT"): fert_sim_obj = "BANATREL SC"
+                    elif " NM" in coctel_texto_puro or coctel_texto_puro.endswith("NM"): fert_sim_obj = "NATURAMIN WSP"
+                    elif " QM" in coctel_texto_puro or coctel_texto_puro.endswith("QM"): fert_sim_obj = "QUELAMIX"
+
+                if fert_sim_obj:
+                    dosis_exacta = obtener_dosis_exacta_fertilizante(df_recetas, fert_sim_obj)
+                    prods_sim.append({"PRODUCTO": fert_sim_obj, "DOSIS": dosis_exacta})
+
+                # Inteligencia especial para Acondicionadores e Imbiosil
+                for item in prods_sim:
+                    if "ACONDICIONADOR" in item["PRODUCTO"]:
+                        item["DOSIS"] = 0.06 if any(x in coctel_u for x in ["ZN", "BT", "ZT", "ZITRON"]) else 0.02
+                    elif "IMBIOSIL" in item["PRODUCTO"].replace(" ", ""):
+                        item["DOSIS"] = 1.5 if (base_c.startswith("IN") or "IMBIOSIL" in base_c) else 1.0
+
+                # --- 3. CONSTRUCCIÓN DE MATRIZ VISUAL DE PRECIOS (IMAGEN 2) ---
+                c_p_i, c_c_i = 8, 9 
+                if not df_cfg.empty:
+                    for i in range(min(5, len(df_cfg))):
+                        r_c = df_cfg.iloc[i].astype(str).str.upper().tolist()
+                        if 'PRODUCTO' in r_c and 'COSTO' in r_c: 
+                            c_p_i, c_c_i = r_c.index('PRODUCTO'), r_c.index('COSTO')
+                            break
+
+                matriz_visual_sim = []
                 costo_mezcla_total_sim = 0.0
-                if 'df_matriz' in locals() and df_matriz is not None and not df_matriz.empty:
-                    df_matriz_sim = df_matriz.copy()
+                for item in prods_sim:
+                    p = item["PRODUCTO"]
+                    d = item["DOSIS"]
+                    d_ideal = round(d * ha_sim, 3)
                     
-                    # Reconstruir columnas para la vista del Megazord
-                    df_matriz_sim = df_matriz_sim.rename(columns={
-                        "A: Producto": "Producto",
-                        "B: Dosis/Ha (SAP)": "Dosis/Ha",
-                        "E: Costo Unit (+Margen)": "Costo Unit (COP)"
+                    p_base = 0.0
+                    mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.strip() == p
+                    if not mask.any() and "NEMATICIDA" in p:
+                        mask = df_cfg.iloc[:, c_p_i].astype(str).str.upper().str.contains("NEMATI", na=False)
+                    
+                    if mask.any():
+                        val_costo = extraer_numero(df_cfg[mask].iloc[0, c_c_i])
+                        if val_costo > 0:
+                            p_base = val_costo
+                    
+                    # Se multiplica el precio en bruto por el margen del productor y se revisa excepción de Manzate
+                    p_m = p_base * mult_m_sim
+                    p_m = aplicar_excepcion_manzate(p_m, p, tipo_prod_sim)
+                    c_unit_redondeado = round(p_m, 0)
+                    
+                    c_t_p = sap_round_sim(d_ideal * c_unit_redondeado)
+                    costo_mezcla_total_sim += c_t_p
+                    
+                    matriz_visual_sim.append({
+                        "A: Producto": p,
+                        "B: Dosis/Ha (SAP)": d,
+                        "Extra %": 0.0,
+                        "Dosis Ideal": d_ideal,
+                        "Sugerido SAP (Total)": d_ideal,
+                        "📊 Ajuste de Campo": "🟢 ÓPTIMO",
+                        "E: Costo Unit (+Margen)": c_unit_redondeado,
+                        "G: Lotes": "SIMULADO"
                     })
-                    df_matriz_sim["Dosis Total"] = (df_matriz_sim["Dosis/Ha"].fillna(0.0) * ha_vuelo_sim).round(3)
-                    df_matriz_sim["Costo Total SAP"] = (df_matriz_sim["Dosis Total"] * df_matriz_sim["Costo Unit (COP)"]).apply(lambda x: math.floor(x + 0.5))
-                    
-                    # Filtrar las columnas necesarias
-                    columnas_sim = ["Producto", "Dosis/Ha", "Dosis Total", "Costo Unit (COP)", "Costo Total SAP"]
-                    df_vista_sim = df_matriz_sim[[c for c in columnas_sim if c in df_matriz_sim.columns]]
-                    
-                    st.dataframe(df_vista_sim, use_container_width=True, hide_index=True)
-                    
-                    st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
-                    valores_formateados_sim = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz_sim['Costo Unit (COP)'].fillna(0).tolist()]
-                    st.code("\n".join(valores_formateados_sim), language="text")
-                    
-                    costo_mezcla_total_sim = df_matriz_sim["Costo Total SAP"].sum()
+
+                if not matriz_visual_sim:
+                    st.warning(f"⚠️ No se encontró receta para '{coctel_sim}'. Simulando mezcla genérica.")
+                    costo_mezcla_total_sim = sap_round_sim(85000.0 * ha_sim)
                 else:
-                    st.warning(f"⚠️ No se ha extraído receta del sistema SAP para el cóctel '{coctel_sim}'. Simulando con costo por defecto.")
-                    costo_mezcla_total_sim = 85000.0 * ha_vuelo_sim
-                    st.info("Asegúrate de buscar por N° de Pedido SAP primero.")
+                    df_matriz_sim = pd.DataFrame(matriz_visual_sim)
+                    st.dataframe(
+                        df_matriz_sim,
+                        column_config={
+                            "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", format="%.3f"),
+                            "Extra %": st.column_config.NumberColumn("Extra %", format="%.3f"),
+                            "Dosis Ideal": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
+                            "Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
+                            "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
+                        },
+                        hide_index=True, use_container_width=True
+                    )
+                    st.markdown("<br/>##### 📋 Copia Rápida para SAP (Costo Unitario)")
+                    st.code("\n".join(df_matriz_sim['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
 
-                # --- 2. CÁLCULO DE VUELO Y TOPES ---
-                if vuelo_sim in dict_aviones_sim:
-                    costo_base_equipo = dict_aviones_sim[vuelo_sim]
-                    costo_bruto_vuelo = costo_base_equipo * horometro_sim
-                    tarifa_base_ha = costo_bruto_vuelo / ha_vuelo_sim if ha_vuelo_sim > 0 else 0
+                # --- 4. LIQUIDACIÓN VUELO, ST Y RECARGOS ---
+                dict_topes_pista_sim = {
+                    "TOPE MAX GENERAL": {"PLUC": 63326, "PORI": 62718, "TEHO": 63325, "PDIV": 63325, "LUCI": 63325}, 
+                    "TOPE SUR": {"PLUC": 71517, "PORI": 70829, "TEHO": 71517, "PDIV": 71517, "LUCI": 71517}, 
+                    "TOPE PARCELA INTER < 20HA": {"PLUC": 98335, "PORI": 105723, "TEHO": 98335, "PDIV": 105723, "LUCI": 98335}
+                }
+                
+                val_tope_sim = float(dict_topes_pista_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
+                if val_tope_sim == 999999: val_tope_sim = 0.0
+
+                if vuelo_sim == "DRONE" or "DRONE" in str(vuelo_sim).upper(): 
+                    if "PLUC" == pista_sim: base_dron = 84428
+                    elif "PDIV" == pista_sim: base_dron = 76916
+                    else: base_dron = 72600
+                    unitario_vuelo_sim = base_dron * mult_v_sim
                 else:
-                    tarifa_base_ha = dict_drones_sim.get(vuelo_sim, 0)
-
-                val_tope_sim = dict_topes_sim.get(tope_finca_auto, {}).get(pista_sim, 999999)
-                if val_tope_sim == 0.0: val_tope_sim = dict_topes_sim.get(tope_finca_auto, {}).get("PLUC", 999999)
+                    tarifa_vuelo_base = float(dict_aviones.get(vuelo_sim, 4606562.0))
+                    costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
+                    if val_tope_sim > 0 and pista_sim != "PDIV": 
+                        costo_bruto = min(costo_bruto, val_tope_sim)
+                    unitario_vuelo_sim = costo_bruto * mult_v_sim
                 
-                tarifa_base_tope = tarifa_base_ha if pista_sim == "PDIV" else min(tarifa_base_ha, val_tope_sim)
-                costo_neto_vuelo_total = (tarifa_base_tope + recargo_sim) * ha_vuelo_sim
-                costo_st_total = tarifa_serv_tec_base * ha_vuelo_sim
-
-                # --- 3. TOTALIZACIÓN ---
-                gran_total_sim = costo_neto_vuelo_total + costo_st_total + costo_mezcla_total_sim
-                costo_por_ha_sim = gran_total_sim / ha_vuelo_sim if ha_vuelo_sim > 0 else 0
-
-                # --- 4. RENDERIZADO FINAL MEGAZORD ---
-                st.markdown("### 🤖 MATRIZ MEGAZORD (Proyección Comercial)")
-                html_megazord = render_tarjetas_html(
-                    st_val=costo_st_total, 
-                    vuelo_val=costo_neto_vuelo_total, 
-                    mezcla_val=costo_mezcla_total_sim, 
-                    recargo_val=recargo_sim * ha_vuelo_sim, 
-                    costo_ha_val=costo_por_ha_sim
-                )
-                st.markdown(html_megazord, unsafe_allow_html=True)
+                subtotal_vuelo_sim = sap_round_sim(unitario_vuelo_sim * ha_sim)
                 
-                c_mz1, c_mz2 = st.columns(2)
-                c_mz1.info(f"📍 Tope Detectado: **$ {val_tope_sim:,.0f}** | Tarifa Pura Calculada: **$ {tarifa_base_ha:,.0f}**".replace(",", "."))
-                c_mz2.success(f"🔥 **COSTO TOTAL PROYECTADO: $ {gran_total_sim:,.0f}**".replace(",", "."))
+                unitario_st_sim = sap_round_sim(dias_ciclo_sim * st_base_sim)
+                subtotal_st_sim = sap_round_sim(unitario_st_sim * ha_sim)
                 
-                # --- 5. CASILLAS DE COPIADO RÁPIDO FINALES ---
+                recargo_m_sim = round(recargo_sim * mult_v_sim, 0)
+                valor_recargo_t_sim = recargo_m_sim * ha_sim
+                
+                gran_total_sim = costo_mezcla_total_sim + subtotal_vuelo_sim + subtotal_st_sim + valor_recargo_t_sim
+                costo_por_ha_sim = sap_round_sim(gran_total_sim / ha_sim) if ha_sim > 0 else 0
+
+                # --- 5. RENDERIZADO VISUAL INFERIOR EXACTO A FACTURACIÓN (IMAGEN 3) ---
+                st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP) [SIMULADOR]")
+                
+                c_mz1, c_mz2, c_mz3, c_mz4 = st.columns(4)
+                with c_mz1:
+                    st.caption("👨‍🔬 UNITARIO ST (459)")
+                    st.code(fmt_sap(unitario_st_sim), language="text")
+                with c_mz2:
+                    st.caption("✈️ UNITARIO Vuelo (429)")
+                    st.code(fmt_sap(unitario_vuelo_sim), language="text")
+                with c_mz3:
+                    st.caption("🧪 TOTAL Mezcla")
+                    st.code(fmt_sap(costo_mezcla_total_sim), language="text")
+                with c_mz4:
+                    st.markdown(f"<div style='background-color:#0d1b2a; padding:10px; border-radius:5px; border:2px solid #d4af37; text-align:center;'><p style='margin:0; color:#d4af37; font-size:12px; font-weight:bold;'>💰 COSTO x HA (Final)</p><h4 style='margin:0; color:white;'>$ {fmt_sap(costo_por_ha_sim)}</h4></div>", unsafe_allow_html=True)
+
+                html_totales_sim = f"""
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 20px; margin-bottom: 20px;">
+                    <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+                        <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">👨‍🔬 Subtotal ST (459)</p>
+                        <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_st_sim)}</h3>
+                    </div>
+                    <div style="flex: 1; min-width: 150px; background-color: #ffffff; padding: 15px; border-radius: 8px; border: 2px solid #0d1b2a; border-left: 6px solid #1a365d; box-shadow: 0 4px 6px rgba(0,0,0,0.08); margin-bottom: 20px;">
+                        <p style="margin:0; font-size: 12px; color: #6c757d; font-weight: bold; text-transform: uppercase;">✈️ Subtotal Vuelo (429)</p>
+                        <h3 style="margin:0; color: #0d1b2a; font-weight: 900; user-select: all;">$ {fmt_sap(subtotal_vuelo_sim)}</h3>
+                    </div>
+                    <div style="flex: 1.5; min-width: 200px; background-color: #0d1b2a; padding: 15px; border-radius: 8px; border: 3px solid #d4af37; box-shadow: 0 4px 12px rgba(0,0,0,0.2); text-align: center;">
+                        <p style="margin:0; font-size: 13px; color: #d4af37; font-weight: bold; text-transform: uppercase;">🔥 TOTAL OPERACIÓN</p>
+                        <h2 style="margin:0; color: white; font-weight: 900; user-select: all;">$ {gran_total_sim:,.0f}</h2>
+                    </div>
+                </div>
+                """.replace(",", ".")
+                st.markdown(html_totales_sim, unsafe_allow_html=True)
+                
                 st.caption("📋 **COPIA RÁPIDA (Clic en el ícono 📋 de cada cajita)**")
-                cc1_s, cc2_s, cc3_s, cc4_s, cc5_s, cc6_s = st.columns(6)
-                with cc1_s:
+                cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(6)
+                with cc1:
                     st.write("👨‍🔬 Serv. Tec")
-                    st.code(f"{int(costo_st_total)}", language="text")
-                with cc2_s:
+                    st.code(fmt_sap(subtotal_st_sim), language="text")
+                with cc2:
                     st.write("✈️ Vuelo")
-                    st.code(f"{int(costo_neto_vuelo_total)}", language="text")
-                with cc3_s:
+                    st.code(fmt_sap(subtotal_vuelo_sim), language="text")
+                with cc3:
                     st.write("🧪 Mezcla")
-                    st.code(f"{int(costo_mezcla_total_sim)}", language="text")
-                with cc4_s:
+                    st.code(fmt_sap(costo_mezcla_total_sim), language="text")
+                with cc4:
                     st.write("⚠️ Recargo")
-                    st.code(f"{int(recargo_sim * ha_vuelo_sim)}", language="text")
-                with cc5_s:
+                    st.code(fmt_sap(valor_recargo_t_sim), language="text")
+                with cc5:
                     st.write("💰 Costo x Ha")
-                    st.code(f"{int(costo_por_ha_sim)}", language="text")
-                with cc6_s:
+                    st.code(fmt_sap(costo_por_ha_sim), language="text")
+                with cc6:
                     st.write("🔥 TOTAL")
-                    st.code(f"{int(gran_total_sim)}", language="text")
-                
-                st.markdown("---")
+                    st.code(fmt_sap(gran_total_sim), language="text")
 
+                st.markdown("---")
+        
         # 🛑 MURO DE CONTENCIÓN AISLADO
         st.stop()
     def forzar_descarga_maestros():
