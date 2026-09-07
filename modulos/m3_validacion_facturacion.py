@@ -959,19 +959,28 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     costo_mezcla_total_sim = sap_round_sim(85000.0 * ha_sim)
                 else:
                     df_matriz_sim = pd.DataFrame(matriz_visual_sim)
+                    
+                    # 💥 CIRUGÍA: Clona el DF para formatearlo visualmente con el punto como separador de miles
+                    df_matriz_sim_visual = df_matriz_sim.copy()
+                    df_matriz_sim_visual['E: Costo Unit (+Margen)'] = df_matriz_sim_visual['E: Costo Unit (+Margen)'].apply(lambda x: f"{int(x):,.0f}".replace(",", "."))
+                    
                     st.dataframe(
-                        df_matriz_sim,
+                        df_matriz_sim_visual,
                         column_config={
                             "B: Dosis/Ha (SAP)": st.column_config.NumberColumn("Dosis/Ha", format="%.3f"),
                             "Extra %": st.column_config.NumberColumn("Extra %", format="%.3f"),
                             "Dosis Ideal": st.column_config.NumberColumn("Dosis Ideal", format="%.3f"),
                             "Sugerido SAP (Total)": st.column_config.NumberColumn("Sugerido SAP (Total)", format="%.3f"),
-                            "E: Costo Unit (+Margen)": st.column_config.NumberColumn("Costo Unit (COP)", format="%.0f"),
+                            "E: Costo Unit (+Margen)": st.column_config.TextColumn("Costo Unit (COP)"),
                         },
                         hide_index=True, use_container_width=True
                     )
-                    st.markdown("<br/>##### 📋 Copia Rápida para SAP (Costo Unitario)")
-                    st.code("\n".join(df_matriz_sim['E: Costo Unit (+Margen)'].fillna(0).astype(int).astype(str).tolist()), language="text")
+                    
+                    # 💥 CIRUGÍA: Arreglo de saltos de línea HTML y formato de copia rápida
+                    st.write("")
+                    st.markdown("##### 📋 Copia Rápida para SAP (Costo Unitario)")
+                    valores_formateados_sim = [f"{int(x):,.0f}".replace(",", ".") for x in df_matriz_sim['E: Costo Unit (+Margen)'].fillna(0).tolist()]
+                    st.code("\n".join(valores_formateados_sim), language="text")
 
                 # --- 4. LIQUIDACIÓN VUELO, ST Y RECARGOS ---
                 dict_topes_pista_sim = {
@@ -1007,7 +1016,9 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 costo_por_ha_sim = sap_round_sim(gran_total_sim / ha_sim) if ha_sim > 0 else 0
 
                 # --- 5. RENDERIZADO VISUAL INFERIOR EXACTO A FACTURACIÓN (IMAGEN 3) ---
-                st.markdown("<br>### 💰 Liquidación Final (Bóveda SAP) [SIMULADOR]")
+                # 💥 CIRUGÍA: Limpieza del HTML expuesto en el título
+                st.write("")
+                st.markdown("### 💰 Liquidación Final (Bóveda SAP) [SIMULADOR]")
                 
                 c_mz1, c_mz2, c_mz3, c_mz4 = st.columns(4)
                 with c_mz1:
