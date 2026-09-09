@@ -527,10 +527,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
 
     modo_simulacro = st.toggle("🔮 ACTIVAR MODO SIMULADOR (Modo Construcción de Matriz)")
     
-    # 💥 INICIO CIRUGÍA: Calculadora Inteligente Smart Split (Conectada al Cerebro Principal)
+    # 💥 CIRUGÍA SMART SPLIT: Calculadora Neta Multi-Avión (Lógica de Facturación Aislada)
     modo_calc_neta = st.toggle("🧮 ACTIVAR CALCULADORA NETA MULTI-AVIÓN (Sin Margen)")
     if modo_calc_neta:
-        st.info("💡 **ORÁCULO SMART SPLIT:** Ingresa el total de hectáreas de la misión y los galones aplicados por avión. El sistema distribuirá matemáticamente el área y aplicará la regla tarifaria seleccionada línea por línea.")
+        st.info("💡 **ORÁCULO SMART SPLIT:** Distribución de hectáreas y liquidación neta individual por aeronave según horómetro, tarifa de modelo y tope aplicable.")
         with st.container(border=True):
             st.markdown("#### ⚙️ Parámetros Globales de la Misión")
             c_cn1, c_cn2, c_cn3 = st.columns(3)
@@ -539,8 +539,6 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             calc_ha_global = c_cn3.number_input("🗺️ Total Hectáreas Misión", min_value=0.0, value=0.0, format="%.2f", key="calc_ha_global")
             
             calc_dict_av, _, calc_dict_topes, _ = extraer_tarifas_dinamicas(df_tarifas_maestras, str(calc_fecha.year))
-            
-            # 💥 CIRUGÍA COOPERATIVA: Reglas ajustadas para enlazar Cooperativa con Parcela
             reglas_cobro = ["Normal - Tope General", "Normal - Tope Sur", "Normal - Parcela < 20Ha", "Cooperativa (Tarifa Única)"]
             
             st.markdown("#### 🛩️ Diario de Vuelo Crudo (Hangar)")
@@ -580,12 +578,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                     total_ha_repartida = 0.0
                     detalles = []
                     
-                    # 💥 FILTRO PARA SABER CUÁL ES EL ÚLTIMO AVIÓN Y CUADRAR EL REDONDEO
-                    aviones_validos = []
-                    for _, row in calc_aviones.iterrows():
-                        if pd.notna(row.get("Avión")) and pd.notna(row.get("Horómetro")) and pd.notna(row.get("Galones")) and float(row.get("Galones")) > 0:
-                            aviones_validos.append(row)
-                            
+                    aviones_validos = [
+                        row for _, row in calc_aviones.iterrows()
+                        if pd.notna(row.get("Avión")) and pd.notna(row.get("Horómetro")) and pd.notna(row.get("Galones")) and float(row.get("Galones")) > 0
+                    ]
+                    
                     ha_acumulada = 0.0
                     
                     for i, row in enumerate(aviones_validos):
@@ -594,7 +591,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                         galones = float(row.get("Galones"))
                         regla = row.get("Regla de Cobro")
                         
-                        # 💥 1. SMART SPLIT FINANCIERO (Obliga 2 decimales exactos)
+                        # 1. SMART SPLIT DE ÁREA (Redondeo exacto)
                         if i == len(aviones_validos) - 1:
                             ha_calculadas = round(calc_ha_global - ha_acumulada, 2)
                         else:
@@ -602,40 +599,27 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             ha_calculadas = round(calc_ha_global * proporcion, 2)
                             ha_acumulada += ha_calculadas
                         
-                        # 2. MOTOR DE BLINDAJE: Extracción de tope
-                        val_tope_calc = 999999
-                        
-                        if col_anio_calc:
-                            for _, r_tar in df_tarifas_maestras.iterrows():
-                                eq = str(r_tar.get('EQUIPO_O_TOPE', '')).upper()
-                                p = str(r_tar.get('PISTA', '')).upper().strip()
-                                val_t = limpiar_dinero(r_tar.get(col_anio_calc, 0))
-                                
-                                if val_t > 0 and (p == calc_pista or p == "TODAS" or p == ""):
-                                    if regla == "Normal - Tope Sur" and "SUR" in eq: val_tope_calc = val_t
-                                    elif regla == "Normal - Parcela < 20Ha" and ("PARCELA" in eq or "20" in eq): val_tope_calc = val_t
-                                    elif regla == "Normal - Tope General" and ("MAX" in eq or "GENERAL" in eq): val_tope_calc = val_t
-                                    elif regla == "Cooperativa (Tarifa Única)" and ("PARCELA" in eq or "20" in eq): 
-                                        val_tope_calc = val_t
+                        # 2. BÚSQUEDA AISLADA DEL TOPE POR REGLA Y PISTA
+                        val_tope_calc = 999999.0
+                        if regla == "Normal - Tope Sur":
+                            val_tope_calc = calc_dict_topes.get("TOPE SUR", {}).get(calc_pista, TOPES_PISTA.get("TOPE SUR", {}).get(calc_pista, 999999.0))
+                        elif regla in ["Normal - Parcela < 20Ha", "Cooperativa (Tarifa Única)"]:
+                            val_tope_calc = calc_dict_topes.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999.0))
+                        elif regla == "Normal - Tope General":
+                            val_tope_calc = calc_dict_topes.get("TOPE MAX GENERAL", {}).get(calc_pista, TOPES_PISTA.get("TOPE MAX GENERAL", {}).get(calc_pista, 999999.0))
 
-                        # Fallbacks
-                        if val_tope_calc == 999999:
-                            if regla == "Normal - Tope Sur": val_tope_calc = TOPES_PISTA.get("TOPE SUR", {}).get(calc_pista, 999999)
-                            elif regla == "Normal - Parcela < 20Ha": val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
-                            elif regla == "Normal - Tope General": val_tope_calc = TOPES_PISTA.get("TOPE MAX GENERAL", {}).get(calc_pista, 999999)
-                            elif regla == "Cooperativa (Tarifa Única)": 
-                                val_tope_calc = TOPES_PISTA.get("TOPE PARCELA INTER < 20HA", {}).get(calc_pista, 999999)
+                        # 3. LIQUIDACIÓN INDIVIDUAL IDÉNTICA A MÓDULO DE FACTURACIÓN
+                        tarifa_hora_modelo = float(calc_dict_av.get(av_sel, 0.0))
+                        costo_bruto_avion = tarifa_hora_modelo * horo
+                        tarifa_bruta_ha = costo_bruto_avion / ha_calculadas if ha_calculadas > 0 else 0.0
                         
-                        # 💥 3. LIQUIDACIÓN NETA (Cálculo independiente detallado)
-                        # A. Costo independiente de ESTE avión por hora
-                        costo_bruto_avion = calc_dict_av.get(av_sel, 0) * horo
-                        # B. Tarifa real por hectárea de ESTE avión
-                        tarifa_base_ha = costo_bruto_avion / ha_calculadas if ha_calculadas > 0 else 0
-                        # C. Comparación inteligente con el Tope
-                        tarifa_base_tope = tarifa_base_ha if calc_pista == "PDIV" else min(tarifa_base_ha, val_tope_calc)
+                        # Evaluación de tope por aeronave
+                        if calc_pista == "PDIV" or val_tope_calc in [0.0, 999999.0]:
+                            tarifa_neta_ha = tarifa_bruta_ha
+                        else:
+                            tarifa_neta_ha = min(tarifa_bruta_ha, float(val_tope_calc))
                         
-                        # D. Multiplicación final
-                        costo_linea = tarifa_base_tope * ha_calculadas
+                        costo_linea = tarifa_neta_ha * ha_calculadas
                         
                         total_neto += costo_linea
                         total_ha_repartida += ha_calculadas
@@ -646,7 +630,8 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                             "Regla Tarifaria": regla,
                             "Hectáreas (Split)": ha_calculadas, 
                             "Horómetro": horo, 
-                            "Tarifa Neta / Ha": tarifa_base_tope, 
+                            "Tarifa Bruta / Ha": tarifa_bruta_ha,
+                            "Tarifa Neta / Ha": tarifa_neta_ha, 
                             "Costo Total Neto": costo_linea
                         })
                     
@@ -687,11 +672,11 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                                 "Regla Tarifaria": st.column_config.TextColumn("📋 Regla"),
                                 "Hectáreas (Split)": st.column_config.NumberColumn("🗺️ Ha (Split)", format="%.2f"),
                                 "Horómetro": st.column_config.NumberColumn("⏱️ Horómetro", format="%.2f"),
-                                "Tarifa Neta / Ha": st.column_config.NumberColumn("🏷️ Tarifa Neta / Ha", format="$ %.0f"),
-                                "Costo Total Neto": st.column_config.NumberColumn("💰 Costo Total Neto", format="$ %.0f")
+                                "Tarifa Bruta / Ha": st.column_config.NumberColumn("📈 Bruta / Ha", format="$ %.0f"),
+                                "Tarifa Neta / Ha": st.column_config.NumberColumn("🏷️ Neta / Ha", format="$ %.0f"),
+                                "Costo Total Neto": st.column_config.NumberColumn("💰 Costo Neto", format="$ %.0f")
                             }
                         )
-        
         st.stop()
 
     if modo_simulacro:
