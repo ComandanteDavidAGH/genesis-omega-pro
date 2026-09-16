@@ -239,6 +239,32 @@ def cargar_matriz_tarifas():
             return df
     except Exception: pass
     return pd.DataFrame()
+@st.cache_data(show_spinner=False, ttl=600)
+def cargar_maestro_fincas():
+    gc = obtener_cliente_gspread_unificado()
+    if not gc: return pd.DataFrame()
+    try:
+        sh = gc.open_by_url(URL_BOVEDA_MAESTRA)
+        ws = sh.worksheet("TABLA 2")
+        datos = ws.get_all_values()
+        
+        if len(datos) > 4:
+            # Según tu imagen, la fila 4 (índice 3) tiene los encabezados
+            df = pd.DataFrame(datos[4:], columns=datos[3])
+            df = limpiar_encabezados(df)
+            
+            # Asegurar que existan las columnas clave para evitar errores
+            cols_necesarias = ['FINCA', 'PRODUCTOR', 'TIPO DE PRODUCTOR']
+            for col in cols_necesarias:
+                if col not in df.columns:
+                    df[col] = "NO REGISTRA"
+                    
+            df = df[['FINCA', 'PRODUCTOR', 'TIPO DE PRODUCTOR']].copy()
+            df['FINCA'] = df['FINCA'].astype(str).str.strip().str.upper()
+            return df.drop_duplicates(subset=['FINCA'])
+    except Exception as e: 
+        logging.error(f"Error cargando TABLA 2: {e}")
+    return pd.DataFrame()
 
 # =================================================================
 # 🚀 BLOQUE 4: NÚCLEO OPERATIVO Y VISUAL DEL DASHBOARD
@@ -432,6 +458,18 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         ha_con_costo_global = super_base_bi['HA_CON_COSTO'].sum()
         costo_medio_historico = (super_base_bi['COSTO_NUM'].sum() / ha_con_costo_global) if ha_con_costo_global > 0 else 0
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
+        # =================================================================
+        # 💉 INYECCIÓN MÓDULO PRODUCTORES (CRUCE TABLA 2)
+        # =================================================================
+        df_fincas = cargar_maestro_fincas()
+        if not df_fincas.empty:
+            super_base_bi = pd.merge(super_base_bi, df_fincas, left_on='FINCA_MAESTRA', right_on='FINCA', how='left')
+            super_base_bi['TIPO DE PRODUCTOR'] = super_base_bi['TIPO DE PRODUCTOR'].fillna('SIN CLASIFICAR')
+            super_base_bi['PRODUCTOR'] = super_base_bi['PRODUCTOR'].fillna('SIN ASIGNAR')
+        else:
+            super_base_bi['TIPO DE PRODUCTOR'] = 'SIN CLASIFICAR'
+            super_base_bi['PRODUCTOR'] = 'SIN ASIGNAR'
+        # =================================================================      
 
         hb1, hb2, hb3 = st.columns(3)
         with hb1: st.markdown(f"<div class='hud-bi'><p class='hud-bi-title'>ÁREA HISTÓRICA CUBIERTA</p><p class='hud-bi-value'>🗺️ {total_ha_historicas:,.1f} ha</p></div>", unsafe_allow_html=True)
@@ -860,7 +898,53 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         )
                     }
                 )
-
+# =========================================================
+                # 🌾 NUEVO MÓDULO: ANÁLISIS POR TIPO DE PRODUCTOR Y CLIENTE
+                # =========================================================
+                st.markdown("---")
+                st.markdown("##### 🌾 Distribución de Áreas por Tipo de Productor y Cliente")
+                
+                df_productores = df_filt.groupby(['TIPO DE PRODUCTOR', 'PRODUCTOR']).agg(
+                    HECTAREAS=('AREA_NUM', 'sum'),
+                    MISIONES=('OS_MAESTRA', 'nunique')
+                ).reset_index()
+                
+                df_productores = df_productores[df_productores['HECTAREAS'] > 0].sort_values(by=['TIPO DE PRODUCTOR', 'HECTAREAS'], ascending=[True, False])
+                
+                if not df_productores.empty:
+                    c_graf_prod, c_tab_prod = st.columns([1.2, 1])
+                    
+                    with c_graf_prod:
+                        # Gráfico dinámico para ver la proporción Global vs Particular
+                        fig_prod = px.sunburst(
+                            df_productores, 
+                            path=['TIPO DE PRODUCTOR', 'PRODUCTOR'], 
+                            values='HECTAREAS',
+                            title="<b>Proporción Global vs Particular (ha)</b>",
+                            color='HECTAREAS',
+                            color_continuous_scale='Greens'
+                        )
+                        fig_prod.update_traces(textinfo="label+value+percent entry")
+                        fig_prod.update_layout(margin=dict(t=40, l=0, r=0, b=0), height=450)
+                        st.plotly_chart(fig_prod, use_container_width=True)
+                        
+                    with c_tab_prod:
+                        st.write("") # Espaciador
+                        st.write("")
+                        st.dataframe(
+                            df_productores,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "TIPO DE PRODUCTOR": st.column_config.TextColumn("🏷️ CLASIFICACIÓN"),
+                                "PRODUCTOR": st.column_config.TextColumn("🏢 PRODUCTOR / CLIENTE"),
+                                "HECTAREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.1f ha"),
+                                "MISIONES": st.column_config.NumberColumn("🛰️ OS")
+                            }
+                        )
+                else:
+                    st.info("⚠️ No hay datos de productores cruzados para mostrar en este rango de fechas.")
+          
             elif vista_seleccionada == "📊 Resumen Gerencial":
                 st.markdown(f"#### 📑 Consolidado Gerencial")
                 st.caption(f"🗓️ *{rango_txt}*")
