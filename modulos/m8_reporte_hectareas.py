@@ -459,16 +459,37 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         costo_medio_historico = (super_base_bi['COSTO_NUM'].sum() / ha_con_costo_global) if ha_con_costo_global > 0 else 0
         total_ordenes_auditadas = super_base_bi['OS_MAESTRA'].nunique()
         # =================================================================
-        # 💉 INYECCIÓN MÓDULO PRODUCTORES (CRUCE TABLA 2)
+        # 💉 INYECCIÓN MÓDULO PRODUCTORES (CRUCE Y MACRO-GRUPOS AGRO)
         # =================================================================
         df_fincas = cargar_maestro_fincas()
         if not df_fincas.empty:
-            super_base_bi = pd.merge(super_base_bi, df_fincas, left_on='FINCA_MAESTRA', right_on='FINCA', how='left')
+            def normalizar_finca(val):
+                if pd.isna(val): return ""
+                v = str(val).upper().strip()
+                for a, b in zip(['Á','É','Í','Ó','Ú'], ['A','E','I','O','U']): v = v.replace(a, b)
+                return " ".join(v.split())
+            
+            super_base_bi['FINCA_MATCH'] = super_base_bi['FINCA_MAESTRA'].apply(normalizar_finca)
+            df_fincas['FINCA_MATCH'] = df_fincas['FINCA'].apply(normalizar_finca)
+            
+            super_base_bi = pd.merge(super_base_bi, df_fincas.drop(columns=['FINCA']), on='FINCA_MATCH', how='left')
             super_base_bi['TIPO DE PRODUCTOR'] = super_base_bi['TIPO DE PRODUCTOR'].fillna('SIN CLASIFICAR')
             super_base_bi['PRODUCTOR'] = super_base_bi['PRODUCTOR'].fillna('SIN ASIGNAR')
+            super_base_bi.drop(columns=['FINCA_MATCH'], inplace=True)
+            
+            # 🔥 LÓGICA DE AGRUPACIÓN "AGRO" (Columna Adicional)
+            def agrupar_agro(row):
+                prod = str(row['PRODUCTOR']).upper()
+                if any(k in prod for k in ['AGRO', 'BANAORGANICO']):
+                    return 'GRUPO AGRO'
+                return row['TIPO DE PRODUCTOR']
+                
+            super_base_bi['MACRO_CLIENTE'] = super_base_bi.apply(agrupar_agro, axis=1)
         else:
             super_base_bi['TIPO DE PRODUCTOR'] = 'SIN CLASIFICAR'
             super_base_bi['PRODUCTOR'] = 'SIN ASIGNAR'
+            super_base_bi['MACRO_CLIENTE'] = 'SIN CLASIFICAR'
+        # =================================================================
         # =================================================================      
 
         hb1, hb2, hb3 = st.columns(3)
@@ -907,25 +928,20 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 
                 if ver_productores:
                     st.markdown("##### 🌾 Matriz Ejecutiva: Hectáreas por Base y Tipo de Cliente")
-                    st.caption("Resumen cruzado: ¿Cuánto volumen operó cada pista para cada tipo de cliente?")
                     
-                    matriz_prod = pd.pivot_table(
-                        df_filt, 
-                        values='AREA_NUM', 
-                        index=col_pista, 
-                        columns='TIPO DE PRODUCTOR', 
-                        aggfunc='sum', 
-                        fill_value=0
-                    )
+                    vista_matriz = st.radio("SELECCIONA EL NIVEL DE DETALLE:", ["🌎 General (Consolidado)", "📅 Detallado por Mes"], horizontal=True)
+                    
+                    idx_pivot = [col_pista] if vista_matriz == "🌎 General (Consolidado)" else ['AÑO', 'MES_NMB', col_pista]
+                    
+                    # 🔥 Usamos MACRO_CLIENTE para generar la columna extra "GRUPO AGRO"
+                    matriz_prod = pd.pivot_table(df_filt, values='AREA_NUM', index=idx_pivot, columns='MACRO_CLIENTE', aggfunc='sum', fill_value=0)
                     
                     if not matriz_prod.empty:
                         matriz_prod['TOTAL GENERAL'] = matriz_prod.sum(axis=1)
-                        matriz_prod.loc['TOTAL TIPO'] = matriz_prod.sum(axis=0)
-                        
-                        st.dataframe(
-                            matriz_prod.style.format("{:,.2f}".format).background_gradient(cmap="Greens", axis=None),
-                            use_container_width=True
-                        )
+                        if vista_matriz == "🌎 General (Consolidado)":
+                            matriz_prod.loc['TOTAL HISTÓRICO'] = matriz_prod.sum(axis=0)
+                            
+                        st.dataframe(matriz_prod.style.format("{:,.2f}".format).background_gradient(cmap="Greens", axis=None), use_container_width=True)
                     else:
                         st.info("⚠️ No hay datos clasificados para mostrar en este rango de fechas.")
           
@@ -1208,56 +1224,51 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     pie_chart.dataLabels.showCatName = False
                     ws.add_chart(pie_chart, "H20")
                     # =========================================================
-                    # 🌾 EXPORTACIÓN VIP: MATRIZ RESUMEN TIPO PRODUCTOR VS PISTA
                     # =========================================================
-                    ws_prod = wb.create_sheet(title="Matriz Tipo Clientes")
+                    # 🌾 EXPORTACIÓN VIP: MATRICES DE CLIENTES (GENERAL Y MENSUAL)
+                    # =========================================================
+                    # 1. GENERAR DATAFRAMES (Usando MACRO_CLIENTE)
+                    matriz_gral = pd.pivot_table(df_filt, values='AREA_NUM', index=col_pista, columns='MACRO_CLIENTE', aggfunc='sum', fill_value=0)
+                    matriz_mes = pd.pivot_table(df_filt, values='AREA_NUM', index=['AÑO', 'MES_NMB', col_pista], columns='MACRO_CLIENTE', aggfunc='sum', fill_value=0)
                     
-                    ws_prod['B2'] = "MATRIZ GERENCIAL: ÁREA APLICADA POR BASE Y TIPO DE CLIENTE (ha)"
-                    ws_prod['B2'].font = Font(size=14, bold=True, color="0D1B2A")
-                    ws_prod['B3'] = f"Período Analizado: {rango_txt}"
-                    ws_prod['B3'].font = Font(italic=True, color="555555")
-
-                    matriz_excel = pd.pivot_table(
-                        df_filt, 
-                        values='AREA_NUM', 
-                        index=col_pista, 
-                        columns='TIPO DE PRODUCTOR', 
-                        aggfunc='sum', 
-                        fill_value=0
-                    )
-                    
-                    if not matriz_excel.empty:
-                        matriz_excel['TOTAL GENERAL'] = matriz_excel.sum(axis=1)
-                        matriz_excel.loc['TOTAL TIPO'] = matriz_excel.sum(axis=0)
-                        matriz_excel = matriz_excel.reset_index()
-                        matriz_excel.rename(columns={col_pista: 'BASE OPERATIVA'}, inplace=True)
+                    if not matriz_gral.empty:
+                        matriz_gral['TOTAL GENERAL'] = matriz_gral.sum(axis=1)
+                        matriz_gral.loc['TOTAL'] = matriz_gral.sum(axis=0)
+                        matriz_gral = matriz_gral.reset_index().rename(columns={col_pista: 'BASE'})
                         
-                        columnas_matriz = list(matriz_excel.columns)
-                        for col_idx, col_name in enumerate(columnas_matriz, start=2):
-                            cell = ws_prod.cell(row=5, column=col_idx, value=col_name)
-                            cell.fill = fill_header
-                            cell.font = font_header
-                            cell.alignment = align_center
-                            cell.border = borde
-                            ws_prod.column_dimensions[get_column_letter(col_idx)].width = 20
+                        matriz_mes['TOTAL GENERAL'] = matriz_mes.sum(axis=1)
+                        matriz_mes = matriz_mes.reset_index().rename(columns={col_pista: 'BASE'})
+
+                        # 2. CREAR PESTAÑAS EN EXCEL
+                        for n_sheet, df_matriz in [("Matriz_Clientes_General", matriz_gral), ("Matriz_Clientes_Mensual", matriz_mes)]:
+                            ws_p = wb.create_sheet(title=n_sheet)
                             
-                        curr_row_m = 6
-                        for _, row in matriz_excel.iterrows():
-                            is_total_row = (row['BASE OPERATIVA'] == 'TOTAL TIPO')
-                            for col_idx, col_name in enumerate(columnas_matriz, start=2):
-                                val = row[col_name]
-                                cell = ws_prod.cell(row=curr_row_m, column=col_idx, value=val)
-                                cell.border = borde
-                                if col_idx > 2:
-                                    cell.number_format = '#,##0.00'
-                                    if is_total_row or col_name == 'TOTAL GENERAL':
-                                        cell.fill = fill_tot
-                                        cell.font = font_tot
-                                else:
-                                    if is_total_row:
-                                        cell.fill = fill_tot
-                                        cell.font = font_tot
-                            curr_row_m += 1                
+                            ws_p['B2'] = f"MATRIZ: ÁREA POR BASE Y TIPO DE CLIENTE ({'CONSOLIDADO' if 'General' in n_sheet else 'MENSUAL'})"
+                            ws_p['B2'].font = Font(size=14, bold=True, color="0D1B2A")
+                            ws_p['B3'] = f"Período Analizado: {rango_txt}"
+                            ws_p['B3'].font = Font(italic=True, color="555555")
+
+                            # Encabezados
+                            cols = list(df_matriz.columns)
+                            for c_idx, c_name in enumerate(cols, start=2):
+                                cell = ws_p.cell(row=5, column=c_idx, value=c_name)
+                                cell.fill, cell.font, cell.alignment, cell.border = fill_header, font_header, align_center, borde
+                                ws_p.column_dimensions[get_column_letter(c_idx)].width = 18 if c_idx > 2 else 25
+                                
+                            # Datos
+                            r_idx = 6
+                            for _, r in df_matriz.iterrows():
+                                is_tot_row = ('TOTAL' in str(r.get('BASE', '')))
+                                for c_idx, c_name in enumerate(cols, start=2):
+                                    cell = ws_p.cell(row=r_idx, column=c_idx, value=r[c_name])
+                                    cell.border = borde
+                                    if isinstance(r[c_name], (int, float)) and c_name not in ['AÑO']:
+                                        cell.number_format = '#,##0.00'
+                                        if is_tot_row or c_name == 'TOTAL GENERAL':
+                                            cell.fill, cell.font = fill_tot, font_tot
+                                    else:
+                                        if is_tot_row: cell.fill, cell.font = fill_tot, font_tot
+                                r_idx += 1                
                 wb.save(buffer_rep)
 
             else:
