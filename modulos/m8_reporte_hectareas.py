@@ -1223,7 +1223,85 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     pie_chart.dataLabels.showPercent = True 
                     pie_chart.dataLabels.showCatName = False
                     ws.add_chart(pie_chart, "H20")
-                
+# =========================================================
+                    # 🌾 EXPORTACIÓN VIP: DETALLE DE PRODUCTORES Y FINCAS
+                    # =========================================================
+                    # Creamos una nueva pestaña en el Excel
+                    ws_prod = wb.create_sheet(title="Detalle Productores y Fincas")
+                    
+                    ws_prod['B2'] = "REPORTE DETALLADO: ÁREAS POR CLIENTE, PRODUCTOR Y FINCA"
+                    ws_prod['B2'].font = Font(size=14, bold=True, color="0D1B2A")
+                    ws_prod['B3'] = f"Período Analizado: {rango_txt}"
+                    ws_prod['B3'].font = Font(italic=True, color="555555")
+
+                    # Agrupamos la info incluyendo la Finca
+                    df_det_prod = df_filt.groupby(['TIPO DE PRODUCTOR', 'PRODUCTOR', 'FINCA_MAESTRA']).agg(
+                        MISIONES=('OS_MAESTRA', 'nunique'),
+                        HECTAREAS=('AREA_NUM', 'sum')
+                    ).reset_index()
+                    
+                    # Filtramos ceros y ordenamos
+                    df_det_prod = df_det_prod[df_det_prod['HECTAREAS'] > 0].sort_values(by=['TIPO DE PRODUCTOR', 'PRODUCTOR', 'HECTAREAS'], ascending=[True, True, False])
+
+                    # Encabezados de la tabla
+                    headers_prod = ['TIPO DE PRODUCTOR', 'PRODUCTOR / CLIENTE', 'FINCA', 'MISIONES', 'HECTÁREAS NETAS']
+                    for col_idx, header in enumerate(headers_prod, start=2):
+                        cell = ws_prod.cell(row=5, column=col_idx, value=header)
+                        cell.fill = fill_header
+                        cell.font = font_header
+                        cell.alignment = align_center
+                        cell.border = borde
+
+                    # Llenado de datos
+                    curr_row_prod = 6
+                    total_mis_prod = 0
+                    total_ha_prod = 0
+                    
+                    for _, row in df_det_prod.iterrows():
+                        ws_prod.cell(row=curr_row_prod, column=2, value=row['TIPO DE PRODUCTOR']).border = borde
+                        ws_prod.cell(row=curr_row_prod, column=3, value=row['PRODUCTOR']).border = borde
+                        ws_prod.cell(row=curr_row_prod, column=4, value=row['FINCA_MAESTRA']).border = borde
+                        
+                        cell_mis = ws_prod.cell(row=curr_row_prod, column=5, value=row['MISIONES'])
+                        cell_mis.border = borde
+                        cell_mis.number_format = '#,##0'
+                        
+                        cell_ha = ws_prod.cell(row=curr_row_prod, column=6, value=row['HECTAREAS'])
+                        cell_ha.border = borde
+                        cell_ha.number_format = '#,##0.00'
+                        
+                        total_mis_prod += row['MISIONES']
+                        total_ha_prod += row['HECTAREAS']
+                        curr_row_prod += 1
+
+                    # Fila de Totales
+                    ws_prod.merge_cells(start_row=curr_row_prod, start_column=2, end_row=curr_row_prod, end_column=4)
+                    cell_tot_lbl = ws_prod.cell(row=curr_row_prod, column=2, value="TOTAL GENERAL")
+                    cell_tot_lbl.fill = fill_tot
+                    cell_tot_lbl.font = font_tot
+                    cell_tot_lbl.alignment = align_center
+                    cell_tot_lbl.border = borde
+                    ws_prod.cell(row=curr_row_prod, column=3).border = borde
+                    ws_prod.cell(row=curr_row_prod, column=4).border = borde
+                    
+                    cell_tot_mis = ws_prod.cell(row=curr_row_prod, column=5, value=total_mis_prod)
+                    cell_tot_mis.fill = fill_tot
+                    cell_tot_mis.font = font_tot
+                    cell_tot_mis.border = borde
+                    cell_tot_mis.number_format = '#,##0'
+
+                    cell_tot_ha = ws_prod.cell(row=curr_row_prod, column=6, value=total_ha_prod)
+                    cell_tot_ha.fill = fill_tot
+                    cell_tot_ha.font = font_tot
+                    cell_tot_ha.border = borde
+                    cell_tot_ha.number_format = '#,##0.00'
+
+                    # Ajustar ancho de las columnas para que se vea estético
+                    ws_prod.column_dimensions['B'].width = 22
+                    ws_prod.column_dimensions['C'].width = 35
+                    ws_prod.column_dimensions['D'].width = 30
+                    ws_prod.column_dimensions['E'].width = 15
+                    ws_prod.column_dimensions['F'].width = 20                
                 wb.save(buffer_rep)
 
             else:
