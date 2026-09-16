@@ -898,52 +898,36 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         )
                     }
                 )
-# =========================================================
-                # 🌾 NUEVO MÓDULO: ANÁLISIS POR TIPO DE PRODUCTOR Y CLIENTE
+                # =========================================================
+                # 🌾 NUEVO MÓDULO: MATRIZ GERENCIAL POR TIPO DE CLIENTE
                 # =========================================================
                 st.markdown("---")
-                st.markdown("##### 🌾 Distribución de Áreas por Tipo de Productor y Cliente")
                 
-                df_productores = df_filt.groupby(['TIPO DE PRODUCTOR', 'PRODUCTOR']).agg(
-                    HECTAREAS=('AREA_NUM', 'sum'),
-                    MISIONES=('OS_MAESTRA', 'nunique')
-                ).reset_index()
+                ver_productores = st.toggle("🏢 MOSTRAR MATRIZ GERENCIAL DE CLIENTES", value=False, key="toggle_gerencia_prod")
                 
-                df_productores = df_productores[df_productores['HECTAREAS'] > 0].sort_values(by=['TIPO DE PRODUCTOR', 'HECTAREAS'], ascending=[True, False])
-                
-                if not df_productores.empty:
-                    c_graf_prod, c_tab_prod = st.columns([1.2, 1])
+                if ver_productores:
+                    st.markdown("##### 🌾 Matriz Ejecutiva: Hectáreas por Base y Tipo de Cliente")
+                    st.caption("Resumen cruzado: ¿Cuánto volumen operó cada pista para cada tipo de cliente?")
                     
-                    with c_graf_prod:
-                        # Gráfico dinámico para ver la proporción Global vs Particular
-                        fig_prod = px.sunburst(
-                            df_productores, 
-                            path=['TIPO DE PRODUCTOR', 'PRODUCTOR'], 
-                            values='HECTAREAS',
-                            title="<b>Proporción Global vs Particular (ha)</b>",
-                            color='HECTAREAS',
-                            color_continuous_scale='Greens'
-                        )
-                        fig_prod.update_traces(textinfo="label+value+percent entry")
-                        fig_prod.update_layout(margin=dict(t=40, l=0, r=0, b=0), height=450)
-                        st.plotly_chart(fig_prod, use_container_width=True)
+                    matriz_prod = pd.pivot_table(
+                        df_filt, 
+                        values='AREA_NUM', 
+                        index=col_pista, 
+                        columns='TIPO DE PRODUCTOR', 
+                        aggfunc='sum', 
+                        fill_value=0
+                    )
+                    
+                    if not matriz_prod.empty:
+                        matriz_prod['TOTAL GENERAL'] = matriz_prod.sum(axis=1)
+                        matriz_prod.loc['TOTAL TIPO'] = matriz_prod.sum(axis=0)
                         
-                    with c_tab_prod:
-                        st.write("") # Espaciador
-                        st.write("")
                         st.dataframe(
-                            df_productores,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "TIPO DE PRODUCTOR": st.column_config.TextColumn("🏷️ CLASIFICACIÓN"),
-                                "PRODUCTOR": st.column_config.TextColumn("🏢 PRODUCTOR / CLIENTE"),
-                                "HECTAREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS", format="%.1f ha"),
-                                "MISIONES": st.column_config.NumberColumn("🛰️ OS")
-                            }
+                            matriz_prod.style.format("{:,.2f}".format).background_gradient(cmap="Greens", axis=None),
+                            use_container_width=True
                         )
-                else:
-                    st.info("⚠️ No hay datos de productores cruzados para mostrar en este rango de fechas.")
+                    else:
+                        st.info("⚠️ No hay datos clasificados para mostrar en este rango de fechas.")
           
             elif vista_seleccionada == "📊 Resumen Gerencial":
                 st.markdown(f"#### 📑 Consolidado Gerencial")
@@ -1223,85 +1207,57 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     pie_chart.dataLabels.showPercent = True 
                     pie_chart.dataLabels.showCatName = False
                     ws.add_chart(pie_chart, "H20")
-# =========================================================
-                    # 🌾 EXPORTACIÓN VIP: DETALLE DE PRODUCTORES Y FINCAS
                     # =========================================================
-                    # Creamos una nueva pestaña en el Excel
-                    ws_prod = wb.create_sheet(title="Detalle Productores y Fincas")
+                    # 🌾 EXPORTACIÓN VIP: MATRIZ RESUMEN TIPO PRODUCTOR VS PISTA
+                    # =========================================================
+                    ws_prod = wb.create_sheet(title="Matriz Tipo Clientes")
                     
-                    ws_prod['B2'] = "REPORTE DETALLADO: ÁREAS POR CLIENTE, PRODUCTOR Y FINCA"
+                    ws_prod['B2'] = "MATRIZ GERENCIAL: ÁREA APLICADA POR BASE Y TIPO DE CLIENTE (ha)"
                     ws_prod['B2'].font = Font(size=14, bold=True, color="0D1B2A")
                     ws_prod['B3'] = f"Período Analizado: {rango_txt}"
                     ws_prod['B3'].font = Font(italic=True, color="555555")
 
-                    # Agrupamos la info incluyendo la Finca
-                    df_det_prod = df_filt.groupby(['TIPO DE PRODUCTOR', 'PRODUCTOR', 'FINCA_MAESTRA']).agg(
-                        MISIONES=('OS_MAESTRA', 'nunique'),
-                        HECTAREAS=('AREA_NUM', 'sum')
-                    ).reset_index()
+                    matriz_excel = pd.pivot_table(
+                        df_filt, 
+                        values='AREA_NUM', 
+                        index=col_pista, 
+                        columns='TIPO DE PRODUCTOR', 
+                        aggfunc='sum', 
+                        fill_value=0
+                    )
                     
-                    # Filtramos ceros y ordenamos
-                    df_det_prod = df_det_prod[df_det_prod['HECTAREAS'] > 0].sort_values(by=['TIPO DE PRODUCTOR', 'PRODUCTOR', 'HECTAREAS'], ascending=[True, True, False])
-
-                    # Encabezados de la tabla
-                    headers_prod = ['TIPO DE PRODUCTOR', 'PRODUCTOR / CLIENTE', 'FINCA', 'MISIONES', 'HECTÁREAS NETAS']
-                    for col_idx, header in enumerate(headers_prod, start=2):
-                        cell = ws_prod.cell(row=5, column=col_idx, value=header)
-                        cell.fill = fill_header
-                        cell.font = font_header
-                        cell.alignment = align_center
-                        cell.border = borde
-
-                    # Llenado de datos
-                    curr_row_prod = 6
-                    total_mis_prod = 0
-                    total_ha_prod = 0
-                    
-                    for _, row in df_det_prod.iterrows():
-                        ws_prod.cell(row=curr_row_prod, column=2, value=row['TIPO DE PRODUCTOR']).border = borde
-                        ws_prod.cell(row=curr_row_prod, column=3, value=row['PRODUCTOR']).border = borde
-                        ws_prod.cell(row=curr_row_prod, column=4, value=row['FINCA_MAESTRA']).border = borde
+                    if not matriz_excel.empty:
+                        matriz_excel['TOTAL GENERAL'] = matriz_excel.sum(axis=1)
+                        matriz_excel.loc['TOTAL TIPO'] = matriz_excel.sum(axis=0)
+                        matriz_excel = matriz_excel.reset_index()
+                        matriz_excel.rename(columns={col_pista: 'BASE OPERATIVA'}, inplace=True)
                         
-                        cell_mis = ws_prod.cell(row=curr_row_prod, column=5, value=row['MISIONES'])
-                        cell_mis.border = borde
-                        cell_mis.number_format = '#,##0'
-                        
-                        cell_ha = ws_prod.cell(row=curr_row_prod, column=6, value=row['HECTAREAS'])
-                        cell_ha.border = borde
-                        cell_ha.number_format = '#,##0.00'
-                        
-                        total_mis_prod += row['MISIONES']
-                        total_ha_prod += row['HECTAREAS']
-                        curr_row_prod += 1
-
-                    # Fila de Totales
-                    ws_prod.merge_cells(start_row=curr_row_prod, start_column=2, end_row=curr_row_prod, end_column=4)
-                    cell_tot_lbl = ws_prod.cell(row=curr_row_prod, column=2, value="TOTAL GENERAL")
-                    cell_tot_lbl.fill = fill_tot
-                    cell_tot_lbl.font = font_tot
-                    cell_tot_lbl.alignment = align_center
-                    cell_tot_lbl.border = borde
-                    ws_prod.cell(row=curr_row_prod, column=3).border = borde
-                    ws_prod.cell(row=curr_row_prod, column=4).border = borde
-                    
-                    cell_tot_mis = ws_prod.cell(row=curr_row_prod, column=5, value=total_mis_prod)
-                    cell_tot_mis.fill = fill_tot
-                    cell_tot_mis.font = font_tot
-                    cell_tot_mis.border = borde
-                    cell_tot_mis.number_format = '#,##0'
-
-                    cell_tot_ha = ws_prod.cell(row=curr_row_prod, column=6, value=total_ha_prod)
-                    cell_tot_ha.fill = fill_tot
-                    cell_tot_ha.font = font_tot
-                    cell_tot_ha.border = borde
-                    cell_tot_ha.number_format = '#,##0.00'
-
-                    # Ajustar ancho de las columnas para que se vea estético
-                    ws_prod.column_dimensions['B'].width = 22
-                    ws_prod.column_dimensions['C'].width = 35
-                    ws_prod.column_dimensions['D'].width = 30
-                    ws_prod.column_dimensions['E'].width = 15
-                    ws_prod.column_dimensions['F'].width = 20                
+                        columnas_matriz = list(matriz_excel.columns)
+                        for col_idx, col_name in enumerate(columnas_matriz, start=2):
+                            cell = ws_prod.cell(row=5, column=col_idx, value=col_name)
+                            cell.fill = fill_header
+                            cell.font = font_header
+                            cell.alignment = align_center
+                            cell.border = borde
+                            ws_prod.column_dimensions[get_column_letter(col_idx)].width = 20
+                            
+                        curr_row_m = 6
+                        for _, row in matriz_excel.iterrows():
+                            is_total_row = (row['BASE OPERATIVA'] == 'TOTAL TIPO')
+                            for col_idx, col_name in enumerate(columnas_matriz, start=2):
+                                val = row[col_name]
+                                cell = ws_prod.cell(row=curr_row_m, column=col_idx, value=val)
+                                cell.border = borde
+                                if col_idx > 2:
+                                    cell.number_format = '#,##0.00'
+                                    if is_total_row or col_name == 'TOTAL GENERAL':
+                                        cell.fill = fill_tot
+                                        cell.font = font_tot
+                                else:
+                                    if is_total_row:
+                                        cell.fill = fill_tot
+                                        cell.font = font_tot
+                            curr_row_m += 1                
                 wb.save(buffer_rep)
 
             else:
