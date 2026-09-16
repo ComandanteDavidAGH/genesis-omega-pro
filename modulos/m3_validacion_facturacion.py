@@ -798,13 +798,23 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
             anio_vuelo_sim = str(fecha_eval_sim.year)
             dict_aviones_sim, dict_drones_sim, dict_topes_sim, col_anio_detectado = extraer_tarifas_dinamicas(df_tarifas_maestras, anio_vuelo_sim)
 
-            lista_opciones_flota_sim = list(dict_aviones_sim.keys()) + list(dict_drones_sim.keys())
-            vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
+            simulador_solo_dron = st.toggle("🛸 Misión 100% Dron (Simulador)", value=False)
+
+            if simulador_solo_dron:
+                lista_opciones_flota_sim = list(dict_drones_sim.keys())
+                vuelo_sim = c_f1.selectbox("🛸 Dron a Simular", lista_opciones_flota_sim)
+            else:
+                lista_opciones_flota_sim = list(dict_aviones_sim.keys())
+                vuelo_sim = c_f1.selectbox("✈️ Equipo de Vuelo", lista_opciones_flota_sim)
 
             pistas_base_lista = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
             pista_sim = c_f2.selectbox("🛣️ Pista Base", pistas_base_lista)
 
-            horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+            if not simulador_solo_dron:
+                horometro_sim = c_f3.number_input("⏱️ Horómetro", min_value=0.01, value=3.30, step=0.1)
+            else:
+                horometro_sim = 0.0
+                c_f3.info("🚫 Sin Horómetro (Dron)")
             st.info(f"🚧 **Tope Tarifario de la Finca (Automático):** {tope_finca_auto}")
             recargo_sim = st.number_input("⚠️ Recargo General ($/Ha)", min_value=0.0, value=5000.0, step=1000.0)
 
@@ -977,11 +987,10 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 val_tope_sim = float(dict_topes_pista_sim.get(tope_finca_auto, {}).get(pista_sim, 999999))
                 if val_tope_sim == 999999: val_tope_sim = 0.0
 
-                if vuelo_sim == "DRONE" or "DRONE" in str(vuelo_sim).upper(): 
-                    if "PLUC" == pista_sim: base_dron = 84428
-                    elif "PDIV" == pista_sim: base_dron = 76916
-                    else: base_dron = 72600
-                    unitario_vuelo_sim = base_dron * mult_v_sim
+                if simulador_solo_dron:
+                    tarifa_vuelo_base = float(drones_locales.get(vuelo_sim, 84428.0))
+                    unitario_vuelo_sim = tarifa_vuelo_base * mult_v_sim
+                    recargo_sim = 0.0 # Los drones no aplican recargo terrestre estándar
                 else:
                     tarifa_vuelo_base = float(aviones_locales.get(vuelo_sim, 4606562.0))
                     costo_bruto = (tarifa_vuelo_base * horometro_sim) / ha_sim if ha_sim > 0 else 0
