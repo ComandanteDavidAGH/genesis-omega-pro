@@ -477,10 +477,11 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             super_base_bi['PRODUCTOR'] = super_base_bi['PRODUCTOR'].fillna('SIN ASIGNAR')
             super_base_bi.drop(columns=['FINCA_MATCH'], inplace=True)
             
-            # 🔥 LÓGICA DE AGRUPACIÓN "AGRO" (Columna Adicional)
+            # 🔥 LÓGICA DE AGRUPACIÓN "AGRO" ACTUALIZADA (Sin Banaorganico)
             def agrupar_agro(row):
                 prod = str(row['PRODUCTOR']).upper()
-                if any(k in prod for k in ['AGRO', 'BANAORGANICO']):
+                # Si dice AGRO lo agrupa, si no, lo deja como venga en TABLA 2 (ej: Socio)
+                if 'AGRO' in prod:
                     return 'GRUPO AGRO'
                 return row['TIPO DE PRODUCTOR']
                 
@@ -489,6 +490,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             super_base_bi['TIPO DE PRODUCTOR'] = 'SIN CLASIFICAR'
             super_base_bi['PRODUCTOR'] = 'SIN ASIGNAR'
             super_base_bi['MACRO_CLIENTE'] = 'SIN CLASIFICAR'
+        # =================================================================
         # =================================================================
         # =================================================================      
 
