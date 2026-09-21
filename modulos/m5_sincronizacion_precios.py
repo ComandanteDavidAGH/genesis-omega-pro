@@ -142,7 +142,7 @@ def generar_excel_gerencial(df_comp, dosis_dict):
 # =================================================================
 # 🔌 MEMORIA DINÁMICA DE MÁRGENES Y TARIFAS
 # =================================================================
-@st.cache_data(show_spinner=False, ttl=1800)
+@st.cache_data(show_spinner=False, ttl=300)
 def obtener_tarifario_maestro_cached(_supabase_client):
     df = pd.DataFrame()
     if _supabase_client:
@@ -263,15 +263,23 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
     gc = obtener_cliente_gspread_unificado()
 
     with st.container(border=True):
-        st.markdown("### 🧮 Tarifario Maestro Dinámico (Visor y Cómputo de Perfiles)")
+        col_t1, col_t2 = st.columns([2.5, 1.5])
+        with col_t1:
+            st.markdown("### 🧮 Tarifario Maestro Dinámico")
+            st.caption("Visor y Cómputo de Perfiles Financieros")
         
-        col_t1, col_t2 = st.columns([3, 1])
         with col_t2:
-            if st.button("🔄 RECARGAR TARIFARIO", use_container_width=True, type="secondary"):
-                st.cache_data.clear()
+            # Botón primario de alta visibilidad para forzar actualización inmediata
+            if st.button("🚨 FORZAR SINCRONIZACIÓN DE PRECIOS", use_container_width=True, type="primary"):
+                # Purgamos ÚNICAMENTE la memoria de esta función, protegiendo el resto de la app
+                obtener_tarifario_maestro_cached.clear()
+                
+                # Destruimos la sesión local de precios obsoletos
                 st.session_state.pop('df_tarifario', None)
                 st.session_state.pop('opciones_cols_m5', None)
                 st.session_state.pop('dict_margenes_m5', None)
+                
+                # Recargamos la interfaz
                 st.rerun()
 
         if 'df_tarifario' not in st.session_state or st.session_state['df_tarifario'].empty:
