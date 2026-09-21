@@ -142,16 +142,9 @@ def generar_excel_gerencial(df_comp, dosis_dict):
 # =================================================================
 # 🔌 EXTRACCIÓN CRUDA Y MEMORIA DINÁMICA DE TARIFAS
 # =================================================================
-def obtener_tarifario_maestro_RAW(_supabase_client):
-    """ Función puramente extractiva. CERO CACHÉ. """
+def obtener_tarifario_maestro_RAW(_supabase_client=None):
+    """ Función puramente extractiva. PRIORIDAD ABSOLUTA: GOOGLE SHEETS """
     df = pd.DataFrame()
-    if _supabase_client:
-        try:
-            respuesta = _supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
-            if respuesta.data: df = pd.DataFrame(respuesta.data)
-        except Exception: df = pd.DataFrame()
-
-    # 🔥 ESCUDO DE SEGURIDAD: Márgenes por defecto
     margenes = {"TERCERO": 1.451, "AFILIADO": 1.164, "COOPERATIVA / SOCIO": 1.112, "ORGANICO": 1.011}
     
     gc = obtener_cliente_gspread_unificado()
@@ -163,6 +156,7 @@ def obtener_tarifario_maestro_RAW(_supabase_client):
             
             if len(datos) > 1:
                 df_raw = pd.DataFrame(datos[1:], columns=datos[0])
+                
                 def parse_mult(v_str):
                     try:
                         v = str(v_str).strip().replace(",", ".")
@@ -173,6 +167,7 @@ def obtener_tarifario_maestro_RAW(_supabase_client):
                     except: pass
                     return 0.0
 
+                # 1. Extraer márgenes
                 for idx, row in df_raw.iterrows():
                     grupo = str(row.iloc[0]).strip().upper()
                     if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
@@ -182,10 +177,18 @@ def obtener_tarifario_maestro_RAW(_supabase_client):
                             elif grupo == "TERCERO": margenes["TERCERO"] = factor
                             elif grupo == "AFILIADO": margenes["AFILIADO"] = factor
                             elif grupo == "ORGANICO": margenes["ORGANICO"] = factor
-                        
-                if df.empty and len(df_raw.columns) > 10:
+                
+                # 🔥 2. LA SOLUCIÓN: FORZAMOS LA LECTURA DE PRECIOS DIRECTO DE LA BÓVEDA MAESTRA
+                if len(df_raw.columns) > 10:
                     df = df_raw.iloc[:, [8, 10]].copy()
                     df.columns = ['PRODUCTO', 'COSTO']
+        except Exception: pass
+
+    # Si Google Sheets falla o está vacío, usamos Supabase como Plan B
+    if df.empty and _supabase_client:
+        try:
+            respuesta = _supabase_client.table("PRECIOS_INSUMOS").select("*").execute()
+            if respuesta.data: df = pd.DataFrame(respuesta.data)
         except Exception: pass
 
     if df.empty or 'PRODUCTO' not in df.columns or 'COSTO' not in df.columns:
@@ -225,7 +228,6 @@ def obtener_tarifario_maestro_RAW(_supabase_client):
 
 @st.cache_data(show_spinner=False, ttl=300)
 def obtener_tarifario_maestro_cached(_supabase_client):
-    """ Wrapper de caché para lectura rápida de rutina (5 min) """
     return obtener_tarifario_maestro_RAW(_supabase_client)
 
 # =================================================================
@@ -265,16 +267,11 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         
         with col_t2:
             if st.button("🚨 FORZAR SINCRONIZACIÓN EN VIVO", use_container_width=True, type="primary"):
-                with st.spinner("📡 Extrayendo precios en tiempo real..."):
-                    st.cache_data.clear() # Limpia cualquier remanente global
-                    
-                    # Llamamos a la función CRUDA (sin caché), conexión directa garantizada
-                    df_t, cols, dict_m = obtener_tarifario_maestro_RAW(supabase_client)
-                    
-                    # Sobrescribimos la sesión inmediatamente con los datos frescos
-                    st.session_state['df_tarifario'] = df_t
-                    st.session_state['opciones_cols_m5'] = cols
-                    st.session_state['dict_margenes_m5'] = dict_m
+                with st.spinner("📡 Conectando directo a la Bóveda..."):
+                    st.cache_data.clear()
+                    st.session_state.pop('df_tarifario', None)
+                    st.session_state.pop('opciones_cols_m5', None)
+                    st.session_state.pop('dict_margenes_m5', None)
                     st.rerun()
 
         # Flujo de carga normal (usa caché) si no hay datos en sesión
