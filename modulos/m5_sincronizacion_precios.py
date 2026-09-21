@@ -143,7 +143,7 @@ def generar_excel_gerencial(df_comp, dosis_dict):
 # 🔌 MEMORIA DINÁMICA DE MÁRGENES Y TARIFAS
 # =================================================================
 @st.cache_data(show_spinner=False, ttl=300)
-def obtener_tarifario_maestro_cached(_supabase_client):
+def obtener_tarifario_maestro_cached(_supabase_client, cache_buster=0):
     df = pd.DataFrame()
     if _supabase_client:
         try:
@@ -269,21 +269,18 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             st.caption("Visor y Cómputo de Perfiles Financieros")
         
         with col_t2:
-            # Botón primario de alta visibilidad para forzar actualización inmediata
-            if st.button("🚨 FORZAR SINCRONIZACIÓN DE PRECIOS", use_container_width=True, type="primary"):
-                # Purgamos ÚNICAMENTE la memoria de esta función, protegiendo el resto de la app
-                obtener_tarifario_maestro_cached.clear()
-                
-                # Destruimos la sesión local de precios obsoletos
+            if st.button("🚨 FORZAR SINCRONIZACIÓN EN VIVO", use_container_width=True, type="primary"):
+                st.cache_data.clear() # Destruye caché global
+                # 🔥 EL TRUCO: Le inyectamos la hora exacta para obligarlo a recargar
+                st.session_state['cache_buster_m5'] = datetime.now().timestamp()
                 st.session_state.pop('df_tarifario', None)
                 st.session_state.pop('opciones_cols_m5', None)
                 st.session_state.pop('dict_margenes_m5', None)
-                
-                # Recargamos la interfaz
                 st.rerun()
 
         if 'df_tarifario' not in st.session_state or st.session_state['df_tarifario'].empty:
-            df_tarifario_cached, opciones_cols, dict_m = obtener_tarifario_maestro_cached(supabase_client)
+            buster = st.session_state.get('cache_buster_m5', 0)
+            df_tarifario_cached, opciones_cols, dict_m = obtener_tarifario_maestro_cached(supabase_client, buster)
             if not df_tarifario_cached.empty:
                 st.session_state['df_tarifario'] = df_tarifario_cached
                 st.session_state['opciones_cols_m5'] = opciones_cols
@@ -295,7 +292,8 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
             dict_m = st.session_state.get('dict_margenes_m5', {})
             
             if not cols_dinamicas or len(cols_dinamicas) < 2:
-                df_t, cols_dinamicas, dict_m = obtener_tarifario_maestro_cached(supabase_client)
+                buster = st.session_state.get('cache_buster_m5', 0)
+                df_t, cols_dinamicas, dict_m = obtener_tarifario_maestro_cached(supabase_client, buster)
                 st.session_state['df_tarifario'] = df_t
                 st.session_state['opciones_cols_m5'] = cols_dinamicas
                 st.session_state['dict_margenes_m5'] = dict_m
