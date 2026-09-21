@@ -195,7 +195,16 @@ def obtener_tarifario_maestro_RAW(_supabase_client=None):
         return pd.DataFrame(), [], {}
         
     df['PRODUCTO'] = df['PRODUCTO'].astype(str).str.strip().str.upper()
-    mask_validos = (df['PRODUCTO'].notna() & (df['PRODUCTO'] != "") & (df['PRODUCTO'] != "PRODUCTO") & (~df['PRODUCTO'].str.contains("INVENTARIO", na=False)))
+    
+    # 🔥 FILTRO ESTRICTO: Aniquila ceros, errores de Excel y textos basura
+    basura = ["PRODUCTO", "0", "0.0", "0,0", "-", "NAN", "NONE", "NULL", "FALSE", "TRUE"]
+    mask_validos = (
+        df['PRODUCTO'].notna() & 
+        (df['PRODUCTO'] != "") & 
+        (~df['PRODUCTO'].isin(basura)) & 
+        (~df['PRODUCTO'].str.contains("INVENTARIO", na=False)) &
+        (df['PRODUCTO'].str.len() > 1) # Obliga a que el nombre tenga más de 1 carácter
+    )
     df = df[mask_validos].copy()
     
     df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
