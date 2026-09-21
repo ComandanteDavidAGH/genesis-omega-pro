@@ -140,10 +140,10 @@ def generar_excel_gerencial(df_comp, dosis_dict):
     return buffer.getvalue()
 
 # =================================================================
-# 🔌 MEMORIA DINÁMICA DE MÁRGENES Y TARIFAS
+# 🔌 EXTRACCIÓN CRUDA Y MEMORIA DINÁMICA DE TARIFAS
 # =================================================================
-@st.cache_data(show_spinner=False, ttl=300)
-def obtener_tarifario_maestro_cached(_supabase_client, cache_buster=0):
+def obtener_tarifario_maestro_RAW(_supabase_client):
+    """ Función puramente extractiva. CERO CACHÉ. """
     df = pd.DataFrame()
     if _supabase_client:
         try:
@@ -173,14 +173,10 @@ def obtener_tarifario_maestro_cached(_supabase_client, cache_buster=0):
                     except: pass
                     return 0.0
 
-                # 💥 BISTURÍ DEFINITIVO: Leemos directo la Columna D (Índice 3)
                 for idx, row in df_raw.iterrows():
                     grupo = str(row.iloc[0]).strip().upper()
                     if grupo in ["TERCERO", "AFILIADO", "SOCIO", "COOPERATIVA", "ORGANICO"]:
-                        
-                        # 💥 BISTURÍ EXACTO: Índice 3 apunta a la columna TOTAL
                         factor = parse_mult(row.iloc[3])
-                        
                         if factor > 1.0:
                             if grupo in ["SOCIO", "COOPERATIVA"]: margenes["COOPERATIVA / SOCIO"] = factor
                             elif grupo == "TERCERO": margenes["TERCERO"] = factor
@@ -202,7 +198,6 @@ def obtener_tarifario_maestro_cached(_supabase_client, cache_buster=0):
     df['COSTO BASE'] = df['COSTO'].apply(purificar_y_convertir_precio)
     df = df[df['COSTO BASE'] > 0].copy()
     
-    # 💥 CURA TÁCTICA: PURIFICACIÓN DE DUPLICADOS (COMO EN MÓDULO 1)
     df = df.drop_duplicates(subset=['PRODUCTO'], keep='last').copy()
     
     if df.empty: return pd.DataFrame(), [], {}
@@ -214,24 +209,24 @@ def obtener_tarifario_maestro_cached(_supabase_client, cache_buster=0):
     col_soc = f"COOP/SOCIO (+{fmt_pct(margenes['COOPERATIVA / SOCIO'])}%)"
     col_org = f"ORGÁNICO (+{fmt_pct(margenes['ORGANICO'])}%)"
 
-    # 1. Cálculo general para todos los productos
     df[col_ter] = (df['COSTO BASE'] * margenes['TERCERO']).round(0)
     df[col_afi] = (df['COSTO BASE'] * margenes['AFILIADO']).round(0)
     df[col_soc] = (df['COSTO BASE'] * margenes['COOPERATIVA / SOCIO']).round(0)
     df[col_org] = (df['COSTO BASE'] * margenes['ORGANICO']).round(0)
     
-    # 🎯 2. EXCEPCIÓN TÁCTICA: INTERÉS COMPUESTO PARA MANZATE 200 WG
     mask_manzate = df['PRODUCTO'].str.contains("MANZATE 200 WG", na=False)
-    
     df.loc[mask_manzate, col_ter] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['TERCERO'] * 1.28).round(0)
     df.loc[mask_manzate, col_afi] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['AFILIADO'] * 1.17).round(0)
     df.loc[mask_manzate, col_soc] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['COOPERATIVA / SOCIO'] * 1.11).round(0)
     df.loc[mask_manzate, col_org] = (df.loc[mask_manzate, 'COSTO BASE'] * margenes['ORGANICO'] * 1.01).round(0)
     
     cols = ["PRODUCTO", "COSTO BASE", col_ter, col_afi, col_soc, col_org]
-    df_tarifario = df[cols].sort_values(by="PRODUCTO").reset_index(drop=True)
-    
-    return df_tarifario, cols[1:], margenes
+    return df[cols].sort_values(by="PRODUCTO").reset_index(drop=True), cols[1:], margenes
+
+@st.cache_data(show_spinner=False, ttl=300)
+def obtener_tarifario_maestro_cached(_supabase_client):
+    """ Wrapper de caché para lectura rápida de rutina (5 min) """
+    return obtener_tarifario_maestro_RAW(_supabase_client)
 
 # =================================================================
 # 👑 PROCESAMIENTO PRINCIPAL DE TARIFAS
@@ -270,22 +265,38 @@ def ejecutar(supabase_client, extraer_numero, fmt_sap, limpiar_texto_vba, val_se
         
         with col_t2:
             if st.button("🚨 FORZAR SINCRONIZACIÓN EN VIVO", use_container_width=True, type="primary"):
-                st.cache_data.clear() # Destruye caché global
-                # 🔥 EL TRUCO: Le inyectamos la hora exacta para obligarlo a recargar
-                st.session_state['cache_buster_m5'] = datetime.now().timestamp()
-                st.session_state.pop('df_tarifario', None)
-                st.session_state.pop('opciones_cols_m5', None)
-                st.session_state.pop('dict_margenes_m5', None)
-                st.rerun()
+                with st.spinner("📡 Extrayendo precios en tiempo real..."):
+                    st.cache_data.clear() # Limpia cualquier remanente global
+                    
+                    # Llamamos a la función CRUDA (sin caché), conexión directa garantizada
+                    df_t, cols, dict_m = obtener_tarifario_maestro_RAW(supabase_client)
+                    
+                    # Sobrescribimos la sesión inmediatamente con los datos frescos
+                    st.session_state['df_tarifario'] = df_t
+                    st.session_state['opciones_cols_m5'] = cols
+                    st.session_state['dict_margenes_m5'] = dict_m
+                    st.rerun()
 
+        # Flujo de carga normal (usa caché) si no hay datos en sesión
         if 'df_tarifario' not in st.session_state or st.session_state['df_tarifario'].empty:
-            buster = st.session_state.get('cache_buster_m5', 0)
-            df_tarifario_cached, opciones_cols, dict_m = obtener_tarifario_maestro_cached(supabase_client, buster)
+            df_tarifario_cached, opciones_cols, dict_m = obtener_tarifario_maestro_cached(supabase_client)
             if not df_tarifario_cached.empty:
                 st.session_state['df_tarifario'] = df_tarifario_cached
                 st.session_state['opciones_cols_m5'] = opciones_cols
                 st.session_state['dict_margenes_m5'] = dict_m
 
+        # Asignación de variables para renderizar la interfaz
+        if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
+            df_t = st.session_state['df_tarifario']
+            cols_dinamicas = st.session_state.get('opciones_cols_m5', [])
+            dict_m = st.session_state.get('dict_margenes_m5', {})
+            
+            # Repesca por seguridad si la sesión perdió las columnas
+            if not cols_dinamicas or len(cols_dinamicas) < 2:
+                df_t, cols_dinamicas, dict_m = obtener_tarifario_maestro_cached(supabase_client)
+                st.session_state['df_tarifario'] = df_t
+                st.session_state['opciones_cols_m5'] = cols_dinamicas
+                st.session_state['dict_margenes_m5'] = dict_m
         if 'df_tarifario' in st.session_state and not st.session_state['df_tarifario'].empty:
             df_t = st.session_state['df_tarifario']
             cols_dinamicas = st.session_state.get('opciones_cols_m5', [])
