@@ -825,23 +825,134 @@ def ejecutar():
                                 st.error(f"🚨 Error crítico en la sincronización masiva: {e}")
                     else: st.info("No se detectaron cambios ni órdenes de eliminación.")
 
-                st.markdown("---")
+                                st.markdown("---")
+
+                # ============================================================
+                # 🧮 CÁLCULO DEL RESUMEN GLOBAL POR PRODUCTO (entre fechas filtradas)
+                # ============================================================
+                df_resumen = df_editado.copy()
+
+                # Excluir anulados/eliminados del resumen
+                if COL_ESTADO in df_resumen.columns:
+                    df_resumen = df_resumen[
+                        ~df_resumen[COL_ESTADO].astype(str).str.contains("ANULADO|ELIMINAR", case=False, na=False)
+                    ]
+
+                # Detectar columnas reales en el df editado
+                col_prod_r  = next((c for c in df_resumen.columns if "PRODUCTO" in str(c).upper()), None)
+                col_prov_r  = next((c for c in df_resumen.columns if "PROV"     in str(c).upper()), None)
+                col_pista_r = next((c for c in df_resumen.columns if "PISTA"    in str(c).upper()
+                                                                     or "BASE"     in str(c).upper()), None)
+                col_cant_r  = next((c for c in df_resumen.columns if "CANT"     in str(c).upper()), None)
+
+                df_agrupado = pd.DataFrame()
+                if col_prod_r and col_cant_r:
+                    def _a_num(x):
+                        try:
+                            return float(str(x).replace(".", "").replace(",", "."))
+                        except:
+                            return 0.0
+
+                    df_resumen["_CANT_NUM"] = df_resumen[col_cant_r].apply(_a_num)
+
+                    cols_grp = [c for c in [col_prod_r, col_prov_r, col_pista_r] if c]
+                    df_agrupado = (
+                        df_resumen.groupby(cols_grp, dropna=False)
+                        .agg(
+                            LOTES=("_CANT_NUM", "count"),
+                            **{"CANTIDAD TOTAL": ("_CANT_NUM", "sum")}
+                        )
+                        .reset_index()
+                    )
+                    # Ordenar por nombre de producto
+                    df_agrupado = df_agrupado.sort_values(by=[col_prod_r])
+
+                    # Renombrar para presentación final
+                    rename_map = {}
+                    if col_prod_r:  rename_map[col_prod_r]  = "PRODUCTO"
+                    if col_prov_r:  rename_map[col_prov_r]  = "PROVEEDOR"
+                    if col_pista_r: rename_map[col_pista_r] = "PISTA"
+                    df_agrupado = df_agrupado.rename(columns=rename_map)
+
+                    # Fila de GRAN TOTAL
+                    fila_total = {
+                        "PRODUCTO": "🔵 GRAN TOTAL",
+                        "LOTES": int(df_agrupado["LOTES"].sum()),
+                        "CANTIDAD TOTAL": df_agrupado["CANTIDAD TOTAL"].sum()
+                    }
+                    if "PROVEEDOR" in df_agrupado.columns: fila_total["PROVEEDOR"] = ""
+                    if "PISTA"     in df_agrupado.columns: fila_total["PISTA"]     = ""
+
+                    df_agrupado = pd.concat(
+                        [df_agrupado, pd.DataFrame([fila_total])],
+                        ignore_index=True
+                    )
+
+                # ---- VISTA PREVIA EN PANTALLA (dentro de expander) ----
+                if not df_agrupado.empty:
+                    with st.expander("📊 VISTA PREVIA: Resumen Global por Producto (entre las fechas filtradas)", expanded=False):
+                        st.caption("Este mismo resumen se incluirá como **hoja 2** en el Excel descargable.")
+                        st.dataframe(df_agrupado, hide_index=True, use_container_width=True)
+
+                # ============================================================
+                # 💾 CONSTRUCCIÓN DEL EXCEL (2 hojas)
+                # ============================================================
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+
+                    # ---------- HOJA 1: DETALLE (INTACTA) ----------
                     df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
                     ws_excel = writer.sheets['Auditoria_Ingresos']
-                    header_font, header_fill = Font(bold=True, color="FFFFFF"), PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    for cell in ws_excel[1]: cell.font = header_font; cell.fill = header_fill; cell.alignment = Alignment(horizontal='center', vertical='center')
+                    header_font = Font(bold=True, color="FFFFFF")
+                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    for cell in ws_excel[1]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
                     for col in ws_excel.columns:
                         max_length = 0
                         for cell in col:
                             try:
-                                if len(str(cell.value)) > max_length: max_length = len(cell.value)
-                            except: pass
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(cell.value)
+                            except:
+                                pass
                         ws_excel.column_dimensions[col[0].column_letter].width = (max_length + 2)
 
-                st.download_button("💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)", data=buffer.getvalue(), file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    # ---------- HOJA 2: RESUMEN GLOBAL POR PRODUCTO ----------
+                    if not df_agrupado.empty:
+                        df_agrupado.to_excel(writer, sheet_name='Resumen por Producto', index=False)
+                        ws_res = writer.sheets['Resumen por Producto']
+                        for cell in ws_res[1]:
+                            cell.font = header_font
+                            cell.fill = header_fill
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                        for col in ws_res.columns:
+                            max_length = 0
+                            for cell in col:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(cell.value)
+                                except:
+                                    pass
+                            ws_res.column_dimensions[col[0].column_letter].width = (max_length + 3)
 
+                        # Pintar la fila del GRAN TOTAL (última fila)
+                        ultima_fila = ws_res.max_row
+                        fill_total = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                        font_total = Font(bold=True, color="0D1B2A")
+                        for cell in ws_res[ultima_fila]:
+                            cell.fill = fill_total
+                            cell.font = font_total
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+                st.download_button(
+                    "💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)",
+                    data=buffer.getvalue(),
+                    file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
     # ========================================================================
     # 🚚 PESTAÑA 2: MOVIMIENTOS INTERNOS (TRASLADOS)
     # ========================================================================
