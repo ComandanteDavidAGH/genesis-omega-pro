@@ -893,7 +893,32 @@ def ejecutar():
                     with st.expander("📊 VISTA PREVIA: Resumen Global por Producto (entre las fechas filtradas)", expanded=False):
                         st.caption("Este mismo resumen se incluirá como **hoja 2** en el Excel descargable.")
                         st.dataframe(df_agrupado, hide_index=True, use_container_width=True)
+                    # HOJA 3: total por producto (gerencial, sin pista)
+                    if not df_total_prod.empty:
+                        df_total_prod.to_excel(writer, sheet_name='Total por Producto', index=False)
+                        ws_gen = writer.sheets['Total por Producto']
+                        for cell in ws_gen[1]:
+                            cell.font = header_font
+                            cell.fill = header_fill
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                        for col in ws_gen.columns:
+                            max_length = 0
+                            for cell in col:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(cell.value)
+                                except:
+                                    pass
+                            ws_gen.column_dimensions[col[0].column_letter].width = (max_length + 5)
 
+                        ultima_fila_gen = ws_gen.max_row
+                        fill_total = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                        font_total = Font(bold=True, color="0D1B2A")
+                        for cell in ws_gen[ultima_fila_gen]:
+                            cell.fill = fill_total
+                            cell.font = font_total
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                
                 # ============================================================
                 # 💾 CONSTRUCCIÓN DEL EXCEL (2 hojas)
                 # ============================================================
