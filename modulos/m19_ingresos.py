@@ -845,6 +845,7 @@ def ejecutar():
                                                                      or "BASE"     in str(c).upper()), None)
                 col_cant_r  = next((c for c in df_resumen.columns if "CANT"     in str(c).upper()), None)
 
+                # ---- HOJA 2: agrupado por PRODUCTO + PROVEEDOR + PISTA ----
                 df_agrupado = pd.DataFrame()
                 if col_prod_r and col_cant_r:
                     def _a_num(x):
@@ -864,17 +865,14 @@ def ejecutar():
                         )
                         .reset_index()
                     )
-                    # Ordenar por nombre de producto
                     df_agrupado = df_agrupado.sort_values(by=[col_prod_r])
 
-                    # Renombrar para presentación final
                     rename_map = {}
                     if col_prod_r:  rename_map[col_prod_r]  = "PRODUCTO"
                     if col_prov_r:  rename_map[col_prov_r]  = "PROVEEDOR"
                     if col_pista_r: rename_map[col_pista_r] = "PISTA"
                     df_agrupado = df_agrupado.rename(columns=rename_map)
 
-                    # Fila de GRAN TOTAL
                     fila_total = {
                         "PRODUCTO": "🔵 GRAN TOTAL",
                         "LOTES": int(df_agrupado["LOTES"].sum()),
@@ -888,12 +886,120 @@ def ejecutar():
                         ignore_index=True
                     )
 
-                # ---- VISTA PREVIA EN PANTALLA (dentro de expander) ----
+                # ---- VISTA PREVIA HOJA 2 ----
                 if not df_agrupado.empty:
                     with st.expander("📊 VISTA PREVIA: Resumen Global por Producto (entre las fechas filtradas)", expanded=False):
                         st.caption("Este mismo resumen se incluirá como **hoja 2** en el Excel descargable.")
                         st.dataframe(df_agrupado, hide_index=True, use_container_width=True)
-                    # HOJA 3: total por producto (gerencial, sin pista)
+
+                # ============================================================
+                # 🧮 HOJA 3: TOTAL POR PRODUCTO (UNA FILA POR PRODUCTO, NORMALIZANDO ESPACIOS)
+                # ============================================================
+                df_total_prod = pd.DataFrame()
+                if col_prod_r and col_cant_r and not df_resumen.empty:
+                    base_prod = df_resumen.copy()
+
+                    # Normalizar nombre de producto: trim + colapsar espacios + upper
+                    base_prod["_PROD_NORM"] = base_prod[col_prod_r].astype(str).apply(
+                        lambda x: re.sub(r'\s+', ' ', x.strip().upper())
+                    )
+
+                    # Normalizar proveedor
+                    if col_prov_r:
+                        base_prod["_PROV_NORM"] = base_prod[col_prov_r].astype(str).apply(
+                            lambda x: re.sub(r'\s+', ' ', x.strip().upper())
+                        )
+                    else:
+                        base_prod["_PROV_NORM"] = ""
+
+                    # Agrupación: UNA fila por producto normalizado
+                    df_total_prod = base_prod.groupby("_PROD_NORM", dropna=False).agg(
+                        LOTES=("_CANT_NUM", "count"),
+                        TOTAL=("_CANT_NUM", "sum"),
+                    ).reset_index().rename(columns={"_PROD_NORM": "PRODUCTO"})
+
+                    # Proveedores únicos unidos con " / "
+                    if col_prov_r:
+                        provs_por_prod = (
+                            base_prod.loc[base_prod["_PROV_NORM"] != ""]
+                            .groupby("_PROD_NORM")["_PROV_NORM"]
+                            .apply(lambda s: " / ".join(sorted(set(s))))
+                        )
+                        df_total_prod["PROVEEDOR"] = df_total_prod["PRODUCTO"].map(provs_por_prod).fillna("")
+                    else:
+                        df_total_prod["PROVEEDOR"] = ""
+
+                    # Orden de columnas
+                    df_total_prod = df_total_prod[["PRODUCTO", "PROVEEDOR", "LOTES", "TOTAL"]]
+                    df_total_prod = df_total_prod.rename(columns={"TOTAL": "CANTIDAD TOTAL"})
+                    df_total_prod = df_total_prod.sort_values(by="PRODUCTO")
+
+                    # Fila GRAN TOTAL
+                    fila_total_gen = {
+                        "PRODUCTO": "🔵 GRAN TOTAL",
+                        "PROVEEDOR": "",
+                        "LOTES": int(df_total_prod["LOTES"].sum()),
+                        "CANTIDAD TOTAL": df_total_prod["CANTIDAD TOTAL"].sum(),
+                    }
+                    df_total_prod = pd.concat([df_total_prod, pd.DataFrame([fila_total_gen])], ignore_index=True)
+
+                    with st.expander("📈 VISTA PREVIA: Total por Producto (gerencial, sin pista)", expanded=False):
+                        st.caption("Este resumen se incluirá como **hoja 3** en el Excel descargable (una fila por producto).")
+                        st.dataframe(df_total_prod, hide_index=True, use_container_width=True)
+
+                # ============================================================
+                # 💾 CONSTRUCCIÓN DEL EXCEL (3 hojas)
+                # ============================================================
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+
+                    header_font = Font(bold=True, color="FFFFFF")
+                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+                    fill_total  = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                    font_total  = Font(bold=True, color="0D1B2A")
+
+                    # ---------- HOJA 1: DETALLE ----------
+                    df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
+                    ws_excel = writer.sheets['Auditoria_Ingresos']
+                    for cell in ws_excel[1]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    for col in ws_excel.columns:
+                        max_length = 0
+                        for cell in col:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(cell.value)
+                            except:
+                                pass
+                        ws_excel.column_dimensions[col[0].column_letter].width = (max_length + 2)
+
+                    # ---------- HOJA 2: RESUMEN POR PRODUCTO + PROVEEDOR + PISTA ----------
+                    if not df_agrupado.empty:
+                        df_agrupado.to_excel(writer, sheet_name='Resumen por Producto', index=False)
+                        ws_res = writer.sheets['Resumen por Producto']
+                        for cell in ws_res[1]:
+                            cell.font = header_font
+                            cell.fill = header_fill
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+                        for col in ws_res.columns:
+                            max_length = 0
+                            for cell in col:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(cell.value)
+                                except:
+                                    pass
+                            ws_res.column_dimensions[col[0].column_letter].width = (max_length + 3)
+
+                        ultima_fila = ws_res.max_row
+                        for cell in ws_res[ultima_fila]:
+                            cell.fill = fill_total
+                            cell.font = font_total
+                            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+                    # ---------- HOJA 3: TOTAL POR PRODUCTO (GERENCIAL, SIN PISTA) ----------
                     if not df_total_prod.empty:
                         df_total_prod.to_excel(writer, sheet_name='Total por Producto', index=False)
                         ws_gen = writer.sheets['Total por Producto']
@@ -912,61 +1018,7 @@ def ejecutar():
                             ws_gen.column_dimensions[col[0].column_letter].width = (max_length + 5)
 
                         ultima_fila_gen = ws_gen.max_row
-                        fill_total = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                        font_total = Font(bold=True, color="0D1B2A")
                         for cell in ws_gen[ultima_fila_gen]:
-                            cell.fill = fill_total
-                            cell.font = font_total
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                
-                # ============================================================
-                # 💾 CONSTRUCCIÓN DEL EXCEL (2 hojas)
-                # ============================================================
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-
-                    # ---------- HOJA 1: DETALLE (INTACTA) ----------
-                    df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
-                    ws_excel = writer.sheets['Auditoria_Ingresos']
-                    header_font = Font(bold=True, color="FFFFFF")
-                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    for cell in ws_excel[1]:
-                        cell.font = header_font
-                        cell.fill = header_fill
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    for col in ws_excel.columns:
-                        max_length = 0
-                        for cell in col:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(cell.value)
-                            except:
-                                pass
-                        ws_excel.column_dimensions[col[0].column_letter].width = (max_length + 2)
-
-                    # ---------- HOJA 2: RESUMEN GLOBAL POR PRODUCTO ----------
-                    if not df_agrupado.empty:
-                        df_agrupado.to_excel(writer, sheet_name='Resumen por Producto', index=False)
-                        ws_res = writer.sheets['Resumen por Producto']
-                        for cell in ws_res[1]:
-                            cell.font = header_font
-                            cell.fill = header_fill
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        for col in ws_res.columns:
-                            max_length = 0
-                            for cell in col:
-                                try:
-                                    if len(str(cell.value)) > max_length:
-                                        max_length = len(cell.value)
-                                except:
-                                    pass
-                            ws_res.column_dimensions[col[0].column_letter].width = (max_length + 3)
-
-                        # Pintar la fila del GRAN TOTAL (última fila)
-                        ultima_fila = ws_res.max_row
-                        fill_total = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                        font_total = Font(bold=True, color="0D1B2A")
-                        for cell in ws_res[ultima_fila]:
                             cell.fill = fill_total
                             cell.font = font_total
                             cell.alignment = Alignment(horizontal='center', vertical='center')
