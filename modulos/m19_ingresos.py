@@ -825,7 +825,7 @@ def ejecutar():
                                 st.error(f"🚨 Error crítico en la sincronización masiva: {e}")
                     else: st.info("No se detectaron cambios ni órdenes de eliminación.")
 
-                                st.markdown("---")
+                st.markdown("---")
 
                 # ============================================================
                 # 🧮 CÁLCULO DEL RESUMEN GLOBAL POR PRODUCTO (entre fechas filtradas)
