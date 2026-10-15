@@ -27,7 +27,7 @@ TOPES_PISTA = {
 }
 
 PISTAS_VALIDAS = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI"]
-PISTAS_DISPONIBLES_MATRIZ = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA", "COSTA"]
+PISTAS_DISPONIBLES_MATRIZ = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "Z-1", "Z-2", "PROPIA",]
 
 DICT_AVIONES_DEFAULT = {
     "THRUS SR2": 4606562,
@@ -258,7 +258,7 @@ def extraer_tarifas_dinamicas(df_tarifas, anio_str):
             if "TOPE MAX" in equipo: dict_topes["TOPE MAX GENERAL"][pista] = tarifa_val
             elif "TOPE SUR" in equipo: dict_topes["TOPE SUR"][pista] = tarifa_val
             elif "TOPE PARCELA" in equipo or "20HA" in equipo: dict_topes["TOPE PARCELA INTER < 20HA"][pista] = tarifa_val
-            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo:
+            elif "DRON" in equipo or "DR5" in equipo or "DATAROT" in equipo or "GENESYS" in equipo or "AVIL" in equipo or "COSTA" in equipo:
                  nombre_dron = equipo if "DRON" in equipo else f"DRONE {equipo}"
                  dict_dr[nombre_dron] = tarifa_val
             elif equipo not in ["", "NAN", "PORCIÓN TERRESTRE/HA", "USO DE PLATAFORMA / HA"]:
@@ -1261,7 +1261,7 @@ def ejecutar(extraer_numero_ext, fmt_sap, procesar_fecha_pesada_ext):
                 num_pedido = val_celda
                 break
 
-    lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "AVIL", "DATAROT", "GENESYS", "ASA", "PROPIA", "Z-1", "Z-2"]
+    lista_pistas_validas = ["PLUC", "PORI", "PDIV", "TEHO", "LUCI", "AVIL", "DATAROT", "GENESYS", "ASA", "PROPIA", "Z-1", "Z-2", "COSTA"]
     pista_detectada = "PLUC"
     ha_dosis_detectada = 0.0
     match_ped = pd.DataFrame()
