@@ -42,6 +42,7 @@ DICT_DRONES_DEFAULT = {
     "DRONE NORTE": 75518,
     "DRONE AVIL": 71280,
     "DRONE GENESYS": 71280,
+    "DRONE COSTA": 68000,
 }
 
 def log_error_critico(contexto: str, e: Exception, mostrar_usuario: bool = True):
