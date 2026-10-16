@@ -106,6 +106,17 @@ def procesar_fecha_estricta(val):
 
 # 💥 CIRUGÍA 1A: Formateador blindado a 3 decimales
 def formatear_numero_sap(val):
+    try:
+        f_val = float(str(val).replace(",", ""))
+        if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
+        val_str = f"{f_val:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        while val_str.endswith("0") and "," in val_str:
+            val_str = val_str[:-1]
+        if val_str.endswith(","):
+            val_str = val_str[:-1]
+        return val_str
+    except: return str(val)
+
 def a_numero(x):
     """Convierte texto (colombiano o americano) a float real."""
     if x is None: return 0.0
@@ -117,9 +128,8 @@ def a_numero(x):
         if s.rfind(",") > s.rfind("."): s = s.replace(".", "").replace(",", ".")
         else: s = s.replace(",", "")
     elif "," in s:
-        s = s.replace(",", ".")                      # coma = decimal (Colombia)
+        s = s.replace(",", ".")
     elif "." in s:
-        # "1.250" / "12.500.000" = miles ; "250.0" / "12.5" / "0.500" = decimal
         if re.fullmatch(r"\d{1,3}(\.\d{3})+", s) and not s.startswith("0."):
             s = s.replace(".", "")
     try: v = float(s)
@@ -619,7 +629,6 @@ def ejecutar():
                                     elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
                                     elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
                                     elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
-                                    elif "CANT" in h: nueva_fila_drive.append(str(cant))
                                     elif "CANT" in h: nueva_fila_drive.append(formatear_numero_sap(cant))
                                     elif "LOTE" in h: nueva_fila_drive.append(lote_ing_inject)
                                     elif "F/F" in h: nueva_fila_drive.append(ff)
@@ -797,7 +806,6 @@ def ejecutar():
                 df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
                 col_b1, col_b2 = st.columns(2)
                 btn_sync_ing = col_b1.button("💾 SINCRONIZAR CAMBIOS EN DRIVE", type="primary", use_container_width=True)
                 if btn_sync_ing:    
@@ -958,12 +966,7 @@ def ejecutar():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
-                    "💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)",
-                    data=buffer.getvalue(),
-                    file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+                    
     # ========================================================================
     # 🚚 PESTAÑA 2: MOVIMIENTOS INTERNOS (TRASLADOS)
     # ========================================================================
@@ -1282,7 +1285,7 @@ def ejecutar():
             st.markdown("<br>", unsafe_allow_html=True)
             
             # 💥 CIRUGÍA 3: SINCRONIZADOR CLONADO DE INGRESOS
-            if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
+            
             col_t1, col_t2 = st.columns(2)
             btn_sync_t = col_t1.button("💾 SINCRONIZAR CAMBIOS EN DRIVE", type="primary", key="btn_sync_traslados", use_container_width=True)
             col_t2.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-bottom:0;">👆 VOLVER AL INICIO 👆</a>""", unsafe_allow_html=True)
@@ -1351,7 +1354,7 @@ def ejecutar():
                 else: 
                     st.info("No se detectaron cambios ni órdenes de eliminación.")
 
-    st.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-top: 20px;">👆 VOLVER AL INICIO (ARRIBA) 👆</a>""", unsafe_allow_html=True)
+    
 
 if __name__ == "__main__":
     ejecutar()
