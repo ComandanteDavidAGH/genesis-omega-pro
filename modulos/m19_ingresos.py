@@ -136,24 +136,64 @@ def a_numero(x):
     except: return 0.0
     return -v if neg else v
 
-def formatear_excel(ws):
-    """Encabezado, autoancho y formato numérico en columnas de cantidad."""
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = header_font; cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-        if "CANT" in str(cell.value).upper():
-            for r in range(2, ws.max_row + 1):
-                c = ws.cell(row=r, column=cell.column)
-                if isinstance(c.value, (int, float)):
-                    c.number_format = '#,##0' if float(c.value).is_integer() else '#,##0.000'
-    for col in ws.columns:
-        largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
-        ws.column_dimensions[col[0].column_letter].width = largo + 3
-    
+MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+            "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
-def estandarizar_pista(val):
+def fecha_larga(d):
+    return f"{d.day} de {MESES_ES[d.month-1].capitalize()} {d.year}"
+
+def formatear_excel(ws, titulo, periodo, con_total=False):
+    """Estilo gerencial: banner, período, encabezado dorado, filas alternas y total verde."""
+    from openpyxl.styles import Border, Side
+    azul_osc, dorado = "0D1B2A", "D4AF37"
+    fila_a, fila_b, verde = "DDEBF7", "FFFFFF", "C6E0B4"
+    borde = Border(*(Side(style="thin", color="BFBFBF"),) * 4)
+
+    ncols, nfilas = ws.max_column, ws.max_row
+    ult = get_column_letter(ncols)
+
+    # Fila 1: banner del título
+    ws.merge_cells(f"A1:{ult}1")
+    ws["A1"] = titulo
+    ws["A1"].font = Font(bold=True, size=14, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", start_color=azul_osc, end_color=azul_osc)
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    # Fila 3: período analizado
+    ws.merge_cells(f"A3:{ult}3")
+    ws["A3"] = periodo
+    ws["A3"].font = Font(bold=True, italic=True, color=azul_osc)
+    ws["A3"].alignment = Alignment(horizontal="left", vertical="center")
+
+    # Fila 4: encabezado dorado
+    for c in ws[4]:
+        c.font = Font(bold=True, color=azul_osc)
+        c.fill = PatternFill("solid", start_color=dorado, end_color=dorado)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = borde
+
+    # Columnas numéricas
+    cols_num = [c.column for c in ws[4]
+                if any(k in str(c.value).upper() for k in ("CANT", "LOTES"))]
+
+    # Filas de datos
+    for r in range(5, nfilas + 1):
+        es_total = con_total and r == nfilas
+        color = verde if es_total else (fila_a if r % 2 == 1 else fila_b)
+        for c in ws[r]:
+            c.fill = PatternFill("solid", start_color=color, end_color=color)
+            c.font = Font(bold=es_total, color=azul_osc if es_total else "000000")
+            c.border = borde
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            if c.column in cols_num and isinstance(c.value, (int, float)):
+                c.number_format = '#,##0' if float(c.value).is_integer() else '#,##0.000'
+
+    # Ancho de columnas (ignora el banner y el período)
+    for col in ws.iter_cols(min_row=4, max_row=nfilas):
+        largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
+        ws.column_dimensions[col[0].column_letter].width = largo + 4
+    ws.freeze_panes = "A5"
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return ""
     return str(val).strip().upper().replace("ORIHUECA", "PORI").replace("DIVAS", "PDIV").replace("TEHOBROMINA", "TEHO").replace("LUCHA", "PLUC")
 
@@ -920,27 +960,39 @@ def ejecutar():
                         d = df_.copy()
                         d["CANTIDAD TOTAL"] = d["CANTIDAD TOTAL"].apply(formatear_numero_sap)
                         return d
-                    with st.expander("📊 VISTA PREVIA: Resumen Global por Producto (solo ingresos vigentes)", expanded=False):
-                        st.caption("Se incluye como **hoja 2** del Excel.")
-                        st.dataframe(_vista_col(df_agrupado), hide_index=True, use_container_width=True)
-                    with st.expander("📈 VISTA PREVIA: Total por Producto (gerencial, sin pista)", expanded=False):
-                        st.caption("Se incluye como **hoja 3** del Excel (una fila por producto).")
-                        st.dataframe(_vista_col(df_total_prod), hide_index=True, use_container_width=True)
+                                        col_v1, col_v2 = st.columns(2)
+                    with col_v1:
+                        with st.expander("📊 RESUMEN GLOBAL POR PRODUCTO", expanded=False):
+                            st.caption("Se incluye como **hoja 2** del Excel (solo ingresos vigentes).")
+                            st.dataframe(_vista_col(df_agrupado), hide_index=True, use_container_width=True)
+                    with col_v2:
+                        with st.expander("📈 TOTAL POR PRODUCTO (GERENCIAL)", expanded=False):
+                            st.caption("Se incluye como **hoja 3** del Excel (una fila por producto).")
+                            st.dataframe(_vista_col(df_total_prod), hide_index=True, use_container_width=True)
 
-                # ============================================================
-                # 💾 EXCEL (3 hojas, con números reales)
+                                # ============================================================
+                # 💾 EXCEL (3 hojas, con números reales y estilo gerencial)
                 # ============================================================
                 df_export = df_editado.copy()
                 for c in df_export.columns:
                     if "CANT" in str(c).upper():
                         df_export[c] = df_export[c].apply(a_numero).round(3)
 
-                fill_total = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                font_total = Font(bold=True, color="0D1B2A")
+                periodo_txt = f"Período Analizado: {fecha_larga(fecha_ini_filtro)} al {fecha_larga(fecha_fin_filtro)}"
+                hojas = [
+                    ('Auditoria_Ingresos', df_export, "REPORTE DE AUDITORÍA - DETALLE DE INGRESOS", False),
+                    ('Resumen por Producto', df_agrupado, "REPORTE GERENCIAL - RESUMEN POR PRODUCTO, PROVEEDOR Y PISTA", True),
+                    ('Total por Producto', df_total_prod, "REPORTE GERENCIAL - TOTAL POR PRODUCTO", True),
+                ]
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_export.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
-                    formatear_excel(writer.sheets['Auditoria_Ingresos'])
+                    for nombre, df_x, titulo, con_total in hojas:
+                        if df_x.empty and nombre != 'Auditoria_Ingresos': continue
+                        df_x = df_x.copy()
+                        if con_total:
+                            df_x["PRODUCTO"] = df_x["PRODUCTO"].replace("🔵 GRAN TOTAL", "👑 TOTAL GENERAL")
+                        df_x.to_excel(writer, sheet_name=nombre, index=False, startrow=3)
+                        formatear_excel(writer.sheets[nombre], titulo, periodo_txt, con_total)
                     for nombre, df_x in [('Resumen por Producto', df_agrupado), ('Total por Producto', df_total_prod)]:
                         if not df_x.empty:
                             df_x.to_excel(writer, sheet_name=nombre, index=False)
