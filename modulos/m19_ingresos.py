@@ -106,6 +106,41 @@ def procesar_fecha_estricta(val):
 
 # 💥 CIRUGÍA 1A: Formateador blindado a 3 decimales
 def formatear_numero_sap(val):
+def a_numero(x):
+    """Convierte texto (colombiano o americano) a float real."""
+    if x is None: return 0.0
+    if isinstance(x, (int, float)): return 0.0 if pd.isna(x) else float(x)
+    s = str(x).strip().replace("'", "").replace(" ", "")
+    if s == "" or s.lower() in ("none", "nan", "nat"): return 0.0
+    neg = s.startswith("-"); s = s.lstrip("-")
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."): s = s.replace(".", "").replace(",", ".")
+        else: s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".")                      # coma = decimal (Colombia)
+    elif "." in s:
+        # "1.250" / "12.500.000" = miles ; "250.0" / "12.5" / "0.500" = decimal
+        if re.fullmatch(r"\d{1,3}(\.\d{3})+", s) and not s.startswith("0."):
+            s = s.replace(".", "")
+    try: v = float(s)
+    except: return 0.0
+    return -v if neg else v
+
+def formatear_excel(ws):
+    """Encabezado, autoancho y formato numérico en columnas de cantidad."""
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
+    for cell in ws[1]:
+        cell.font = header_font; cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        if "CANT" in str(cell.value).upper():
+            for r in range(2, ws.max_row + 1):
+                c = ws.cell(row=r, column=cell.column)
+                if isinstance(c.value, (int, float)):
+                    c.number_format = '#,##0' if float(c.value).is_integer() else '#,##0.000'
+    for col in ws.columns:
+        largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
+        ws.column_dimensions[col[0].column_letter].width = largo + 3
     try:
         f_val = float(str(val).replace(",", ""))
         if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
@@ -585,6 +620,7 @@ def ejecutar():
                                     elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
                                     elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
                                     elif "CANT" in h: nueva_fila_drive.append(str(cant))
+                                    elif "CANT" in h: nueva_fila_drive.append(formatear_numero_sap(cant))
                                     elif "LOTE" in h: nueva_fila_drive.append(lote_ing_inject)
                                     elif "F/F" in h: nueva_fila_drive.append(ff)
                                     elif "F/V" in h: nueva_fila_drive.append(fv)
@@ -762,6 +798,9 @@ def ejecutar():
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary"):
+                col_b1, col_b2 = st.columns(2)
+                btn_sync_ing = col_b1.button("💾 SINCRONIZAR CAMBIOS EN DRIVE", type="primary", use_container_width=True)
+                if btn_sync_ing:    
                     cambios_actualizacion = []
                     eliminaciones = []
                     
@@ -827,203 +866,98 @@ def ejecutar():
 
                 st.markdown("---")
 
-                # ============================================================
-                # 🧮 CÁLCULO DEL RESUMEN GLOBAL POR PRODUCTO (entre fechas filtradas)
+                                # ============================================================
+                # 🧮 RESÚMENES: SOLO INGRESOS VIGENTES (sin anulados/eliminados)
                 # ============================================================
                 df_resumen = df_editado.copy()
-
-                # Excluir anulados/eliminados del resumen
-                if COL_ESTADO in df_resumen.columns:
-                    df_resumen = df_resumen[
-                        ~df_resumen[COL_ESTADO].astype(str).str.contains("ANULADO|ELIMINAR", case=False, na=False)
-                    ]
-
-                # Detectar columnas reales en el df editado
                 col_prod_r  = next((c for c in df_resumen.columns if "PRODUCTO" in str(c).upper()), None)
-                col_prov_r  = next((c for c in df_resumen.columns if "PROV"     in str(c).upper()), None)
-                col_pista_r = next((c for c in df_resumen.columns if "PISTA"    in str(c).upper()
-                                                                     or "BASE"     in str(c).upper()), None)
-                col_cant_r  = next((c for c in df_resumen.columns if "CANT"     in str(c).upper()), None)
+                col_prov_r  = next((c for c in df_resumen.columns if "PROV" in str(c).upper()), None)
+                col_pista_r = next((c for c in df_resumen.columns if "PISTA" in str(c).upper() or "BASE" in str(c).upper()), None)
+                col_cant_r  = next((c for c in df_resumen.columns if "CANT" in str(c).upper()), None)
+                col_cons_r  = next((c for c in df_resumen.columns if "CONSECUT" in str(c).upper()), None)
 
-                # ---- HOJA 2: agrupado por PRODUCTO + PROVEEDOR + PISTA ----
+                mask_anul = df_resumen[COL_ESTADO].astype(str).str.contains("ANULAD|ELIMINAR", case=False, na=False)
+                if col_cons_r:
+                    mask_anul |= df_resumen[col_cons_r].astype(str).str.contains("ANULACI", case=False, na=False)
+                df_resumen = df_resumen[~mask_anul].copy()
+
                 df_agrupado = pd.DataFrame()
-                if col_prod_r and col_cant_r:
-                    def _a_num(x):
-                        try:
-                            return float(str(x).replace(".", "").replace(",", "."))
-                        except:
-                            return 0.0
-
-                    df_resumen["_CANT_NUM"] = df_resumen[col_cant_r].apply(_a_num)
-
-                    cols_grp = [c for c in [col_prod_r, col_prov_r, col_pista_r] if c]
-                    df_agrupado = (
-                        df_resumen.groupby(cols_grp, dropna=False)
-                        .agg(
-                            LOTES=("_CANT_NUM", "count"),
-                            **{"CANTIDAD TOTAL": ("_CANT_NUM", "sum")}
-                        )
-                        .reset_index()
-                    )
-                    df_agrupado = df_agrupado.sort_values(by=[col_prod_r])
-
-                    rename_map = {}
-                    if col_prod_r:  rename_map[col_prod_r]  = "PRODUCTO"
-                    if col_prov_r:  rename_map[col_prov_r]  = "PROVEEDOR"
-                    if col_pista_r: rename_map[col_pista_r] = "PISTA"
-                    df_agrupado = df_agrupado.rename(columns=rename_map)
-
-                    fila_total = {
-                        "PRODUCTO": "🔵 GRAN TOTAL",
-                        "LOTES": int(df_agrupado["LOTES"].sum()),
-                        "CANTIDAD TOTAL": df_agrupado["CANTIDAD TOTAL"].sum()
-                    }
-                    if "PROVEEDOR" in df_agrupado.columns: fila_total["PROVEEDOR"] = ""
-                    if "PISTA"     in df_agrupado.columns: fila_total["PISTA"]     = ""
-
-                    df_agrupado = pd.concat(
-                        [df_agrupado, pd.DataFrame([fila_total])],
-                        ignore_index=True
-                    )
-
-                # ---- VISTA PREVIA HOJA 2 ----
-                if not df_agrupado.empty:
-                    with st.expander("📊 VISTA PREVIA: Resumen Global por Producto (entre las fechas filtradas)", expanded=False):
-                        st.caption("Este mismo resumen se incluirá como **hoja 2** en el Excel descargable.")
-                        st.dataframe(df_agrupado, hide_index=True, use_container_width=True)
-
-                # ============================================================
-                # 🧮 HOJA 3: TOTAL POR PRODUCTO (UNA FILA POR PRODUCTO, NORMALIZANDO ESPACIOS)
-                # ============================================================
                 df_total_prod = pd.DataFrame()
+
                 if col_prod_r and col_cant_r and not df_resumen.empty:
-                    base_prod = df_resumen.copy()
+                    df_resumen["_CANT_NUM"] = df_resumen[col_cant_r].apply(a_numero)
+                    norm = lambda x: re.sub(r'\s+', ' ', str(x).strip().upper())
+                    df_resumen["_PROD"] = df_resumen[col_prod_r].apply(norm)
+                    df_resumen["_PROV"] = df_resumen[col_prov_r].apply(norm) if col_prov_r else ""
+                    df_resumen["_PISTA"] = df_resumen[col_pista_r].apply(norm) if col_pista_r else ""
 
-                    # Normalizar nombre de producto: trim + colapsar espacios + upper
-                    base_prod["_PROD_NORM"] = base_prod[col_prod_r].astype(str).apply(
-                        lambda x: re.sub(r'\s+', ' ', x.strip().upper())
-                    )
+                    # ---- HOJA 2: producto + proveedor + pista ----
+                    df_agrupado = (df_resumen.groupby(["_PROD", "_PROV", "_PISTA"], dropna=False)
+                        .agg(LOTES=("_CANT_NUM", "count"), CANT=("_CANT_NUM", "sum")).reset_index()
+                        .rename(columns={"_PROD": "PRODUCTO", "_PROV": "PROVEEDOR", "_PISTA": "PISTA", "CANT": "CANTIDAD TOTAL"})
+                        .sort_values("PRODUCTO"))
+                    df_agrupado["CANTIDAD TOTAL"] = df_agrupado["CANTIDAD TOTAL"].round(3)
+                    df_agrupado = pd.concat([df_agrupado, pd.DataFrame([{
+                        "PRODUCTO": "🔵 GRAN TOTAL", "PROVEEDOR": "", "PISTA": "",
+                        "LOTES": int(df_agrupado["LOTES"].sum()),
+                        "CANTIDAD TOTAL": round(df_agrupado["CANTIDAD TOTAL"].sum(), 3)}])], ignore_index=True)
 
-                    # Normalizar proveedor
-                    if col_prov_r:
-                        base_prod["_PROV_NORM"] = base_prod[col_prov_r].astype(str).apply(
-                            lambda x: re.sub(r'\s+', ' ', x.strip().upper())
-                        )
-                    else:
-                        base_prod["_PROV_NORM"] = ""
-
-                    # Agrupación: UNA fila por producto normalizado
-                    df_total_prod = base_prod.groupby("_PROD_NORM", dropna=False).agg(
-                        LOTES=("_CANT_NUM", "count"),
-                        TOTAL=("_CANT_NUM", "sum"),
-                    ).reset_index().rename(columns={"_PROD_NORM": "PRODUCTO"})
-
-                    # Proveedores únicos unidos con " / "
-                    if col_prov_r:
-                        provs_por_prod = (
-                            base_prod.loc[base_prod["_PROV_NORM"] != ""]
-                            .groupby("_PROD_NORM")["_PROV_NORM"]
-                            .apply(lambda s: " / ".join(sorted(set(s))))
-                        )
-                        df_total_prod["PROVEEDOR"] = df_total_prod["PRODUCTO"].map(provs_por_prod).fillna("")
-                    else:
-                        df_total_prod["PROVEEDOR"] = ""
-
-                    # Orden de columnas
-                    df_total_prod = df_total_prod[["PRODUCTO", "PROVEEDOR", "LOTES", "TOTAL"]]
-                    df_total_prod = df_total_prod.rename(columns={"TOTAL": "CANTIDAD TOTAL"})
-                    df_total_prod = df_total_prod.sort_values(by="PRODUCTO")
-
-                    # Fila GRAN TOTAL
-                    fila_total_gen = {
-                        "PRODUCTO": "🔵 GRAN TOTAL",
-                        "PROVEEDOR": "",
+                    # ---- HOJA 3: una fila por producto ----
+                    df_total_prod = (df_resumen.groupby("_PROD", dropna=False)
+                        .agg(LOTES=("_CANT_NUM", "count"), CANT=("_CANT_NUM", "sum")).reset_index()
+                        .rename(columns={"_PROD": "PRODUCTO", "CANT": "CANTIDAD TOTAL"}))
+                    provs = (df_resumen.loc[df_resumen["_PROV"] != ""].groupby("_PROD")["_PROV"]
+                             .apply(lambda s: " / ".join(sorted(set(s)))))
+                    df_total_prod["PROVEEDOR"] = df_total_prod["PRODUCTO"].map(provs).fillna("")
+                    df_total_prod = df_total_prod[["PRODUCTO", "PROVEEDOR", "LOTES", "CANTIDAD TOTAL"]].sort_values("PRODUCTO")
+                    df_total_prod["CANTIDAD TOTAL"] = df_total_prod["CANTIDAD TOTAL"].round(3)
+                    df_total_prod = pd.concat([df_total_prod, pd.DataFrame([{
+                        "PRODUCTO": "🔵 GRAN TOTAL", "PROVEEDOR": "",
                         "LOTES": int(df_total_prod["LOTES"].sum()),
-                        "CANTIDAD TOTAL": df_total_prod["CANTIDAD TOTAL"].sum(),
-                    }
-                    df_total_prod = pd.concat([df_total_prod, pd.DataFrame([fila_total_gen])], ignore_index=True)
+                        "CANTIDAD TOTAL": round(df_total_prod["CANTIDAD TOTAL"].sum(), 3)}])], ignore_index=True)
 
+                    # ---- VISTAS PREVIAS (formato colombiano solo para mostrar) ----
+                    def _vista_col(df_):
+                        d = df_.copy()
+                        d["CANTIDAD TOTAL"] = d["CANTIDAD TOTAL"].apply(formatear_numero_sap)
+                        return d
+                    with st.expander("📊 VISTA PREVIA: Resumen Global por Producto (solo ingresos vigentes)", expanded=False):
+                        st.caption("Se incluye como **hoja 2** del Excel.")
+                        st.dataframe(_vista_col(df_agrupado), hide_index=True, use_container_width=True)
                     with st.expander("📈 VISTA PREVIA: Total por Producto (gerencial, sin pista)", expanded=False):
-                        st.caption("Este resumen se incluirá como **hoja 3** en el Excel descargable (una fila por producto).")
-                        st.dataframe(df_total_prod, hide_index=True, use_container_width=True)
+                        st.caption("Se incluye como **hoja 3** del Excel (una fila por producto).")
+                        st.dataframe(_vista_col(df_total_prod), hide_index=True, use_container_width=True)
 
                 # ============================================================
-                # 💾 CONSTRUCCIÓN DEL EXCEL (3 hojas)
+                # 💾 EXCEL (3 hojas, con números reales)
                 # ============================================================
+                df_export = df_editado.copy()
+                for c in df_export.columns:
+                    if "CANT" in str(c).upper():
+                        df_export[c] = df_export[c].apply(a_numero).round(3)
+
+                fill_total = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
+                font_total = Font(bold=True, color="0D1B2A")
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_export.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
+                    formatear_excel(writer.sheets['Auditoria_Ingresos'])
+                    for nombre, df_x in [('Resumen por Producto', df_agrupado), ('Total por Producto', df_total_prod)]:
+                        if not df_x.empty:
+                            df_x.to_excel(writer, sheet_name=nombre, index=False)
+                            ws_x = writer.sheets[nombre]
+                            formatear_excel(ws_x)
+                            for cell in ws_x[ws_x.max_row]:
+                                cell.fill = fill_total; cell.font = font_total
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
 
-                    header_font = Font(bold=True, color="FFFFFF")
-                    header_fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                    fill_total  = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                    font_total  = Font(bold=True, color="0D1B2A")
-
-                    # ---------- HOJA 1: DETALLE ----------
-                    df_editado.to_excel(writer, sheet_name='Auditoria_Ingresos', index=False)
-                    ws_excel = writer.sheets['Auditoria_Ingresos']
-                    for cell in ws_excel[1]:
-                        cell.font = header_font
-                        cell.fill = header_fill
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    for col in ws_excel.columns:
-                        max_length = 0
-                        for cell in col:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(cell.value)
-                            except:
-                                pass
-                        ws_excel.column_dimensions[col[0].column_letter].width = (max_length + 2)
-
-                    # ---------- HOJA 2: RESUMEN POR PRODUCTO + PROVEEDOR + PISTA ----------
-                    if not df_agrupado.empty:
-                        df_agrupado.to_excel(writer, sheet_name='Resumen por Producto', index=False)
-                        ws_res = writer.sheets['Resumen por Producto']
-                        for cell in ws_res[1]:
-                            cell.font = header_font
-                            cell.fill = header_fill
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        for col in ws_res.columns:
-                            max_length = 0
-                            for cell in col:
-                                try:
-                                    if len(str(cell.value)) > max_length:
-                                        max_length = len(cell.value)
-                                except:
-                                    pass
-                            ws_res.column_dimensions[col[0].column_letter].width = (max_length + 3)
-
-                        ultima_fila = ws_res.max_row
-                        for cell in ws_res[ultima_fila]:
-                            cell.fill = fill_total
-                            cell.font = font_total
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-
-                    # ---------- HOJA 3: TOTAL POR PRODUCTO (GERENCIAL, SIN PISTA) ----------
-                    if not df_total_prod.empty:
-                        df_total_prod.to_excel(writer, sheet_name='Total por Producto', index=False)
-                        ws_gen = writer.sheets['Total por Producto']
-                        for cell in ws_gen[1]:
-                            cell.font = header_font
-                            cell.fill = header_fill
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        for col in ws_gen.columns:
-                            max_length = 0
-                            for cell in col:
-                                try:
-                                    if len(str(cell.value)) > max_length:
-                                        max_length = len(cell.value)
-                                except:
-                                    pass
-                            ws_gen.column_dimensions[col[0].column_letter].width = (max_length + 5)
-
-                        ultima_fila_gen = ws_gen.max_row
-                        for cell in ws_gen[ultima_fila_gen]:
-                            cell.fill = fill_total
-                            cell.font = font_total
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-
-                st.download_button(
+                col_b2.download_button(
+                    "💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)",
+                    data=buffer.getvalue(),
+                    file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
                     "💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)",
                     data=buffer.getvalue(),
                     file_name=f"Reporte_Auditoria_Ingresos_{datetime.now().strftime('%Y%m%d')}.xlsx",
@@ -1349,6 +1283,10 @@ def ejecutar():
             
             # 💥 CIRUGÍA 3: SINCRONIZADOR CLONADO DE INGRESOS
             if st.button("💾 SINCRONIZAR CAMBIOS Y ELIMINACIONES EN DRIVE", type="primary", key="btn_sync_traslados"):
+            col_t1, col_t2 = st.columns(2)
+            btn_sync_t = col_t1.button("💾 SINCRONIZAR CAMBIOS EN DRIVE", type="primary", key="btn_sync_traslados", use_container_width=True)
+            col_t2.markdown("""<a href="#inicio-modulo-19" class="btn-ascensor" style="margin-bottom:0;">👆 VOLVER AL INICIO 👆</a>""", unsafe_allow_html=True)
+            if btn_sync_t:    
                 cambios_actualizacion_t = []
                 eliminaciones_t = []
                 
