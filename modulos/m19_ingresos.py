@@ -176,7 +176,10 @@ def formatear_excel(ws, titulo, periodo, con_total=False):
     # Columnas numéricas
     cols_num = [c.column for c in ws[4]
                 if any(k in str(c.value).upper() for k in ("CANT", "LOTES"))]
-
+    # Columnas que van centradas (todas las demás van a la izquierda)
+    claves_centro = ("SEMANA", "FECHA", "INGRESO", "PISTA", "BASE", "F/F", "F/V", "LOTES")
+    cols_centro = [c.column for c in ws[4]
+                   if any(k in str(c.value).upper() for k in claves_centro)]
     # Filas de datos
     for r in range(5, nfilas + 1):
         es_total = con_total and r == nfilas
@@ -185,7 +188,8 @@ def formatear_excel(ws, titulo, periodo, con_total=False):
             c.fill = PatternFill("solid", start_color=color, end_color=color)
             c.font = Font(bold=es_total, color=azul_osc if es_total else "000000")
             c.border = borde
-            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.alignment = Alignment(horizontal="center" if c.column in cols_centro else "left",
+                                    vertical="center", indent=0 if c.column in cols_centro else 1)
             if c.column in cols_num and isinstance(c.value, (int, float)):
                 c.number_format = '#,##0' if float(c.value).is_integer() else '#,##0.000'
 
@@ -194,6 +198,7 @@ def formatear_excel(ws, titulo, periodo, con_total=False):
         largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
         ws.column_dimensions[col[0].column_letter].width = largo + 4
     ws.freeze_panes = "A5"
+    ws.sheet_view.showGridLines = False        
 def estandarizar_pista(val):
     
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return ""
