@@ -840,7 +840,27 @@ def ejecutar():
                     elif "FACT" in c_up: col_config[c] = st.column_config.TextColumn(f"🧾 FACTURA{lbl_edit}", width="medium")
                     elif "PEDIDO" in c_up: col_config[c] = st.column_config.TextColumn(f"🛒 PEDIDO{lbl_edit}", width="medium")
                     elif "CONSECUT" in c_up: col_config[c] = st.column_config.TextColumn(f"🔢 CONSECUTIVO{lbl_edit}", width="medium")
+                # ============================================================
+                # 🧮 TOTAL DE CANTIDAD DEL FILTRO ACTUAL (solo ingresos vigentes)
+                # ============================================================
+                col_cant_f = next((c for c in df_filtrado.columns if "CANT" in str(c).upper()), None)
+                col_cons_f = next((c for c in df_filtrado.columns if "CONSECUT" in str(c).upper()), None)
+                if col_cant_f and not df_filtrado.empty:
+                    m_anul_f = df_filtrado[COL_ESTADO].astype(str).str.contains("ANULAD|ELIMINAR", case=False, na=False)
+                    if col_cons_f:
+                        m_anul_f |= df_filtrado[col_cons_f].astype(str).str.contains("ANULACI", case=False, na=False)
+                    cant_f = df_filtrado[col_cant_f].apply(a_numero)
+                    total_vig_f = cant_f[~m_anul_f].sum()
+                    lotes_vig_f = int((~m_anul_f).sum())
+                    total_anul_f = cant_f[m_anul_f].sum()
 
+                    t1, t2, t3 = st.columns(3)
+                    t1.markdown(f"<div class='kpi-card kpi-verde'><div class='kpi-titulo'>⚖️ Total Ingresado ({producto_filtro})</div><p class='kpi-valor'>{formatear_numero_sap(round(total_vig_f, 3))}</p></div>", unsafe_allow_html=True)
+                    t2.markdown(f"<div class='kpi-card kpi-azul'><div class='kpi-titulo'>📦 Lotes Vigentes</div><p class='kpi-valor'>{lotes_vig_f}</p></div>", unsafe_allow_html=True)
+                    t3.markdown(f"<div class='kpi-card kpi-rojo'><div class='kpi-titulo'>❌ Cantidad Anulada (no suma)</div><p class='kpi-valor'>{formatear_numero_sap(round(total_anul_f, 3))}</p></div>", unsafe_allow_html=True)
+                    if producto_filtro == "TODOS":
+                        st.caption("⚠️ Con 'TODOS' se suman productos distintos (litros, kilos, etc.). Para un total con sentido, filtra por un producto.")
+                
                 df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
                 st.markdown("<br>", unsafe_allow_html=True)
                 
