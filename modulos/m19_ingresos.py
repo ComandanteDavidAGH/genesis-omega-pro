@@ -194,6 +194,8 @@ def formatear_excel(ws, titulo, periodo, con_total=False):
         largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
         ws.column_dimensions[col[0].column_letter].width = largo + 4
     ws.freeze_panes = "A5"
+def estandarizar_pista(val):
+    
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return ""
     return str(val).strip().upper().replace("ORIHUECA", "PORI").replace("DIVAS", "PDIV").replace("TEHOBROMINA", "TEHO").replace("LUCHA", "PLUC")
 
@@ -960,7 +962,7 @@ def ejecutar():
                         d = df_.copy()
                         d["CANTIDAD TOTAL"] = d["CANTIDAD TOTAL"].apply(formatear_numero_sap)
                         return d
-                                        col_v1, col_v2 = st.columns(2)
+                    col_v1, col_v2 = st.columns(2)
                     with col_v1:
                         with st.expander("📊 RESUMEN GLOBAL POR PRODUCTO", expanded=False):
                             st.caption("Se incluye como **hoja 2** del Excel (solo ingresos vigentes).")
@@ -993,14 +995,7 @@ def ejecutar():
                             df_x["PRODUCTO"] = df_x["PRODUCTO"].replace("🔵 GRAN TOTAL", "👑 TOTAL GENERAL")
                         df_x.to_excel(writer, sheet_name=nombre, index=False, startrow=3)
                         formatear_excel(writer.sheets[nombre], titulo, periodo_txt, con_total)
-                    for nombre, df_x in [('Resumen por Producto', df_agrupado), ('Total por Producto', df_total_prod)]:
-                        if not df_x.empty:
-                            df_x.to_excel(writer, sheet_name=nombre, index=False)
-                            ws_x = writer.sheets[nombre]
-                            formatear_excel(ws_x)
-                            for cell in ws_x[ws_x.max_row]:
-                                cell.fill = fill_total; cell.font = font_total
-                                cell.alignment = Alignment(horizontal='center', vertical='center')
+                    
 
                 col_b2.download_button(
                     "💾 DESCARGAR REPORTE DE AUDITORÍA (EXCEL)",
