@@ -151,16 +151,7 @@ def formatear_excel(ws):
     for col in ws.columns:
         largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
         ws.column_dimensions[col[0].column_letter].width = largo + 3
-    try:
-        f_val = float(str(val).replace(",", ""))
-        if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
-        val_str = f"{f_val:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        while val_str.endswith("0") and "," in val_str:
-            val_str = val_str[:-1]
-        if val_str.endswith(","):
-            val_str = val_str[:-1]
-        return val_str
-    except: return str(val)
+    
 
 def estandarizar_pista(val):
     if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "nat", "<na>"]: return ""
