@@ -527,26 +527,51 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp, index=1 if len(fincas_disp) > 1 else 0)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
-        t1, t2, t3, t4 = st.columns(4)
-        año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=(1 if len(años_disp) > 1 else 0))
-        año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
-        tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES", "RANGO PERSONALIZADO"])
+                t1, t2, t3, t4 = st.columns([1.5, 1.5, 1, 1])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
-        
-        if tipo_periodo == "POR TRIMESTRE":
-            periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
-            etiq_periodo = f"Q{periodo_sel}"
-        elif tipo_periodo == "POR MES":
-            periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
-            etiq_periodo = meses_dict[periodo_sel]
-        elif tipo_periodo == "RANGO PERSONALIZADO":
-            c_fecha1, c_fecha2 = t4.columns(2)
-            fecha_inicial_libre = c_fecha1.date_input("📅 Desde:", value=datetime.now().date(), key="bi_f_ini_libre")
-            fecha_final_libre = c_fecha2.date_input("📅 Hasta:", value=datetime.now().date(), key="bi_f_fin_libre")
-            etiq_periodo = f"{fecha_inicial_libre.strftime('%d/%m')} al {fecha_final_libre.strftime('%d/%m')}"
+        tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES", "RANGO PERSONALIZADO", "COMPARAR RANGOS (CALENDARIO)"])
+        modo_rangos = (tipo_periodo == "COMPARAR RANGOS (CALENDARIO)")
+
+        if modo_rangos:
+            hoy_bi = datetime.now().date()
+            try: fin_base_def = hoy_bi.replace(year=hoy_bi.year - 1)
+            except ValueError: fin_base_def = hoy_bi.replace(year=hoy_bi.year - 1, day=28)
+
+            rango_base = t1.date_input("📅 Rango Base (Referencia)", value=(date(hoy_bi.year - 1, 1, 1), fin_base_def),
+                                       min_value=date(2015, 1, 1), max_value=date(2035, 12, 31),
+                                       format="DD/MM/YYYY", key="bi_rango_base")
+            rango_comp = t2.date_input("📆 Rango Actual (Evaluar)", value=(date(hoy_bi.year, 1, 1), hoy_bi),
+                                       min_value=date(2015, 1, 1), max_value=date(2035, 12, 31),
+                                       format="DD/MM/YYYY", key="bi_rango_comp")
+            if len(rango_base) < 2 or len(rango_comp) < 2:
+                st.info("📅 Selecciona fecha inicial y final en ambos calendarios (dos clics en cada uno).")
+                st.stop()
+
+            fecha_ini_a, fecha_fin_a = rango_base
+            fecha_ini_b, fecha_fin_b = rango_comp
+            año_base, año_comp = fecha_ini_a.year, fecha_ini_b.year
+            periodo_sel = "TODOS"
+            etiq_periodo = (f"{fecha_ini_a.strftime('%d/%m/%y')}–{fecha_fin_a.strftime('%d/%m/%y')} vs "
+                            f"{fecha_ini_b.strftime('%d/%m/%y')}–{fecha_fin_b.strftime('%d/%m/%y')}")
+            t4.markdown("<br><span style='color:gray;'>Comparación por calendario activa</span>", unsafe_allow_html=True)
         else:
-            t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
-            periodo_sel, etiq_periodo = "TODOS", "Total"
+            año_base = t1.selectbox("📅 Año Base (Referencia)", años_disp, index=(1 if len(años_disp) > 1 else 0))
+            año_comp = t2.selectbox("📆 Año Actual (Evaluar)", años_disp, index=0)
+
+            if tipo_periodo == "POR TRIMESTRE":
+                periodo_sel = t4.selectbox("📊 Seleccione Trimestre", [1, 2, 3, 4], format_func=lambda x: f"Q{x}")
+                etiq_periodo = f"Q{periodo_sel}"
+            elif tipo_periodo == "POR MES":
+                periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
+                etiq_periodo = meses_dict[periodo_sel]
+            elif tipo_periodo == "RANGO PERSONALIZADO":
+                c_fecha1, c_fecha2 = t4.columns(2)
+                fecha_inicial_libre = c_fecha1.date_input("📅 Desde:", value=datetime.now().date(), key="bi_f_ini_libre")
+                fecha_final_libre = c_fecha2.date_input("📅 Hasta:", value=datetime.now().date(), key="bi_f_fin_libre")
+                etiq_periodo = f"{fecha_inicial_libre.strftime('%d/%m')} al {fecha_final_libre.strftime('%d/%m')}"
+            else:
+                t4.markdown("<br><span style='color:gray;'>Visión Anual Activada</span>", unsafe_allow_html=True)
+                periodo_sel, etiq_periodo = "TODOS", "Total"
 
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
@@ -555,6 +580,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if tipo_periodo == "RANGO PERSONALIZADO":
             df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= fecha_inicial_libre) & (df_finca['FECHA_DT'].dt.date <= fecha_final_libre)].copy()
             df_periodo_a = pd.DataFrame()
+        elif modo_rangos:
+            f_dt = df_finca['FECHA_DT'].dt.date
+            df_periodo_a = df_finca[(f_dt >= fecha_ini_a) & (f_dt <= fecha_fin_a)].copy()
+            df_periodo_b = df_finca[(f_dt >= fecha_ini_b) & (f_dt <= fecha_fin_b)].copy()          
         else:
             df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
             df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
@@ -737,7 +766,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
             df_tendencia = df_tendencia[df_tendencia['COSTO_NUM'] > 0]
             if not df_tendencia.empty:
-                if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE"]:
+                if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE", "COMPARAR RANGOS (CALENDARIO)"]:
                     tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES']).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
                     tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                     tendencia_agrupa = tendencia_agrupa.sort_values('MES')
