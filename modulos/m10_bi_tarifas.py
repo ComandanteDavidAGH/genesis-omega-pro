@@ -697,8 +697,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 tendencia_agrupa = df_tendencia_b.groupby('FECHA_FORMAT', sort=False).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
                 tendencia_agrupa['FECHA_REAL'] = pd.to_datetime(tendencia_agrupa['FECHA_FORMAT'], format='%d/%m/%Y')
                 tendencia_agrupa = tendencia_agrupa.sort_values('FECHA_REAL')
+                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].astype(float)
                 
                 fig_tendencia = px.line(tendencia_agrupa, x='FECHA_FORMAT', y='COSTO_NUM', markers=True, color_discrete_sequence=['#2F75B5'])
+                fig_tendencia.update_xaxes(type='category')
+                fig_tendencia.update_traces(connectgaps=True)
                 fig_tendencia.update_layout(
                     yaxis_title="Costo Promedio ($ COP / Ha)", 
                     xaxis_title="Línea de Tiempo Exacta", 
@@ -840,7 +843,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     titulo_x = f"Días Operativos ({etiq_periodo})"
                 
                 tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
+                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].astype(float)
+                
                 fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
+                fig_tendencia.update_xaxes(type='category')
+                fig_tendencia.update_traces(connectgaps=True)
                 fig_tendencia.update_layout(
                     yaxis_title="Costo Promedio ($ COP / Ha)", 
                     xaxis_title=titulo_x, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', hovermode="x unified",
