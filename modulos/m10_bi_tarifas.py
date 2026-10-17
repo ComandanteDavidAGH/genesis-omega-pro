@@ -490,7 +490,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
-                super_base_bi['OS_CLAVE'] = (super_base_bi['OS_MAESTRA'].astype(str).str.strip().str.upper()
+        super_base_bi['OS_CLAVE'] = (super_base_bi['OS_MAESTRA'].astype(str).str.strip().str.upper()
                                      .str.replace(r'\.0+$', '', regex=True).str.replace(r'\s+', '', regex=True))
         super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_CLEAN'].str.replace(r'\s+', ' ', regex=True)
 
