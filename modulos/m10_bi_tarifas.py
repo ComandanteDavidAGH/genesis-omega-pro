@@ -940,17 +940,18 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 excel_n1 = generar_excel_vip(tabla_autopsia, "Variacion_Cocteles")
                 st.download_button(label="📄 Exportar Variación de Cócteles (Excel VIP)", data=excel_n1, file_name="Variacion_Cocteles.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n1")
-            # --- CAPTURA DE DATOS NIVEL 1 PARA REPORTE ---
-            if chk_n1:
-                html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo})</h2>"
-                try: html_n1 += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs=False)}</div>"
-                except Exception: pass
-                try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs=False)}</div>"
-                except Exception: pass
-                try: html_n1 += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs=False)}</div>"
-                except Exception: pass
-                try: html_n1 += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{tabla_autopsia.to_html(index=False)}"
-                except Exception: pass
+        
+        # --- CAPTURA DE DATOS NIVEL 1 PARA REPORTE ---
+        if chk_n1:
+            html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo})</h2>"
+            try: html_n1 += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs=False)}</div>"
+            except Exception: pass
+            try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs=False)}</div>"
+            except Exception: pass
+            try: html_n1 += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs=False)}</div>"
+            except Exception: pass
+            try: html_n1 += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{tabla_autopsia.to_html(index=False)}"
+            except Exception: pass
           
             st.markdown("<hr>", unsafe_allow_html=True)
             col_t_n2, col_c_n2 = st.columns([2.5, 1.5])
@@ -1095,17 +1096,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         else: st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match con las recetas de DD_Mesclas.")
                 except Exception as e: st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else: st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Fechas/Pista).")
-                        # --- CAPTURA DE DATOS NIVEL 3 PARA REPORTE ---
-                        if chk_n3:
-                            html_n3 += f"<h2>3. Consumo Volumétrico de Insumos ({pista_inv_sel})</h2>"
-                            if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
-                                try: html_n3 += f"<div class='chart-container'><h3>Top 15 Insumos</h3>{fig.to_html(full_html=False, include_plotlyjs=False)}</div>"
-                                except Exception: pass
-                                try: html_n3 += f"<h3>Tabla de Consumo Estimado</h3>{df_log.to_html(index=False)}"
-                                except Exception: pass
-                            else:
-                                html_n3 += f"<div class='kpi-container'><div class='kpi-card'><p class='kpi-title'>Consumo: {insumo_filtrado}</p><p class='kpi-value'>{vol_formateado} (L/Kg)</p></div></div>"
-      
+        
+        # --- CAPTURA DE DATOS NIVEL 3 PARA REPORTE ---
+        if chk_n3:
+            html_n3 += f"<h2>3. Consumo Volumétrico de Insumos ({pista_inv_sel})</h2>"
+            if 'insumo_filtrado' in locals() and insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
+                try: html_n3 += f"<div class='chart-container'><h3>Top 15 Insumos</h3>{fig.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                except Exception: pass
+                try: html_n3 += f"<h3>Tabla de Consumo Estimado</h3>{df_log.to_html(index=False)}"
+                except Exception: pass
+            elif 'insumo_filtrado' in locals() and 'vol_formateado' in locals():
+                html_n3 += f"<div class='kpi-container'><div class='kpi-card'><p class='kpi-title'>Consumo: {insumo_filtrado}</p><p class='kpi-value'>{vol_formateado} (L/Kg)</p></div></div>"      
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
