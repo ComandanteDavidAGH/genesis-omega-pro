@@ -527,7 +527,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp, index=1 if len(fincas_disp) > 1 else 0)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
         
-                t1, t2, t3, t4 = st.columns([1.5, 1.5, 1, 1])
+        t1, t2, t3, t4 = st.columns([1.5, 1.5, 1, 1])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
         tipo_periodo = t3.selectbox("⏱️ Lupa Temporal", ["AÑO COMPLETO", "POR TRIMESTRE", "POR MES", "RANGO PERSONALIZADO", "COMPARAR RANGOS (CALENDARIO)"])
         modo_rangos = (tipo_periodo == "COMPARAR RANGOS (CALENDARIO)")
