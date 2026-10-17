@@ -1057,7 +1057,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if chk_n1:
             html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo}) — {finca_sel}</h2>"
 
-            # 🔑 KPIs del período (Ordenados en 3 columnas: Costos | Hectáreas | Ciclos)
+            # 🔑 KPIs del período (3 Columnas: Costos | Hectáreas | Ciclos)
             html_n1 += "<h3>📌 Indicadores Clave del Período</h3>"
             html_n1 += "<div style='display: flex; gap: 15px; margin-bottom: 20px; align-items: stretch;'>"
 
@@ -1080,7 +1080,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 html_n1 += "</div>"
             else:
                 _col_d = "#ff4b4b" if delta_pct > 0 else ("#28a745" if delta_pct < 0 else "#3182ce")
-                # Columna 1: Costos
+                # Columna 1: Costos (Año Base arriba, Año Actual abajo, Variación al final)
                 html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
                 html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_base})</p><p class='kpi-value'>$ {formato_latino(costo_a, 0)}</p></div>"
                 html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_comp})</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
@@ -1104,36 +1104,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             html_n1 += "</div>"
 
-            # 🧠 Cerebro interpretativo EDITABLE
-            _es_rango = (tipo_periodo == "RANGO PERSONALIZADO")
-            _ctx = {
-                'finca': finca_sel, 'periodo': etiq_periodo, 'es_rango': _es_rango,
-                'año_base': año_base, 'año_comp': año_comp,
-                'costo_b': costo_b, 'area_b': area_b, 'ciclos_b': ciclos_b, 'int_b': int_b,
-                'vuelo_b': vuelo_b, 'insumos_b': insumos_b,
-                'costo_a': 0 if _es_rango else costo_a,
-                'delta_pct': 0 if _es_rango else delta_pct,
-                'area_a': 0 if _es_rango else area_a,
-                'var_area': 0 if _es_rango else var_area,
-                'ciclos_a': 0 if _es_rango else ciclos_a,
-                'int_a': 0 if _es_rango else int_a,
-                'vuelo_a': 0 if _es_rango else vuelo_a,
-                'insumos_a': 0 if _es_rango else insumos_a,
-            }
-            
-            _texto_cerebro_generado = generar_analisis_interpretativo(_ctx)
-            
-            # El text_area permite al usuario modificar la narrativa antes de descargar
-            texto_cerebro_editado = st.text_area(
-                "✍️ Edita el análisis interpretativo antes de exportar (puedes añadir, borrar o corregir):",
-                value=_texto_cerebro_generado,
-                height=350,
-                key=f"edit_cerebro_{finca_sel}_{año_base}_{año_comp}_{tipo_periodo}"
-            )
-            
-            # Inyectamos el texto editado al HTML, respetando los saltos de línea con <br>
-            html_n1 += "<h3>🧠 Interpretación Ejecutiva de los Resultados</h3>"
-            html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{texto_cerebro_editado.replace(chr(10), '<br>')}</div>"
+            # Gráficos
             try: html_n1 += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
             except Exception: pass
             try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
@@ -1465,8 +1436,39 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if any([chk_n1, chk_n2, chk_n3, chk_sim]):
             st.markdown("<br><hr style='border: 2px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("### 📥 INFORME EJECUTIVO MAESTRO")
-            st.info("💡 **Reporte Listo:** Has seleccionado módulos para el informe corporativo. Este formato incluye todas las gráficas interactivas y tablas. Al abrirlo, presiona `Ctrl + P` para imprimir como PDF.")
+            st.info("💡 **Reporte Listo:** Has seleccionado módulos para el informe corporativo. Revisa y edita el texto a continuación y luego descarga el archivo.")
             
+            # 🧠 GENERADOR DEL CEREBRO EDITABLE (AQUÍ ES DONDE APARECE EL TEXT_AREA)
+            if chk_n1:
+                _es_rango = (tipo_periodo == "RANGO PERSONALIZADO")
+                _ctx = {
+                    'finca': finca_sel, 'periodo': etiq_periodo, 'es_rango': _es_rango,
+                    'año_base': año_base if not _es_rango else '', 'año_comp': año_comp if not _es_rango else '',
+                    'costo_b': costo_b, 'area_b': area_b, 'ciclos_b': ciclos_b, 'int_b': int_b,
+                    'vuelo_b': locals().get('vuelo_b', 0), 'insumos_b': locals().get('insumos_b', 0),
+                    'costo_a': locals().get('costo_a', 0), 'delta_pct': locals().get('delta_pct', 0),
+                    'area_a': locals().get('area_a', 0), 'var_area': locals().get('var_area', 0),
+                    'ciclos_a': locals().get('ciclos_a', 0), 'int_a': locals().get('int_a', 0),
+                    'vuelo_a': locals().get('vuelo_a', 0), 'insumos_a': locals().get('insumos_a', 0),
+                }
+                
+                _texto_cerebro = generar_analisis_interpretativo(_ctx)
+                
+                st.markdown("#### ✍️ Edita el Análisis Interpretativo (Cerebro)")
+                st.caption("Puedes modificar, borrar o añadir texto. Lo que escribas aquí es exactamente lo que se exportará al informe.")
+                
+                texto_cerebro_editado = st.text_area(
+                    label="Editor del Cerebro",
+                    value=_texto_cerebro,
+                    height=300,
+                    label_visibility="collapsed",
+                    key="editor_cerebro_maestro_final"
+                )
+                
+                # Inyectamos el texto EDITADO al HTML final
+                html_n1 += "<h3>🧠 Interpretación Ejecutiva de los Resultados</h3>"
+                html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{texto_cerebro_editado.replace(chr(10), '<br>')}</div>"
+
             contenido_completo = html_n1 + html_n2 + html_n3 + html_sim
             html_final = generar_informe_html(f"Informe Inteligencia Estratégica BI - {finca_sel}", contenido_completo)
             
