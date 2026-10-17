@@ -490,9 +490,19 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         super_base_bi['AREA_NUM'] = super_base_bi['AREA_MAESTRA'].apply(limpiar_area)
 
+                super_base_bi['OS_CLAVE'] = (super_base_bi['OS_MAESTRA'].astype(str).str.strip().str.upper()
+                                     .str.replace(r'\.0+$', '', regex=True).str.replace(r'\s+', '', regex=True))
+        super_base_bi['COCTEL_CLEAN'] = super_base_bi['COCTEL_CLEAN'].str.replace(r'\s+', ' ', regex=True)
+
+        # La Bóveda ACTUAL manda: si una OS+finca+fecha está en ambas fuentes, se descarta la histórica
+        _claves = list(zip(super_base_bi['OS_CLAVE'], super_base_bi['FINCA_MAESTRA'], super_base_bi['FECHA_DT'].dt.date))
+        _es_act = (super_base_bi['ORIGEN_BI'] == 'ACTUAL').tolist()
+        _set_act = {k for k, a in zip(_claves, _es_act) if a and k[0] not in ('', 'NAN', '0')}
+        _repetida = pd.Series([(not a) and (k in _set_act) for k, a in zip(_claves, _es_act)], index=super_base_bi.index)
+        super_base_bi = super_base_bi[~_repetida]
+
         super_base_bi = super_base_bi.drop_duplicates(
-            subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_NUM', 'COCTEL_CLEAN'],
-            keep='last'
+            subset=['FECHA_DT', 'FINCA_MAESTRA', 'OS_CLAVE', 'AREA_NUM', 'COCTEL_CLEAN'], keep='last'
         ).reset_index(drop=True)
 
         def sanear_valores_sap(val):
@@ -603,6 +613,19 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         df_area_a, df_area_b = df_periodo_a.copy(), df_periodo_b.copy()
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
+        with st.expander("🔍 AUDITORÍA DE HECTÁREAS (diagnóstico del KPI)", expanded=False):
+            for etiqueta, d in [(f"Base ({año_base})", df_area_a), (f"Actual ({año_comp})", df_area_b)]:
+                if d.empty: continue
+                st.markdown(f"**{etiqueta}:** {len(d)} filas · {formato_latino(d['AREA_NUM'].sum(), 2)} Ha")
+                st.caption("Por origen de la fila:")
+                st.dataframe(d.groupby('ORIGEN_BI')['AREA_NUM'].agg(Filas='count', Hectareas='sum').reset_index(), hide_index=True)
+                st.caption("10 áreas más grandes (revisa si alguna está mal leída):")
+                st.dataframe(d.nlargest(10, 'AREA_NUM')[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_MAESTRA', 'AREA_NUM']], hide_index=True)
+                dup = d[d.duplicated(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM'], keep=False)]
+                st.caption(f"Filas con misma fecha+finca+área (posibles repetidas): {len(dup)}")
+                st.download_button(f"⬇️ Filas de {etiqueta} (CSV para cuadrar en Excel)",
+                                   d[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'AREA_MAESTRA', 'AREA_NUM', 'ORIGEN_BI']].to_csv(index=False).encode('utf-8-sig'),
+                                   file_name=f"auditoria_{año_base if 'Base' in etiqueta else año_comp}.csv", mime="text/csv", key=f"aud_{etiqueta}")
         costo_a = calcular_costo_ponderado(df_periodo_a)
         costo_b = calcular_costo_ponderado(df_periodo_b)
         
@@ -657,11 +680,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("<hr>", unsafe_allow_html=True)
             
             # CÁLCULOS PONDERADOS DIRECTOS Y FIABLES
-            vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
-            costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
-            vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
+            dv_b = df_area_b[df_area_b['COSTO_NUM'] > 0]
+            area_v_b = dv_b['AREA_NUM'].sum()
+            vuelo_tot_b = (dv_b['AVION_NUM'] * dv_b['AREA_NUM']).sum()
+            costo_tot_b = (dv_b['COSTO_NUM'] * dv_b['AREA_NUM']).sum()
+            vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
             insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-            insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
+            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)            
             
             def fmt_cop_vertical(val):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -792,16 +817,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("<hr>", unsafe_allow_html=True)
             
             # CÁLCULOS PONDERADOS EXACTOS
-            vuelo_tot_a = (df_area_a['AVION_NUM'] * df_area_a['AREA_NUM']).sum()
-            vuelo_tot_b = (df_area_b['AVION_NUM'] * df_area_b['AREA_NUM']).sum()
-            costo_tot_a = (df_area_a['COSTO_NUM'] * df_area_a['AREA_NUM']).sum()
-            costo_tot_b = (df_area_b['COSTO_NUM'] * df_area_b['AREA_NUM']).sum()
-            
-            vuelo_a = vuelo_tot_a / area_a if area_a > 0 else 0
-            vuelo_b = vuelo_tot_b / area_b if area_b > 0 else 0
-            insumos_a = max(0, (costo_tot_a / area_a if area_a > 0 else 0) - vuelo_a)
-            insumos_b = max(0, (costo_tot_b / area_b if area_b > 0 else 0) - vuelo_b)
-            
+            dv_a = df_area_a[df_area_a['COSTO_NUM'] > 0]
+            dv_b = df_area_b[df_area_b['COSTO_NUM'] > 0]
+            area_v_a, area_v_b = dv_a['AREA_NUM'].sum(), dv_b['AREA_NUM'].sum()
+            vuelo_tot_a = (dv_a['AVION_NUM'] * dv_a['AREA_NUM']).sum()
+            vuelo_tot_b = (dv_b['AVION_NUM'] * dv_b['AREA_NUM']).sum()
+            costo_tot_a = (dv_a['COSTO_NUM'] * dv_a['AREA_NUM']).sum()
+            costo_tot_b = (dv_b['COSTO_NUM'] * dv_b['AREA_NUM']).sum()
+            vuelo_a = vuelo_tot_a / area_v_a if area_v_a > 0 else 0
+            vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
+            insumos_a = max(0, (costo_tot_a / area_v_a if area_v_a > 0 else 0) - vuelo_a)
+            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)                        
             categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
             def fmt_cop_vertical(val):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
