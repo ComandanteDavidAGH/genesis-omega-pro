@@ -1055,57 +1055,65 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         # --- CAPTURA DE DATOS NIVEL 1 PARA REPORTE ---
         if chk_n1:
-            html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo}) — {finca_sel}</h2>"
+            # Separamos el contenido en dos partes para que el Cerebro quede en medio
+            html_n1_kpis = f"<h2>1. Análisis de Impacto General ({etiq_periodo}) — {finca_sel}</h2>"
 
             # 🔑 KPIs del período (3 Columnas: Costos | Hectáreas | Ciclos)
-            html_n1 += "<h3>📌 Indicadores Clave del Período</h3>"
-            html_n1 += "<div style='display: flex; gap: 15px; margin-bottom: 20px; align-items: stretch;'>"
+            html_n1_kpis += "<h3>📌 Indicadores Clave del Período</h3>"
+            html_n1_kpis += "<div style='display: flex; gap: 15px; margin-bottom: 20px; align-items: stretch;'>"
 
             if tipo_periodo == "RANGO PERSONALIZADO":
                 # Columna 1: Costo
-                html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Promedio / Ha</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Inversión Total</p><p class='kpi-value'>$ {formato_latino(total_inversion, 0)}</p></div>"
-                html_n1 += "</div>"
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Promedio / Ha</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Inversión Total</p><p class='kpi-value'>$ {formato_latino(total_inversion, 0)}</p></div>"
+                html_n1_kpis += "</div>"
                 # Columna 2: Área
-                html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Órdenes de Servicio</p><p class='kpi-value'>{df_periodo_b['OS_MAESTRA'].nunique()} OS</p></div>"
-                html_n1 += "</div>"
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Órdenes de Servicio</p><p class='kpi-value'>{df_periodo_b['OS_MAESTRA'].nunique()} OS</p></div>"
+                html_n1_kpis += "</div>"
                 # Columna 3: Ciclos
-                html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos Totales</p><p class='kpi-value'>{ciclos_b}</p></div>"
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos Totales</p><p class='kpi-value'>{ciclos_b}</p></div>"
                 _int_txt = f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Intervalo Promedio</p><p class='kpi-value'>{_int_txt}</p></div>"
-                html_n1 += "</div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Intervalo Promedio</p><p class='kpi-value'>{_int_txt}</p></div>"
+                html_n1_kpis += "</div>"
             else:
                 _col_d = "#ff4b4b" if delta_pct > 0 else ("#28a745" if delta_pct < 0 else "#3182ce")
                 # Columna 1: Costos (Año Base arriba, Año Actual abajo, Variación al final)
-                html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_base})</p><p class='kpi-value'>$ {formato_latino(costo_a, 0)}</p></div>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_comp})</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Variación del Costo</p><p class='kpi-value' style='color:{_col_d};'>{delta_pct:+.2f}%</p></div>"
-                html_n1 += "</div>"
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_base})</p><p class='kpi-value'>$ {formato_latino(costo_a, 0)}</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_comp})</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Variación del Costo</p><p class='kpi-value' style='color:{_col_d};'>{delta_pct:+.2f}%</p></div>"
+                html_n1_kpis += "</div>"
                 # Columna 2: Hectáreas
-                html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Hectáreas ({año_base})</p><p class='kpi-value'>{formato_latino(area_a, 1)} Ha</p></div>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Hectáreas ({año_comp})</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Hectáreas ({año_base})</p><p class='kpi-value'>{formato_latino(area_a, 1)} Ha</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Hectáreas ({año_comp})</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
                 _col_a = "#28a745" if var_area > 0 else ("#ff4b4b" if var_area < 0 else "#3182ce")
-                html_n1 += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Variación del Área</p><p class='kpi-value' style='color:{_col_a};'>{var_area:+.1f}%</p></div>"
-                html_n1 += "</div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Variación del Área</p><p class='kpi-value' style='color:{_col_a};'>{var_area:+.1f}%</p></div>"
+                html_n1_kpis += "</div>"
                 # Columna 3: Ciclos
-                html_n1 += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_base})</p><p class='kpi-value'>{ciclos_a} ciclos</p></div>"
-                html_n1 += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_comp})</p><p class='kpi-value'>{ciclos_b} ciclos</p></div>"
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_base})</p><p class='kpi-value'>{ciclos_a} ciclos</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_comp})</p><p class='kpi-value'>{ciclos_b} ciclos</p></div>"
                 _ia = f"{formato_latino(int_a, 1)} d" if int_a > 0 else "N/A"
                 _ib = f"{formato_latino(int_b, 1)} d" if int_b > 0 else "N/A"
-                html_n1 += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Intervalo Prom.</p><p class='kpi-value' style='font-size:18px;'>{_ia} → {_ib}</p></div>"
-                html_n1 += "</div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Intervalo Prom.</p><p class='kpi-value' style='font-size:18px;'>{_ia} → {_ib}</p></div>"
+                html_n1_kpis += "</div>"
             
-            html_n1 += "</div>"
+            html_n1_kpis += "</div>"
 
-            # Gráficos
-            try: html_n1 += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+            # Guardamos las gráficas y tablas en otra variable
+            html_n1_graficos = ""
+            try: html_n1_graficos += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+            except Exception: pass
+            try: html_n1_graficos += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+            except Exception: pass
+            try: html_n1_graficos += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+            except Exception: pass
+            try: html_n1_graficos += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{tabla_autopsia.to_html(index=False)}"
             except Exception: pass
             try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
             except Exception: pass
@@ -1438,7 +1446,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("### 📥 INFORME EJECUTIVO MAESTRO")
             st.info("💡 **Reporte Listo:** Edita el texto a continuación, GUARDA los cambios y luego descarga el archivo.")
             
-            # 🧠 GENERADOR DEL CEREBRO EDITABLE CON MEMORIA (SESSION STATE)
             if chk_n1:
                 _es_rango = (tipo_periodo == "RANGO PERSONALIZADO")
                 _ctx = {
@@ -1453,18 +1460,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 }
                 
                 _texto_cerebro_default = generar_analisis_interpretativo(_ctx)
-                
-                # Creamos una llave única para guardar la memoria según la finca y el período
                 llave_memoria = f"cerebro_guardado_{finca_sel}_{etiq_periodo.replace(' ', '_').replace('/', '_')}"
                 
-                # Si es la primera vez que entras, inicializamos la memoria con el texto por defecto
                 if llave_memoria not in st.session_state:
                     st.session_state[llave_memoria] = _texto_cerebro_default
 
                 st.markdown("#### ✍️ Edita el Análisis Interpretativo (Cerebro)")
                 st.caption("Puedes modificar, borrar o añadir texto libremente. Recuerda GUARDAR antes de descargar.")
                 
-                # El cuadro de texto (el key del widget es distinto a la llave de memoria para evitar conflictos)
                 texto_widget = st.text_area(
                     label="Editor del Cerebro",
                     value=st.session_state[llave_memoria],
@@ -1473,30 +1476,35 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     key=f"widget_editor_{llave_memoria}"
                 )
                 
-                # BOTÓN DE GUARDADO EXPLÍCITO
-                if st.button("💾 GUARDAR CAMBIOS DEL TEXTO", type="secondary", use_container_width=True):
-                    st.session_state[llave_memoria] = texto_widget
-                    st.success("✅ ¡Cambios guardados en memoria! Ya puedes generar el informe con tu versión editada.")
+                # 🎯 BOTONES EN PARALELO
+                c_btn1, c_btn2 = st.columns(2)
+                with c_btn1:
+                    if st.button("💾 GUARDAR CAMBIOS DEL TEXTO", type="secondary", use_container_width=True):
+                        st.session_state[llave_memoria] = texto_widget
+                        st.success("✅ ¡Cambios guardados en memoria!")
                 
-                # Variable final que se inyectará al informe (SIEMPRE lee de la memoria)
                 texto_final_para_reporte = st.session_state[llave_memoria]
                 
-                # Inyectamos el texto GUARDADO al HTML
-                html_n1 += "<h3>🧠 Interpretación Ejecutiva de los Resultados</h3>"
+                # 🧠 ENSAMBLAJE FINAL (KPIs -> CEREBRO -> GRÁFICOS)
+                html_n1 = html_n1_kpis + "<h3>🧠 Interpretación Ejecutiva de los Resultados</h3>"
                 html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{texto_final_para_reporte.replace(chr(10), '<br>')}</div>"
+                html_n1 += html_n1_graficos
+            else:
+                html_n1 = ""
+                c_btn2 = st.container()
 
             contenido_completo = html_n1 + html_n2 + html_n3 + html_sim
             html_final = generar_informe_html(f"Informe Inteligencia Estratégica BI - {finca_sel}", contenido_completo)
             
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.download_button(
-                label="📄 DESCARGAR INFORME EJECUTIVO COMPLETO (HTML / PDF)",
-                data=html_final,
-                file_name=f"Informe_Completo_BI_{finca_sel}_{datetime.now().strftime('%Y%m%d')}.html",
-                mime="text/html",
-                type="primary",
-                use_container_width=True
-            )
+            with c_btn2:
+                st.download_button(
+                    label="📄 DESCARGAR INFORME EJECUTIVO (HTML / PDF)",
+                    data=html_final,
+                    file_name=f"Informe_Completo_BI_{finca_sel}_{datetime.now().strftime('%Y%m%d')}.html",
+                    mime="text/html",
+                    type="primary",
+                    use_container_width=True
+                )
   
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
