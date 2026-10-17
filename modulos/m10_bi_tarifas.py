@@ -1436,9 +1436,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if any([chk_n1, chk_n2, chk_n3, chk_sim]):
             st.markdown("<br><hr style='border: 2px solid #d4af37;'>", unsafe_allow_html=True)
             st.markdown("### 📥 INFORME EJECUTIVO MAESTRO")
-            st.info("💡 **Reporte Listo:** Has seleccionado módulos para el informe corporativo. Revisa y edita el texto a continuación y luego descarga el archivo.")
+            st.info("💡 **Reporte Listo:** Edita el texto a continuación, GUARDA los cambios y luego descarga el archivo.")
             
-            # 🧠 GENERADOR DEL CEREBRO EDITABLE (AQUÍ ES DONDE APARECE EL TEXT_AREA)
+            # 🧠 GENERADOR DEL CEREBRO EDITABLE CON MEMORIA (SESSION STATE)
             if chk_n1:
                 _es_rango = (tipo_periodo == "RANGO PERSONALIZADO")
                 _ctx = {
@@ -1452,26 +1452,43 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     'vuelo_a': locals().get('vuelo_a', 0), 'insumos_a': locals().get('insumos_a', 0),
                 }
                 
-                _texto_cerebro = generar_analisis_interpretativo(_ctx)
+                _texto_cerebro_default = generar_analisis_interpretativo(_ctx)
                 
+                # Creamos una llave única para guardar la memoria según la finca y el período
+                llave_memoria = f"cerebro_guardado_{finca_sel}_{etiq_periodo.replace(' ', '_').replace('/', '_')}"
+                
+                # Si es la primera vez que entras, inicializamos la memoria con el texto por defecto
+                if llave_memoria not in st.session_state:
+                    st.session_state[llave_memoria] = _texto_cerebro_default
+
                 st.markdown("#### ✍️ Edita el Análisis Interpretativo (Cerebro)")
-                st.caption("Puedes modificar, borrar o añadir texto. Lo que escribas aquí es exactamente lo que se exportará al informe.")
+                st.caption("Puedes modificar, borrar o añadir texto libremente. Recuerda GUARDAR antes de descargar.")
                 
-                texto_cerebro_editado = st.text_area(
+                # El cuadro de texto (el key del widget es distinto a la llave de memoria para evitar conflictos)
+                texto_widget = st.text_area(
                     label="Editor del Cerebro",
-                    value=_texto_cerebro,
+                    value=st.session_state[llave_memoria],
                     height=300,
                     label_visibility="collapsed",
-                    key="editor_cerebro_maestro_final"
+                    key=f"widget_editor_{llave_memoria}"
                 )
                 
-                # Inyectamos el texto EDITADO al HTML final
+                # BOTÓN DE GUARDADO EXPLÍCITO
+                if st.button("💾 GUARDAR CAMBIOS DEL TEXTO", type="secondary", use_container_width=True):
+                    st.session_state[llave_memoria] = texto_widget
+                    st.success("✅ ¡Cambios guardados en memoria! Ya puedes generar el informe con tu versión editada.")
+                
+                # Variable final que se inyectará al informe (SIEMPRE lee de la memoria)
+                texto_final_para_reporte = st.session_state[llave_memoria]
+                
+                # Inyectamos el texto GUARDADO al HTML
                 html_n1 += "<h3>🧠 Interpretación Ejecutiva de los Resultados</h3>"
-                html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{texto_cerebro_editado.replace(chr(10), '<br>')}</div>"
+                html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{texto_final_para_reporte.replace(chr(10), '<br>')}</div>"
 
             contenido_completo = html_n1 + html_n2 + html_n3 + html_sim
             html_final = generar_informe_html(f"Informe Inteligencia Estratégica BI - {finca_sel}", contenido_completo)
             
+            st.markdown("<br>", unsafe_allow_html=True)
             st.download_button(
                 label="📄 DESCARGAR INFORME EJECUTIVO COMPLETO (HTML / PDF)",
                 data=html_final,
