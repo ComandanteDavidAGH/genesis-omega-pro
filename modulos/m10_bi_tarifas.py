@@ -183,6 +183,36 @@ def generar_excel_vip(df, sheet_name="Reporte"):
             ws.column_dimensions[col_letter].width = min(max_length + 4, 35)
             
     return buffer.getvalue()
+def generar_informe_html(titulo, contenido_html):
+    return f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>{titulo}</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <style>
+            body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8f9fa; color: #0d1b2a; margin: 40px; }}
+            h1 {{ color: #143521; border-bottom: 3px solid #d4af37; padding-bottom: 10px; text-transform: uppercase; font-size: 28px; }}
+            h2 {{ color: #1a365d; border-bottom: 2px solid #d4af37; padding-bottom: 5px; margin-top: 40px; font-size: 22px; }}
+            h3 {{ color: #333; margin-top: 20px; font-size: 18px; }}
+            .kpi-container {{ display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }}
+            .kpi-card {{ background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); color: white; padding: 20px; border-radius: 8px; border-left: 5px solid #d4af37; flex: 1; min-width: 200px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+            .kpi-title {{ font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin: 0 0 10px 0; }}
+            .kpi-value {{ font-size: 24px; font-weight: 900; margin: 0; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; background: white; }}
+            th, td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; }}
+            th {{ background-color: #0d1b2a; color: #d4af37; font-weight: bold; text-transform: uppercase; }}
+            tr:nth-child(even) {{ background-color: #f1f5f9; }}
+            .chart-container {{ background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #e2e8f0; }}
+        </style>
+    </head>
+    <body>
+        <h1>{titulo}</h1>
+        <p><strong>Generado el:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+        {contenido_html}
+    </body>
+    </html>
+    """
 
 # =================================================================
 # 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
@@ -462,6 +492,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     st.caption(f"🕒 Última carga: {datetime.now().strftime('%H:%M:%S')} (caché de 10 min)")
 
     try:
+        # === INICIALIZACIÓN DE VARIABLES PARA EL INFORME CONSOLIDADO ===
+        html_n1, html_n2, html_n3, html_sim = "", "", "", ""
+        chk_n1, chk_n2, chk_n3, chk_sim = False, False, False, False
+        
         df_vivos, df_historico = cargar_fuentes_maestras_bi(descargar_matriz_rapida)
         if df_vivos.empty and df_historico.empty:
             st.warning("⚠️ Los sistemas de almacenamiento están vacíos.")
@@ -629,7 +663,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         costo_a = calcular_costo_ponderado(df_periodo_a)
         costo_b = calcular_costo_ponderado(df_periodo_b)
         
-        st.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
+        col_t_n1, col_c_n1 = st.columns([2.5, 1.5])
+        col_t_n1.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
+        chk_n1 = col_c_n1.checkbox("📑 Añadir Nivel 1 al Informe Ejecutivo", key="chk_n1")
         
         if tipo_periodo == "RANGO PERSONALIZADO":
             k1, k2 = st.columns(2)
@@ -904,9 +940,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 excel_n1 = generar_excel_vip(tabla_autopsia, "Variacion_Cocteles")
                 st.download_button(label="📄 Exportar Variación de Cócteles (Excel VIP)", data=excel_n1, file_name="Variacion_Cocteles.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="btn_down_n1")
-
+            # --- CAPTURA DE DATOS NIVEL 1 PARA REPORTE ---
+            if chk_n1:
+                html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo})</h2>"
+                try: html_n1 += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                except Exception: pass
+                try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                except Exception: pass
+                try: html_n1 += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                except Exception: pass
+                try: html_n1 += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{tabla_autopsia.to_html(index=False)}"
+                except Exception: pass
+          
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
+            col_t_n2, col_c_n2 = st.columns([2.5, 1.5])
+            col_t_n2.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
+            chk_n2 = col_c_n2.checkbox("📑 Añadir Nivel 2 al Informe Ejecutivo", key="chk_n2")
             cocteles_disponibles = sorted(list(set(df_periodo_a[col_coctel].dropna().unique()) | set(df_periodo_b[col_coctel].dropna().unique())))
             coctel_sel = st.selectbox("🎯 Seleccione un Cóctel para auditar su receta año vs año:", ["SELECCIONE UN CÓCTEL..."] + cocteles_disponibles)
 
@@ -955,12 +1004,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     c1.markdown(tarjeta_kpi(f"Total Teórico ({año_base})", f"$ {formato_latino(costo_total_a, 0)}"), unsafe_allow_html=True)
                     c2.markdown(tarjeta_kpi(f"Total Teórico ({año_comp})", f"$ {formato_latino(costo_total_b, 0)}"), unsafe_allow_html=True)
                     c3.markdown(tarjeta_kpi("Variación Cóctel", f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", f"$ {formato_latino(costo_total_b - costo_total_a, 0)}", "#ff4b4b" if (costo_total_b - costo_total_a) > 0 else "#28a745"), unsafe_allow_html=True)
-
+                    # --- CAPTURA DE DATOS NIVEL 2 PARA REPORTE ---
+                    if chk_n2 and coctel_sel != "SELECCIONE UN CÓCTEL...":
+                        html_n2 += f"<h2>2. Composición del Cóctel: {coctel_sel}</h2>"
+                        html_n2 += f"<div class='kpi-container'>"
+                        html_n2 += f"<div class='kpi-card'><p class='kpi-title'>Variación Económica Cóctel</p><p class='kpi-value'>$ {formato_latino(costo_total_b - costo_total_a, 0)}</p></div>"
+                        html_n2 += f"</div>"
+                        try: html_n2 += f"<h3>Receta vs Año</h3>{df_vista_mol.to_html(index=False)}"
+                        except Exception: pass
+      
         # =====================================================================
         # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA Y AUDITORÍA DE INVENTARIOS
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
+        col_t_n3, col_c_n3 = st.columns([2.5, 1.5])
+        col_t_n3.markdown("### 📦 Nivel 3: Consumo Volumétrico de Insumos")
+        chk_n3 = col_c_n3.checkbox("📑 Añadir Nivel 3 al Informe Ejecutivo", key="chk_n3")
         
         c_inv1, c_inv2, c_inv3 = st.columns(3)
         fecha_hace_un_mes = datetime.now().date() - pd.Timedelta(days=30)
@@ -1036,12 +1095,24 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         else: st.warning("⚠️ El radar agrupó las áreas pero no pudo hacer match con las recetas de DD_Mesclas.")
                 except Exception as e: st.error(f"🚨 Error en el radar de inteligencia logística: {e}")
         else: st.warning("⚠️ No se encontraron operaciones de vuelo registradas para los filtros seleccionados (Fechas/Pista).")
-            
+                        # --- CAPTURA DE DATOS NIVEL 3 PARA REPORTE ---
+                        if chk_n3:
+                            html_n3 += f"<h2>3. Consumo Volumétrico de Insumos ({pista_inv_sel})</h2>"
+                            if insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
+                                try: html_n3 += f"<div class='chart-container'><h3>Top 15 Insumos</h3>{fig.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                                except Exception: pass
+                                try: html_n3 += f"<h3>Tabla de Consumo Estimado</h3>{df_log.to_html(index=False)}"
+                                except Exception: pass
+                            else:
+                                html_n3 += f"<div class='kpi-container'><div class='kpi-card'><p class='kpi-title'>Consumo: {insumo_filtrado}</p><p class='kpi-value'>{vol_formateado} (L/Kg)</p></div></div>"
+      
         # =====================================================================
         # --- 🤝 SIMULADOR DE NEGOCIACIÓN Y AUDITORÍA DE TARIFAS ---
         # =====================================================================
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
+        col_t_sim, col_c_sim = st.columns([2.5, 1.5])
+        col_t_sim.markdown("### 🤝 Simulador de Negociación (Tarifas de Aerofumigación)")
+        chk_sim = col_c_sim.checkbox("📑 Añadir Simulador al Informe Ejecutivo", key="chk_sim")
         st.info("💡 RADAR BLINDADO: Extracción estricta de Tarifas Unitarias. Operaciones con Tarifa $0 (Aún no facturadas) **AHORA SON VISIBLES** para su auditoría.")
 
         col_pista_sim = next((c for c in super_base_bi.columns if any(k in str(c).upper() for k in ["PISTA", "ALMACEN", "CENTRO"])), None)
@@ -1186,7 +1257,37 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL VIP)", data=buffer_sim.getvalue(), file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+# --- CAPTURA DE DATOS SIMULADOR PARA REPORTE ---
+                        if chk_sim:
+                            html_sim += f"<h2>4. Simulador de Negociación Tarifaria ({sim_pista})</h2>"
+                            html_sim += f"<div class='kpi-container'>"
+                            html_sim += f"<div class='kpi-card'><p class='kpi-title'>Total Actual ({margen_actual}%)</p><p class='kpi-value'>$ {formato_latino(df_resultados['TOTAL ACTUAL ($)'].sum(), 0)}</p></div>"
+                            html_sim += f"<div class='kpi-card'><p class='kpi-title'>Proyección ({margen_nuevo}%)</p><p class='kpi-value'>$ {formato_latino(df_resultados['NUEVO TOTAL ($)'].sum(), 0)}</p></div>"
+                            html_sim += f"<div class='kpi-card'><p class='kpi-title'>Diferencia en Dinero Real</p><p class='kpi-value'>$ {formato_latino(df_resultados['DIFERENCIA ($)'].sum(), 0)}</p></div>"
+                            html_sim += f"</div>"
+                            try: html_sim += f"<h3>Resumen Semanal de Proyección</h3>{df_semanal.to_html(index=False)}"
+                            except Exception: pass
 
+        # =====================================================================
+        # 📥 BOTÓN MAESTRO: EXPORTACIÓN DEL REPORTE CONSOLIDADO HTML/PDF
+        # =====================================================================
+        if any([chk_n1, chk_n2, chk_n3, chk_sim]):
+            st.markdown("<br><hr style='border: 2px solid #d4af37;'>", unsafe_allow_html=True)
+            st.markdown("### 📥 INFORME EJECUTIVO MAESTRO")
+            st.info("💡 **Reporte Listo:** Has seleccionado módulos para el informe corporativo. Este formato incluye todas las gráficas interactivas y tablas. Al abrirlo, presiona `Ctrl + P` para imprimir como PDF.")
+            
+            contenido_completo = html_n1 + html_n2 + html_n3 + html_sim
+            html_final = generar_informe_html(f"Informe Inteligencia Estratégica BI - {finca_sel}", contenido_completo)
+            
+            st.download_button(
+                label="📄 DESCARGAR INFORME EJECUTIVO COMPLETO (HTML / PDF)",
+                data=html_final,
+                file_name=f"Informe_Completo_BI_{finca_sel}_{datetime.now().strftime('%Y%m%d')}.html",
+                mime="text/html",
+                type="primary",
+                use_container_width=True
+            )
+  
     except Exception as e:
         st.error(f"🚨 Falla crítica en los motores del Centro BI: {e}")
 
