@@ -204,6 +204,10 @@ def generar_informe_html(titulo, contenido_html):
             th {{ background-color: #0d1b2a; color: #d4af37; font-weight: bold; text-transform: uppercase; }}
             tr:nth-child(even) {{ background-color: #f1f5f9; }}
             .chart-container {{ background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #e2e8f0; }}
+            .alert-box {{ background: #fff5f5; color: #742a2a; padding: 15px 20px; border-radius: 8px; border-left: 6px solid #c53030; margin: 15px 0; }}
+            .success-box {{ background: #f0fff4; color: #22543d; padding: 15px 20px; border-radius: 8px; border-left: 6px solid #38a169; margin: 15px 0; }}
+            .info-box {{ background: #ebf8ff; color: #2a4365; padding: 15px 20px; border-radius: 8px; border-left: 6px solid #3182ce; margin: 15px 0; }}
+            .section-intro {{ color: #4a5568; font-size: 13px; font-style: italic; margin: 10px 0; }}
         </style>
     </head>
     <body>
@@ -213,6 +217,129 @@ def generar_informe_html(titulo, contenido_html):
     </body>
     </html>
     """
+def generar_analisis_interpretativo(ctx):
+    """Genera narrativa interpretativa HTML a partir de los KPIs del período."""
+    h = []
+    finca, periodo = ctx.get('finca', 'N/A'), ctx.get('periodo', 'N/A')
+    es_rango = ctx.get('es_rango', False)
+    h.append("<h2>🧠 Interpretación Ejecutiva de los Resultados</h2>")
+
+    if not es_rango:
+        costo_a, costo_b = ctx.get('costo_a', 0), ctx.get('costo_b', 0)
+        delta_pct = ctx.get('delta_pct', 0)
+        año_base, año_comp = ctx.get('año_base', ''), ctx.get('año_comp', '')
+        area_a, area_b, var_area = ctx.get('area_a', 0), ctx.get('area_b', 0), ctx.get('var_area', 0)
+        ciclos_a, ciclos_b = ctx.get('ciclos_a', 0), ctx.get('ciclos_b', 0)
+        int_a, int_b = ctx.get('int_a', 0), ctx.get('int_b', 0)
+        vuelo_a, vuelo_b = ctx.get('vuelo_a', 0), ctx.get('vuelo_b', 0)
+        insumos_a, insumos_b = ctx.get('insumos_a', 0), ctx.get('insumos_b', 0)
+
+        # Resumen central
+        if delta_pct > 10: emoji, tono, clase = "🚨", "un incremento crítico", "alert-box"
+        elif delta_pct > 0: emoji, tono, clase = "⚠️", "un incremento", "alert-box"
+        elif delta_pct < 0: emoji, tono, clase = "✅", "una reducción", "success-box"
+        else: emoji, tono, clase = "⚖️", "estabilidad", "info-box"
+
+        h.append(f"<div class='{clase}'><p><strong>{emoji} Hallazgo Central:</strong> El costo promedio por hectárea "
+                 f"en <b>{finca}</b> pasó de <b>$ {formato_latino(costo_a, 0)}</b> ({año_base}) a "
+                 f"<b>$ {formato_latino(costo_b, 0)}</b> ({año_comp}), lo que representa "
+                 f"<b>{tono} del {abs(delta_pct):.2f}%</b>.</p></div>")
+
+        # Bloque 1: Volumen
+        h.append("<h3>📊 1. Comportamiento del Volumen Operativo</h3>")
+        if var_area > 5:
+            h.append(f"<p>Se observa una <b>expansión operativa</b> del <b>{var_area:+.1f}%</b>: la superficie tratada "
+                     f"creció de <b>{formato_latino(area_a, 1)} Ha</b> a <b>{formato_latino(area_b, 1)} Ha</b>. "
+                     f"El aumento del costo total puede estar influido por esta mayor actividad.</p>")
+        elif var_area < -5:
+            h.append(f"<p>Se observa una <b>contracción operativa</b> del <b>{var_area:.1f}%</b>: la superficie tratada "
+                     f"cayó de <b>{formato_latino(area_a, 1)} Ha</b> a <b>{formato_latino(area_b, 1)} Ha</b>. "
+                     f"Verificar si responde a eficiencias de cobertura o a menores actividades programadas.</p>")
+        else:
+            h.append(f"<p>El volumen operativo se mantuvo <b>estable</b> ({var_area:+.1f}%): de "
+                     f"<b>{formato_latino(area_a, 1)} Ha</b> a <b>{formato_latino(area_b, 1)} Ha</b>. "
+                     f"Esto permite comparar costos con alta confiabilidad.</p>")
+
+        # Bloque 2: Frecuencia
+        h.append("<h3>🔄 2. Frecuencia de Aplicación</h3>")
+        if ciclos_a > 0 and ciclos_b > 0:
+            dif_c = ciclos_b - ciclos_a
+            if dif_c > 0:
+                h.append(f"<p>La frecuencia <b>aumentó</b>: de <b>{ciclos_a} ciclos</b> a <b>{ciclos_b} ciclos</b> "
+                         f"(+{dif_c}). Mayor presión de tratamiento por hectárea; puede reflejar presión de plagas o "
+                         f"un calendario más intensivo.</p>")
+            elif dif_c < 0:
+                h.append(f"<p>La frecuencia <b>disminuyó</b>: de <b>{ciclos_a} ciclos</b> a <b>{ciclos_b} ciclos</b> "
+                         f"({dif_c}). Puede indicar menor presión fitosanitaria u optimización del calendario.</p>")
+            else:
+                h.append(f"<p>El número de ciclos se mantuvo <b>constante</b> en <b>{ciclos_a}</b>.</p>")
+            if int_a > 0 and int_b > 0:
+                dif_i = int_b - int_a
+                if dif_i > 0:
+                    h.append(f"<p>El intervalo entre aplicaciones <b>se amplió</b> de <b>{formato_latino(int_a, 1)}</b> "
+                             f"a <b>{formato_latino(int_b, 1)} días</b> (+{dif_i:.1f} días). Suele asociarse a mayor "
+                             f"eficacia residual de los productos o menor urgencia fitosanitaria.</p>")
+                elif dif_i < 0:
+                    h.append(f"<p>El intervalo entre aplicaciones <b>se redujo</b> de <b>{formato_latino(int_a, 1)}</b> "
+                             f"a <b>{formato_latino(int_b, 1)} días</b> ({dif_i:.1f} días). Puede reflejar mayor "
+                             f"presión de plagas o clima adverso.</p>")
+
+        # Bloque 3: Atribución
+        h.append("<h3>🧬 3. Atribución del Cambio: ¿Qué encareció la operación?</h3>")
+        dif_vuelo, dif_insumos = vuelo_b - vuelo_a, insumos_b - insumos_a
+        h.append("<ul>")
+        h.append(f"<li><b>Costo Avión/Ha:</b> pasó de $ {formato_latino(vuelo_a, 0)} a $ {formato_latino(vuelo_b, 0)} "
+                 f"(<b>{'+' if dif_vuelo >= 0 else ''}$ {formato_latino(dif_vuelo, 0)}</b>).</li>")
+        h.append(f"<li><b>Costo Insumos/Ha:</b> pasó de $ {formato_latino(insumos_a, 0)} a $ {formato_latino(insumos_b, 0)} "
+                 f"(<b>{'+' if dif_insumos >= 0 else ''}$ {formato_latino(dif_insumos, 0)}</b>).</li>")
+        h.append("</ul>")
+        total_dif = abs(dif_vuelo) + abs(dif_insumos)
+        if total_dif > 0 and (dif_vuelo > 0 or dif_insumos > 0):
+            pct_v = abs(dif_vuelo) / total_dif * 100
+            pct_i = abs(dif_insumos) / total_dif * 100
+            if dif_vuelo > dif_insumos and dif_vuelo > 0:
+                h.append(f"<p><strong>🎯 Impulsor principal del encarecimiento:</strong> el componente <b>avión</b> "
+                         f"(combustible, mantenimiento, tarifas) aportó ≈ <b>{pct_v:.0f}%</b> de la variación. "
+                         f"Revisar contratos de aerofumigación y consumo de combustible.</p>")
+            elif dif_insumos > 0 and dif_insumos >= dif_vuelo:
+                h.append(f"<p><strong>🎯 Impulsor principal del encarecimiento:</strong> los <b>insumos químicos</b> "
+                         f"aportaron ≈ <b>{pct_i:.0f}%</b> de la variación. Auditar precios de proveedores y evaluar "
+                         f"sustituciones o renegociación.</p>")
+            elif dif_vuelo < 0 and dif_insumos < 0:
+                h.append(f"<p><strong>✅ Origen de la eficiencia:</strong> ambos componentes contribuyeron "
+                         f"positivamente a la reducción. Escenario ideal de mejora operativa y de compra.</p>")
+
+        # Bloque 4: Alertas
+        h.append("<h3>🚨 4. Alertas y Recomendaciones</h3>")
+        al = []
+        if delta_pct > 15: al.append(f"<li>🚨 <b>CRÍTICO:</b> Costo subió {delta_pct:.1f}%, superando el umbral del 15%. Acción inmediata: auditar tarifas, revisar contratos y evaluar sustituciones.</li>")
+        elif delta_pct > 5: al.append(f"<li>⚠️ <b>ATENCIÓN:</b> Costo subió {delta_pct:.1f}%. Rango moderado pero suficiente para revisar eficiencia operativa.</li>")
+        elif delta_pct < -5: al.append(f"<li>✅ <b>LOGRO:</b> Reducción del {abs(delta_pct):.1f}%. Documentar prácticas que generaron la eficiencia para replicarlas.</li>")
+        if var_area < -15: al.append(f"<li>📉 <b>VOLUMEN:</b> Área tratada cayó {var_area:.1f}%. Verificar si hay actividades pendientes o contracción real.</li>")
+        if ciclos_b < ciclos_a and int_b > int_a and int_a > 0: al.append(f"<li>🔄 <b>FRECUENCIA:</b> Menos ciclos e intervalos más largos. Validar que no comprometa control fitosanitario.</li>")
+        if not al: al.append("<li>✅ Sin alertas críticas detectadas. Los indicadores están dentro de rangos esperados.</li>")
+        h.append("<ul>" + "".join(al) + "</ul>")
+    else:
+        # Modo RANGO PERSONALIZADO
+        h.append(f"<div class='info-box'><p><strong>ℹ️ Análisis de Período Aislado:</strong> Este informe presenta "
+                 f"el estado operativo de <b>{finca}</b> para el rango <b>{periodo}</b> sin comparación interanual. "
+                 f"Los indicadores reflejan la realidad absoluta del período.</p></div>")
+        costo_b, area_b = ctx.get('costo_b', 0), ctx.get('area_b', 0)
+        ciclos_b, int_b = ctx.get('ciclos_b', 0), ctx.get('int_b', 0)
+        h.append("<h3>📊 1. Comportamiento Operativo</h3>")
+        txt = (f"<p>Se aplicaron tratamientos sobre <b>{formato_latino(area_b, 1)} Ha</b>, con un costo promedio "
+               f"por hectárea de <b>$ {formato_latino(costo_b, 0)}</b>, distribuidos en <b>{ciclos_b} ciclos</b>")
+        txt += (f" con un intervalo promedio de <b>{formato_latino(int_b, 1)} días</b> entre aplicaciones.</p>"
+                if int_b > 0 else ".</p>")
+        h.append(txt)
+        h.append("<h3>🚨 2. Recomendaciones</h3><ul>")
+        if int_b > 15: h.append("<li>🔄 Intervalo > 15 días. Validar que la cadencia sea suficiente para el control fitosanitario esperado.</li>")
+        elif 0 < int_b < 7: h.append("<li>🔄 Intervalo < 7 días. Revisar si responde a presión de plagas o si puede optimizarse la programación.</li>")
+        h.append("<li>📋 Auditar la distribución de costos entre avión e insumos para identificar oportunidades de ahorro.</li></ul>")
+
+    h.append("<p class='section-intro'>💡 <em>Análisis generado automáticamente. Debe ser validado por el equipo "
+             "técnico antes de tomar decisiones estratégicas.</em></p>")
+    return "".join(h)
 
 # =================================================================
 # 📦 BLOQUE 3: EXTRACCIÓN DE DATOS Y MODELO
@@ -950,7 +1077,49 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         
         # --- CAPTURA DE DATOS NIVEL 1 PARA REPORTE ---
         if chk_n1:
-            html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo})</h2>"
+            html_n1 += f"<h2>1. Análisis de Impacto General ({etiq_periodo}) — {finca_sel}</h2>"
+
+            # 🔑 KPIs del período
+            html_n1 += "<h3>📌 Indicadores Clave del Período</h3><div class='kpi-container'>"
+            if tipo_periodo == "RANGO PERSONALIZADO":
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Costo Promedio / Ha</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Órdenes de Servicio</p><p class='kpi-value'>{df_periodo_b['OS_MAESTRA'].nunique()} OS</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Ciclos Totales</p><p class='kpi-value'>{ciclos_b}</p></div>"
+                if int_b > 0:
+                    html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Intervalo Promedio</p><p class='kpi-value'>{formato_latino(int_b, 1)} días</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Inversión Total</p><p class='kpi-value'>$ {formato_latino(total_inversion, 0)}</p></div>"
+            else:
+                _col_d = "#ff4b4b" if delta_pct > 0 else ("#28a745" if delta_pct < 0 else "#3182ce")
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Costo Prom. Ha ({año_base})</p><p class='kpi-value'>$ {formato_latino(costo_a, 0)}</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Costo Prom. Ha ({año_comp})</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Variación del Costo</p><p class='kpi-value' style='color:{_col_d};'>{delta_pct:+.2f}%</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Hectáreas ({año_base})</p><p class='kpi-value'>{formato_latino(area_a, 1)} Ha</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Hectáreas ({año_comp})</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Variación del Área</p><p class='kpi-value'>{var_area:+.1f}%</p></div>"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Ciclos ({año_base} → {año_comp})</p><p class='kpi-value'>{ciclos_a} → {ciclos_b}</p></div>"
+                _ia = f"{formato_latino(int_a, 1)}" if int_a > 0 else "N/A"
+                _ib = f"{formato_latino(int_b, 1)}" if int_b > 0 else "N/A"
+                html_n1 += f"<div class='kpi-card'><p class='kpi-title'>Intervalo Prom. (días)</p><p class='kpi-value'>{_ia} → {_ib}</p></div>"
+            html_n1 += "</div>"
+
+            # 🧠 Cerebro interpretativo
+            _es_rango = (tipo_periodo == "RANGO PERSONALIZADO")
+            _ctx = {
+                'finca': finca_sel, 'periodo': etiq_periodo, 'es_rango': _es_rango,
+                'año_base': año_base, 'año_comp': año_comp,
+                'costo_b': costo_b, 'area_b': area_b, 'ciclos_b': ciclos_b, 'int_b': int_b,
+                'vuelo_b': vuelo_b, 'insumos_b': insumos_b,
+                'costo_a': 0 if _es_rango else costo_a,
+                'delta_pct': 0 if _es_rango else delta_pct,
+                'area_a': 0 if _es_rango else area_a,
+                'var_area': 0 if _es_rango else var_area,
+                'ciclos_a': 0 if _es_rango else ciclos_a,
+                'int_a': 0 if _es_rango else int_a,
+                'vuelo_a': 0 if _es_rango else vuelo_a,
+                'insumos_a': 0 if _es_rango else insumos_a,
+            }
+            html_n1 += generar_analisis_interpretativo(_ctx)
             try: html_n1 += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
             except Exception: pass
             try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
