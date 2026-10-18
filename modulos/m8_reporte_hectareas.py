@@ -119,7 +119,19 @@ def df_a_html_radar(df):
             else:
                 d[c] = d[c].apply(lambda v: formato_latino(v, 0))
     return d.to_html(index=False, escape=True, classes="tabla-radar")
-
+def df_a_html_texto(df, decimales=2, cols_moneda=None):
+    """Formatea números en estilo latino (sin perder AÑO ni índices) y devuelve tabla HTML."""
+    if df is None or df.empty: return "<p>No hay datos para mostrar en esta sección.</p>"
+    d = df.copy()
+    d.columns.name = None
+    cols_moneda = cols_moneda or []
+    for c in d.columns:
+        if str(c).upper() in ("AÑO", "ANO"):
+            d[c] = d[c].astype(str)
+        elif pd.api.types.is_numeric_dtype(d[c]):
+            if c in cols_moneda: d[c] = d[c].apply(lambda v: f"$ {formato_latino(v, 0)}")
+            else: d[c] = d[c].apply(lambda v: formato_latino(v, decimales))
+    return df_a_html_radar(d.astype(str))
 def generar_informe_html_radar(titulo, contenido_html):
     """Envuelve el contenido en un HTML autocontenido con diseño VIP."""
     return f"""
@@ -699,15 +711,28 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                             use_container_width=True
                         )
                         
+                        fig_tarifas = None
                         try:
                             df_melt = df_export_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_seleccionados, var_name='AÑO', value_name='TARIFA')
                             df_melt['TARIFA'] = pd.to_numeric(df_melt['TARIFA'], errors='coerce').fillna(0)
                             df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
-                            
                             fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
                             fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
                             st.plotly_chart(fig_tarifas, use_container_width=True)
                         except Exception: pass
+
+                        # ✅ CHECK + DESCARGA HTML
+                        inc_graf_t = st.checkbox("✅ Incluir curva de inflación en el informe HTML", value=True, key="chk_html_tarifas_graf")
+                        html_t = f"<h2>🏦 Matriz de Tarifas Maestras Autorizadas</h2><p>Años: {', '.join(map(str, anios_seleccionados))}</p>"
+                        html_t += df_a_html_texto(df_export_t, 0, cols_moneda=anios_seleccionados)
+                        if inc_graf_t and fig_tarifas is not None:
+                            html_t += f"<div class='chart-container'>{fig_tarifas.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                        st.download_button(
+                            label="🌐 DESCARGAR TARIFARIO EN HTML",
+                            data=generar_informe_html_radar("Matriz de Tarifas Maestras", html_t),
+                            file_name=f"Tarifario_Oficial_{datetime.now().strftime('%Y%m%d')}.html",
+                            mime="text/html", type="primary", use_container_width=True, key="dl_html_tarifas"
+                        )
                 else:
                     st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
             
@@ -799,12 +824,29 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
+                # ✅ CHECKS + DESCARGA HTML
+                ch1, ch2 = st.columns(2)
+                inc_mes_html = ch1.checkbox("✅ Incluir desglose mensual en el HTML", value=True, key="chk_html_macro_mes")
+                inc_graf_html = ch2.checkbox("✅ Incluir gráfica histórica en el HTML", value=True, key="chk_html_macro_graf")
 
+                html_m = f"<p><strong>Período analizado:</strong> {rango_txt_macro}</p>"
+                html_m += "<h2>📅 Evolución Anual de Hectáreas por Base</h2>" + df_a_html_texto(pivot_anual.reset_index(), 2)
+                if inc_graf_html:
+                    html_m += f"<div class='chart-container'>{fig_macro.to_html(full_html=False, include_plotlyjs=False)}</div>"
+                if inc_mes_html:
+                    html_m += "<h2>📆 Desglose Detallado: Año y Mes</h2>" + df_a_html_texto(pivot_mes.reset_index(), 2)
+
+                st.download_button(
+                    label="🌐 DESCARGAR HISTÓRICO MACRO EN HTML",
+                    data=generar_informe_html_radar("Reporte Macro-Histórico", html_m),
+                    file_name=f"Reporte_Macro_{fecha_macro_ini.strftime('%Y%m%d')}_{fecha_macro_fin.strftime('%Y%m%d')}.html",
+                    mime="text/html", type="primary", use_container_width=True, key="dl_html_macro"
+                )
         # ---------------------------------------------------------
         # 📊 MODO 3: DASHBOARD OPERATIVO Y FINANCIERO ESTÁNDAR
         # ---------------------------------------------------------
         else:
-            artefactos = {}  # 👈 AGREGAR ESTA LÍNEA AQUÍ
+            artefactos = {'secciones_html': []}
             
             c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
             vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
@@ -900,6 +942,16 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         lbl_dinero = "FACTURACIÓN PROYECTADA ($)"
                         color_borde = "#e67e22" 
                         titulo_panel = "🛸 Drones (MODO SIMULACIÓN)"
+                        inc_sim_html = st.checkbox("✅ Incluir simulación en el informe HTML", value=True, key="chk_html_simulador")
+                        if inc_sim_html:
+                            artefactos['secciones_html'].append(
+                                "<h3>🔮 Simulador de Proyección (Drones)</h3>"
+                                f"<p>Aumento proyectado: <strong>+{pct_aumento}%</strong></p>"
+                                "<table class='tabla-radar'><tr><th>Concepto</th><th>Actual</th><th>Proyectado</th></tr>"
+                                f"<tr><td>Hectáreas</td><td>{formato_latino(ha_drones, 1)} ha</td><td>{formato_latino(ha_drones_final, 1)} ha</td></tr>"
+                                f"<tr><td>Facturación ($)</td><td>$ {formato_latino(costo_tot_drones, 0)}</td><td>$ {formato_latino(costo_tot_drones_final, 0)}</td></tr>"
+                                f"<tr><td>Tarifa promedio ($/ha)</td><td colspan='2'>$ {formato_latino(prom_costo_dr, 0)}</td></tr></table>"
+                            )                      
                     else:
                         ha_drones_final = ha_drones
                         costo_tot_drones_final = costo_tot_drones
@@ -1028,6 +1080,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     st.markdown("##### 🌾 Matriz Ejecutiva: Hectáreas por Base y Tipo de Cliente")
                     
                     vista_matriz = st.radio("SELECCIONA EL NIVEL DE DETALLE:", ["🌎 General (Consolidado)", "📅 Detallado por Mes"], horizontal=True)
+                    inc_prod_html = st.checkbox("✅ Incluir matriz de clientes en el informe HTML", value=True, key="chk_html_productores")                  
                     
                     idx_pivot = [col_pista] if vista_matriz == "🌎 General (Consolidado)" else ['AÑO', 'MES_NMB', col_pista]
                     
@@ -1040,6 +1093,12 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                             matriz_prod.loc['TOTAL HISTÓRICO'] = matriz_prod.sum(axis=0)
                             
                         st.dataframe(matriz_prod.style.format("{:,.2f}".format).background_gradient(cmap="Greens", axis=None), use_container_width=True)
+                        if inc_prod_html:
+                            nivel_txt = "General (Consolidado)" if vista_matriz.startswith("🌎") else "Detallado por Mes"
+                            mp_html = matriz_prod.reset_index()
+                            artefactos['secciones_html'].append(
+                                f"<h3>🌾 Matriz de Clientes: Hectáreas por Base y Tipo de Cliente ({nivel_txt})</h3>" + df_a_html_texto(mp_html, 2)
+                            )                      
                     else:
                         st.info("⚠️ No hay datos clasificados para mostrar en este rango de fechas.")
           
@@ -1203,13 +1262,18 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     st.markdown("##### 🛩️ Desglose Operativo Puro")
                     st.caption("Perfecto para compartir: Muestra rendimiento físico de las aeronaves ocultando las tarifas monetarias.")
                     st.dataframe(df_operativo.style.apply(aplicar_estilos_originales, axis=1).format(fmt_op), use_container_width=True, hide_index=True)
+                    inc_op_html = st.checkbox("✅ Incluir consolidado OPERATIVO en el informe HTML", value=True, key="chk_html_op")
                     
                 with tab_fin:
                     st.markdown("##### 💰 Desglose Financiero Confidencial")
                     st.caption("Uso gerencial: Muestra el impacto en pesos facturados por cada base y matrícula.")
                     st.dataframe(df_financiero.style.apply(aplicar_estilos_originales, axis=1).format(fmt_fin), use_container_width=True, hide_index=True)
+                    inc_fin_html = st.checkbox("✅ Incluir consolidado FINANCIERO en el informe HTML", value=True, key="chk_html_fin")
+
                 artefactos['df_operativo'] = df_operativo
                 artefactos['df_financiero'] = df_financiero
+                artefactos['inc_op'] = inc_op_html
+                artefactos['inc_fin'] = inc_fin_html
             else:
                 matriz = pd.pivot_table(df_filt, values='AREA_NUM', index=['AÑO', 'MES_NMB'], columns='PISTA', aggfunc='sum', fill_value=0)
                 matriz['TOTAL'] = matriz.sum(axis=1)
@@ -1261,16 +1325,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 if 'df_hk' in artefactos: html_radar += f"<h3>Ranking de Aeronaves</h3>{df_a_html_radar(artefactos['df_hk'])}"
                 
             elif vista_seleccionada == "📊 Resumen Gerencial":
-                html_radar += "<h3>🛩️ Consolidado Operativo</h3>"
-                if 'df_operativo' in artefactos: html_radar += df_a_html_radar(artefactos['df_operativo'])
-                html_radar += "<h3>💰 Consolidado Financiero</h3>"
-                if 'df_financiero' in artefactos: html_radar += df_a_html_radar(artefactos['df_financiero'])
+                if artefactos.get('inc_op') and 'df_operativo' in artefactos:
+                    html_radar += "<h3>🛩️ Consolidado Operativo</h3>" + df_a_html_radar(artefactos['df_operativo'])
+                if artefactos.get('inc_fin') and 'df_financiero' in artefactos:
+                    html_radar += "<h3>💰 Consolidado Financiero</h3>" + df_a_html_radar(artefactos['df_financiero'])
                 
             elif vista_seleccionada == "📅 Mapa Semanal":
                 html_radar += "<h3>📅 Evolución de Hectáreas por Año y Mes</h3>"
-                if 'df_mapa' in artefactos: html_radar += df_a_html_radar(artefactos['df_mapa'])
-                
-            html_final_radar = generar_informe_html_radar(f"Informe Ejecutivo - {vista_seleccionada}", html_radar)
+                if 'df_mapa' in artefactos:
+                    html_radar += df_a_html_texto(artefactos['df_mapa'].reset_index(), 2)
+
+            # 🔌 SECCIONES OPCIONALES (interruptores con check activado)
+            for seccion in artefactos.get('secciones_html', []):
+                html_radar += seccion
             
             with c_btn3:
                 st.download_button(
