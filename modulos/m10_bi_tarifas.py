@@ -209,6 +209,9 @@ def generar_informe_html(titulo, contenido_html):
             .success-box {{ background: #f0fff4; color: #22543d; padding: 15px 20px; border-radius: 8px; border-left: 6px solid #38a169; margin: 15px 0; }}
             .info-box {{ background: #ebf8ff; color: #2a4365; padding: 15px 20px; border-radius: 8px; border-left: 6px solid #3182ce; margin: 15px 0; }}
             .section-intro {{ color: #4a5568; font-size: 13px; font-style: italic; margin: 10px 0; }}
+            * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+            @media print {{ body {{ margin: 15px; background: white; }} .chart-container, .kpi-card, table {{ page-break-inside: avoid; }} }}            
+            
         </style>
     </head>
     <body>
@@ -217,6 +220,20 @@ def generar_informe_html(titulo, contenido_html):
         {contenido_html}
     </body>
     </html>
+def df_a_html(df):
+    d = df.copy()
+    for c in d.columns:
+        if pd.api.types.is_numeric_dtype(d[c]):
+            n = str(c).upper()
+            if any(k in n for k in ("COSTO", "P. PROM", "TARIFA", "VARIACIÓN", "($)")):
+                d[c] = d[c].apply(lambda v: f"$ {formato_latino(v, 0)}")
+            elif "SEMANA" in n:
+                d[c] = d[c].apply(lambda v: str(int(v)) if pd.notna(v) else "")
+            elif "DOSIS" in n:
+                d[c] = d[c].apply(lambda v: formato_latino(v, 3))
+            else:
+                d[c] = d[c].apply(lambda v: formato_latino(v, 2))
+return d.to_html(index=False, escape=True)
     """
 def generar_analisis_interpretativo(ctx):
     """Genera narrativa interpretativa en texto limpio (Markdown) para ser editada."""
@@ -288,13 +305,14 @@ def generar_analisis_interpretativo(ctx):
         elif dif_vuelo < 0 and dif_insumos < 0:
             h.append("✅ Ambos componentes bajaron: la mejora viene tanto del vuelo como de los insumos.\n")
         else:
-            h.append("")
+            h.append("🚨 4. ALERTAS Y RECOMENDACIONES:")
         al = []
+        
         if delta_pct > 10: al.append("- 🚨 CRÍTICO: Costo subió {:.1f}%, superando el umbral del 10%. Acción inmediata: auditar tarifas, revisar contratos y evaluar sustituciones.".format(delta_pct))
         elif delta_pct > 5: al.append("- ⚠️ ATENCIÓN: Costo subió {:.1f}%. Rango moderado pero suficiente para revisar eficiencia operativa.".format(delta_pct))
         elif delta_pct < -5: al.append("- ✅ LOGRO: Reducción del {:.1f}%. Documentar prácticas que generaron la eficiencia para replicarlas.".format(abs(delta_pct)))
         
-        if var_area < -15: al.append("- 📉 VOLUMEN: Área tratada cayó {:.1f}%. Verificar si hay actividades pendientes o contracción real.".format(abs(var_area))
+        if var_area < -15: al.append("- 📉 VOLUMEN: Área tratada cayó {:.1f}%. Verificar si hay actividades pendientes o contracción real.".format(abs(var_area)))
         if ciclos_b < ciclos_a and int_b > int_a and int_a > 0: al.append("- 🔄 FRECUENCIA: Menos ciclos e intervalos más largos. Validar que no comprometa control fitosanitario.")
         
         if not al: al.append("- ✅ Sin alertas críticas detectadas. Los indicadores están dentro de rangos esperados.")
@@ -508,8 +526,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     DORADO = '#d4af37'         
 
     st.markdown(f"""
-            * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-            @media print {{ body {{ margin: 15px; background: white; }} .chart-container, .kpi-card, table {{ page-break-inside: avoid; }} }}    
+                
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
@@ -746,8 +763,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros)
-            if df_rango.empty or 'COSTO_NUM' not in df_rango.columns: return 0.0        
         def calcular_costo_ponderado(df_rango):
+            if df_rango.empty or 'COSTO_NUM' not in df_rango.columns: return 0.0
             df_valido = df_rango[df_rango['COSTO_NUM'] > 0]
             if df_valido.empty or df_valido['AREA_NUM'].sum() == 0: return 0.0
             return (df_valido['COSTO_NUM'] * df_valido['AREA_NUM']).sum() / df_valido['AREA_NUM'].sum()
@@ -1116,11 +1133,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             except Exception: pass
             try: html_n1_graficos += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
             except Exception: pass
-            try: html_n1_graficos += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{df_a_html(tabla_autopsia)}"
+            try: html_n1_graficos += f"<h3>Desglose Operativo</h3>{df_a_html(df_vista)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{df_a_html(tabla_autopsia)}"
             except Exception: pass
             
           
-            st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
         if tipo_periodo != "RANGO PERSONALIZADO":            
             col_t_n2, col_c_n2 = st.columns([2.5, 1.5])
             col_t_n2.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
@@ -1496,20 +1513,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if chk_sim and not html_sim: st.warning("📑 Marcaste el Simulador, pero aún no has presionado EJECUTAR SIMULACIÓN.")
             contenido_completo = html_n1 + html_n2 + html_n3 + html_sim
             html_final = generar_informe_html(f"Informe Inteligencia Estratégica BI - {finca_sel}", contenido_completo)
-def df_a_html(df):
-    d = df.copy()
-    for c in d.columns:
-        if pd.api.types.is_numeric_dtype(d[c]):
-            n = str(c).upper()
-            if any(k in n for k in ("COSTO", "P. PROM", "TARIFA", "VARIACIÓN", "($)")):
-                d[c] = d[c].apply(lambda v: f"$ {formato_latino(v, 0)}")
-            elif "SEMANA" in n:
-                d[c] = d[c].apply(lambda v: str(int(v)) if pd.notna(v) else "")
-            elif "DOSIS" in n:
-                d[c] = d[c].apply(lambda v: formato_latino(v, 3))
-            else:
-                d[c] = d[c].apply(lambda v: formato_latino(v, 2))
-    return d.to_html(index=False, escape=True)            
+            
             with c_btn2:
                 st.download_button(
                     label="📄 DESCARGAR INFORME EJECUTIVO (HTML / PDF)",
