@@ -1299,6 +1299,71 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             # =========================================================
             # BLOQUE DE EXPORTACIÓN A EXCEL (MANTENIDO TAL CUAL)
             # =========================================================
+            st.markdown("---")
+            st.markdown("### 📥 GENERADOR DE REPORTES (EXCEL / HTML EJECUTIVO)")
+            
+            # 1. GENERACIÓN DEL CEREBRO SEGÚN LA VISTA (LLAVE DE MEMORIA ÚNICA)
+            llave_memoria = f"cerebro_radar_{vista_seleccionada}_{fecha_sel_ini}_{fecha_sel_fin}_{','.join(pistas_sel)}"
+            
+            if llave_memoria not in st.session_state:
+                ctx_radar = {'vista': vista_seleccionada}
+                if vista_seleccionada == "📈 Dashboard Ejecutivo": ctx_radar.update(artefactos.get('ctx_dashboard', {}))
+                st.session_state[llave_memoria] = generar_analisis_interpretativo_radar(ctx_radar)
+                
+            st.markdown("#### ✍️ Edita el Análisis Interpretativo (Cerebro)")
+            st.caption("Puedes modificar, borrar o añadir texto libremente. Recuerda GUARDAR antes de descargar.")
+            texto_radar = st.text_area(
+                label="Editor del Cerebro Radar", value=st.session_state[llave_memoria],
+                height=200, label_visibility="collapsed", key=f"txt_radar_{llave_memoria}"
+            )
+            
+            # 2. BOTONES EN PARALELO (GUARDAR, EXCEL, HTML)
+            c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1.2])
+            
+            with c_btn1:
+                if st.button("💾 GUARDAR TEXTO", type="secondary", use_container_width=True):
+                    st.session_state[llave_memoria] = texto_radar
+                    st.success("✅ Texto guardado.")
+            
+            # 3. PREPARAR EL HTML FINAL
+            html_radar = f"<h2>Análisis Gerencial - {vista_seleccionada}</h2>"
+            html_radar += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{html_lib.escape(st.session_state[llave_memoria]).replace(chr(10), '<br>')}</div>"
+            
+            if vista_seleccionada == "📈 Dashboard Ejecutivo":
+                html_radar += "<h3>📌 Indicadores Clave (KPIs)</h3><div class='kpi-container'>"
+                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{formato_latino(total_ha, 1)} ha</p></div>"
+                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Total Misiones</p><p class='kpi-value'>{total_vuelos:,.0f}</p></div>"
+                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Facturación Total</p><p class='kpi-value'>$ {formato_latino(costo_tot_aviones + costo_tot_drones, 0)}</p></div>"
+                html_radar += "</div>"
+                
+                if 'fig_pie' in artefactos: html_radar += f"<div class='chart-container'>{artefactos['fig_pie'].to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+                if 'fig_bar' in artefactos: html_radar += f"<div class='chart-container'>{artefactos['fig_bar'].to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+                if 'df_dash' in artefactos: html_radar += f"<h3>Desglose por Base Operativa</h3>{df_a_html_radar(artefactos['df_dash'])}"
+                if 'df_hk' in artefactos: html_radar += f"<h3>Ranking de Aeronaves</h3>{df_a_html_radar(artefactos['df_hk'])}"
+                
+            elif vista_seleccionada == "📊 Resumen Gerencial":
+                html_radar += "<h3>🛩️ Consolidado Operativo</h3>"
+                if 'df_operativo' in artefactos: html_radar += df_a_html_radar(artefactos['df_operativo'])
+                html_radar += "<h3>💰 Consolidado Financiero</h3>"
+                if 'df_financiero' in artefactos: html_radar += df_a_html_radar(artefactos['df_financiero'])
+                
+            elif vista_seleccionada == "📅 Mapa Semanal":
+                html_radar += "<h3>📅 Evolución de Hectáreas por Año y Mes</h3>"
+                if 'df_mapa' in artefactos: html_radar += df_a_html_radar(artefactos['df_mapa'])
+                
+            html_final_radar = generar_informe_html_radar(f"Informe Ejecutivo - {vista_seleccionada}", html_radar)
+            
+            with c_btn3:
+                st.download_button(
+                    label="🌐 DESCARGAR INFORME HTML",
+                    data=html_final_radar,
+                    file_name=f"Informe_Radar_{vista_seleccionada.replace(' ','_')}_{fecha_sel_ini.strftime('%Y%m%d')}.html",
+                    mime="text/html", type="primary", use_container_width=True
+                )
+
+            # =========================================================
+            # BLOQUE DE EXPORTACIÓN A EXCEL (MANTENIDO TAL CUAL)
+            # =========================================================
             buffer_rep = io.BytesIO()
             rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
             
@@ -1549,11 +1614,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 )
 
     except Exception as e:
-        logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
-        st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
-
-if __name__ == "__main__":
-    pass
         logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
         st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
 
