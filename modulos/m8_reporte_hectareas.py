@@ -972,7 +972,18 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     margin=dict(t=50, b=50, l=40, r=40), 
                     height=400
                 )
-                g2.plotly_chart(fig_bar, use_container_width=True)
+                # 1. PRIMERO CALCULAMOS df_hk (Antes de usarlo)
+                df_hk = df_filt.groupby(['HK']).agg(
+                    MISIONES=('HK', 'count'),
+                    HECTAREAS=('AREA_NUM', 'sum'),
+                    COSTO_TOTAL=('COSTO_NUM', 'sum'),
+                    HA_CON_COSTO=('HA_CON_COSTO', 'sum')
+                ).reset_index()
+                
+                df_hk['TARIFA_PROM'] = np.where(df_hk['HA_CON_COSTO'] > 0, df_hk['COSTO_TOTAL'] / df_hk['HA_CON_COSTO'], 0)
+                df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False).reset_index(drop=True)
+
+                # 2. GUARDAMOS ARTEFACTOS PARA EL HTML
                 artefactos['fig_pie'] = fig_pie
                 artefactos['fig_bar'] = fig_bar
                 artefactos['df_dash'] = df_dash
@@ -989,50 +1000,21 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     'costo_dr': costo_tot_drones, 'ha_dr': ha_drones,
                     'top_hk': df_hk
                 }
-                # =========================================================
-                # 💎 REDISEÑO VIP DEL RANKING DE AERONAVES (TABLA EJECUTIVA)
-                # =========================================================
+
+                # 3. MOSTRAMOS EL RANKING EN PANTALLA
                 st.markdown("---")
                 st.markdown("##### 🏆 Ranking: Impacto de Costos por Aeronave (Facturación a la Empresa)")
                 
-                df_hk = df_filt.groupby(['HK']).agg(
-                    MISIONES=('HK', 'count'),
-                    HECTAREAS=('AREA_NUM', 'sum'),
-                    COSTO_TOTAL=('COSTO_NUM', 'sum'),
-                    HA_CON_COSTO=('HA_CON_COSTO', 'sum')
-                ).reset_index()
-                
-                df_hk['TARIFA_PROM'] = np.where(df_hk['HA_CON_COSTO'] > 0, df_hk['COSTO_TOTAL'] / df_hk['HA_CON_COSTO'], 0)
-                df_hk = df_hk.sort_values('COSTO_TOTAL', ascending=False).reset_index(drop=True)
-                
-                # Renderizado con encabezados limpios y formatters nativos de Streamlit
                 st.dataframe(
                     df_hk[['HK', 'MISIONES', 'HECTAREAS', 'COSTO_TOTAL', 'TARIFA_PROM']],
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "HK": st.column_config.TextColumn(
-                            "🛩️ MATRÍCULA / HK",
-                            help="Matrícula o identificador único de la aeronave o dron"
-                        ),
-                        "MISIONES": st.column_config.NumberColumn(
-                            "🛰️ MISIONES",
-                            format="%d"
-                        ),
-                        "HECTAREAS": st.column_config.NumberColumn(
-                            "🗺️ HECTÁREAS NETAS",
-                            format="%.2f ha"
-                        ),
-                        "COSTO_TOTAL": st.column_config.ProgressColumn(
-                            "💰 FACTURACIÓN TOTAL ($)",
-                            format="$ %,.0f",
-                            min_value=0,
-                            max_value=float(df_hk['COSTO_TOTAL'].max()) if not df_hk.empty else 100
-                        ),
-                        "TARIFA_PROM": st.column_config.NumberColumn(
-                            "📊 TARIFA PROM. ($/HA)",
-                            format="$ %,.0f"
-                        )
+                        "HK": st.column_config.TextColumn("🛩️ MATRÍCULA / HK", help="Matrícula o identificador único de la aeronave o dron"),
+                        "MISIONES": st.column_config.NumberColumn("🛰️ MISIONES", format="%d"),
+                        "HECTAREAS": st.column_config.NumberColumn("🗺️ HECTÁREAS NETAS", format="%.2f ha"),
+                        "COSTO_TOTAL": st.column_config.ProgressColumn("💰 FACTURACIÓN TOTAL ($)", format="$ %,.0f", min_value=0, max_value=float(df_hk['COSTO_TOTAL'].max()) if not df_hk.empty else 100),
+                        "TARIFA_PROM": st.column_config.NumberColumn("📊 TARIFA PROM. ($/HA)", format="$ %,.0f")
                     }
                 )
                 # =========================================================
@@ -1299,72 +1281,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 )
 
             # =========================================================
-            # BLOQUE DE EXPORTACIÓN A EXCEL (MANTENIDO TAL CUAL)
-            # =========================================================
-            st.markdown("---")
-            st.markdown("### 📥 GENERADOR DE REPORTES (EXCEL / HTML EJECUTIVO)")
-            
-            # 1. GENERACIÓN DEL CEREBRO SEGÚN LA VISTA (LLAVE DE MEMORIA ÚNICA)
-            llave_memoria = f"cerebro_radar_{vista_seleccionada}_{fecha_sel_ini}_{fecha_sel_fin}_{','.join(pistas_sel)}"
-            
-            if llave_memoria not in st.session_state:
-                ctx_radar = {'vista': vista_seleccionada}
-                if vista_seleccionada == "📈 Dashboard Ejecutivo": ctx_radar.update(artefactos.get('ctx_dashboard', {}))
-                st.session_state[llave_memoria] = generar_analisis_interpretativo_radar(ctx_radar)
-                
-            st.markdown("#### ✍️ Edita el Análisis Interpretativo (Cerebro)")
-            st.caption("Puedes modificar, borrar o añadir texto libremente. Recuerda GUARDAR antes de descargar.")
-            texto_radar = st.text_area(
-                label="Editor del Cerebro Radar", value=st.session_state[llave_memoria],
-                height=200, label_visibility="collapsed", key=f"txt_radar_{llave_memoria}"
-            )
-            
-            # 2. BOTONES EN PARALELO (GUARDAR, EXCEL, HTML)
-            c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1.2])
-            
-            with c_btn1:
-                if st.button("💾 GUARDAR TEXTO", type="secondary", use_container_width=True):
-                    st.session_state[llave_memoria] = texto_radar
-                    st.success("✅ Texto guardado.")
-            
-            # 3. PREPARAR EL HTML FINAL
-            html_radar = f"<h2>Análisis Gerencial - {vista_seleccionada}</h2>"
-            html_radar += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{html_lib.escape(st.session_state[llave_memoria]).replace(chr(10), '<br>')}</div>"
-            
-            if vista_seleccionada == "📈 Dashboard Ejecutivo":
-                html_radar += "<h3>📌 Indicadores Clave (KPIs)</h3><div class='kpi-container'>"
-                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{formato_latino(total_ha, 1)} ha</p></div>"
-                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Total Misiones</p><p class='kpi-value'>{total_vuelos:,.0f}</p></div>"
-                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Facturación Total</p><p class='kpi-value'>$ {formato_latino(costo_tot_aviones + costo_tot_drones, 0)}</p></div>"
-                html_radar += "</div>"
-                
-                if 'fig_pie' in artefactos: html_radar += f"<div class='chart-container'>{artefactos['fig_pie'].to_html(full_html=False, include_plotlyjs='cdn')}</div>"
-                if 'fig_bar' in artefactos: html_radar += f"<div class='chart-container'>{artefactos['fig_bar'].to_html(full_html=False, include_plotlyjs='cdn')}</div>"
-                if 'df_dash' in artefactos: html_radar += f"<h3>Desglose por Base Operativa</h3>{df_a_html_radar(artefactos['df_dash'])}"
-                if 'df_hk' in artefactos: html_radar += f"<h3>Ranking de Aeronaves</h3>{df_a_html_radar(artefactos['df_hk'])}"
-                
-            elif vista_seleccionada == "📊 Resumen Gerencial":
-                html_radar += "<h3>🛩️ Consolidado Operativo</h3>"
-                if 'df_operativo' in artefactos: html_radar += df_a_html_radar(artefactos['df_operativo'])
-                html_radar += "<h3>💰 Consolidado Financiero</h3>"
-                if 'df_financiero' in artefactos: html_radar += df_a_html_radar(artefactos['df_financiero'])
-                
-            elif vista_seleccionada == "📅 Mapa Semanal":
-                html_radar += "<h3>📅 Evolución de Hectáreas por Año y Mes</h3>"
-                if 'df_mapa' in artefactos: html_radar += df_a_html_radar(artefactos['df_mapa'])
-                
-            html_final_radar = generar_informe_html_radar(f"Informe Ejecutivo - {vista_seleccionada}", html_radar)
-            
-            with c_btn3:
-                st.download_button(
-                    label="🌐 DESCARGAR INFORME HTML",
-                    data=html_final_radar,
-                    file_name=f"Informe_Radar_{vista_seleccionada.replace(' ','_')}_{fecha_sel_ini.strftime('%Y%m%d')}.html",
-                    mime="text/html", type="primary", use_container_width=True
-                )
-
-            # =========================================================
-            # BLOQUE DE EXPORTACIÓN A EXCEL (MANTENIDO TAL CUAL)
+            # BLOQUE DE EXPORTACIÓN A EXCEL
             # =========================================================
             buffer_rep = io.BytesIO()
             rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
@@ -1378,8 +1295,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 font_header = Font(color="FFFFFF", bold=True)
                 fill_tot = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
                 font_tot = Font(color="000000", bold=True)
-                borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"),
-                               top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
+                borde = Border(left=Side(style='thin', color="CCCCCC"), right=Side(style='thin', color="CCCCCC"), top=Side(style='thin', color="CCCCCC"), bottom=Side(style='thin', color="CCCCCC"))
                 align_center = Alignment(horizontal='center', vertical='center')
                 
                 ws['B2'] = "REPORTE GERENCIAL: RADAR DE HECTÁREAS, MISIONES Y COSTOS"
