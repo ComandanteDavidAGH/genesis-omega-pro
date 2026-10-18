@@ -237,8 +237,11 @@ def df_a_html(df):
             else:
                 d[c] = d[c].apply(lambda v: formato_latino(v, 2))
     return d.to_html(index=False, escape=True)
+
+def generar_analisis_interpretativo(ctx):
     """Genera narrativa interpretativa en texto limpio (Markdown) para ser editada."""
     h = []
+    finca, periodo = ctx.get('finca', 'N/A'), ctx.get('periodo', 'N/A')
     finca, periodo = ctx.get('finca', 'N/A'), ctx.get('periodo', 'N/A')
     es_rango = ctx.get('es_rango', False)
     
