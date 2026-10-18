@@ -10,6 +10,7 @@ import re
 import math
 import io
 import openpyxl
+import html as html_lib
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -212,7 +213,7 @@ def generar_informe_html(titulo, contenido_html):
     </head>
     <body>
         <h1>{titulo}</h1>
-        <p><strong>Generado el:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+        <p><strong>Generado el:</strong> {(datetime.utcnow() - pd.Timedelta(hours=5)).strftime('%d/%m/%Y %H:%M')}</p>
         {contenido_html}
     </body>
     </html>
@@ -247,7 +248,7 @@ def generar_analisis_interpretativo(ctx):
         if var_area > 5:
             h.append(f"Se observa una expansión operativa del {var_area:+.1f}%: la superficie tratada creció de {formato_latino(area_a, 1)} Ha a {formato_latino(area_b, 1)} Ha. El aumento del costo total puede estar influido por esta mayor actividad.\n")
         elif var_area < -5:
-            h.append(f"Se observa una contracción operativa del {var_area:.1f}%: la superficie tratada cayó de {formato_latino(area_a, 1)} Ha a {formato_latino(area_b, 1)} Ha. Verificar si responde a eficiencias de cobertura o a menores actividades programadas.\n")
+            h.append(f"Se observa una contracción operativa del {abs(var_area):.1f}%: la superficie tratada cayó de {formato_latino(area_a, 1)} Ha a {formato_latino(area_b, 1)} Ha. Verificar si responde a eficiencias de cobertura o a menores actividades programadas.\n")
         else:
             h.append(f"El volumen operativo se mantuvo estable ({var_area:+.1f}%): de {formato_latino(area_a, 1)} Ha a {formato_latino(area_b, 1)} Ha. Esto permite comparar costos con alta confiabilidad.\n")
 
@@ -270,31 +271,30 @@ def generar_analisis_interpretativo(ctx):
             else:
                 h.append("")
 
-        h.append("🧬 3. ATRIBUCIÓN DEL CAMBIO: ¿QUÉ ENCARECIÓ LA OPERACIÓN?")
+        h.append("🧬 3. ATRIBUCIÓN DEL CAMBIO: ¿QUÉ MOVIÓ EL COSTO POR HECTÁREA?")
         dif_vuelo, dif_insumos = vuelo_b - vuelo_a, insumos_b - insumos_a
-        h.append(f"- Costo Avión/Ha: pasó de $ {formato_latino(vuelo_a, 0)} a $ {formato_latino(vuelo_b, 0)} ({'+' if dif_vuelo >= 0 else ''}$ {formato_latino(dif_vuelo, 0)}).")
-        h.append(f"- Costo Insumos/Ha: pasó de $ {formato_latino(insumos_a, 0)} a $ {formato_latino(insumos_b, 0)} ({'+' if dif_insumos >= 0 else ''}$ {formato_latino(dif_insumos, 0)}).")
-        
-        total_dif = abs(dif_vuelo) + abs(dif_insumos)
-        if total_dif > 0 and (dif_vuelo > 0 or dif_insumos > 0):
-            pct_v = abs(dif_vuelo) / total_dif * 100
-            pct_i = abs(dif_insumos) / total_dif * 100
-            if dif_vuelo > dif_insumos and dif_vuelo > 0:
-                h.append(f"🎯 Impulsor principal del encarecimiento: el componente avión (combustible, mantenimiento, tarifas) aportó ≈ {pct_v:.0f}% de la variación. Revisar contratos de aerofumigación y consumo de combustible.\n")
-            elif dif_insumos > 0 and dif_insumos >= dif_vuelo:
-                h.append(f"🎯 Impulsor principal del encarecimiento: los insumos químicos aportaron ≈ {pct_i:.0f}% de la variación. Auditar precios de proveedores y evaluar sustituciones o renegociación.\n")
-            elif dif_vuelo < 0 and dif_insumos < 0:
-                h.append("✅ Origen de la eficiencia: ambos componentes contribuyeron positivamente a la reducción. Escenario ideal de mejora operativa y de compra.\n")
+        h.append(f"- Costo Vuelo/Ha (avión + dominical): pasó de $ {formato_latino(vuelo_a, 0)} a $ {formato_latino(vuelo_b, 0)} ({'+' if dif_vuelo >= 0 else '-'}$ {formato_latino(abs(dif_vuelo), 0)}).")
+        h.append(f"- Costo Insumos/Ha: pasó de $ {formato_latino(insumos_a, 0)} a $ {formato_latino(insumos_b, 0)} ({'+' if dif_insumos >= 0 else '-'}$ {formato_latino(abs(dif_insumos), 0)}).")
+        if dif_vuelo > 0 and dif_insumos > 0:
+            tot = dif_vuelo + dif_insumos
+            if dif_vuelo >= dif_insumos:
+                h.append(f"🎯 Ambos componentes subieron; el principal impulsor es el vuelo (≈ {dif_vuelo / tot * 100:.0f}% del aumento). Revisar tarifas y contratos de aerofumigación.\n")
+            else:
+                h.append(f"🎯 Ambos componentes subieron; el principal impulsor son los insumos (≈ {dif_insumos / tot * 100:.0f}% del aumento). Auditar precios de proveedores y evaluar renegociación.\n")
+        elif dif_vuelo > 0:
+            h.append("🎯 El encarecimiento proviene del vuelo (avión + dominical); los insumos bajaron y compensaron parcialmente.\n")
+        elif dif_insumos > 0:
+            h.append("🎯 El encarecimiento proviene de los insumos; el vuelo bajó y compensó parcialmente. Auditar precios de proveedores.\n")
+        elif dif_vuelo < 0 and dif_insumos < 0:
+            h.append("✅ Ambos componentes bajaron: la mejora viene tanto del vuelo como de los insumos.\n")
         else:
             h.append("")
-
-        h.append("🚨 4. ALERTAS Y RECOMENDACIONES:")
         al = []
-        if delta_pct > 15: al.append("- 🚨 CRÍTICO: Costo subió {:.1f}%, superando el umbral del 15%. Acción inmediata: auditar tarifas, revisar contratos y evaluar sustituciones.".format(delta_pct))
+        if delta_pct > 10: al.append("- 🚨 CRÍTICO: Costo subió {:.1f}%, superando el umbral del 10%. Acción inmediata: auditar tarifas, revisar contratos y evaluar sustituciones.".format(delta_pct))
         elif delta_pct > 5: al.append("- ⚠️ ATENCIÓN: Costo subió {:.1f}%. Rango moderado pero suficiente para revisar eficiencia operativa.".format(delta_pct))
         elif delta_pct < -5: al.append("- ✅ LOGRO: Reducción del {:.1f}%. Documentar prácticas que generaron la eficiencia para replicarlas.".format(abs(delta_pct)))
         
-        if var_area < -15: al.append("- 📉 VOLUMEN: Área tratada cayó {:.1f}%. Verificar si hay actividades pendientes o contracción real.".format(var_area))
+        if var_area < -15: al.append("- 📉 VOLUMEN: Área tratada cayó {:.1f}%. Verificar si hay actividades pendientes o contracción real.".format(abs(var_area))
         if ciclos_b < ciclos_a and int_b > int_a and int_a > 0: al.append("- 🔄 FRECUENCIA: Menos ciclos e intervalos más largos. Validar que no comprometa control fitosanitario.")
         
         if not al: al.append("- ✅ Sin alertas críticas detectadas. Los indicadores están dentro de rangos esperados.")
@@ -508,6 +508,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
     DORADO = '#d4af37'         
 
     st.markdown(f"""
+            * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+            @media print {{ body {{ margin: 15px; background: white; }} .chart-container, .kpi-card, table {{ page-break-inside: avoid; }} }}    
     <style>
     .titulo-principal {{ color: {VERDE_INTENSO}; border-bottom: 3px solid {DORADO}; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }}
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] {{ border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.08) !important; }}
@@ -744,6 +746,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
         # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros)
+            if df_rango.empty or 'COSTO_NUM' not in df_rango.columns: return 0.0        
         def calcular_costo_ponderado(df_rango):
             df_valido = df_rango[df_rango['COSTO_NUM'] > 0]
             if df_valido.empty or df_valido['AREA_NUM'].sum() == 0: return 0.0
@@ -1113,16 +1116,12 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             except Exception: pass
             try: html_n1_graficos += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
             except Exception: pass
-            try: html_n1_graficos += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{tabla_autopsia.to_html(index=False)}"
+            try: html_n1_graficos += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{df_a_html(tabla_autopsia)}"
             except Exception: pass
-            try: html_n1 += f"<div class='chart-container'><h3>Impacto Unitario</h3>{fig_unit.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
-            except Exception: pass
-            try: html_n1 += f"<div class='chart-container'><h3>Impacto Global</h3>{fig_glob.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
-            except Exception: pass
-            try: html_n1 += f"<h3>Desglose Operativo</h3>{df_vista.to_html(index=False)}" if 'df_vista' in locals() else f"<h3>Variación de Cócteles</h3>{tabla_autopsia.to_html(index=False)}"
-            except Exception: pass
+            
           
             st.markdown("<hr>", unsafe_allow_html=True)
+        if tipo_periodo != "RANGO PERSONALIZADO":            
             col_t_n2, col_c_n2 = st.columns([2.5, 1.5])
             col_t_n2.markdown("### 🔬 Nivel 2: Composición del Cóctel y Variación Real de Insumos")
             chk_n2 = col_c_n2.checkbox("📑 Añadir Nivel 2 al Informe Ejecutivo", key="chk_n2")
@@ -1180,7 +1179,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         html_n2 += f"<div class='kpi-container'>"
                         html_n2 += f"<div class='kpi-card'><p class='kpi-title'>Variación Económica Cóctel</p><p class='kpi-value'>$ {formato_latino(costo_total_b - costo_total_a, 0)}</p></div>"
                         html_n2 += f"</div>"
-                        try: html_n2 += f"<h3>Receta vs Año</h3>{df_vista_mol.to_html(index=False)}"
+                        try: html_n2 += f"<h3>Receta vs Año</h3>{df_a_html(df_vista_mol)}"
                         except Exception: pass
       
         # =====================================================================
@@ -1272,7 +1271,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             if 'insumo_filtrado' in locals() and insumo_filtrado == "📦 VER TODOS LOS INSUMOS (RESUMEN GLOBAL)":
                 try: html_n3 += f"<div class='chart-container'><h3>Top 15 Insumos</h3>{fig.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
                 except Exception: pass
-                try: html_n3 += f"<h3>Tabla de Consumo Estimado</h3>{df_log.to_html(index=False)}"
+                try: html_n3 += f"<h3>Tabla de Consumo Estimado</h3>{df_a_html(df_log)}"
                 except Exception: pass
             elif 'insumo_filtrado' in locals() and 'vol_formateado' in locals():
                 html_n3 += f"<div class='kpi-container'><div class='kpi-card'><p class='kpi-title'>Consumo: {insumo_filtrado}</p><p class='kpi-value'>{vol_formateado} (L/Kg)</p></div></div>"      
@@ -1428,16 +1427,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         st.markdown("<br>", unsafe_allow_html=True)
                         st.download_button(label="💾 DESCARGAR REPORTE DE SIMULACIÓN (EXCEL VIP)", data=buffer_sim.getvalue(), file_name=f"Simulacion_Tarifas_{sim_pista}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 # --- CAPTURA DE DATOS SIMULADOR PARA REPORTE ---
-                        if chk_sim:
+                        if matriz_simulacion:
                             html_sim += f"<h2>4. Simulador de Negociación Tarifaria ({sim_pista})</h2>"
                             html_sim += f"<div class='kpi-container'>"
                             html_sim += f"<div class='kpi-card'><p class='kpi-title'>Total Actual ({margen_actual}%)</p><p class='kpi-value'>$ {formato_latino(df_resultados['TOTAL ACTUAL ($)'].sum(), 0)}</p></div>"
                             html_sim += f"<div class='kpi-card'><p class='kpi-title'>Proyección ({margen_nuevo}%)</p><p class='kpi-value'>$ {formato_latino(df_resultados['NUEVO TOTAL ($)'].sum(), 0)}</p></div>"
                             html_sim += f"<div class='kpi-card'><p class='kpi-title'>Diferencia en Dinero Real</p><p class='kpi-value'>$ {formato_latino(df_resultados['DIFERENCIA ($)'].sum(), 0)}</p></div>"
                             html_sim += f"</div>"
-                            try: html_sim += f"<h3>Resumen Semanal de Proyección</h3>{df_semanal.to_html(index=False)}"
+                            try: html_sim += f"<h3>Resumen Semanal de Proyección</h3>{df_a_html(df_semanal)}"
                             except Exception: pass
-
+                            st.session_state['html_sim_cache'] = html_sim
         # =====================================================================
         # 📥 BOTÓN MAESTRO: EXPORTACIÓN DEL REPORTE CONSOLIDADO HTML/PDF
         # =====================================================================
@@ -1460,7 +1459,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 }
                 
                 _texto_cerebro_default = generar_analisis_interpretativo(_ctx)
-                llave_memoria = f"cerebro_guardado_{finca_sel}_{etiq_periodo.replace(' ', '_').replace('/', '_')}"
+                llave_memoria = f"cerebro_{finca_sel}_{modelo_sel}_{tipo_periodo}_{año_base}_{año_comp}_{etiq_periodo}".replace(' ', '_').replace('/', '_')
                 
                 if llave_memoria not in st.session_state:
                     st.session_state[llave_memoria] = _texto_cerebro_default
@@ -1487,15 +1486,30 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 # 🧠 ENSAMBLAJE FINAL (KPIs -> CEREBRO -> GRÁFICOS)
                 html_n1 = html_n1_kpis + "<h3>🧠 Interpretación Ejecutiva de los Resultados</h3>"
-                html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{texto_final_para_reporte.replace(chr(10), '<br>')}</div>"
+                html_n1 += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{html_lib.escape(texto_final_para_reporte).replace(chr(10), '<br>')}</div>"
                 html_n1 += html_n1_graficos
             else:
                 html_n1 = ""
                 c_btn2 = st.container()
-
+            html_sim = st.session_state.get('html_sim_cache', '') if chk_sim else ''
+            if chk_n2 and not html_n2: st.warning("📑 Marcaste el Nivel 2, pero falta elegir un cóctel arriba.")
+            if chk_sim and not html_sim: st.warning("📑 Marcaste el Simulador, pero aún no has presionado EJECUTAR SIMULACIÓN.")
             contenido_completo = html_n1 + html_n2 + html_n3 + html_sim
             html_final = generar_informe_html(f"Informe Inteligencia Estratégica BI - {finca_sel}", contenido_completo)
-            
+def df_a_html(df):
+    d = df.copy()
+    for c in d.columns:
+        if pd.api.types.is_numeric_dtype(d[c]):
+            n = str(c).upper()
+            if any(k in n for k in ("COSTO", "P. PROM", "TARIFA", "VARIACIÓN", "($)")):
+                d[c] = d[c].apply(lambda v: f"$ {formato_latino(v, 0)}")
+            elif "SEMANA" in n:
+                d[c] = d[c].apply(lambda v: str(int(v)) if pd.notna(v) else "")
+            elif "DOSIS" in n:
+                d[c] = d[c].apply(lambda v: formato_latino(v, 3))
+            else:
+                d[c] = d[c].apply(lambda v: formato_latino(v, 2))
+    return d.to_html(index=False, escape=True)            
             with c_btn2:
                 st.download_button(
                     label="📄 DESCARGAR INFORME EJECUTIVO (HTML / PDF)",
