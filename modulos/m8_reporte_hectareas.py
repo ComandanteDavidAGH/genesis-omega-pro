@@ -804,6 +804,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         # 📊 MODO 3: DASHBOARD OPERATIVO Y FINANCIERO ESTÁNDAR
         # ---------------------------------------------------------
         else:
+            artefactos = {}  # 👈 AGREGAR ESTA LÍNEA AQUÍ
+            
             c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
             vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
             
@@ -1614,10 +1616,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 )
 
     except Exception as e:
-        import traceback
         logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
-        st.error("🚨 Ocurrió un error interno generando el reporte.")
-        st.code(traceback.format_exc())
+        st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
 
 if __name__ == "__main__":
     pass
