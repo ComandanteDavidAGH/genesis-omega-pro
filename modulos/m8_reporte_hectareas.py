@@ -1614,8 +1614,10 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 )
 
     except Exception as e:
+        import traceback
         logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
-        st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
+        st.error("🚨 Ocurrió un error interno generando el reporte.")
+        st.code(traceback.format_exc())
 
 if __name__ == "__main__":
     pass
