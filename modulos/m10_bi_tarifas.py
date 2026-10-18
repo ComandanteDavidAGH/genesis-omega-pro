@@ -220,6 +220,9 @@ def generar_informe_html(titulo, contenido_html):
         {contenido_html}
     </body>
     </html>
+    
+    """
+
 def df_a_html(df):
     d = df.copy()
     for c in d.columns:
@@ -233,9 +236,7 @@ def df_a_html(df):
                 d[c] = d[c].apply(lambda v: formato_latino(v, 3))
             else:
                 d[c] = d[c].apply(lambda v: formato_latino(v, 2))
-return d.to_html(index=False, escape=True)
-    """
-def generar_analisis_interpretativo(ctx):
+    return d.to_html(index=False, escape=True)
     """Genera narrativa interpretativa en texto limpio (Markdown) para ser editada."""
     h = []
     finca, periodo = ctx.get('finca', 'N/A'), ctx.get('periodo', 'N/A')
@@ -305,9 +306,9 @@ def generar_analisis_interpretativo(ctx):
         elif dif_vuelo < 0 and dif_insumos < 0:
             h.append("✅ Ambos componentes bajaron: la mejora viene tanto del vuelo como de los insumos.\n")
         else:
-            h.append("🚨 4. ALERTAS Y RECOMENDACIONES:")
-        al = []
-        
+            h.append("")
+        h.append("🚨 4. ALERTAS Y RECOMENDACIONES:")
+        al = []        
         if delta_pct > 10: al.append("- 🚨 CRÍTICO: Costo subió {:.1f}%, superando el umbral del 10%. Acción inmediata: auditar tarifas, revisar contratos y evaluar sustituciones.".format(delta_pct))
         elif delta_pct > 5: al.append("- ⚠️ ATENCIÓN: Costo subió {:.1f}%. Rango moderado pero suficiente para revisar eficiencia operativa.".format(delta_pct))
         elif delta_pct < -5: al.append("- ✅ LOGRO: Reducción del {:.1f}%. Documentar prácticas que generaron la eficiencia para replicarlas.".format(abs(delta_pct)))
