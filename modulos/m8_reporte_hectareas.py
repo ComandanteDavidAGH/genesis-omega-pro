@@ -10,6 +10,7 @@ import re
 import math
 import io
 import openpyxl
+import html as html_lib
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
@@ -104,7 +105,103 @@ def limpiar_dinero(val):
 
 def fecha_fallback(val):
     return pd.to_datetime(val, errors='coerce', dayfirst=True)
+def df_a_html_radar(df):
+    """Convierte DataFrames a tablas HTML con formato corporativo."""
+    if df is None or df.empty: return "<p>No hay datos para mostrar en esta sección.</p>"
+    d = df.copy()
+    for c in d.columns:
+        if pd.api.types.is_numeric_dtype(d[c]):
+            n = str(c).upper()
+            if any(k in n for k in ("COSTO", "TARIFA", "($)")):
+                d[c] = d[c].apply(lambda v: f"$ {formato_latino(v, 0)}")
+            elif any(k in n for k in ("HECT", "HA", "REND")):
+                d[c] = d[c].apply(lambda v: formato_latino(v, 2))
+            else:
+                d[c] = d[c].apply(lambda v: formato_latino(v, 0))
+    return d.to_html(index=False, escape=True, classes="tabla-radar")
 
+def generar_informe_html_radar(titulo, contenido_html):
+    """Envuelve el contenido en un HTML autocontenido con diseño VIP."""
+    return f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>{titulo}</title>
+        <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+        <style>
+            body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8f9fa; color: #0d1b2a; margin: 40px; }}
+            h1 {{ color: #143521; border-bottom: 3px solid #d4af37; padding-bottom: 10px; text-transform: uppercase; font-size: 28px; }}
+            h2 {{ color: #1a365d; border-bottom: 2px solid #d4af37; padding-bottom: 5px; margin-top: 40px; font-size: 22px; }}
+            h3 {{ color: #333; margin-top: 20px; font-size: 18px; }}
+            .kpi-container {{ display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }}
+            .kpi-card {{ background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); color: white; padding: 20px; border-radius: 8px; border-left: 5px solid #d4af37; flex: 1; min-width: 200px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+            .kpi-title {{ font-size: 12px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin: 0 0 10px 0; }}
+            .kpi-value {{ font-size: 24px; font-weight: 900; margin: 0; }}
+            table.tabla-radar {{ width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; background: white; }}
+            .tabla-radar th, .tabla-radar td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; }}
+            .tabla-radar th {{ background-color: #0d1b2a; color: #d4af37; font-weight: bold; text-transform: uppercase; }}
+            .tabla-radar tr:nth-child(even) {{ background-color: #f1f5f9; }}
+            .chart-container {{ background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #e2e8f0; }}
+            @media print {{ body {{ margin: 15px; background: white; }} .chart-container, .kpi-card, table {{ page-break-inside: avoid; }} }}
+        </style>
+    </head>
+    <body>
+        <h1>{titulo}</h1>
+        <p><strong>Generado el:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+        {contenido_html}
+    </body>
+    </html>
+    """
+
+def generar_analisis_interpretativo_radar(ctx):
+    """Genera el texto del Cerebro para el Radar Operativo."""
+    h = []
+    vista = ctx.get('vista', 'Dashboard')
+    h.append(f"🧠 INTERPRETACIÓN EJECUTIVA: {vista.upper()}\n")
+    
+    if vista == "📈 Dashboard Ejecutivo":
+        t_ha = ctx.get('total_ha', 0)
+        t_vuelos = ctx.get('total_vuelos', 0)
+        c_av = ctx.get('costo_av', 0)
+        ha_av = ctx.get('ha_av', 0)
+        c_dr = ctx.get('costo_dr', 0)
+        ha_dr = ctx.get('ha_dr', 0)
+        
+        prom_av = c_av / ha_av if ha_av > 0 else 0
+        prom_dr = c_dr / ha_dr if ha_dr > 0 else 0
+        
+        h.append("📊 1. PANORAMA OPERATIVO GENERAL:")
+        h.append(f"En el período analizado, se ejecutaron {t_vuelos:,.0f} misiones, cubriendo un total de {formato_latino(t_ha, 1)} hectáreas.")
+        
+        h.append("⚔️ 2. BATALLA DE ESCUADRONES (AVIONES VS DRONES):")
+        h.append(f"- Flota de Aviones: Aportó {formato_latino(ha_av, 1)} ha a un costo promedio de $ {formato_latino(prom_av, 0)}/ha.")
+        h.append(f"- Flota de Drones: Aportó {formato_latino(ha_dr, 1)} ha a un costo promedio de $ {formato_latino(prom_dr, 0)}/ha.")
+        
+        if prom_dr > 0 and prom_av > 0:
+            if prom_dr < prom_av:
+                ahorro = prom_av - prom_dr
+                h.append(f"🎯 CONCLUSIÓN: Los Drones son más eficientes económicamente, generando un ahorro de $ {formato_latino(ahorro, 0)} por hectárea frente a los aviones. Se recomienda evaluar la expansión de la flota de drones para tareas de cobertura.")
+            elif prom_av < prom_dr:
+                h.append(f"⚠️ ALERTA: Los Aviones presentan una tarifa más rentable que los Drones. Se sugiere auditar los costos operativos de la flota de drones (mantenimiento, baterías, pilotos).")
+        
+        top_hk = ctx.get('top_hk', None)
+        if top_hk is not None and not top_hk.empty:
+            h.append("\n🏆 3. RANKING DE AERONAVES (TOP IMPACTO):")
+            top_1 = top_hk.iloc[0]
+            h.append(f"- La aeronave/equipo con mayor facturación es {top_1['HK']} con $ {formato_latino(top_1['COSTO_TOTAL'], 0)} acumulados.")
+            
+    elif vista == "📊 Resumen Gerencial":
+        h.append("📊 1. ANÁLISIS DE RENDIMIENTO Y COSTOS:")
+        h.append("El consolidado gerencial revela el comportamiento detallado por base y aeronave.")
+        h.append("- Sugerencia: Revise las bases con mayor tarifa promedio y analice si su rendimiento operativo (ha/hr) justifica el costo.")
+        
+    elif vista == "📅 Mapa Semanal":
+        h.append("📊 1. COMPORTAMIENTO CRONOLÓGICO:")
+        h.append("El mapa mensual muestra la estacionalidad y los picos de demanda operativa.")
+        h.append("- Sugerencia: Alinee la disponibilidad de la flota y los inventarios de insumos con los meses de mayor volumen de hectáreas para optimizar recursos.")
+        
+    h.append("\n💡 Nota: Análisis generado automáticamente por el Cerebro BI. Valide las recomendaciones con el equipo técnico antes de ejecutar cambios.")
+    return "\n".join(h)
 # =================================================================
 # ⚙️ BLOQUE 2: MOTORES DE CONEXIÓN UNIFICADOS (MODO BLINDADO)
 # =================================================================
@@ -874,7 +971,22 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     height=400
                 )
                 g2.plotly_chart(fig_bar, use_container_width=True)
-
+                artefactos['fig_pie'] = fig_pie
+                artefactos['fig_bar'] = fig_bar
+                artefactos['df_dash'] = df_dash
+                
+                df_hk_html = df_hk.copy()
+                if not df_hk_html.empty:
+                    df_hk_html['TARIFA_PROM'] = df_hk_html['TARIFA_PROM'].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                    df_hk_html['COSTO_TOTAL'] = df_hk_html['COSTO_TOTAL'].apply(lambda x: f"$ {formato_latino(x, 0)}")
+                artefactos['df_hk'] = df_hk_html
+                
+                artefactos['ctx_dashboard'] = {
+                    'total_ha': total_ha, 'total_vuelos': total_vuelos,
+                    'costo_av': costo_tot_aviones, 'ha_av': ha_aviones,
+                    'costo_dr': costo_tot_drones, 'ha_dr': ha_drones,
+                    'top_hk': df_hk
+                }
                 # =========================================================
                 # 💎 REDISEÑO VIP DEL RANKING DE AERONAVES (TABLA EJECUTIVA)
                 # =========================================================
@@ -1112,7 +1224,8 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     st.markdown("##### 💰 Desglose Financiero Confidencial")
                     st.caption("Uso gerencial: Muestra el impacto en pesos facturados por cada base y matrícula.")
                     st.dataframe(df_financiero.style.apply(aplicar_estilos_originales, axis=1).format(fmt_fin), use_container_width=True, hide_index=True)
-
+                artefactos['df_operativo'] = df_operativo
+                artefactos['df_financiero'] = df_financiero
             else:
                 matriz = pd.pivot_table(df_filt, values='AREA_NUM', index=['AÑO', 'MES_NMB'], columns='PISTA', aggfunc='sum', fill_value=0)
                 matriz['TOTAL'] = matriz.sum(axis=1)
@@ -1120,8 +1233,72 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 st.markdown(f"#### 🛩️ Evolución de Hectáreas por Año y Mes")
                 st.caption(f"🗓️ *{rango_txt}*")
                 st.dataframe(matriz.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
-
+                artefactos['df_mapa'] = matriz
             st.markdown("---")
+            st.markdown("### 📥 GENERADOR DE REPORTES (EXCEL / HTML EJECUTIVO)")
+            
+            # 1. GENERACIÓN DEL CEREBRO SEGÚN LA VISTA (LLAVE DE MEMORIA ÚNICA)
+            llave_memoria = f"cerebro_radar_{vista_seleccionada}_{fecha_sel_ini}_{fecha_sel_fin}_{','.join(pistas_sel)}"
+            
+            if llave_memoria not in st.session_state:
+                ctx_radar = {'vista': vista_seleccionada}
+                if vista_seleccionada == "📈 Dashboard Ejecutivo": ctx_radar.update(artefactos.get('ctx_dashboard', {}))
+                st.session_state[llave_memoria] = generar_analisis_interpretativo_radar(ctx_radar)
+                
+            st.markdown("#### ✍️ Edita el Análisis Interpretativo (Cerebro)")
+            st.caption("Puedes modificar, borrar o añadir texto libremente. Recuerda GUARDAR antes de descargar.")
+            texto_radar = st.text_area(
+                label="Editor del Cerebro Radar", value=st.session_state[llave_memoria],
+                height=200, label_visibility="collapsed", key=f"txt_radar_{llave_memoria}"
+            )
+            
+            # 2. BOTONES EN PARALELO (GUARDAR, EXCEL, HTML)
+            c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1.2])
+            
+            with c_btn1:
+                if st.button("💾 GUARDAR TEXTO", type="secondary", use_container_width=True):
+                    st.session_state[llave_memoria] = texto_radar
+                    st.success("✅ Texto guardado.")
+            
+            # 3. PREPARAR EL HTML FINAL
+            html_radar = f"<h2>Análisis Gerencial - {vista_seleccionada}</h2>"
+            html_radar += f"<div style='background: #f7fafc; padding: 20px; border-left: 5px solid #d4af37; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px;'>{html_lib.escape(st.session_state[llave_memoria]).replace(chr(10), '<br>')}</div>"
+            
+            if vista_seleccionada == "📈 Dashboard Ejecutivo":
+                html_radar += "<h3>📌 Indicadores Clave (KPIs)</h3><div class='kpi-container'>"
+                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Total Hectáreas</p><p class='kpi-value'>{formato_latino(total_ha, 1)} ha</p></div>"
+                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Total Misiones</p><p class='kpi-value'>{total_vuelos:,.0f}</p></div>"
+                html_radar += f"<div class='kpi-card'><p class='kpi-title'>Facturación Total</p><p class='kpi-value'>$ {formato_latino(costo_tot_aviones + costo_tot_drones, 0)}</p></div>"
+                html_radar += "</div>"
+                
+                if 'fig_pie' in artefactos: html_radar += f"<div class='chart-container'>{artefactos['fig_pie'].to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+                if 'fig_bar' in artefactos: html_radar += f"<div class='chart-container'>{artefactos['fig_bar'].to_html(full_html=False, include_plotlyjs='cdn')}</div>"
+                if 'df_dash' in artefactos: html_radar += f"<h3>Desglose por Base Operativa</h3>{df_a_html_radar(artefactos['df_dash'])}"
+                if 'df_hk' in artefactos: html_radar += f"<h3>Ranking de Aeronaves</h3>{df_a_html_radar(artefactos['df_hk'])}"
+                
+            elif vista_seleccionada == "📊 Resumen Gerencial":
+                html_radar += "<h3>🛩️ Consolidado Operativo</h3>"
+                if 'df_operativo' in artefactos: html_radar += df_a_html_radar(artefactos['df_operativo'])
+                html_radar += "<h3>💰 Consolidado Financiero</h3>"
+                if 'df_financiero' in artefactos: html_radar += df_a_html_radar(artefactos['df_financiero'])
+                
+            elif vista_seleccionada == "📅 Mapa Semanal":
+                html_radar += "<h3>📅 Evolución de Hectáreas por Año y Mes</h3>"
+                if 'df_mapa' in artefactos: html_radar += df_a_html_radar(artefactos['df_mapa'])
+                
+            html_final_radar = generar_informe_html_radar(f"Informe Ejecutivo - {vista_seleccionada}", html_radar)
+            
+            with c_btn3:
+                st.download_button(
+                    label="🌐 DESCARGAR INFORME HTML",
+                    data=html_final_radar,
+                    file_name=f"Informe_Radar_{vista_seleccionada.replace(' ','_')}_{fecha_sel_ini.strftime('%Y%m%d')}.html",
+                    mime="text/html", type="primary", use_container_width=True
+                )
+
+            # =========================================================
+            # BLOQUE DE EXPORTACIÓN A EXCEL (MANTENIDO TAL CUAL)
+            # =========================================================
             buffer_rep = io.BytesIO()
             rango_label = f"{fecha_sel_ini.strftime('%Y%m%d')}_{fecha_sel_fin.strftime('%Y%m%d')}"
             
@@ -1202,7 +1379,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                 data_len = len(df_export)
                 if data_len > 0:
                     cats = Reference(ws, min_col=2, min_row=start_row+1, max_row=start_row+data_len)
-                    
                     bar_chart = BarChart()
                     bar_chart.type = "bar"
                     bar_chart.style = 11
@@ -1225,11 +1401,7 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                     pie_chart.dataLabels.showPercent = True 
                     pie_chart.dataLabels.showCatName = False
                     ws.add_chart(pie_chart, "H20")
-                    # =========================================================
-                    # =========================================================
-                    # 🌾 EXPORTACIÓN VIP: MATRICES DE CLIENTES (GENERAL Y MENSUAL)
-                    # =========================================================
-                    # 1. GENERAR DATAFRAMES (Usando MACRO_CLIENTE)
+                    
                     matriz_gral = pd.pivot_table(df_filt, values='AREA_NUM', index=col_pista, columns='MACRO_CLIENTE', aggfunc='sum', fill_value=0)
                     matriz_mes = pd.pivot_table(df_filt, values='AREA_NUM', index=['AÑO', 'MES_NMB', col_pista], columns='MACRO_CLIENTE', aggfunc='sum', fill_value=0)
                     
@@ -1241,23 +1413,19 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                         matriz_mes['TOTAL GENERAL'] = matriz_mes.sum(axis=1)
                         matriz_mes = matriz_mes.reset_index().rename(columns={col_pista: 'BASE'})
 
-                        # 2. CREAR PESTAÑAS EN EXCEL
                         for n_sheet, df_matriz in [("Matriz_Clientes_General", matriz_gral), ("Matriz_Clientes_Mensual", matriz_mes)]:
                             ws_p = wb.create_sheet(title=n_sheet)
-                            
                             ws_p['B2'] = f"MATRIZ: ÁREA POR BASE Y TIPO DE CLIENTE ({'CONSOLIDADO' if 'General' in n_sheet else 'MENSUAL'})"
                             ws_p['B2'].font = Font(size=14, bold=True, color="0D1B2A")
                             ws_p['B3'] = f"Período Analizado: {rango_txt}"
                             ws_p['B3'].font = Font(italic=True, color="555555")
 
-                            # Encabezados
                             cols = list(df_matriz.columns)
                             for c_idx, c_name in enumerate(cols, start=2):
                                 cell = ws_p.cell(row=5, column=c_idx, value=c_name)
                                 cell.fill, cell.font, cell.alignment, cell.border = fill_header, font_header, align_center, borde
                                 ws_p.column_dimensions[get_column_letter(c_idx)].width = 18 if c_idx > 2 else 25
                                 
-                            # Datos
                             r_idx = 6
                             for _, r in df_matriz.iterrows():
                                 is_tot_row = ('TOTAL' in str(r.get('BASE', '')))
@@ -1306,7 +1474,6 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                             
                             for r_idx in range(5, len(df_sheet) + 5):
                                 nivel_val = str(ws.cell(row=r_idx, column=1).value)
-                                
                                 bg_color = None
                                 is_bold = False
                                 
@@ -1371,16 +1538,22 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
                                             cell.number_format = '#,##0.00'
                                             cell.alignment = Alignment(horizontal='center')
                                     except Exception: pass
-                
-            st.download_button(
-                label="💾 DESCARGAR REPORTE EJECUTIVO EN EXCEL",
-                data=buffer_rep.getvalue(),
-                file_name=f"Reporte_Ejecutivo_BI_{rango_label}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )                        
+            
+            with c_btn2:
+                st.download_button(
+                    label="📊 DESCARGAR EN EXCEL",
+                    data=buffer_rep.getvalue(),
+                    file_name=f"Reporte_Ejecutivo_BI_{rango_label}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
     except Exception as e:
+        logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
+        st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
+
+if __name__ == "__main__":
+    pass
         logging.error(f"Fallo procesando el reporte: {e}", exc_info=True)
         st.error("🚨 Ocurrió un error interno generando el reporte. El equipo técnico ya fue notificado.")
 
