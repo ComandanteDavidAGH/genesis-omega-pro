@@ -1338,7 +1338,9 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
             # 🔌 SECCIONES OPCIONALES (interruptores con check activado)
             for seccion in artefactos.get('secciones_html', []):
                 html_radar += seccion
-            
+
+            html_final_radar = generar_informe_html_radar(f"Informe Ejecutivo - {vista_seleccionada}", html_radar)   # 👈 ESTA ES LA QUE FALTABA
+
             with c_btn3:
                 st.download_button(
                     label="🌐 DESCARGAR INFORME HTML",
