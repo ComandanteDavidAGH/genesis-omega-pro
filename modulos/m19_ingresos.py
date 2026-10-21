@@ -845,6 +845,7 @@ def ejecutar():
                 opciones_estado = ["✅ VIGENTE", "❌ ANULADO: ERROR EN PRECIOS", "❌ ANULADO: ERROR DE CANTIDAD", "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR", "❌ ANULADO: ERROR EN LOTE/FECHAS", "❌ ANULADO: OTRO MOTIVO", "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"]
                 
                 columnas_vista = [c for c in df_filtrado.columns if c not in cols_internas_ing]
+                df_filtrado = df_filtrado.reset_index(drop=True) # 🔄 Aseguramos índices continuos
                 # 🚀 EL TRUCO DE VELOCIDAD: Solo dibujamos los últimos 300 registros
                 df_vista = df_filtrado[columnas_vista].head(300).copy()
                 df_vista = df_vista.loc[:, ~df_vista.columns.duplicated(keep='first')] # 🛡️ Limpieza
@@ -913,9 +914,31 @@ def ejecutar():
                                 idx_cols[col] = idx_h + 1
                                 break
 
-                    for i in range(len(df_filtrado)):
-                        estado_nuevo = str(df_editado.iloc[i][COL_ESTADO]).strip()
-                        fila_excel = int(df_filtrado.iloc[i]['FILA_EXCEL'])
+                    for idx_original, row_editada in df_editado.iterrows():
+                        estado_nuevo = str(row_editada[COL_ESTADO]).strip()
+                        fila_excel = int(df_filtrado.loc[idx_original, 'FILA_EXCEL'])
+                        
+                        if "ELIMINAR REGISTRO" in estado_nuevo:
+                            eliminaciones.append(fila_excel)
+                        else:
+                            for col in columnas_editables_reales:
+                                if col in df_filtrado.columns and col in row_editada.index:
+                                    val_orig = str(df_filtrado.loc[idx_original, col]).strip()
+                                    val_nuevo = str(row_editada[col]).strip()
+                                    
+                                    if "LOTE" in col.upper():
+                                        val_orig = val_orig.lstrip("'")
+                                    
+                                    if val_orig != val_nuevo:
+                                        if "CANT" in col.upper():
+                                            val_inyectar = round(float(a_numero(val_nuevo)), 3)
+                                        elif "LOTE" in col.upper():
+                                            val_inyectar = f"'{val_nuevo}"
+                                        else:
+                                            val_inyectar = val_nuevo
+                                            
+                                        if col in idx_cols:
+                                            cambios_actualizacion.append({'fila': fila_excel, 'col_idx': idx_cols[col], 'nuevo': val_inyectar})
                         
                         if "ELIMINAR REGISTRO" in estado_nuevo:
                             eliminaciones.append(fila_excel)
@@ -1367,6 +1390,7 @@ def ejecutar():
                             
             cols_disabled_t = [col for col in df_traslados_vista.columns if col not in columnas_editables_reales_t and col not in cols_internas_t]
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in cols_internas_t]
+            df_traslados_vista = df_traslados_vista.reset_index(drop=True) # 🔄 Aseguramos índices continuos
             # 🚀 EL TRUCO DE VELOCIDAD: Solo dibujamos los últimos 300 registros
             df_vista_t = df_traslados_vista[columnas_vista_t].head(300).copy()
             
@@ -1415,9 +1439,31 @@ def ejecutar():
                             idx_cols_t[col] = idx_h + 1
                             break
 
-                for i in range(len(df_traslados_vista)):
-                    estado_nuevo_t = str(df_editado_t.iloc[i]["🛡️ ACCIÓN"]).strip()
-                    fila_excel_t = int(df_traslados_vista.iloc[i]['FILA_EXCEL'])
+                for idx_original_t, row_editada_t in df_editado_t.iterrows():
+                    estado_nuevo_t = str(row_editada_t["🛡️ ACCIÓN"]).strip()
+                    fila_excel_t = int(df_traslados_vista.loc[idx_original_t, 'FILA_EXCEL'])
+                    
+                    if "ELIMINAR REGISTRO" in estado_nuevo_t:
+                        eliminaciones_t.append(fila_excel_t)
+                    else:
+                        for col in columnas_editables_reales_t:
+                            if col in df_traslados_vista.columns and col in row_editada_t.index:
+                                val_orig = str(df_traslados_vista.loc[idx_original_t, col]).strip()
+                                val_nuevo = str(row_editada_t[col]).strip()
+                                
+                                if "LOTE" in col.upper():
+                                    val_orig = val_orig.lstrip("'")
+                                
+                                if val_orig != val_nuevo:
+                                    if "CANT" in col.upper():
+                                        val_inyectar = round(float(a_numero(val_nuevo)), 3)
+                                    elif "LOTE" in col.upper():
+                                        val_inyectar = f"'{val_nuevo}"
+                                    else:
+                                        val_inyectar = val_nuevo
+                                        
+                                    if col in idx_cols_t:
+                                        cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
                     
                     if "ELIMINAR REGISTRO" in estado_nuevo_t:
                         eliminaciones_t.append(fila_excel_t)
