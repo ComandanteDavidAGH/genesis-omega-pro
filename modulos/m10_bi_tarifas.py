@@ -827,15 +827,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
-            with tab_glob:
-                total_b_glob = vuelo_tot_b + insumos_tot_b
-                fig_glob = go.Figure(data=[
-                    go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
-                    go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
-                ])
-                fig_glob.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_glob], text=[fmt_cop_vertical(total_b_glob)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+
                 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
             col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
