@@ -837,16 +837,15 @@ def ejecutar():
                             if nom_edit in str(col).upper() and col not in columnas_editables_reales:
                                 columnas_editables_reales.append(col)
 
-                        for nom_edit in columnas_editables_nombres:
-                            if nom_edit in str(col).upper() and col not in columnas_editables_reales:
-                                columnas_editables_reales.append(col)
+                        
                                 
                 cols_disabled = [col for col in df_filtrado.columns if col not in columnas_editables_reales and col not in cols_internas_ing]
                 
                 opciones_estado = ["✅ VIGENTE", "❌ ANULADO: ERROR EN PRECIOS", "❌ ANULADO: ERROR DE CANTIDAD", "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR", "❌ ANULADO: ERROR EN LOTE/FECHAS", "❌ ANULADO: OTRO MOTIVO", "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"]
                 
                 columnas_vista = [c for c in df_filtrado.columns if c not in cols_internas_ing]
-                df_vista = df_filtrado[columnas_vista].copy()
+                # 🚀 EL TRUCO DE VELOCIDAD: Solo dibujamos los últimos 300 registros
+                df_vista = df_filtrado[columnas_vista].head(300).copy()
                 df_vista = df_vista.loc[:, ~df_vista.columns.duplicated(keep='first')] # 🛡️ Limpieza
                 
                 if "LOTE" in df_vista.columns: df_vista["LOTE"] = df_vista["LOTE"].astype(str).str.lstrip("'")
@@ -1361,7 +1360,8 @@ def ejecutar():
                             
             cols_disabled_t = [col for col in df_traslados_vista.columns if col not in columnas_editables_reales_t and col not in cols_internas_t]
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in cols_internas_t]
-            df_vista_t = df_traslados_vista[columnas_vista_t].copy()
+            # 🚀 EL TRUCO DE VELOCIDAD: Solo dibujamos los últimos 300 registros
+            df_vista_t = df_traslados_vista[columnas_vista_t].head(300).copy()
             
             if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
             
