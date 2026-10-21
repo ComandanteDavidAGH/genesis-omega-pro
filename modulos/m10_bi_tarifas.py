@@ -736,6 +736,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             elif tipo_periodo == "POR MES":
                 periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
                 etiq_periodo = meses_dict[periodo_sel]
+        costo_a = calcular_costo_ponderado(df_periodo_a)
+        costo_b = calcular_costo_ponderado(df_periodo_b)              
             elif tipo_periodo == "RANGO PERSONALIZADO":
                 c_fecha1, c_fecha2 = t4.columns(2)
                 fecha_inicial_libre = c_fecha1.date_input("📅 Desde:", value=datetime.now().date(), key="bi_f_ini_libre")
