@@ -825,21 +825,27 @@ def ejecutar():
                 
                 columnas_editables_nombres = ["CONSECUTIVO", "PEDIDO", "FACTURA", "LOTE", "CANTIDAD"]
                 columnas_editables_reales = [COL_ESTADO]
+                cols_internas_ing = ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT', 'CANT_NUM']
                 
                 for col in df_filtrado.columns:
-                    if modo_dios_edicion and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']:
+                    if col in cols_internas_ing: continue
+                    if modo_dios_edicion:
                         if col not in columnas_editables_reales:
                             columnas_editables_reales.append(col)
                     else:
                         for nom_edit in columnas_editables_nombres:
                             if nom_edit in str(col).upper() and col not in columnas_editables_reales:
                                 columnas_editables_reales.append(col)
+                    else:
+                        for nom_edit in columnas_editables_nombres:
+                            if nom_edit in str(col).upper() and col not in columnas_editables_reales:
+                                columnas_editables_reales.append(col)
                                 
-                cols_disabled = [col for col in df_filtrado.columns if col not in columnas_editables_reales and col not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
+                cols_disabled = [col for col in df_filtrado.columns if col not in columnas_editables_reales and col not in cols_internas_ing]
                 
                 opciones_estado = ["✅ VIGENTE", "❌ ANULADO: ERROR EN PRECIOS", "❌ ANULADO: ERROR DE CANTIDAD", "❌ ANULADO: DEVOLUCIÓN A PROVEEDOR", "❌ ANULADO: ERROR EN LOTE/FECHAS", "❌ ANULADO: OTRO MOTIVO", "💥 ELIMINAR REGISTRO (BORRADO FÍSICO)"]
-
-                columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
+                
+                columnas_vista = [c for c in df_filtrado.columns if c not in cols_internas_ing]
                 df_vista = df_filtrado[columnas_vista].copy()
                 df_vista = df_vista.loc[:, ~df_vista.columns.duplicated(keep='first')] # 🛡️ Limpieza
                 
@@ -1340,19 +1346,24 @@ def ejecutar():
             # 1. Definición exacta de columnas editables (Igual que Ingresos)
             columnas_editables_nombres_t = ["CANTIDAD", "LOTE", "CONSECUTIVO", "OBSERVACION"]
             columnas_editables_reales_t = ["🛡️ ACCIÓN"]
+            cols_internas_t = ['FILA_EXCEL', 'FECHA_SORT', 'FECHA_DT', 'CANT_NUM']
             
             for col in df_traslados_vista.columns:
-                if modo_dios_t and col not in ['FILA_EXCEL', 'FECHA_SORT']:
+                if col in cols_internas_t: continue
+                if modo_dios_t:
                     if col not in columnas_editables_reales_t:
                         columnas_editables_reales_t.append(col)
                 else:
                     for nom_edit in columnas_editables_nombres_t:
                         if nom_edit in str(col).upper() and col not in columnas_editables_reales_t:
                             columnas_editables_reales_t.append(col)
+                else:
+                    for nom_edit in columnas_editables_nombres_t:
+                        if nom_edit in str(col).upper() and col not in columnas_editables_reales_t:
+                            columnas_editables_reales_t.append(col)
                             
-            cols_disabled_t = [col for col in df_traslados_vista.columns if col not in columnas_editables_reales_t and col not in ['FILA_EXCEL', 'FECHA_SORT']]
-            
-            columnas_vista_t = [c for c in df_traslados_vista.columns if c not in ['FILA_EXCEL', 'FECHA_SORT']]
+            cols_disabled_t = [col for col in df_traslados_vista.columns if col not in columnas_editables_reales_t and col not in cols_internas_t]
+            columnas_vista_t = [c for c in df_traslados_vista.columns if c not in cols_internas_t]
             df_vista_t = df_traslados_vista[columnas_vista_t].copy()
             
             if "LOTE" in df_vista_t.columns: df_vista_t["LOTE"] = df_vista_t["LOTE"].astype(str).str.lstrip("'")
