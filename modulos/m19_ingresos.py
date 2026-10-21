@@ -675,6 +675,7 @@ def ejecutar():
                             for row_lote in lotes_validos:
                                 lote_ing_inject = f"'{str(row_lote['LOTE']).strip()}"
                                 cant = row_lote['CANTIDAD']
+                                cant_final = -abs(cant) if es_anulacion_sap else abs(cant)
                                 ff = pd.to_datetime(row_lote['F_FABRICACION']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_FABRICACION']) else hoy_colombia.strftime("%d/%m/%Y")
                                 fv = pd.to_datetime(row_lote['F_VENCIMIENTO']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_VENCIMIENTO']) else hoy_colombia.strftime("%d/%m/%Y")
                                 
@@ -689,7 +690,7 @@ def ejecutar():
                                     elif "INGRESO" in h: nueva_fila_drive.append(n_fecha_ing.strftime("%d/%m/%Y"))
                                     elif "PROD" in h: nueva_fila_drive.append(prod_limpio)
                                     elif "PISTA" in h: nueva_fila_drive.append(str(n_pista))
-                                    elif "CANT" in h: nueva_fila_drive.append(formatear_numero_sap(cant))
+                                    elif "CANT" in h: nueva_fila_drive.append(round(float(cant_final), 3))
                                     elif "LOTE" in h: nueva_fila_drive.append(lote_ing_inject)
                                     elif "F/F" in h: nueva_fila_drive.append(ff)
                                     elif "F/V" in h: nueva_fila_drive.append(fv)
@@ -928,7 +929,13 @@ def ejecutar():
                                         val_orig = val_orig.lstrip("'")
                                     
                                     if val_orig != val_nuevo:
-                                        val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                        if "CANT" in col.upper():
+                                            val_inyectar = round(float(a_numero(val_nuevo)), 3)
+                                        elif "LOTE" in col.upper():
+                                            val_inyectar = f"'{val_nuevo}"
+                                        else:
+                                            val_inyectar = val_nuevo
+                                            
                                         if col in idx_cols:
                                             cambios_actualizacion.append({'fila': fila_excel, 'col_idx': idx_cols[col], 'nuevo': val_inyectar})
                     
@@ -1267,7 +1274,7 @@ def ejecutar():
                         with st.spinner("Enviando traslado a la nube..."):
                             pista_combinada = f"{t_origen}-{t_destino}"
                             fecha_str = t_fecha.strftime("%d/%m/%Y")
-                            cantidad_formateada = formatear_numero_sap(t_cantidad)
+                            # Ya no enviamos texto, enviamos el número puro
 
                             lote_tras_inject = f"'{lote_final_print}"
                             
@@ -1277,7 +1284,7 @@ def ejecutar():
                                 if "CONSECUTIVO" in h_up: nueva_fila_traslado.append(str(t_consecutivo).strip())
                                 elif "FECHA" in h_up: nueva_fila_traslado.append(fecha_str)
                                 elif "PROD" in h_up: nueva_fila_traslado.append(str(t_producto).upper().strip())
-                                elif "CANT" in h_up: nueva_fila_traslado.append(cantidad_formateada)
+                                elif "CANT" in h_up: nueva_fila_traslado.append(round(float(t_cantidad), 3))
                                 elif "UNIDAD" in h_up: nueva_fila_traslado.append(str(t_unidad).upper())
                                 elif "PISTA" in h_up: nueva_fila_traslado.append(pista_combinada)
                                 elif "SEMANA" in h_up: nueva_fila_traslado.append(str(semana_traslado))
@@ -1424,7 +1431,13 @@ def ejecutar():
                                     val_orig = val_orig.lstrip("'")
                                 
                                 if val_orig != val_nuevo:
-                                    val_inyectar = f"'{val_nuevo}" if "LOTE" in col.upper() else val_nuevo
+                                    if "CANT" in col.upper():
+                                        val_inyectar = round(float(a_numero(val_nuevo)), 3)
+                                    elif "LOTE" in col.upper():
+                                        val_inyectar = f"'{val_nuevo}"
+                                    else:
+                                        val_inyectar = val_nuevo
+                                        
                                     if col in idx_cols_t:
                                         cambios_actualizacion_t.append({'fila': fila_excel_t, 'col_idx': idx_cols_t[col], 'nuevo': val_inyectar})
                 
