@@ -750,53 +750,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
 
         if tipo_periodo == "RANGO PERSONALIZADO":
-            df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= fecha_inicial_libre) & (df_finca['FECHA_DT'].dt.date <= fecha_final_libre)].copy()
-            df_periodo_a = pd.DataFrame()
-        elif modo_rangos:
-            f_dt = df_finca['FECHA_DT'].dt.date
-            df_periodo_a = df_finca[(f_dt >= fecha_ini_a) & (f_dt <= fecha_fin_a)].copy()
-            df_periodo_b = df_finca[(f_dt >= fecha_ini_b) & (f_dt <= fecha_fin_b)].copy()          
-        else:
-            df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
-            df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
-            if tipo_periodo == "POR TRIMESTRE":
-                df_periodo_a = df_periodo_a[df_periodo_a['TRIMESTRE'] == periodo_sel]
-                df_periodo_b = df_periodo_b[df_periodo_b['TRIMESTRE'] == periodo_sel]
-            elif tipo_periodo == "POR MES":
-                df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
-                df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
-
-        # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros)
-        def calcular_costo_ponderado(df_rango):
-            if df_rango.empty or 'COSTO_NUM' not in df_rango.columns: return 0.0
-            df_valido = df_rango[df_rango['COSTO_NUM'] > 0]
-            if df_valido.empty or df_valido['AREA_NUM'].sum() == 0: return 0.0
-            return (df_valido['COSTO_NUM'] * df_valido['AREA_NUM']).sum() / df_valido['AREA_NUM'].sum()
-
-        df_area_a, df_area_b = df_periodo_a.copy(), df_periodo_b.copy()
-        area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
-        area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
-        with st.expander("🔍 AUDITORÍA DE HECTÁREAS (diagnóstico del KPI)", expanded=False):
-            for etiqueta, d in [(f"Base ({año_base})", df_area_a), (f"Actual ({año_comp})", df_area_b)]:
-                if d.empty: continue
-                st.markdown(f"**{etiqueta}:** {len(d)} filas · {formato_latino(d['AREA_NUM'].sum(), 2)} Ha")
-                st.caption("Por origen de la fila:")
-                st.dataframe(d.groupby('ORIGEN_BI')['AREA_NUM'].agg(Filas='count', Hectareas='sum').reset_index(), hide_index=True)
-                st.caption("10 áreas más grandes (revisa si alguna está mal leída):")
-                st.dataframe(d.nlargest(10, 'AREA_NUM')[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_MAESTRA', 'AREA_NUM']], hide_index=True)
-                dup = d[d.duplicated(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM'], keep=False)]
-                st.caption(f"Filas con misma fecha+finca+área (posibles repetidas): {len(dup)}")
-                st.download_button(f"⬇️ Filas de {etiqueta} (CSV para cuadrar en Excel)",
-                                   d[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'AREA_MAESTRA', 'AREA_NUM', 'ORIGEN_BI']].to_csv(index=False).encode('utf-8-sig'),
-                                   file_name=f"auditoria_{año_base if 'Base' in etiqueta else año_comp}.csv", mime="text/csv", key=f"aud_{etiqueta}")
-        costo_a = calcular_costo_ponderado(df_periodo_a)
-        costo_b = calcular_costo_ponderado(df_periodo_b)
-        
-        col_t_n1, col_c_n1 = st.columns([2.5, 1.5])
-        col_t_n1.markdown(f"### 📌 Impacto General para {finca_sel} ({etiq_periodo})")
-        chk_n1 = col_c_n1.checkbox("📑 Añadir Nivel 1 al Informe Ejecutivo", key="chk_n1")
-        
-        if tipo_periodo == "RANGO PERSONALIZADO":
             k1, k2 = st.columns(2)
             k1.markdown(tarjeta_kpi("Costo Promedio Ha", f"$ {formato_latino(costo_b, 0)}"), unsafe_allow_html=True)
             k2.markdown(tarjeta_kpi("Total Operaciones (OS)", f"{df_periodo_b['OS_MAESTRA'].nunique()} OS"), unsafe_allow_html=True)
@@ -870,7 +823,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
                     go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
                 ])
-                # Etiqueta del TOTAL flotando arriba (MÁS FINA)
                 fig_unit.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_unit], text=[fmt_cop_vertical(total_b_unit)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
@@ -881,33 +833,10 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
                     go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
                 ])
-                # Etiqueta del TOTAL flotando arriba (MÁS FINA)
                 fig_glob.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_glob], text=[fmt_cop_vertical(total_b_glob)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
-            with tab_glob:
-                insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
-                insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-                totals_glob = [vuelo_tot_a + insumos_tot_a, vuelo_tot_b + insumos_tot_b]
-                fig_glob = go.Figure(data=[
-                    go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')), 
-                    go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
-                ])
-                # Etiquetas de TOTALES flotando arriba
-                fig_glob.add_trace(go.Scatter(x=categorias, y=totals_glob, text=[fmt_cop_vertical(totals_glob[0]), fmt_cop_vertical(totals_glob[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=13, family='Arial Black'), showlegend=False, hoverinfo='skip'))
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
-
-            with tab_glob:
-                total_b_glob = vuelo_tot_b + insumos_tot_b
-                fig_glob = go.Figure(data=[
-                    go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=None, textposition='none'),
-                    go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(total_b_glob)], textposition='outside', textfont=dict(color='#0d1b2a', size=14, family='Arial Black'))
-                ])
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=40, b=30, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
-
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
             col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
             
@@ -937,7 +866,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 }
                 if col_gln: col_cfg["Gln/Ha Promedio"] = st.column_config.NumberColumn("💧 Gln/Ha Promedio", format="%.2f")
                 
-                # ¡FILTRO DE PRECISIÓN VIP! Dejamos solo las columnas elegidas en el cfg
                 columnas_finales = list(col_cfg.keys())
                 df_vista = df_vista[columnas_finales]
                 
@@ -1035,13 +963,13 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             st.markdown("#### 🛩️ vs 🧪 Distribución del Encarecimiento")
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
+            
             with tab_unit:
                 totals_unit = [vuelo_a + insumos_a, vuelo_b + insumos_b]
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=11, family='Arial')), 
                     go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
                 ])
-                # Etiquetas de TOTALES flotando arriba (MÁS FINAS)
                 fig_unit.add_trace(go.Scatter(x=categorias, y=totals_unit, text=[fmt_cop_vertical(totals_unit[0]), fmt_cop_vertical(totals_unit[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
@@ -1054,20 +982,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')), 
                     go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
                 ])
-                # Etiquetas de TOTALES flotando arriba (MÁS FINAS)
                 fig_glob.add_trace(go.Scatter(x=categorias, y=totals_glob, text=[fmt_cop_vertical(totals_glob[0]), fmt_cop_vertical(totals_glob[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
-                
-            with tab_glob:
-                insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
-                insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-                totals_glob = [vuelo_tot_a + insumos_tot_a, vuelo_tot_b + insumos_tot_b]
-                fig_glob = go.Figure(data=[
-                    go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=None, textposition='none'), 
-                    go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(totals_glob[0]), fmt_cop_vertical(totals_glob[1])], textposition='outside', textfont=dict(color='#0d1b2a', size=13, family='Arial Black'))
-                ])
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest", margin=dict(t=40, b=40, l=40, r=40))
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
             
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
