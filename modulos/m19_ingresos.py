@@ -226,6 +226,91 @@ def extraer_catalogo_oficial_sap():
                     if p_nombre and len(p_nombre) > 2 and p_nombre != "0": productos_oficiales.add(p_nombre)
         return list(productos_oficiales)
     except: return []
+@st.cache_data(show_spinner=False)
+def procesar_bovedas_turbo(datos_ing_crudos, datos_dicc_crudos, datos_tras_crudos, mapeo_materiales, dict_operativo_base, productos_precio_sap):
+    """Función TURBO: Procesa todos los datos pesados una sola vez y los guarda en RAM."""
+    dict_operativo = dict_operativo_base.copy()
+    for row in datos_dicc_crudos[1:]:
+        if len(row) >= 2 and str(row[0]).strip():
+            p_nube = re.sub(r'\s+', ' ', str(row[0]).strip().upper())
+            p_prov = str(row[1]).strip().upper()
+            if len(p_nube) > 3: dict_operativo[p_nube] = p_prov
+            
+    for prod_sap in productos_precio_sap:
+        if prod_sap.strip() not in dict_operativo: dict_operativo[prod_sap.strip()] = "" 
+        
+    lista_autorizada = set([re.sub(r'\s+', ' ', str(k).strip().upper()) for k in dict_operativo.keys()])
+    for p in productos_precio_sap: lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
+        
+    cache_mapeo = {}
+    def estandarizar_y_marcar_inteligente(prod):
+        p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
+        if p_clean in ["", "NONE", "NAN", "NAT", "<NA>"]: return ""
+        if p_clean in cache_mapeo: return cache_mapeo[p_clean]
+        if p_clean in lista_autorizada: resultado = p_clean
+        else: resultado = f"{p_clean} 🛑 [NO RECONOCIDO]"
+        cache_mapeo[p_clean] = resultado
+        return resultado
+
+    # ================= PROCESAMIENTO TRASLADOS =================
+    df_traslados = pd.DataFrame()
+    encabezados_limpios_tras = []
+    if datos_tras_crudos:
+        columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION", "LOTE"]
+        idx_head_t = next((i for i, row in enumerate(datos_tras_crudos[:15]) if "CONSECUTIVO" in [str(x).upper().strip() for x in row]), -1)
+        if idx_head_t != -1:
+            enc_brutos = [str(x).strip().upper() for x in datos_tras_crudos[idx_head_t]]
+            for j, h in enumerate(enc_brutos):
+                if "OBSERVAC" in h or ("COLUMNA1" in h and "OBSERVACION" not in encabezados_limpios_tras): h = "OBSERVACION"
+                elif "LOTE" in h: h = "LOTE"
+                elif h == "": h = f"COL_VACIA_{j}"
+                encabezados_limpios_tras.append(h)
+            
+            if "OBSERVACION" not in encabezados_limpios_tras: encabezados_limpios_tras.append("OBSERVACION")
+            if "LOTE" not in encabezados_limpios_tras: encabezados_limpios_tras.append("LOTE")
+            
+            max_cols_t = len(encabezados_limpios_tras)
+            datos_recortados = []
+            for row in datos_tras_crudos[idx_head_t+1:]:
+                pad_row = row + [""] * (max_cols_t - len(row))
+                pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row[:max_cols_t]]
+                datos_recortados.append(pad_row)
+                
+            df_t = pd.DataFrame(datos_recortados, columns=encabezados_limpios_tras)
+            df_t = df_t.loc[:, ~df_t.columns.str.startswith('COL_VACIA_')]
+            df_t = df_t.loc[:, ~df_t.columns.duplicated()]
+            df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
+            cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
+            df_traslados = df_t[cols_presentes]
+            if "PRODUCTO" in df_traslados.columns: df_traslados["PRODUCTO"] = df_traslados["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
+            if "PISTA" in df_traslados.columns: df_traslados["PISTA"] = df_traslados["PISTA"].apply(estandarizar_pista)
+
+    # ================= PROCESAMIENTO INGRESOS =================
+    df_ingresos = pd.DataFrame()
+    encabezados_limpios_ing = []
+    if datos_ing_crudos:
+        idx_head_i = next((i for i, row in enumerate(datos_ing_crudos[:5]) if "ESTADO / OBSERVACIÓN" in [str(x).upper().strip() for x in row] or "PRODUCTO" in [str(x).upper().strip() for x in row]), 0)
+        enc_brutos_i = [str(x).strip().upper() for x in datos_ing_crudos[idx_head_i]]
+        for j, h in enumerate(enc_brutos_i):
+            if h == "": h = f"COL_VACIA_{j}"
+            encabezados_limpios_ing.append(h)
+            
+        max_cols_ing = len(encabezados_limpios_ing)
+        datos_ing_recortados = []
+        for row in datos_ing_crudos[idx_head_i+1:]:
+            pad_row = row + [""] * (max_cols_ing - len(row))
+            pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row[:max_cols_ing]]
+            datos_ing_recortados.append(pad_row)
+            
+        df_i = pd.DataFrame(datos_ing_recortados, columns=encabezados_limpios_ing)
+        df_i = df_i.loc[:, ~df_i.columns.str.startswith('COL_VACIA_')]
+        df_i = df_i.loc[:, ~df_i.columns.duplicated()]
+        df_i['FILA_EXCEL'] = range(idx_head_i + 2, len(df_i) + idx_head_i + 2)
+        if "PRODUCTO" in df_i.columns: df_i["PRODUCTO"] = df_i["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
+        if "PISTA" in df_i.columns: df_i["PISTA"] = df_i["PISTA"].apply(estandarizar_pista)
+        df_ingresos = df_i
+
+    return df_ingresos, df_traslados, encabezados_limpios_ing, encabezados_limpios_tras, dict_operativo, lista_autorizada        
 
 DICT_BASE_PRODUCTOS = {"ACEITE DICAM": "ROYAL BIOCHEM", "ACONDICIONADOR SV": "SYS TECNOLOGIES", "ADHERENTE SV": "SYS TECNOLOGIES", "BANADAK": "PLANDAK", "BANANO Y PLATANO * LT": "INVESA S.A.S.", "BANATREL SC": "YARA S.A.S.", "BOSCALID 50 WG": "DVA COLOMBIA", "CERAQUINT SP": "CERADIS COLOMBIA", "CEROSTRESS SV * LT": "MICROFERTIZA", "COMPER SV": "ADAMA", "EPOXICONAZOLE DEL MONTE": "DEL MONTE SAS", "FENTRIUPH AGRO 88 OL": "DEL MONTE SAS", "FOSFOSTRESS SV": "MICROFERTIZA", "GLOBAFOL nf": "SYNGENTA", "IMBIOSIL O": "INBIOMA", "KURDO 250 EC": "INVESA S.A.S.", "KYVENTIQ": "CORTEVA", "LONSELOR 30 SC": "BASF QUÍMICA", "MANCOL 430 SC": "CASAGRO", "NATURAMIN WSP": "AGRIANDES DAINSA", "OPORTO": "ADAMA", "OPUS 12 EC": "BASF QUÍMICA", "POLYTHION SC": "UPL", "POWMYL SV": "SUMITOMO", "QUELAMIX": "INGEPLANT", "REFLECT": "SYNGENTA", "ROUTINE SC": "BAYER", "SEEKER": "SYNGENTA", "SICO": "SYNGENTA", "SIGANEX 60 SC": "BAYER", "SPRAYFIX": "AGRIANDES DAINSA", "THIOPRON 825 SC": "UPL", "TIMOREX PRO": "ADAMA", "XILOTROM": "AGRIFOL", "ZINTRAC x LITRO SV": "YARA S.A.S."}
 
@@ -328,92 +413,13 @@ def ejecutar():
             return
 
         mapeo_materiales = extraer_mapeo_materiales()
-        
-        dict_operativo = {k.upper().strip(): v.upper().strip() for k, v in DICT_BASE_PRODUCTOS.items()}
-        for row in datos_dicc_crudos[1:]:
-            if len(row) >= 2 and str(row[0]).strip():
-                p_nube = re.sub(r'\s+', ' ', str(row[0]).strip().upper())
-                p_prov = str(row[1]).strip().upper()
-                if len(p_nube) > 3: dict_operativo[p_nube] = p_prov
-                
         productos_precio_sap = extraer_catalogo_oficial_sap()
-        for prod_sap in productos_precio_sap:
-            if prod_sap.strip() not in dict_operativo: dict_operativo[prod_sap.strip()] = "" 
-        lista_autorizada = set([re.sub(r'\s+', ' ', str(k).strip().upper()) for k in dict_operativo.keys()])
-        for p in productos_precio_sap: lista_autorizada.add(re.sub(r'\s+', ' ', str(p).strip().upper()))
-            
-        cache_mapeo = {}
         
-        def estandarizar_y_marcar_inteligente(prod):
-            p_clean = re.sub(r'\s+', ' ', str(prod).strip().upper())
-            if p_clean in ["", "NONE", "NAN", "NAT", "<NA>"]: return ""
-            if p_clean in cache_mapeo: return cache_mapeo[p_clean]
-            
-            if p_clean in lista_autorizada: 
-                resultado = p_clean
-            else:
-                resultado = f"{p_clean} 🛑 [NO RECONOCIDO]"
-                
-            cache_mapeo[p_clean] = resultado
-            return resultado
-
-        # ================= PROCESAMIENTO TRASLADOS =================
-        df_traslados = pd.DataFrame()
-        encabezados_limpios_tras = []
-        if datos_tras_crudos:
-            columnas_oficiales = ["CONSECUTIVO", "FECHA", "PRODUCTO", "CANTIDAD", "UNIDAD", "PISTA", "SEMANA", "OBSERVACION", "LOTE"]
-            idx_head_t = next((i for i, row in enumerate(datos_tras_crudos[:15]) if "CONSECUTIVO" in [str(x).upper().strip() for x in row]), -1)
-            if idx_head_t != -1:
-                enc_brutos = [str(x).strip().upper() for x in datos_tras_crudos[idx_head_t]]
-                for j, h in enumerate(enc_brutos):
-                    if "OBSERVAC" in h or ("COLUMNA1" in h and "OBSERVACION" not in encabezados_limpios_tras): h = "OBSERVACION"
-                    elif "LOTE" in h: h = "LOTE"
-                    elif h == "": h = f"COL_VACIA_{j}"
-                    encabezados_limpios_tras.append(h)
-                
-                if "OBSERVACION" not in encabezados_limpios_tras: encabezados_limpios_tras.append("OBSERVACION")
-                if "LOTE" not in encabezados_limpios_tras: encabezados_limpios_tras.append("LOTE")
-                
-                max_cols_t = len(encabezados_limpios_tras)
-                datos_recortados = []
-                for row in datos_tras_crudos[idx_head_t+1:]:
-                    pad_row = row + [""] * (max_cols_t - len(row))
-                    pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row[:max_cols_t]]
-                    datos_recortados.append(pad_row)
-                    
-                df_t = pd.DataFrame(datos_recortados, columns=encabezados_limpios_tras)
-                df_t = df_t.loc[:, ~df_t.columns.str.startswith('COL_VACIA_')]
-                df_t = df_t.loc[:, ~df_t.columns.duplicated()]
-                df_t['FILA_EXCEL'] = range(idx_head_t + 2, len(df_t) + idx_head_t + 2)
-                cols_presentes = [c for c in columnas_oficiales if c in df_t.columns] + ['FILA_EXCEL']
-                df_traslados = df_t[cols_presentes]
-                if "PRODUCTO" in df_traslados.columns: df_traslados["PRODUCTO"] = df_traslados["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
-                if "PISTA" in df_traslados.columns: df_traslados["PISTA"] = df_traslados["PISTA"].apply(estandarizar_pista)
-
-        # ================= PROCESAMIENTO INGRESOS =================
-        df_ingresos = pd.DataFrame()
-        encabezados_limpios_ing = []
-        if datos_ing_crudos:
-            idx_head_i = next((i for i, row in enumerate(datos_ing_crudos[:5]) if "ESTADO / OBSERVACIÓN" in [str(x).upper().strip() for x in row] or "PRODUCTO" in [str(x).upper().strip() for x in row]), 0)
-            enc_brutos_i = [str(x).strip().upper() for x in datos_ing_crudos[idx_head_i]]
-            for j, h in enumerate(enc_brutos_i):
-                if h == "": h = f"COL_VACIA_{j}"
-                encabezados_limpios_ing.append(h)
-                
-            max_cols_ing = len(encabezados_limpios_ing)
-            datos_ing_recortados = []
-            for row in datos_ing_crudos[idx_head_i+1:]:
-                pad_row = row + [""] * (max_cols_ing - len(row))
-                pad_row = ["" if str(x).strip().lower() in ["none", "nan", "null", "nat"] else str(x).strip() for x in pad_row[:max_cols_ing]]
-                datos_ing_recortados.append(pad_row)
-                
-            df_i = pd.DataFrame(datos_ing_recortados, columns=encabezados_limpios_ing)
-            df_i = df_i.loc[:, ~df_i.columns.str.startswith('COL_VACIA_')]
-            df_i = df_i.loc[:, ~df_i.columns.duplicated()]
-            df_i['FILA_EXCEL'] = range(idx_head_i + 2, len(df_i) + idx_head_i + 2)
-            if "PRODUCTO" in df_i.columns: df_i["PRODUCTO"] = df_i["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
-            if "PISTA" in df_i.columns: df_i["PISTA"] = df_i["PISTA"].apply(estandarizar_pista)
-            df_ingresos = df_i
+        # 🚀 AQUÍ ENTRA EL TURBO + NITRO: 
+        # Solo procesa si los datos crudos cambian, de lo contrario los saca de la RAM en 0.1s
+        df_ingresos, df_traslados, encabezados_limpios_ing, encabezados_limpios_tras, dict_operativo, lista_autorizada = procesar_bovedas_turbo(
+            datos_ing_crudos, datos_dicc_crudos, datos_tras_crudos, mapeo_materiales, DICT_BASE_PRODUCTOS, productos_precio_sap
+        )
 
     tab_ingresos, tab_traslados = st.tabs(["📥 1. INGRESOS (COMPRAS/PROVEEDOR)", "🚚 2. MOVIMIENTOS INTERNOS (TRASLADOS)"])
 
