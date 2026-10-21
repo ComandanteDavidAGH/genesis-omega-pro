@@ -394,9 +394,21 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
     <style>
     .titulo-principal { color: #0d1b2a; border-bottom: 3px solid #d4af37; padding-bottom: 5px; font-family: 'Arial Black', sans-serif; }
     div[data-testid="stDataFrame"], div[data-testid="stDataEditor"] { border: 3px solid #0d1b2a !important; border-radius: 8px !important; overflow: hidden !important; }
-    .hud-bi { background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); border-left: 5px solid #d4af37; padding: 15px; border-radius: 8px; color: white; box-shadow: 0px 4px 10px rgba(0,0,0,0.15); margin-bottom: 25px; }
-    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0; letter-spacing: 1px; }
-    .hud-bi-value { font-size: 22px; font-family: 'Arial Black', sans-serif; margin: 5px 0 0 0; }
+    .hud-bi { 
+        background: linear-gradient(135deg, #0d1b2a 0%, #1a365d 100%); 
+        border-left: 5px solid #d4af37; 
+        padding: 15px 20px; 
+        border-radius: 8px; 
+        color: white; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.15); 
+        margin-bottom: 25px; 
+        min-height: 110px; /* 🔥 Altura fija para que todos sean iguales */
+        display: flex; 
+        flex-direction: column; 
+        justify-content: center; 
+    }
+    .hud-bi-title { font-size: 11px; font-weight: bold; color: #d4af37; text-transform: uppercase; margin:0 0 5px 0; letter-spacing: 1px; }
+    .hud-bi-value { font-size: 24px; font-family: 'Arial Black', sans-serif; margin: 0; line-height: 1.1; }
     
     [data-testid="column"] {
         display: flex !important;
@@ -612,252 +624,47 @@ def ejecutar(supabase_client=None, descargar_matriz_rapida=None, extraer_numero_
         meses_nom_largo = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
         super_base_bi['MES_NMB'] = super_base_bi['MES'].apply(lambda x: meses_nom.get(x, "Desconocido"))
 
-        st.markdown("### 🎛️ Centro de Comando y Filtros")
-
-        c_tog1, c_tog2 = st.columns(2)
-        ver_boveda_tarifas = c_tog1.toggle("🏦 ACTIVAR BÓVEDA DE TARIFAS MAESTRAS", value=False, key="toggle_boveda_tarifas_m8")
-        modo_historico_global = c_tog2.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO", value=False, key="toggle_macro_m8", disabled=ver_boveda_tarifas)
-
-        # ---------------------------------------------------------
-        # 🏦 MODO 1: BÓVEDA DE TARIFAS MAESTRAS
-        # ---------------------------------------------------------
-        if ver_boveda_tarifas:
-            with st.container(border=True):
-                df_tarifas = cargar_matriz_tarifas()
-                if not df_tarifas.empty:
-                    st.success("🏦 **BÓVEDA DE TARIFAS:** Estás viendo en exclusiva la matriz central de precios.")
-                    
-                    cols_base = [c for c in df_tarifas.columns if not str(c).isdigit()]
-                    cols_anios = [c for c in df_tarifas.columns if str(c).isdigit()]
-                    
-                    anios_seleccionados = st.multiselect("📅 Selecciona los años a incluir en el reporte:", cols_anios, default=cols_anios)
-                    
-                    if not anios_seleccionados:
-                        st.warning("⚠️ Selecciona al menos un año para visualizar la matriz.")
-                    else:
-                        df_tarifas_filtro = df_tarifas[cols_base + anios_seleccionados].copy()
-                        df_mostrar = df_tarifas_filtro.copy()
-                        
-                        renombres = {
-                            'PISTA': '📍 BASE OPERATIVA', 
-                            'EQUIPO_O_TOPE': '🛩️ TIPO DE EQUIPO / CONCEPTO'
-                        }
-                        for anio in anios_seleccionados:
-                            renombres[anio] = f"📅 {anio}"
-                            
-                        df_mostrar.rename(columns=renombres, inplace=True)
-                        
-                        def estilo_matriz(row):
-                            estilos = []
-                            for col in row.index:
-                                if col in ['📍 BASE OPERATIVA', '🛩️ TIPO DE EQUIPO / CONCEPTO']:
-                                    estilos.append('background-color: #F1F5F9; color: #0D1B2A; font-weight: 800; border-right: 2px solid #CBD5E1;')
-                                else:
-                                    estilos.append('background-color: #FFFFFF; color: #1A365D; font-weight: 600; text-align: right;')
-                            return estilos
-
-                        st.dataframe(
-                            df_mostrar.style.apply(estilo_matriz, axis=1), 
-                            use_container_width=True, 
-                            hide_index=True
-                        )
-                        
-                        buf_tarifas = io.BytesIO()
-                        df_export_t = df_tarifas_filtro.copy()
-                        
-                        for col in anios_seleccionados:
-                            df_export_t[col] = df_export_t[col].apply(limpiar_dinero)
-
-                        with pd.ExcelWriter(buf_tarifas, engine='openpyxl') as writer:
-                            df_export_t.to_excel(writer, sheet_name='Tarifario_Maestro', index=False, startrow=3)
-                            ws_t = writer.sheets['Tarifario_Maestro']
-                            
-                            ws_t['A1'] = "REPORTE MÁSTER: MATRIZ DE TARIFAS AUTORIZADAS"
-                            ws_t['A1'].font = Font(size=14, bold=True, color="FFFFFF")
-                            ws_t['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                            ws_t['A1'].alignment = Alignment(horizontal='center', vertical='center')
-                            ws_t.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_export_t.columns))
-                            
-                            ws_t['A3'] = f"Actualizado a: {datetime.now().strftime('%d/%m/%Y')}"
-                            ws_t['A3'].font = Font(italic=True, color="555555", bold=True)
-                            ws_t.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_export_t.columns))
-
-                            header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                            header_font = Font(bold=True, color="000000")
-                            for col_num in range(1, len(df_export_t.columns) + 1):
-                                cell = ws_t.cell(row=4, column=col_num)
-                                cell.fill = header_fill
-                                cell.font = header_font
-                                cell.alignment = Alignment(horizontal='center', vertical='center')
-                                
-                            ws_t.column_dimensions['A'].width = 12
-                            ws_t.column_dimensions['B'].width = 30
-                            for col_num in range(3, len(df_export_t.columns) + 1):
-                                ws_t.column_dimensions[get_column_letter(col_num)].width = 16
-                                
-                            for r_idx in range(5, len(df_export_t) + 5):
-                                for c_idx in range(1, len(df_export_t.columns) + 1):
-                                    cell = ws_t.cell(row=r_idx, column=c_idx)
-                                    if c_idx > len(cols_base): 
-                                        if cell.value != "" and cell.value is not None and cell.value != 0:
-                                            cell.number_format = '$#,##0'
-                                    cell.alignment = Alignment(horizontal='left') 
-
-                        st.download_button(
-                            label="💾 DESCARGAR TARIFARIO MÁSTER VIP (EXCEL)", 
-                            data=buf_tarifas.getvalue(), 
-                            file_name=f"Tarifario_Oficial_MasterData_{datetime.now().strftime('%Y%m%d')}.xlsx", 
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                        
-                        fig_tarifas = None
-                        try:
-                            df_melt = df_export_t.melt(id_vars=['PISTA', 'EQUIPO_O_TOPE'], value_vars=anios_seleccionados, var_name='AÑO', value_name='TARIFA')
-                            df_melt['TARIFA'] = pd.to_numeric(df_melt['TARIFA'], errors='coerce').fillna(0)
-                            df_melt['LABEL'] = df_melt['PISTA'] + " - " + df_melt['EQUIPO_O_TOPE']
-                            fig_tarifas = px.line(df_melt, x='AÑO', y='TARIFA', color='LABEL', markers=True, title="<b>Curva de Inflación Tarifaria Autorizada</b>")
-                            fig_tarifas.update_layout(xaxis_title="Año", yaxis_title="Tarifa Autorizada (COP $)", hovermode="x unified")
-                            st.plotly_chart(fig_tarifas, use_container_width=True)
-                        except Exception: pass
-
-                        # ✅ CHECK + DESCARGA HTML
-                        inc_graf_t = st.checkbox("✅ Incluir curva de inflación en el informe HTML", value=True, key="chk_html_tarifas_graf")
-                        html_t = f"<h2>🏦 Matriz de Tarifas Maestras Autorizadas</h2><p>Años: {', '.join(map(str, anios_seleccionados))}</p>"
-                        html_t += df_a_html_texto(df_export_t, 0, cols_moneda=anios_seleccionados)
-                        if inc_graf_t and fig_tarifas is not None:
-                            html_t += f"<div class='chart-container'>{fig_tarifas.to_html(full_html=False, include_plotlyjs=False)}</div>"
-                        st.download_button(
-                            label="🌐 DESCARGAR TARIFARIO EN HTML",
-                            data=generar_informe_html_radar("Matriz de Tarifas Maestras", html_t),
-                            file_name=f"Tarifario_Oficial_{datetime.now().strftime('%Y%m%d')}.html",
-                            mime="text/html", type="primary", use_container_width=True, key="dl_html_tarifas"
-                        )
-                else:
-                    st.warning("⚠️ No se detectó la pestaña 'MATRIZ_TARIFAS' en el Drive o está vacía.")
+        # =================================================================
+        # 🎛️ CENTRO DE COMANDO REDISEÑADO (ESTILO EJECUTIVO)
+        # =================================================================
+        with st.container(border=True):
+            st.markdown("### 🎛️ Centro de Comando y Filtros")
             
-            st.stop()
-
-        # ---------------------------------------------------------
-        # 🕰️ MODO 2: VISOR MACRO-HISTÓRICO
-        # ---------------------------------------------------------
-        elif modo_historico_global:
-            st.success("🌐 **MODO MACRO ACTIVADO:** Tienes el control total de la historia operativa. Selecciona el rango de tiempo a analizar.")
+            # Fila 1: Modos Globales (Bóveda y Macro)
+            c_tog1, c_tog2 = st.columns(2)
+            ver_boveda_tarifas = c_tog1.toggle("🏦 ACTIVAR BÓVEDA DE TARIFAS MAESTRAS", value=False, key="toggle_boveda_tarifas_m8")
+            modo_historico_global = c_tog2.toggle("🕰️ ACTIVAR VISOR MACRO-HISTÓRICO", value=False, key="toggle_macro_m8", disabled=ver_boveda_tarifas)
             
-            cm1, cm2 = st.columns(2)
-            fecha_macro_ini = cm1.date_input("F. INICIAL (MACRO):", value=date(2017, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_mac_ini")
-            fecha_macro_fin = cm2.date_input("F. FINAL (MACRO):", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_mac_fin")
+            st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
             
-            df_macro = super_base_bi[(super_base_bi['AREA_NUM'] > 0) & 
-                                     (super_base_bi['FECHA_DT'].dt.date >= fecha_macro_ini) & 
-                                     (super_base_bi['FECHA_DT'].dt.date <= fecha_macro_fin)].copy()
-                                     
-            if not col_pista: col_pista = "PISTA"
-
-            st.markdown("---")
-            st.markdown(f"#### 📅 Evolución Anual de Hectáreas por Base")
+            # Fila 2: Controles Principales (3 Columnas perfectamente alineadas)
+            col_vista, col_fechas, col_bases = st.columns([1.2, 1.0, 1.5], gap="large")
             
-            if df_macro.empty:
-                st.warning("⚠️ No hay datos históricos registrados en este rango específico de fechas.")
-            else:
-                pivot_anual = pd.pivot_table(df_macro, values='AREA_NUM', index='AÑO', columns=col_pista, aggfunc='sum', fill_value=0)
-                pivot_anual['TOTAL AÑO'] = pivot_anual.sum(axis=1)
-                pivot_anual.loc['TOTAL HISTÓRICO'] = pivot_anual.sum(axis=0)
-                st.dataframe(pivot_anual.style.format(fmt_latino).background_gradient(cmap="Blues", axis=None), use_container_width=True)
-
-                df_graf = pivot_anual.drop('TOTAL HISTÓRICO', errors='ignore').drop(columns=['TOTAL AÑO'], errors='ignore')
-                fig_macro = px.line(df_graf, markers=True, title="<b>Curva Histórica de Aplicación por Pista</b>")
-                fig_macro.update_layout(xaxis_title="Año", yaxis_title="Hectáreas Netas")
-                st.plotly_chart(fig_macro, use_container_width=True)
-
-                st.markdown("#### 📆 Desglose Detallado: Año y Mes")
-                df_macro = df_macro.sort_values(['AÑO', 'MES'])
-                pivot_mes = pd.pivot_table(df_macro, values='AREA_NUM', index=['AÑO', 'MES_NMB'], columns=col_pista, aggfunc='sum', fill_value=0, sort=False)
-                pivot_mes['TOTAL MES'] = pivot_mes.sum(axis=1)
-                st.dataframe(pivot_mes.style.format(fmt_latino).background_gradient(cmap="YlGn", axis=None), use_container_width=True)
-
-                st.markdown("---")
-                buffer_macro = io.BytesIO()
-                
-                df_exp_anual = pivot_anual.reset_index()
-                df_exp_mes = pivot_mes.reset_index()
-                
-                rango_txt_macro = f"{fecha_macro_ini.day}/{fecha_macro_ini.month}/{fecha_macro_ini.year} ⸺ {fecha_macro_fin.day}/{fecha_macro_fin.month}/{fecha_macro_fin.year}"
-
-                with pd.ExcelWriter(buffer_macro, engine='openpyxl') as writer:
-                    df_exp_anual.to_excel(writer, sheet_name='Resumen_Anual', index=False, startrow=3)
-                    df_exp_mes.to_excel(writer, sheet_name='Desglose_Mensual', index=False, startrow=3)
-                    
-                    for s_name, df_sheet in [('Resumen_Anual', df_exp_anual), ('Desglose_Mensual', df_exp_mes)]:
-                        ws = writer.sheets[s_name]
-                        
-                        ws['A1'] = f"REPORTE MACRO-HISTÓRICO - {s_name.replace('_', ' ').upper()}"
-                        ws['A1'].font = Font(size=14, bold=True, color="FFFFFF")
-                        ws['A1'].fill = PatternFill(start_color="0D1B2A", end_color="0D1B2A", fill_type="solid")
-                        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-                        ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=len(df_sheet.columns))
-                        
-                        ws['A3'] = f"Período Analizado: {rango_txt_macro}"
-                        ws['A3'].font = Font(italic=True, color="555555", bold=True)
-                        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(df_sheet.columns))
-                        
-                        header_fill = PatternFill(start_color="D4AF37", end_color="D4AF37", fill_type="solid")
-                        header_font = Font(bold=True, color="000000")
-                        for col_num in range(1, len(df_sheet.columns) + 1):
-                            cell = ws.cell(row=4, column=col_num)
-                            cell.fill = header_fill
-                            cell.font = header_font
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                            ws.column_dimensions[get_column_letter(col_num)].width = 16
-                        
-                        for r_idx in range(5, len(df_sheet) + 5):
-                            for c_idx in range(1, len(df_sheet.columns) + 1):
-                                cell = ws.cell(row=r_idx, column=c_idx)
-                                if isinstance(cell.value, (int, float)):
-                                    cell.number_format = '#,##0.00'
-                                cell.alignment = Alignment(horizontal='center')
-
-                st.download_button(
-                    label="💾 DESCARGAR HISTÓRICO MACRO EN EXCEL VIP",
-                    data=buffer_macro.getvalue(),
-                    file_name=f"Reporte_Macro_{fecha_macro_ini.strftime('%Y%m%d')}_{fecha_macro_fin.strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+            with col_vista:
+                vista_seleccionada = st.radio(
+                    "📌 VISTA OPERATIVA:", 
+                    ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], 
+                    horizontal=False, # 🔥 Lo ponemos vertical para que no ocupe tanto espacio horizontal
+                    key="m8_v_final_v40"
                 )
-                # ✅ CHECKS + DESCARGA HTML
-                ch1, ch2 = st.columns(2)
-                inc_mes_html = ch1.checkbox("✅ Incluir desglose mensual en el HTML", value=True, key="chk_html_macro_mes")
-                inc_graf_html = ch2.checkbox("✅ Incluir gráfica histórica en el HTML", value=True, key="chk_html_macro_graf")
-
-                html_m = f"<p><strong>Período analizado:</strong> {rango_txt_macro}</p>"
-                html_m += "<h2>📅 Evolución Anual de Hectáreas por Base</h2>" + df_a_html_texto(pivot_anual.reset_index(), 2)
-                if inc_graf_html:
-                    html_m += f"<div class='chart-container'>{fig_macro.to_html(full_html=False, include_plotlyjs=False)}</div>"
-                if inc_mes_html:
-                    html_m += "<h2>📆 Desglose Detallado: Año y Mes</h2>" + df_a_html_texto(pivot_mes.reset_index(), 2)
-
-                st.download_button(
-                    label="🌐 DESCARGAR HISTÓRICO MACRO EN HTML",
-                    data=generar_informe_html_radar("Reporte Macro-Histórico", html_m),
-                    file_name=f"Reporte_Macro_{fecha_macro_ini.strftime('%Y%m%d')}_{fecha_macro_fin.strftime('%Y%m%d')}.html",
-                    mime="text/html", type="primary", use_container_width=True, key="dl_html_macro"
+                
+            with col_fechas:
+                # 🔥 Fechas una debajo de otra para optimizar espacio
+                fecha_sel_ini = st.date_input("📅 F. INICIAL:", value=date(2026, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
+                fecha_sel_fin = st.date_input("📅 F. FINAL:", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
+                
+            with col_bases:
+                pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique() if x != ""]) if col_pista else []
+                pistas_sel = st.multiselect(
+                    "📍 BASES (PISTAS MÚLTIPLES):", 
+                    pistas_disp, 
+                    default=pistas_disp, 
+                    key="m8_pista_v40"
                 )
-        # ---------------------------------------------------------
-        # 📊 MODO 3: DASHBOARD OPERATIVO Y FINANCIERO ESTÁNDAR
-        # ---------------------------------------------------------
-        else:
-            artefactos = {'secciones_html': []}
             
-            c1, c2, c3, c4 = st.columns([1.5, 1.0, 1.0, 1.5])
-            vista_seleccionada = c1.radio("VISTA OPERATIVA:", ["📊 Resumen Gerencial", "📅 Mapa Semanal", "📈 Dashboard Ejecutivo"], horizontal=True, key="m8_v_final_v40")
-            
-            fecha_sel_ini = c2.date_input("F. INICIAL:", value=date(2026, 1, 1), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_ini_v40")
-            fecha_sel_fin = c3.date_input("F. FINAL:", value=date(2026, 12, 31), min_value=date(2017, 1, 1), max_value=date(2030, 12, 31), key="m8_dat_fin_v40")
-            
-            pistas_disp = sorted([str(x) for x in super_base_bi[col_pista].dropna().unique() if x != ""]) if col_pista else []
-            pistas_sel = c4.multiselect("📍 BASES (PISTAS MÚLTIPLES):", pistas_disp, default=pistas_disp, key="m8_pista_v40")
-
+            # Fila 3: Opciones de visualización (Solo aparecen si no es Dashboard)
             if vista_seleccionada != "📈 Dashboard Ejecutivo":
+                st.markdown("<hr style='margin: 10px 0px; border: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
                 cc1, cc2, cc3 = st.columns(3)
                 mostrar_horas = cc1.checkbox("⏱️ MOSTRAR HORAS", value=True, key="m8_h_v40")
                 calcular_rend_prom = cc2.checkbox("🚀 MOSTRAR RENDIMIENTO (ha/hr)", value=True, key="m8_r_v40")
