@@ -841,6 +841,7 @@ def ejecutar():
 
                 columnas_vista = [c for c in df_filtrado.columns if c not in ['FILA_EXCEL', 'FECHA_VENC_DT', 'FECHA_ING_TEMP', 'FECHA_SORT']]
                 df_vista = df_filtrado[columnas_vista].copy()
+                df_vista = df_vista.loc[:, ~df_vista.columns.duplicated(keep='first')] # 🛡️ Limpieza
                 
                 if "LOTE" in df_vista.columns: df_vista["LOTE"] = df_vista["LOTE"].astype(str).str.lstrip("'")
                 
@@ -884,7 +885,13 @@ def ejecutar():
                     if producto_filtro == "TODOS":
                         st.caption("⚠️ Con 'TODOS' se suman productos distintos (litros, kilos, etc.). Para un total con sentido, filtra por un producto.")
                 
-                df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
+                try:
+                    df_editado = st.data_editor(df_vista, column_config=col_config, disabled=cols_disabled, hide_index=True, use_container_width=True, key="editor_ingresos")
+                except Exception as e:
+                    st.error(f"🚨 Error detectado en la tabla de Ingresos: {e}")
+                    st.write("Columnas en la tabla:", df_vista.columns.tolist())
+                    st.write("Columnas deshabilitadas:", cols_disabled)
+                    st.stop()
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 col_b1, col_b2 = st.columns(2)
@@ -1298,6 +1305,7 @@ def ejecutar():
         
         if not df_traslados.empty:
             df_traslados_vista = df_traslados.copy()
+            df_traslados_vista = df_traslados_vista.loc[:, ~df_traslados_vista.columns.duplicated(keep='first')] # 🛡️ Elimina columnas duplicadas
             
             st.markdown("#### 🔍 Escáner de Filtrado")
             col_prod_t = next((c for c in df_traslados_vista.columns if "PRODUCTO" in c), None)
@@ -1313,8 +1321,9 @@ def ejecutar():
             
             if producto_filtro_t != "TODOS" and col_prod_t: df_traslados_vista = df_traslados_vista[df_traslados_vista[col_prod_t].str.upper() == producto_filtro_t]
 
+            if "🛡️ ACCIÓN" in df_traslados_vista.columns:
+                df_traslados_vista.drop(columns=["🛡️ ACCIÓN"], inplace=True)
             df_traslados_vista.insert(0, "🛡️ ACCIÓN", "✅ MANTENER")
-
             if "FECHA" in df_traslados_vista.columns:
                 df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA_DT'] if 'FECHA_DT' in df_traslados_vista.columns else df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
                 df_traslados_vista = df_traslados_vista.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
@@ -1366,8 +1375,13 @@ def ejecutar():
                 elif "OBSER" in c_up: col_config_t[c] = st.column_config.TextColumn(f"📝 OBS{lbl_edit}", width="medium")
                 elif "CONSECUT" in c_up: col_config_t[c] = st.column_config.TextColumn(f"🔢 CONSECUTIVO{lbl_edit}", width="medium")
 
-            df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
-
+            try:
+                df_editado_t = st.data_editor(df_vista_t, column_config=col_config_t, disabled=cols_disabled_t, hide_index=True, use_container_width=True, key="editor_traslados")
+            except Exception as e:
+                st.error(f"🚨 Error detectado en la tabla de Traslados: {e}")
+                st.write("Columnas en la tabla:", df_vista_t.columns.tolist())
+                st.write("Columnas deshabilitadas:", cols_disabled_t)
+                st.stop()
             st.markdown("<br>", unsafe_allow_html=True)
             
             # 💥 CIRUGÍA 3: SINCRONIZADOR CLONADO DE INGRESOS
