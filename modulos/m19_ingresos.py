@@ -1357,10 +1357,7 @@ def ejecutar():
                     for nom_edit in columnas_editables_nombres_t:
                         if nom_edit in str(col).upper() and col not in columnas_editables_reales_t:
                             columnas_editables_reales_t.append(col)
-                else:
-                    for nom_edit in columnas_editables_nombres_t:
-                        if nom_edit in str(col).upper() and col not in columnas_editables_reales_t:
-                            columnas_editables_reales_t.append(col)
+
                             
             cols_disabled_t = [col for col in df_traslados_vista.columns if col not in columnas_editables_reales_t and col not in cols_internas_t]
             columnas_vista_t = [c for c in df_traslados_vista.columns if c not in cols_internas_t]
