@@ -284,6 +284,11 @@ def procesar_bovedas_turbo(datos_ing_crudos, datos_dicc_crudos, datos_tras_crudo
             df_traslados = df_t[cols_presentes]
             if "PRODUCTO" in df_traslados.columns: df_traslados["PRODUCTO"] = df_traslados["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
             if "PISTA" in df_traslados.columns: df_traslados["PISTA"] = df_traslados["PISTA"].apply(estandarizar_pista)
+            
+            # 🔥 AÑADIDO PARA TRASLADOS:
+            if "FECHA" in df_traslados.columns: df_traslados['FECHA_DT'] = df_traslados['FECHA'].apply(procesar_fecha_estricta)
+            col_cant_tras = next((c for c in df_traslados.columns if "CANT" in c.upper()), None)
+            if col_cant_tras: df_traslados['CANT_NUM'] = df_traslados[col_cant_tras].apply(a_numero)
 
     # ================= PROCESAMIENTO INGRESOS =================
     df_ingresos = pd.DataFrame()
@@ -308,6 +313,16 @@ def procesar_bovedas_turbo(datos_ing_crudos, datos_dicc_crudos, datos_tras_crudo
         df_i['FILA_EXCEL'] = range(idx_head_i + 2, len(df_i) + idx_head_i + 2)
         if "PRODUCTO" in df_i.columns: df_i["PRODUCTO"] = df_i["PRODUCTO"].apply(estandarizar_y_marcar_inteligente)
         if "PISTA" in df_i.columns: df_i["PISTA"] = df_i["PISTA"].apply(estandarizar_pista)
+        
+        # 🔥 AÑADIDO PARA INGRESOS:
+        col_fv_ing = next((c for c in df_i.columns if c in ["F/V", "FECHA VENCIMIENTO", "VENCIMIENTO"]), None)
+        col_fi_ing = next((c for c in df_i.columns if "FECHA DE INGRESO" in c), None)
+        col_cant_ing = next((c for c in df_i.columns if "CANT" in c.upper()), None)
+
+        if col_fv_ing: df_i['FECHA_VENC_DT'] = df_i[col_fv_ing].apply(procesar_fecha_estricta)
+        if col_fi_ing: df_i['FECHA_ING_TEMP'] = df_i[col_fi_ing].apply(procesar_fecha_estricta)
+        if col_cant_ing: df_i['CANT_NUM'] = df_i[col_cant_ing].apply(a_numero)
+        
         df_ingresos = df_i
 
     return df_ingresos, df_traslados, encabezados_limpios_ing, encabezados_limpios_tras, dict_operativo, lista_autorizada        
@@ -449,7 +464,7 @@ def ejecutar():
                 hoy_ts = pd.to_datetime(hoy_colombia)
                 
                 lotes_vencidos, lotes_riesgo = 0, 0
-                if col_fv:
+                if col_fv and 'FECHA_VENC_DT' not in df.columns:
                     df['FECHA_VENC_DT'] = df[col_fv].apply(procesar_fecha_estricta)
                     df_activos = df[~df[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
                     lotes_vencidos = df_activos[df_activos['FECHA_VENC_DT'] < hoy_ts].shape[0]
@@ -717,7 +732,8 @@ def ejecutar():
                 fecha_reporte = col_fecha_rep.date_input("Fecha a reportar:", value=hoy_colombia)
                 
                 if col_fecha_ingreso:
-                    df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
+                    if 'FECHA_ING_TEMP' not in df.columns:
+                        df['FECHA_ING_TEMP'] = df[col_fecha_ingreso].apply(procesar_fecha_estricta)
                     mask = df['FECHA_ING_TEMP'].apply(lambda x: x.date() if pd.notna(x) else None) == fecha_reporte
                     df_correo = df[mask].copy()
                     if COL_ESTADO in df_correo.columns: df_correo = df_correo[~df_correo[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False, case=False)]
@@ -783,7 +799,7 @@ def ejecutar():
                 df_filtrado = df.copy()
                 
                 if col_fecha_ingreso:
-                    fechas_dt = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
+                    fechas_dt = df_filtrado['FECHA_ING_TEMP'] if 'FECHA_ING_TEMP' in df_filtrado.columns else df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
                     mask_fechas = fechas_dt.apply(lambda x: x.date() if pd.notna(x) else None)
                     df_filtrado = df_filtrado[(mask_fechas >= fecha_ini_filtro) & (mask_fechas <= fecha_fin_filtro)]
 
@@ -794,7 +810,7 @@ def ejecutar():
                 elif filtro_seleccionado == "⚠️ Por Vencer (90 Días)" and col_fv: df_filtrado = df_filtrado[(~df_filtrado[COL_ESTADO].str.contains("ANULADO|ELIMINAR", na=False)) & (df_filtrado['FECHA_VENC_DT'] >= hoy_ts) & (df_filtrado['FECHA_VENC_DT'] <= limite_90_dias)]
 
                 if col_fecha_ingreso:
-                    df_filtrado['FECHA_SORT'] = df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
+                    df_filtrado['FECHA_SORT'] = df_filtrado['FECHA_ING_TEMP'] if 'FECHA_ING_TEMP' in df_filtrado.columns else df_filtrado[col_fecha_ingreso].apply(procesar_fecha_estricta)
                     df_filtrado = df_filtrado.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
                 else: df_filtrado = df_filtrado.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
@@ -856,7 +872,7 @@ def ejecutar():
                     m_anul_f = df_filtrado[COL_ESTADO].astype(str).str.contains("ANULAD|ELIMINAR", case=False, na=False)
                     if col_cons_f:
                         m_anul_f |= df_filtrado[col_cons_f].astype(str).str.contains("ANULACI", case=False, na=False)
-                    cant_f = df_filtrado[col_cant_f].apply(a_numero)
+                    cant_f = df_filtrado['CANT_NUM'] if 'CANT_NUM' in df_filtrado.columns else df_filtrado[col_cant_f].apply(a_numero)
                     total_vig_f = cant_f[~m_anul_f].sum()
                     lotes_vig_f = int((~m_anul_f).sum())
                     total_anul_f = cant_f[m_anul_f].sum()
@@ -1300,7 +1316,7 @@ def ejecutar():
             df_traslados_vista.insert(0, "🛡️ ACCIÓN", "✅ MANTENER")
 
             if "FECHA" in df_traslados_vista.columns:
-                df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
+                df_traslados_vista['FECHA_SORT'] = df_traslados_vista['FECHA_DT'] if 'FECHA_DT' in df_traslados_vista.columns else df_traslados_vista['FECHA'].apply(procesar_fecha_estricta)
                 df_traslados_vista = df_traslados_vista.sort_values(by=['FECHA_SORT', 'FILA_EXCEL'], ascending=[False, False])
             else: df_traslados_vista = df_traslados_vista.sort_values(by=['FILA_EXCEL'], ascending=[False])
 
