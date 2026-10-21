@@ -865,13 +865,28 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
-                total_b_unit = vuelo_b + insumos_b
+                totals_unit = [vuelo_a + insumos_a, vuelo_b + insumos_b]
                 fig_unit = go.Figure(data=[
-                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=None, textposition='none'),
-                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(total_b_unit)], textposition='outside', textfont=dict(color='#0d1b2a', size=14, family='Arial Black'))
+                    go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=12, family='Arial Black')), 
+                    go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=13, family='Arial Black'))
                 ])
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=40, b=30, l=40, r=40))
+                # Etiquetas de TOTALES flotando arriba
+                fig_unit.add_trace(go.Scatter(x=categorias, y=totals_unit, text=[fmt_cop_vertical(totals_unit[0]), fmt_cop_vertical(totals_unit[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=13, family='Arial Black'), showlegend=False, hoverinfo='skip'))
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+                
+            with tab_glob:
+                insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
+                insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
+                totals_glob = [vuelo_tot_a + insumos_tot_a, vuelo_tot_b + insumos_tot_b]
+                fig_glob = go.Figure(data=[
+                    go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')), 
+                    go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
+                ])
+                # Etiquetas de TOTALES flotando arriba
+                fig_glob.add_trace(go.Scatter(x=categorias, y=totals_glob, text=[fmt_cop_vertical(totals_glob[0]), fmt_cop_vertical(totals_glob[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=13, family='Arial Black'), showlegend=False, hoverinfo='skip'))
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
+                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
             with tab_glob:
                 total_b_glob = vuelo_tot_b + insumos_tot_b
