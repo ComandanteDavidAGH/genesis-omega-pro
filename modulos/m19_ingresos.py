@@ -836,7 +836,7 @@ def ejecutar():
                         for nom_edit in columnas_editables_nombres:
                             if nom_edit in str(col).upper() and col not in columnas_editables_reales:
                                 columnas_editables_reales.append(col)
-                    else:
+
                         for nom_edit in columnas_editables_nombres:
                             if nom_edit in str(col).upper() and col not in columnas_editables_reales:
                                 columnas_editables_reales.append(col)
