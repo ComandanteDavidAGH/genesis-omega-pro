@@ -736,8 +736,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             elif tipo_periodo == "POR MES":
                 periodo_sel = t4.selectbox("📅 Seleccione Mes", list(meses_dict.keys()), format_func=lambda x: meses_dict[x])
                 etiq_periodo = meses_dict[periodo_sel]
-        costo_a = calcular_costo_ponderado(df_periodo_a)
-        costo_b = calcular_costo_ponderado(df_periodo_b)              
+                      
             elif tipo_periodo == "RANGO PERSONALIZADO":
                 c_fecha1, c_fecha2 = t4.columns(2)
                 fecha_inicial_libre = c_fecha1.date_input("📅 Desde:", value=datetime.now().date(), key="bi_f_ini_libre")
@@ -750,7 +749,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
-
+        costo_a = calcular_costo_ponderado(df_periodo_a)
+        costo_b = calcular_costo_ponderado(df_periodo_b)
         if tipo_periodo == "RANGO PERSONALIZADO":
             k1, k2 = st.columns(2)
             k1.markdown(tarjeta_kpi("Costo Promedio Ha", f"$ {formato_latino(costo_b, 0)}"), unsafe_allow_html=True)
