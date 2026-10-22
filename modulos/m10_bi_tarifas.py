@@ -1142,32 +1142,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 html_n1_kpis += "</div>"
             
             html_n1_kpis += "</div>"
-                # Fila 3: Cronología (Ciclos e Intervalos)
-                html_n1_kpis += "<div style='display: flex; gap: 15px; margin-bottom: 20px;'>"
-                dif_c = ciclos_b - ciclos_a
-                c_color_c = "#ff4b4b" if dif_c < 0 else "#28a745"
-                dif_i = int_b - int_a
-                c_color_i = "#ff4b4b" if dif_i > 0 else "#28a745"
-                _ia = f"{formato_latino(int_a, 1)} días" if int_a > 0 else "N/A"
-                _ib = f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A"
-                
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_base})</p><p class='kpi-value'>{ciclos_a} ciclos</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_comp})</p><p class='kpi-value'>{ciclos_b} ciclos</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Intervalo Promedio ({año_base})</p><p class='kpi-value'>{_ia}</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Intervalo ({año_comp})</p><p class='kpi-value'>{_ib}</p></div>"
-                html_n1_kpis += "</div>"
-                # Columna 3: Ciclos
-                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_base})</p><p class='kpi-value'>{ciclos_a} ciclos</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_comp})</p><p class='kpi-value'>{ciclos_b} ciclos</p></div>"
-                _ia = f"{formato_latino(int_a, 1)} d" if int_a > 0 else "N/A"
-                _ib = f"{formato_latino(int_b, 1)} d" if int_b > 0 else "N/A"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Intervalo Prom.</p><p class='kpi-value' style='font-size:18px;'>{_ia} → {_ib}</p></div>"
-                html_n1_kpis += "</div>"
-            
-            html_n1_kpis += "</div>"
-
-            # Guardamos las gráficas y tablas en otra variable
             html_n1_graficos = ""
             try: html_n1_graficos += f"<div class='chart-container'><h3>Tendencia Operativa / Costo</h3>{fig_tendencia.to_html(full_html=False, include_plotlyjs='cdn')}</div>"
             except Exception: pass
