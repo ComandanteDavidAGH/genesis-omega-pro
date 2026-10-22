@@ -719,8 +719,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                     match_cfg = df_conf_bi[df_conf_bi.iloc[:,0].astype(str).str.strip().str.upper() == prod_type]
                     if not match_cfg.empty:
                         tarifa_st_base = limpiar_dinero(match_cfg.iloc[0, 4])
+                        # 🛡️ CANDADO: Si se infló por el x1000, lo devolvemos a la normalidad
+                        if tarifa_st_base > 5000:
+                            tarifa_st_base = tarifa_st_base / 1000
         except Exception:
-            pass      
+            pass            
         
         t1, t2, t3, t4 = st.columns([1.5, 1.5, 1, 1])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
@@ -839,6 +842,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.info("ℹ️ **MODO AUDITORÍA AISLADA:** Mostrando información absoluta del rango seleccionado.")
             
             st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
+            st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
             
             dv_b = df_area_b[df_area_b['COSTO_NUM'] > 0]
@@ -850,10 +854,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)            
 
             # CALCULO DE ST Y MATERIALES (RANGO)
-            st_unit_b = int_b * tarifa_st_base
+            st_unit_b = min(insumos_b, int_b * tarifa_st_base) if int_b > 0 else 0
             mat_unit_b = max(0, insumos_b - st_unit_b)
             st_tot_b = st_unit_b * area_v_b
             mat_tot_b = mat_unit_b * area_v_b          
+            
             c1, c2 = st.columns(2)
             c1.markdown(tarjeta_kpi("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos"), unsafe_allow_html=True)
             c2.markdown(tarjeta_kpi("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A"), unsafe_allow_html=True)
@@ -863,9 +868,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_tendencia_b = df_periodo_b[df_periodo_b['COSTO_NUM'] > 0].copy()
             if not df_tendencia_b.empty:
                 df_tendencia_b['FECHA_FORMAT'] = df_tendencia_b['FECHA_DT'].dt.strftime('%d/%m/%Y')
-                
-                # Promedio Ponderado para Tendencia
-                # OPTIMIZACIÓN: Cálculo directo sin apply
                 df_tendencia_b['COSTO_PONDERADO'] = df_tendencia_b['COSTO_NUM'] * df_tendencia_b['AREA_NUM']
                 
                 tendencia_agrupa = df_tendencia_b.groupby('FECHA_FORMAT', sort=False).agg(
@@ -875,7 +877,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
                 tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_PONDERADO'] / tendencia_agrupa['AREA_SUM']
                 tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].fillna(0.0)
-                
                 tendencia_agrupa['FECHA_REAL'] = pd.to_datetime(tendencia_agrupa['FECHA_FORMAT'], format='%d/%m/%Y')
                 tendencia_agrupa = tendencia_agrupa.sort_values('FECHA_REAL')
                 
@@ -883,22 +884,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 fig_tendencia.update_xaxes(type='category')
                 fig_tendencia.update_traces(connectgaps=True)
                 fig_tendencia.update_layout(
-                    yaxis_title="Costo Promedio ($ COP / Ha)", 
-                    xaxis_title="Línea de Tiempo Exacta", 
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='#ffffff',
-                    hovermode="x unified",
+                    yaxis_title="Costo Promedio ($ COP / Ha)", xaxis_title="Línea de Tiempo Exacta", 
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', hovermode="x unified",
                     font=dict(family="Arial Black", size=12, color="#0d1b2a")
                 )
                 if not pd.isna(tendencia_agrupa['COSTO_NUM'].max()): fig_tendencia.update_yaxes(range=[0, tendencia_agrupa['COSTO_NUM'].max() * 1.2])
-                fig_tendencia.update_traces(
-                    line=dict(width=3.5), marker=dict(size=9), texttemplate="$ %{y:,.0f}", textposition="top center", textfont=dict(size=12, family="Arial Black", color="#0d1b2a")
-                )
+                fig_tendencia.update_traces(line=dict(width=3.5), marker=dict(size=9), texttemplate="$ %{y:,.0f}", textposition="top center", textfont=dict(size=12, family="Arial Black", color="#0d1b2a"))
                 st.plotly_chart(fig_tendencia, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
                 
             st.markdown("<hr>", unsafe_allow_html=True)
-            
-            
             
             def fmt_cop_vertical(val):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -1061,18 +1055,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             vuelo_a = vuelo_tot_a / area_v_a if area_v_a > 0 else 0
             vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
             insumos_a = max(0, (costo_tot_a / area_v_a if area_v_a > 0 else 0) - vuelo_a)
-            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)  
-            # 🛡️ CIRUGÍA DE NORMALIZACIÓN DE TARIFA (RANGO)
-            tarifa_st_efectiva = tarifa_st_base
-            if tarifa_st_efectiva > 10000: 
-                tarifa_st_efectiva = tarifa_st_efectiva / 1000
+            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)
 
-            # CALCULO DE ST Y MATERIALES (RANGO)
-            st_unit_b = min(insumos_b, int_b * tarifa_st_efectiva) if int_b > 0 else 0
-            mat_unit_b = max(0, insumos_b - st_unit_b)
-            st_tot_b = st_unit_b * area_v_b
-            mat_tot_b = mat_unit_b * area_v_b
-            st_unit_b = min(insumos_b, int_b * tarifa_st_efectiva) if int_b > 0 else 0
+            # CÁLCULO ST Y MATERIALES (AÑO VS AÑO)
+            st_unit_a = min(insumos_a, int_a * tarifa_st_base) if int_a > 0 else 0
+            mat_unit_a = max(0, insumos_a - st_unit_a)
+            st_tot_a = st_unit_a * area_v_a
+            mat_tot_a = mat_unit_a * area_v_a
+
+            st_unit_b = min(insumos_b, int_b * tarifa_st_base) if int_b > 0 else 0
             mat_unit_b = max(0, insumos_b - st_unit_b)
             st_tot_b = st_unit_b * area_v_b
             mat_tot_b = mat_unit_b * area_v_b          
