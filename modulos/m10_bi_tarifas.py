@@ -256,6 +256,8 @@ def generar_analisis_interpretativo(ctx):
         int_a, int_b = ctx.get('int_a', 0), ctx.get('int_b', 0)
         vuelo_a, vuelo_b = ctx.get('vuelo_a', 0), ctx.get('vuelo_b', 0)
         insumos_a, insumos_b = ctx.get('insumos_a', 0), ctx.get('insumos_b', 0)
+        mat_unit_a, mat_unit_b = ctx.get('mat_unit_a', 0), ctx.get('mat_unit_b', 0)
+        st_unit_a, st_unit_b = ctx.get('st_unit_a', 0), ctx.get('st_unit_b', 0)      
 
         if delta_pct > 10: emoji, tono = "🚨", "un incremento crítico"
         elif delta_pct > 0: emoji, tono = "⚠️", "un incremento"
@@ -293,21 +295,29 @@ def generar_analisis_interpretativo(ctx):
                 h.append("")
 
         h.append("🧬 3. ATRIBUCIÓN DEL CAMBIO: ¿QUÉ MOVIÓ EL COSTO POR HECTÁREA?")
-        dif_vuelo, dif_insumos = vuelo_b - vuelo_a, insumos_b - insumos_a
-        h.append(f"- Costo Vuelo/Ha (avión + dominical): pasó de $ {formato_latino(vuelo_a, 0)} a $ {formato_latino(vuelo_b, 0)} ({'+' if dif_vuelo >= 0 else '-'}$ {formato_latino(abs(dif_vuelo), 0)}).")
-        h.append(f"- Costo Insumos/Ha: pasó de $ {formato_latino(insumos_a, 0)} a $ {formato_latino(insumos_b, 0)} ({'+' if dif_insumos >= 0 else '-'}$ {formato_latino(abs(dif_insumos), 0)}).")
-        if dif_vuelo > 0 and dif_insumos > 0:
-            tot = dif_vuelo + dif_insumos
-            if dif_vuelo >= dif_insumos:
-                h.append(f"🎯 Ambos componentes subieron; el principal impulsor es el vuelo (≈ {dif_vuelo / tot * 100:.0f}% del aumento). Revisar tarifas y contratos de aerofumigación.\n")
-            else:
-                h.append(f"🎯 Ambos componentes subieron; el principal impulsor son los insumos (≈ {dif_insumos / tot * 100:.0f}% del aumento). Auditar precios de proveedores y evaluar renegociación.\n")
-        elif dif_vuelo > 0:
-            h.append("🎯 El encarecimiento proviene del vuelo (avión + dominical); los insumos bajaron y compensaron parcialmente.\n")
-        elif dif_insumos > 0:
-            h.append("🎯 El encarecimiento proviene de los insumos; el vuelo bajó y compensó parcialmente. Auditar precios de proveedores.\n")
-        elif dif_vuelo < 0 and dif_insumos < 0:
-            h.append("✅ Ambos componentes bajaron: la mejora viene tanto del vuelo como de los insumos.\n")
+        dif_vuelo = vuelo_b - vuelo_a
+        dif_mat = mat_unit_b - mat_unit_a
+        dif_st = st_unit_b - st_unit_a
+        
+        h.append(f"- Costo Vuelo/Ha: pasó de $ {formato_latino(vuelo_a, 0)} a $ {formato_latino(vuelo_b, 0)} ({'+' if dif_vuelo >= 0 else '-'}$ {formato_latino(abs(dif_vuelo), 0)}).")
+        h.append(f"- Costo Materiales/Ha: pasó de $ {formato_latino(mat_unit_a, 0)} a $ {formato_latino(mat_unit_b, 0)} ({'+' if dif_mat >= 0 else '-'}$ {formato_latino(abs(dif_mat), 0)}).")
+        h.append(f"- Costo Servicio Técnico/Ha: pasó de $ {formato_latino(st_unit_a, 0)} a $ {formato_latino(st_unit_b, 0)} ({'+' if dif_st >= 0 else '-'}$ {formato_latino(abs(dif_st), 0)}).")
+        
+        if dif_vuelo > 0 or dif_mat > 0 or dif_st > 0:
+            tot_aumento = max(0, dif_vuelo) + max(0, dif_mat) + max(0, dif_st)
+            if tot_aumento > 0:
+                p_vuelo = (max(0, dif_vuelo) / tot_aumento) * 100
+                p_mat = (max(0, dif_mat) / tot_aumento) * 100
+                p_st = (max(0, dif_st) / tot_aumento) * 100
+                
+                if max(p_vuelo, p_mat, p_st) == p_vuelo:
+                    h.append(f"🎯 El principal impulsor del encarecimiento es el **Vuelo** (≈ {p_vuelo:.0f}% del aumento). Revisar tarifas de aerofumigación.\n")
+                elif max(p_vuelo, p_mat, p_st) == p_mat:
+                    h.append(f"🎯 El principal impulsor del encarecimiento son los **Materiales** (≈ {p_mat:.0f}% del aumento). Auditar precios de proveedores.\n")
+                else:
+                    h.append(f"🎯 El principal impulsor del encarecimiento es el **Servicio Técnico** (≈ {p_st:.0f}% del aumento). Revisar días de ciclo o tarifas base.\n")
+        else:
+            h.append("✅ Los costos se mantuvieron estables o a la baja.\n")
         else:
             h.append("")
         h.append("🚨 4. ALERTAS Y RECOMENDACIONES:")
@@ -698,6 +708,19 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         f1, f2 = st.columns(2)
         finca_sel = f1.selectbox("📍 Objetivo Geográfico (Finca)", fincas_disp, index=1 if len(fincas_disp) > 1 else 0)
         modelo_sel = f2.selectbox("🚁 Escuadrón (Modelo/Tipo)", modelos_disp)
+        # NUEVO BLOQUE: OBTENER TARIFA ST BASE SEGÚN PRODUCTOR
+        tarifa_st_base = 1337.0
+        try:
+            _, df_conf_bi, _, _, df_t2_bi = cargar_boveda_recetas_y_precios()
+            if not df_t2_bi.empty and not df_conf_bi.empty:
+                match_f = df_t2_bi[df_t2_bi.iloc[:,0].astype(str).str.strip().str.upper() == finca_sel.upper()]
+                if not match_f.empty:
+                    prod_type = str(match_f.iloc[0, 5]).strip().upper()
+                    match_cfg = df_conf_bi[df_conf_bi.iloc[:,0].astype(str).str.strip().str.upper() == prod_type]
+                    if not match_cfg.empty:
+                        tarifa_st_base = limpiar_dinero(match_cfg.iloc[0, 4])
+        except Exception:
+            pass      
         
         t1, t2, t3, t4 = st.columns([1.5, 1.5, 1, 1])
         meses_dict = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
@@ -817,6 +840,11 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
+            # CALCULO DE ST Y MATERIALES (RANGO)
+            st_unit_b = int_b * tarifa_st_base
+            mat_unit_b = max(0, insumos_b - st_unit_b)
+            st_tot_b = st_unit_b * area_v_b
+            mat_tot_b = mat_unit_b * area_v_b          
             c1, c2 = st.columns(2)
             c1.markdown(tarjeta_kpi("Ciclos Totales" if finca_sel != "TODAS" else "Ciclos Prom. / Finca", f"{ciclos_b} ciclos"), unsafe_allow_html=True)
             c2.markdown(tarjeta_kpi("Intervalo Promedio" if finca_sel != "TODAS" else "Intervalo Prom. Zona", f"{formato_latino(int_b, 1)} días" if int_b > 0 else "N/A"), unsafe_allow_html=True)
@@ -869,15 +897,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
-            with tab_unit:
-                total_b_unit = vuelo_b + insumos_b
-                fig_unit = go.Figure(data=[
-                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=13, family='Arial Black')),
-                    go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
+            with tab_glob:
+                total_b_glob = vuelo_tot_b + mat_tot_b + st_tot_b
+                fig_glob = go.Figure(data=[
+                    go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
+                    go.Bar(name='Total Materiales', x=['Periodo Seleccionado'], y=[mat_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(mat_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
+                    go.Bar(name='Total Serv. Técnico', x=['Periodo Seleccionado'], y=[st_tot_b], marker_color='#F39C12', text=[fmt_cop_vertical(st_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
                 ])
-                fig_unit.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_unit], text=[fmt_cop_vertical(total_b_unit)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=13, family='Arial Black'), showlegend=False, hoverinfo='skip'))
-                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
-                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+                fig_glob.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_glob], text=[fmt_cop_vertical(total_b_glob)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
+                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
+                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_glob_custom")
 
             with tab_glob:
                 total_b_glob = vuelo_tot_b + insumos_tot_b
@@ -950,6 +979,16 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
             ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
+            # CALCULO DE ST Y MATERIALES (COMPARATIVO)
+            st_unit_a = int_a * tarifa_st_base
+            mat_unit_a = max(0, insumos_a - st_unit_a)
+            st_tot_a = st_unit_a * area_v_a
+            mat_tot_a = mat_unit_a * area_v_a
+
+            st_unit_b = int_b * tarifa_st_base
+            mat_unit_b = max(0, insumos_b - st_unit_b)
+            st_tot_b = st_unit_b * area_v_b
+            mat_tot_b = mat_unit_b * area_v_b          
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
             c1, c2, c3, c4 = st.columns(4)
             
@@ -1008,7 +1047,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             vuelo_a = vuelo_tot_a / area_v_a if area_v_a > 0 else 0
             vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
             insumos_a = max(0, (costo_tot_a / area_v_a if area_v_a > 0 else 0) - vuelo_a)
-            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)                        
+            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)  
+            # NUEVOS CÁLCULOS: ST Y MATERIALES COMPARATIVO
+            st_unit_a = int_a * tarifa_st_base
+            mat_unit_a = max(0, insumos_a - st_unit_a)
+            st_tot_a = st_unit_a * area_v_a
+            mat_tot_a = mat_unit_a * area_v_a
+
+            st_unit_b = int_b * tarifa_st_base
+            mat_unit_b = max(0, insumos_b - st_unit_b)
+            st_tot_b = st_unit_b * area_v_b
+            mat_tot_b = mat_unit_b * area_v_b          
             categorias = [f'Análisis {año_base}', f'Análisis {año_comp}']
             def fmt_cop_vertical(val):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -1018,22 +1067,22 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
             with tab_unit:
-                totals_unit = [vuelo_a + insumos_a, vuelo_b + insumos_b]
+                totals_unit = [vuelo_a + mat_unit_a + st_unit_a, vuelo_b + mat_unit_b + st_unit_b]
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=categorias, y=[vuelo_a, vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_a), fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=11, family='Arial')), 
-                    go.Bar(name='Costo Insumos / Ha', x=categorias, y=[insumos_a, insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_a), fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
+                    go.Bar(name='Costo Materiales / Ha', x=categorias, y=[mat_unit_a, mat_unit_b], marker_color='#27AE60', text=[fmt_cop_vertical(mat_unit_a), fmt_cop_vertical(mat_unit_b)], textposition='auto', textfont=dict(color='white', size=11, family='Arial')),
+                    go.Bar(name='Costo Serv. Técnico / Ha', x=categorias, y=[st_unit_a, st_unit_b], marker_color='#F39C12', text=[fmt_cop_vertical(st_unit_a), fmt_cop_vertical(st_unit_b)], textposition='auto', textfont=dict(color='white', size=11, family='Arial'))
                 ])
                 fig_unit.add_trace(go.Scatter(x=categorias, y=totals_unit, text=[fmt_cop_vertical(totals_unit[0]), fmt_cop_vertical(totals_unit[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
                 st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_unit_comp")
                 
             with tab_glob:
-                insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
-                insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-                totals_glob = [vuelo_tot_a + insumos_tot_a, vuelo_tot_b + insumos_tot_b]
+                totals_glob = [vuelo_tot_a + mat_tot_a + st_tot_a, vuelo_tot_b + mat_tot_b + st_tot_b]
                 fig_glob = go.Figure(data=[
                     go.Bar(name='Total Avión', x=categorias, y=[vuelo_tot_a, vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_a), fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')), 
-                    go.Bar(name='Total Insumos', x=categorias, y=[insumos_tot_a, insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_a), fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
+                    go.Bar(name='Total Materiales', x=categorias, y=[mat_tot_a, mat_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(mat_tot_a), fmt_cop_vertical(mat_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
+                    go.Bar(name='Total Serv. Técnico', x=categorias, y=[st_tot_a, st_tot_b], marker_color='#F39C12', text=[fmt_cop_vertical(st_tot_a), fmt_cop_vertical(st_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
                 ])
                 fig_glob.add_trace(go.Scatter(x=categorias, y=totals_glob, text=[fmt_cop_vertical(totals_glob[0]), fmt_cop_vertical(totals_glob[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
@@ -1480,7 +1529,8 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             if chk_n1:
                 _es_rango = (tipo_periodo == "RANGO PERSONALIZADO")
-                _ctx = {
+                _ctx = {'mat_unit_a': locals().get('mat_unit_a', 0), 'mat_unit_b': locals().get('mat_unit_b', 0),
+                    'st_unit_a': locals().get('st_unit_a', 0), 'st_unit_b': locals().get('st_unit_b', 0),
                     'finca': finca_sel, 'periodo': etiq_periodo, 'es_rango': _es_rango,
                     'año_base': año_base if not _es_rango else '', 'año_comp': año_comp if not _es_rango else '',
                     'costo_b': costo_b, 'area_b': area_b, 'ciclos_b': ciclos_b, 'int_b': int_b,
