@@ -747,20 +747,27 @@ def ejecutar():
                         df_correo_final = df_editado_correo[df_editado_correo["✅ INCLUIR"] == True].copy()
                         if not df_correo_final.empty:
                             mapa_columnas = {}
+                            nombres_ya_usados = set()
                             for col_excel in df_correo_final.columns:
                                 c_up = str(col_excel).upper()
-                                if "SEMANA" in c_up: mapa_columnas[col_excel] = "SEMANA"
-                                elif "PROV" in c_up: mapa_columnas[col_excel] = "PROVEEDOR"
-                                elif "INGRESO" in c_up: mapa_columnas[col_excel] = "F. INGRESO"
-                                elif "PROD" in c_up: mapa_columnas[col_excel] = "PRODUCTO"
-                                elif "PISTA" in c_up: mapa_columnas[col_excel] = "PISTA"
-                                elif "CANT" in c_up: mapa_columnas[col_excel] = "CANTIDAD"
-                                elif "LOTE" in c_up: mapa_columnas[col_excel] = "LOTE"
-                                elif "F/F" in c_up: mapa_columnas[col_excel] = "F/F"
-                                elif "F/V" in c_up: mapa_columnas[col_excel] = "F/V"
-                                elif "FACT" in c_up: mapa_columnas[col_excel] = "FACTURA"
-                                elif "PEDIDO" in c_up: mapa_columnas[col_excel] = "PEDIDO"
-                                elif "CONSECUT" in c_up: mapa_columnas[col_excel] = "CONSECUTIVO"
+                                nombre_dest = None
+                                if "SEMANA" in c_up: nombre_dest = "SEMANA"
+                                elif "PROV" in c_up: nombre_dest = "PROVEEDOR"
+                                elif "INGRESO" in c_up: nombre_dest = "F. INGRESO"
+                                elif "PROD" in c_up: nombre_dest = "PRODUCTO"
+                                elif "PISTA" in c_up: nombre_dest = "PISTA"
+                                elif "CANT" in c_up: nombre_dest = "CANTIDAD"
+                                elif "LOTE" in c_up: nombre_dest = "LOTE"
+                                elif "F/F" in c_up: nombre_dest = "F/F"
+                                elif "F/V" in c_up: nombre_dest = "F/V"
+                                elif "FACT" in c_up: nombre_dest = "FACTURA"
+                                elif "PEDIDO" in c_up: nombre_dest = "PEDIDO"
+                                elif "CONSECUT" in c_up: nombre_dest = "CONSECUTIVO"
+
+                                # 🛡️ Solo agregamos si el nombre destino no ha sido tomado
+                                if nombre_dest and nombre_dest not in nombres_ya_usados:
+                                    mapa_columnas[col_excel] = nombre_dest
+                                    nombres_ya_usados.add(nombre_dest)
                             df_correo_limpio = df_correo_final[list(mapa_columnas.keys())].rename(columns=mapa_columnas)
                             orden_ideal = ["PROVEEDOR", "PRODUCTO", "PISTA", "CANTIDAD", "LOTE", "F/F", "F/V", "FACTURA", "PEDIDO", "CONSECUTIVO"]
                             df_correo_limpio = df_correo_limpio[[col for col in orden_ideal if col in df_correo_limpio.columns]]
@@ -771,6 +778,10 @@ def ejecutar():
                                 html_manual += "<tr>"
                                 for col_name in df_correo_limpio.columns:
                                     val = row[col_name]
+                                    # 🛡️ Si por alguna razón val es una Serie (columnas duplicadas), tomamos el primer valor
+                                    if isinstance(val, pd.Series):
+                                        val = val.iloc[0] if not val.empty else ""
+
                                     val_str = "" if pd.isna(val) or str(val).strip() == "" else (formatear_numero_sap(str(val).strip()) if col_name == "CANTIDAD" else str(val).strip())
                                     if val_str.startswith("'"): val_str = val_str[1:]
                                     html_manual += f"<td style='padding: 8px 6px; border: 1px solid #0d1b2a; text-align: center; color: #000000; font-weight: bold; white-space: nowrap;'>{val_str}</td>"
