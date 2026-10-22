@@ -857,9 +857,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
             
-            tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
-            with tab_unit:
                 total_b_unit = vuelo_b + insumos_b
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=13, family='Arial Black')),
