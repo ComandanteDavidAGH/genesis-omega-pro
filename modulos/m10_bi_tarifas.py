@@ -1118,23 +1118,30 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Intervalo Promedio</p><p class='kpi-value'>{_int_txt}</p></div>"
                 html_n1_kpis += "</div>"
             else:
-                _col_d = "#ff4b4b" if delta_pct > 0 else ("#28a745" if delta_pct < 0 else "#a0aec0")
-                _col_a = "#28a745" if var_area > 0 else ("#ff4b4b" if var_area < 0 else "#a0aec0")
-                
-                # Fila 1: Costo Promedio
-                html_n1_kpis += "<div style='display: flex; gap: 15px; margin-bottom: 15px;'>"
+                _col_d = "#ff4b4b" if delta_pct > 0 else ("#28a745" if delta_pct < 0 else "#3182ce")
+                # Columna 1: Costos (Año Base arriba, Año Actual abajo, Variación al final)
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
                 html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_base})</p><p class='kpi-value'>$ {formato_latino(costo_a, 0)}</p></div>"
                 html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Costo Prom. Ha ({año_comp})</p><p class='kpi-value'>$ {formato_latino(costo_b, 0)}</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Variación Total (%)</p><p class='kpi-value' style='color:{_col_d};'>{delta_pct:+.2f} %</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Variación del Costo</p><p class='kpi-value' style='color:{_col_d};'>{delta_pct:+.2f}%</p></div>"
                 html_n1_kpis += "</div>"
-                
-                # Fila 2: Volumen Operativo
-                html_n1_kpis += "<div style='display: flex; gap: 15px; margin-bottom: 15px;'>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Total Hectáreas ({año_base})</p><p class='kpi-value'>{formato_latino(area_a, 1)} Ha</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Total Hectáreas ({año_comp})</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
-                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Variación de Área</p><p class='kpi-value' style='color:{_col_a};'>{var_area:+.1f} %</p></div>"
+                # Columna 2: Hectáreas
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Hectáreas ({año_base})</p><p class='kpi-value'>{formato_latino(area_a, 1)} Ha</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Hectáreas ({año_comp})</p><p class='kpi-value'>{formato_latino(area_b, 1)} Ha</p></div>"
+                _col_a = "#28a745" if var_area > 0 else ("#ff4b4b" if var_area < 0 else "#3182ce")
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Variación del Área</p><p class='kpi-value' style='color:{_col_a};'>{var_area:+.1f}%</p></div>"
                 html_n1_kpis += "</div>"
-
+                # Columna 3: Ciclos
+                html_n1_kpis += "<div style='flex: 1; display: flex; flex-direction: column; gap: 10px;'>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_base})</p><p class='kpi-value'>{ciclos_a} ciclos</p></div>"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1;'><p class='kpi-title'>Ciclos ({año_comp})</p><p class='kpi-value'>{ciclos_b} ciclos</p></div>"
+                _ia = f"{formato_latino(int_a, 1)} d" if int_a > 0 else "N/A"
+                _ib = f"{formato_latino(int_b, 1)} d" if int_b > 0 else "N/A"
+                html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Intervalo Prom.</p><p class='kpi-value' style='font-size:18px;'>{_ia} → {_ib}</p></div>"
+                html_n1_kpis += "</div>"
+            
+            html_n1_kpis += "</div>"
                 # Fila 3: Cronología (Ciclos e Intervalos)
                 html_n1_kpis += "<div style='display: flex; gap: 15px; margin-bottom: 20px;'>"
                 dif_c = ciclos_b - ciclos_a
