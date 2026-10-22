@@ -855,7 +855,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 except: return str(val)
                 
-st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
+            st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
             
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
