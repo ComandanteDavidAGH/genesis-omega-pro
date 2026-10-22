@@ -1139,7 +1139,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 _ia = f"{formato_latino(int_a, 1)} d" if int_a > 0 else "N/A"
                 _ib = f"{formato_latino(int_b, 1)} d" if int_b > 0 else "N/A"
                 html_n1_kpis += f"<div class='kpi-card' style='flex: 1; background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);'><p class='kpi-title'>Intervalo Prom.</p><p class='kpi-value' style='font-size:18px;'>{_ia} → {_ib}</p></div>"
-                
+                html_n1_kpis += "</div>"
             
             html_n1_kpis += "</div>"
                 # Fila 3: Cronología (Ciclos e Intervalos)
