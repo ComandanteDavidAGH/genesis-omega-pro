@@ -840,6 +840,15 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
+            
+            dv_b = df_area_b[df_area_b['COSTO_NUM'] > 0]
+            area_v_b = dv_b['AREA_NUM'].sum()
+            vuelo_tot_b = (dv_b['AVION_NUM'] * dv_b['AREA_NUM']).sum()
+            costo_tot_b = (dv_b['COSTO_NUM'] * dv_b['AREA_NUM']).sum()
+            vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
+            insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
+            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)            
+
             # CALCULO DE ST Y MATERIALES (RANGO)
             st_unit_b = int_b * tarifa_st_base
             mat_unit_b = max(0, insumos_b - st_unit_b)
@@ -889,14 +898,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("<hr>", unsafe_allow_html=True)
             
-            # CÁLCULOS PONDERADOS DIRECTOS Y FIABLES
-            dv_b = df_area_b[df_area_b['COSTO_NUM'] > 0]
-            area_v_b = dv_b['AREA_NUM'].sum()
-            vuelo_tot_b = (dv_b['AVION_NUM'] * dv_b['AREA_NUM']).sum()
-            costo_tot_b = (dv_b['COSTO_NUM'] * dv_b['AREA_NUM']).sum()
-            vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
-            insumos_tot_b = max(0, costo_tot_b - vuelo_tot_b)
-            insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)            
+            
             
             def fmt_cop_vertical(val):
                 try: return f"$ {val:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -906,6 +908,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
             
+            with tab_unit:
+                total_b_unit = vuelo_b + mat_unit_b + st_unit_b
+                fig_unit = go.Figure(data=[
+                    go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
+                    go.Bar(name='Costo Materiales / Ha', x=['Periodo Seleccionado'], y=[mat_unit_b], marker_color='#27AE60', text=[fmt_cop_vertical(mat_unit_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial')),
+                    go.Bar(name='Costo Serv. Técnico / Ha', x=['Periodo Seleccionado'], y=[st_unit_b], marker_color='#F39C12', text=[fmt_cop_vertical(st_unit_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial'))
+                ])
+                fig_unit.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_unit], text=[fmt_cop_vertical(total_b_unit)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
+                fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
+                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_unit_custom")
+                
             with tab_glob:
                 total_b_glob = vuelo_tot_b + mat_tot_b + st_tot_b
                 fig_glob = go.Figure(data=[
@@ -916,16 +929,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 fig_glob.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_glob], text=[fmt_cop_vertical(total_b_glob)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
                 st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_glob_custom")
-
-            with tab_glob:
-                total_b_glob = vuelo_tot_b + insumos_tot_b
-                fig_glob = go.Figure(data=[
-                    go.Bar(name='Total Avión', x=['Periodo Seleccionado'], y=[vuelo_tot_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black')),
-                    go.Bar(name='Total Insumos', x=['Periodo Seleccionado'], y=[insumos_tot_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_tot_b)], textposition='inside', textfont=dict(color='white', size=11, family='Arial Black'))
-                ])
-                fig_glob.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_glob], text=[fmt_cop_vertical(total_b_glob)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=13, family='Arial Black'), showlegend=False, hoverinfo='skip'))
-                fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
                 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
@@ -988,16 +991,6 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 
             st.markdown("#### 📅 Cronología de Aplicación: Ciclos Reales e Intervalo Promedio")
             ciclos_a, int_a = calcular_frecuencia_por_finca(df_area_a, finca_sel)
-            # CALCULO DE ST Y MATERIALES (COMPARATIVO)
-            st_unit_a = int_a * tarifa_st_base
-            mat_unit_a = max(0, insumos_a - st_unit_a)
-            st_tot_a = st_unit_a * area_v_a
-            mat_tot_a = mat_unit_a * area_v_a
-
-            st_unit_b = int_b * tarifa_st_base
-            mat_unit_b = max(0, insumos_b - st_unit_b)
-            st_tot_b = st_unit_b * area_v_b
-            mat_tot_b = mat_unit_b * area_v_b          
             ciclos_b, int_b = calcular_frecuencia_por_finca(df_area_b, finca_sel)
             c1, c2, c3, c4 = st.columns(4)
             
