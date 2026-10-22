@@ -867,7 +867,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 ])
                 fig_unit.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_unit], text=[fmt_cop_vertical(total_b_unit)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
-                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_unit_custom")
             with tab_glob:
                 total_b_glob = vuelo_tot_b + insumos_tot_b
                 fig_glob = go.Figure(data=[
