@@ -609,7 +609,7 @@ def ejecutar():
                     st.markdown("<hr style='margin: 10px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("#### 📦 Detalle de Lotes a Procesar")
                     st.caption("Añade tantas filas como líneas tenga el documento SAP de Ingreso o Anulación.")
-                    df_lotes_base = pd.DataFrame([{"CANTIDAD": 0.0, "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
+                    df_lotes_base = pd.DataFrame([{"CANTIDAD": "", "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
                     
                     config_lotes = {
                         "CANTIDAD": st.column_config.TextColumn("⚖️ Cantidad", help="Escriba el número tal cual (ej: 1000)"),
