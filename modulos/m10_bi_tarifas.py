@@ -184,6 +184,7 @@ def generar_excel_vip(df, sheet_name="Reporte"):
             ws.column_dimensions[col_letter].width = min(max_length + 4, 35)
             
     return buffer.getvalue()
+
 def generar_informe_html(titulo, contenido_html):
     return f"""
     <html>
@@ -241,7 +242,6 @@ def df_a_html(df):
 def generar_analisis_interpretativo(ctx):
     """Genera narrativa interpretativa en texto limpio (Markdown) para ser editada."""
     h = []
-    finca, periodo = ctx.get('finca', 'N/A'), ctx.get('periodo', 'N/A')
     finca, periodo = ctx.get('finca', 'N/A'), ctx.get('periodo', 'N/A')
     es_rango = ctx.get('es_rango', False)
     
@@ -749,13 +749,14 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
+        
         if tipo_periodo == "RANGO PERSONALIZADO":
             df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= fecha_inicial_libre) & (df_finca['FECHA_DT'].dt.date <= fecha_final_libre)].copy()
             df_periodo_a = pd.DataFrame()
         elif modo_rangos:
             f_dt = df_finca['FECHA_DT'].dt.date
             df_periodo_a = df_finca[(f_dt >= fecha_ini_a) & (f_dt <= fecha_fin_a)].copy()
-            df_periodo_b = df_finca[(f_dt >= fecha_ini_b) & (f_dt <= fecha_fin_b)].copy()          
+            df_periodo_b = df_finca[(f_dt >= fecha_ini_b) & (f_dt <= fecha_fin_b)].copy()         
         else:
             df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
             df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
@@ -766,7 +767,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
                 df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
 
-        # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros) - ¡RESTAURADO EXACTAMENTE COMO LO TENÍAS!
+        # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros)
         def calcular_costo_ponderado(df_rango):
             if df_rango.empty or 'COSTO_NUM' not in df_rango.columns: return 0.0
             df_valido = df_rango[df_rango['COSTO_NUM'] > 0]
@@ -776,6 +777,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         df_area_a, df_area_b = df_periodo_a.copy(), df_periodo_b.copy()
         area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
         area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
+        
         with st.expander("🔍 AUDITORÍA DE HECTÁREAS (diagnóstico del KPI)", expanded=False):
             for etiqueta, d in [(f"Base ({año_base})", df_area_a), (f"Actual ({año_comp})", df_area_b)]:
                 if d.empty: continue
@@ -789,6 +791,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 st.download_button(f"⬇️ Filas de {etiqueta} (CSV para cuadrar en Excel)",
                                    d[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'AREA_MAESTRA', 'AREA_NUM', 'ORIGEN_BI']].to_csv(index=False).encode('utf-8-sig'),
                                    file_name=f"auditoria_{año_base if 'Base' in etiqueta else año_comp}.csv", mime="text/csv", key=f"aud_{etiqueta}")
+        
         costo_a = calcular_costo_ponderado(df_periodo_a)
         costo_b = calcular_costo_ponderado(df_periodo_b)
         
@@ -865,6 +868,9 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             st.markdown("#### 🛩️ vs 🧪 Distribución del Costo (Rango Seleccionado)")
             
             tab_unit, tab_glob = st.tabs(["🎯 Impacto Unitario", "💰 Impacto Global"])
+            
+            with tab_unit:
+                total_b_unit = vuelo_b + insumos_b
                 fig_unit = go.Figure(data=[
                     go.Bar(name='Costo Avión / Ha', x=['Periodo Seleccionado'], y=[vuelo_b], marker_color='#2F75B5', text=[fmt_cop_vertical(vuelo_b)], textposition='auto', textfont=dict(color='white', size=13, family='Arial Black')),
                     go.Bar(name='Costo Insumos / Ha', x=['Periodo Seleccionado'], y=[insumos_b], marker_color='#27AE60', text=[fmt_cop_vertical(insumos_b)], textposition='inside', textfont=dict(color='white', size=14, family='Arial Black'))
@@ -1210,7 +1216,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                         html_n2 += f"</div>"
                         try: html_n2 += f"<h3>Receta vs Año</h3>{df_a_html(df_vista_mol)}"
                         except Exception: pass
-      
+       
         # =====================================================================
         # 📦 NIVEL 3: INTELIGENCIA LOGÍSTICA Y AUDITORÍA DE INVENTARIOS
         # =====================================================================
