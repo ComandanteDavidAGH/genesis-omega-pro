@@ -749,9 +749,48 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
         df_finca = super_base_bi.copy()
         if finca_sel != "TODAS": df_finca = df_finca[df_finca['FINCA_MAESTRA'] == finca_sel]
         if col_modelo and modelo_sel != "TODOS": df_finca = df_finca[df_finca[col_modelo] == modelo_sel].copy()
+        if tipo_periodo == "RANGO PERSONALIZADO":
+            df_periodo_b = df_finca[(df_finca['FECHA_DT'].dt.date >= fecha_inicial_libre) & (df_finca['FECHA_DT'].dt.date <= fecha_final_libre)].copy()
+            df_periodo_a = pd.DataFrame()
+        elif modo_rangos:
+            f_dt = df_finca['FECHA_DT'].dt.date
+            df_periodo_a = df_finca[(f_dt >= fecha_ini_a) & (f_dt <= fecha_fin_a)].copy()
+            df_periodo_b = df_finca[(f_dt >= fecha_ini_b) & (f_dt <= fecha_fin_b)].copy()          
+        else:
+            df_periodo_a = df_finca[df_finca['AÑO'] == año_base].copy()
+            df_periodo_b = df_finca[df_finca['AÑO'] == año_comp].copy()
+            if tipo_periodo == "POR TRIMESTRE":
+                df_periodo_a = df_periodo_a[df_periodo_a['TRIMESTRE'] == periodo_sel]
+                df_periodo_b = df_periodo_b[df_periodo_b['TRIMESTRE'] == periodo_sel]
+            elif tipo_periodo == "POR MES":
+                df_periodo_a = df_periodo_a[df_periodo_a['MES'] == periodo_sel]
+                df_periodo_b = df_periodo_b[df_periodo_b['MES'] == periodo_sel]
+
+        # 🛡️ MOTOR DE PROMEDIOS PONDERADOS (Ignora ceros) - ¡RESTAURADO EXACTAMENTE COMO LO TENÍAS!
+        def calcular_costo_ponderado(df_rango):
+            if df_rango.empty or 'COSTO_NUM' not in df_rango.columns: return 0.0
+            df_valido = df_rango[df_rango['COSTO_NUM'] > 0]
+            if df_valido.empty or df_valido['AREA_NUM'].sum() == 0: return 0.0
+            return (df_valido['COSTO_NUM'] * df_valido['AREA_NUM']).sum() / df_valido['AREA_NUM'].sum()
+
+        df_area_a, df_area_b = df_periodo_a.copy(), df_periodo_b.copy()
+        area_a = df_area_a['AREA_NUM'].sum() if not df_area_a.empty else 0.0
+        area_b = df_area_b['AREA_NUM'].sum() if not df_area_b.empty else 0.0
+        with st.expander("🔍 AUDITORÍA DE HECTÁREAS (diagnóstico del KPI)", expanded=False):
+            for etiqueta, d in [(f"Base ({año_base})", df_area_a), (f"Actual ({año_comp})", df_area_b)]:
+                if d.empty: continue
+                st.markdown(f"**{etiqueta}:** {len(d)} filas · {formato_latino(d['AREA_NUM'].sum(), 2)} Ha")
+                st.caption("Por origen de la fila:")
+                st.dataframe(d.groupby('ORIGEN_BI')['AREA_NUM'].agg(Filas='count', Hectareas='sum').reset_index(), hide_index=True)
+                st.caption("10 áreas más grandes (revisa si alguna está mal leída):")
+                st.dataframe(d.nlargest(10, 'AREA_NUM')[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'AREA_MAESTRA', 'AREA_NUM']], hide_index=True)
+                dup = d[d.duplicated(subset=['FECHA_DT', 'FINCA_MAESTRA', 'AREA_NUM'], keep=False)]
+                st.caption(f"Filas con misma fecha+finca+área (posibles repetidas): {len(dup)}")
+                st.download_button(f"⬇️ Filas de {etiqueta} (CSV para cuadrar en Excel)",
+                                   d[['FECHA_MAESTRA', 'FINCA_MAESTRA', 'OS_MAESTRA', 'COCTEL_MAESTRO', 'AREA_MAESTRA', 'AREA_NUM', 'ORIGEN_BI']].to_csv(index=False).encode('utf-8-sig'),
+                                   file_name=f"auditoria_{año_base if 'Base' in etiqueta else año_comp}.csv", mime="text/csv", key=f"aud_{etiqueta}")
         costo_a = calcular_costo_ponderado(df_periodo_a)
         costo_b = calcular_costo_ponderado(df_periodo_b)
-        if tipo_periodo == "RANGO PERSONALIZADO":
             k1, k2 = st.columns(2)
             k1.markdown(tarjeta_kpi("Costo Promedio Ha", f"$ {formato_latino(costo_b, 0)}"), unsafe_allow_html=True)
             k2.markdown(tarjeta_kpi("Total Operaciones (OS)", f"{df_periodo_b['OS_MAESTRA'].nunique()} OS"), unsafe_allow_html=True)
