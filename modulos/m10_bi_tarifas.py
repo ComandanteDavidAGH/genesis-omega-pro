@@ -791,6 +791,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                                    file_name=f"auditoria_{año_base if 'Base' in etiqueta else año_comp}.csv", mime="text/csv", key=f"aud_{etiqueta}")
         costo_a = calcular_costo_ponderado(df_periodo_a)
         costo_b = calcular_costo_ponderado(df_periodo_b)
+        if tipo_periodo == "RANGO PERSONALIZADO":      
             k1, k2 = st.columns(2)
             k1.markdown(tarjeta_kpi("Costo Promedio Ha", f"$ {formato_latino(costo_b, 0)}"), unsafe_allow_html=True)
             k2.markdown(tarjeta_kpi("Total Operaciones (OS)", f"{df_periodo_b['OS_MAESTRA'].nunique()} OS"), unsafe_allow_html=True)
