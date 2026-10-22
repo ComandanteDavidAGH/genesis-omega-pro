@@ -497,38 +497,40 @@ def extraer_receta_de_sigla_bi(coctel_sel, finca_sel, df_mezclas, df_dicc, df_t2
 
 def calcular_frecuencia_por_finca(df_area, finca_seleccionada):
     if df_area.empty or 'FECHA_DT' not in df_area.columns: return 0, 0.0
+    
+    # Vectorización extrema: Agrupamos y calculamos diferencias en un solo paso
+    df_sorted = df_area[['FINCA_MAESTRA', 'FECHA_DT']].dropna().drop_duplicates().sort_values(by=['FINCA_MAESTRA', 'FECHA_DT'])
+    
     if finca_seleccionada != "TODAS":
-        fechas = sorted(df_area['FECHA_DT'].dt.date.unique())
-        if not fechas: return 0, 0.0
-        ciclos = 1
-        inicios_ciclo = [fechas[0]]
-        for i in range(1, len(fechas)):
-            if (fechas[i] - fechas[i-1]).days > 5:
-                ciclos += 1
-                inicios_ciclo.append(fechas[i])
-        avg_int = sum([(inicios_ciclo[j] - inicios_ciclo[j-1]).days for j in range(1, ciclos)]) / (ciclos - 1) if ciclos > 1 else 0.0
-        return ciclos, avg_int
+        df_sorted = df_sorted[df_sorted['FINCA_MAESTRA'] == finca_seleccionada]
+        if df_sorted.empty: return 0, 0.0
+        
+        fechas = df_sorted['FECHA_DT'].dt.date
+        diffs = fechas.diff().dt.days
+        
+        # Un ciclo nuevo empieza si la diferencia es > 5 días
+        ciclos = 1 + (diffs > 5).sum()
+        
+        # Promedio de los intervalos (ignorando nulos y los que son <= 5)
+        valid_diffs = diffs[diffs > 5]
+        avg_int = valid_diffs.mean() if not valid_diffs.empty else 0.0
+        return int(ciclos), float(avg_int) if pd.notna(avg_int) else 0.0
 
-    fincas_presentes = df_area['FINCA_MAESTRA'].unique()
-    total_ciclos_todas, total_suma_dias, total_intervalos_contados, fincas_validas = 0, 0, 0, 0
-    for f in fincas_presentes:
-        df_sub = df_area[df_area['FINCA_MAESTRA'] == f]
-        fechas_f = sorted(df_sub['FECHA_DT'].dt.date.unique())
-        if not fechas_f: continue
-        c_f = 1
-        inicios_c_f = [fechas_f[0]]
-        for i in range(1, len(fechas_f)):
-            if (fechas_f[i] - fechas_f[i-1]).days > 5:
-                c_f += 1
-                inicios_c_f.append(fechas_f[i])
-        total_ciclos_todas += c_f
-        fincas_validas += 1
-        if c_f > 1:
-            total_suma_dias += sum([(inicios_c_f[j] - inicios_c_f[j-1]).days for j in range(1, c_f)])
-            total_intervalos_contados += (c_f - 1)
-    promedio_ciclos = int(round(total_ciclos_todas / fincas_validas)) if fincas_validas > 0 else 0
-    promedio_intervalo = total_suma_dias / total_intervalos_contados if total_intervalos_contados > 0 else 0.0
-    return promedio_ciclos, promedio_intervalo
+    # Si es TODAS las fincas
+    if df_sorted.empty: return 0, 0.0
+    
+    df_sorted['DIFF_DIAS'] = df_sorted.groupby('FINCA_MAESTRA')['FECHA_DT'].diff().dt.days
+    
+    # Contamos ciclos por finca: 1 base + los saltos > 5
+    ciclos_por_finca = df_sorted.groupby('FINCA_MAESTRA')['DIFF_DIAS'].apply(lambda x: 1 + (x > 5).sum())
+    
+    # Intervalos válidos promedio por finca
+    intervalos_validos = df_sorted[df_sorted['DIFF_DIAS'] > 5]
+    
+    promedio_ciclos = int(round(ciclos_por_finca.mean())) if not ciclos_por_finca.empty else 0
+    promedio_intervalo = intervalos_validos['DIFF_DIAS'].mean() if not intervalos_validos.empty else 0.0
+    
+    return promedio_ciclos, float(promedio_intervalo) if pd.notna(promedio_intervalo) else 0.0
 
 # =================================================================
 # 📡 NÚCLEO OPERATIVO DEL DASHBOARD ESTRATÉGICO
@@ -856,10 +858,19 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 df_tendencia_b['FECHA_FORMAT'] = df_tendencia_b['FECHA_DT'].dt.strftime('%d/%m/%Y')
                 
                 # Promedio Ponderado para Tendencia
-                tendencia_agrupa = df_tendencia_b.groupby('FECHA_FORMAT', sort=False).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
+                # OPTIMIZACIÓN: Cálculo directo sin apply
+                df_tendencia_b['COSTO_PONDERADO'] = df_tendencia_b['COSTO_NUM'] * df_tendencia_b['AREA_NUM']
+                
+                tendencia_agrupa = df_tendencia_b.groupby('FECHA_FORMAT', sort=False).agg(
+                    COSTO_PONDERADO=('COSTO_PONDERADO', 'sum'),
+                    AREA_SUM=('AREA_NUM', 'sum')
+                ).reset_index()
+                
+                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_PONDERADO'] / tendencia_agrupa['AREA_SUM']
+                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].fillna(0.0)
+                
                 tendencia_agrupa['FECHA_REAL'] = pd.to_datetime(tendencia_agrupa['FECHA_FORMAT'], format='%d/%m/%Y')
                 tendencia_agrupa = tendencia_agrupa.sort_values('FECHA_REAL')
-                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].astype(float)
                 
                 fig_tendencia = px.line(tendencia_agrupa, x='FECHA_FORMAT', y='COSTO_NUM', markers=True, color_discrete_sequence=['#2F75B5'])
                 fig_tendencia.update_xaxes(type='category')
@@ -1007,20 +1018,32 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             df_tendencia = pd.concat([df_periodo_a, df_periodo_b])
             df_tendencia = df_tendencia[df_tendencia['COSTO_NUM'] > 0]
             if not df_tendencia.empty:
+                df_tendencia['COSTO_PONDERADO'] = df_tendencia['COSTO_NUM'] * df_tendencia['AREA_NUM']
+                
                 if tipo_periodo in ["AÑO COMPLETO", "POR TRIMESTRE", "COMPARAR RANGOS (CALENDARIO)"]:
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES']).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'MES'], sort=False).agg(
+                        COSTO_PONDERADO=('COSTO_PONDERADO', 'sum'),
+                        AREA_SUM=('AREA_NUM', 'sum')
+                    ).reset_index()
+                    
+                    tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_PONDERADO'] / tendencia_agrupa['AREA_SUM']
                     tendencia_agrupa['EJE_X'] = tendencia_agrupa['MES'].map(meses_dict)
                     tendencia_agrupa = tendencia_agrupa.sort_values('MES')
                     titulo_x = "Meses Operativos"
                 else:
                     df_tendencia['DIA'] = df_tendencia['FECHA_DT'].dt.day
-                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA']).apply(lambda g: (g['COSTO_NUM'] * g['AREA_NUM']).sum() / g['AREA_NUM'].sum() if g['AREA_NUM'].sum()>0 else 0).reset_index(name='COSTO_NUM')
+                    tendencia_agrupa = df_tendencia.groupby(['AÑO', 'DIA'], sort=False).agg(
+                        COSTO_PONDERADO=('COSTO_PONDERADO', 'sum'),
+                        AREA_SUM=('AREA_NUM', 'sum')
+                    ).reset_index()
+                    
+                    tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_PONDERADO'] / tendencia_agrupa['AREA_SUM']
                     tendencia_agrupa['EJE_X'] = "Día " + tendencia_agrupa['DIA'].astype(str)
                     tendencia_agrupa = tendencia_agrupa.sort_values('DIA')
                     titulo_x = f"Días Operativos ({etiq_periodo})"
                 
+                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].fillna(0.0)
                 tendencia_agrupa['AÑO'] = tendencia_agrupa['AÑO'].astype(str)
-                tendencia_agrupa['COSTO_NUM'] = tendencia_agrupa['COSTO_NUM'].astype(float)
                 
                 fig_tendencia = px.line(tendencia_agrupa, x='EJE_X', y='COSTO_NUM', color='AÑO', markers=True, color_discrete_sequence=['#2F75B5', '#27AE60'])
                 fig_tendencia.update_xaxes(type='category')
