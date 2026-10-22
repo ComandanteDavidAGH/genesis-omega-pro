@@ -1014,7 +1014,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 ])
                 fig_unit.add_trace(go.Scatter(x=categorias, y=totals_unit, text=[fmt_cop_vertical(totals_unit[0]), fmt_cop_vertical(totals_unit[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_unit.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor COP / Ha", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_glob_custom")
+                st.plotly_chart(fig_unit, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_unit_comp")
                 
             with tab_glob:
                 insumos_tot_a = max(0, costo_tot_a - vuelo_tot_a)
@@ -1026,7 +1026,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 ])
                 fig_glob.add_trace(go.Scatter(x=categorias, y=totals_glob, text=[fmt_cop_vertical(totals_glob[0]), fmt_cop_vertical(totals_glob[1])], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", separators=",.", hovermode="closest", margin=dict(t=50, b=40, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_glob_comp")
             
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
             col_gln = 'GLN_HA' if 'GLN_HA' in df_finca.columns else None
