@@ -876,7 +876,7 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
                 ])
                 fig_glob.add_trace(go.Scatter(x=['Periodo Seleccionado'], y=[total_b_glob], text=[fmt_cop_vertical(total_b_glob)], mode='text', textposition='top center', textfont=dict(color='#0d1b2a', size=12, family='Arial'), showlegend=False, hoverinfo='skip'))
                 fig_glob.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff', yaxis_title="Valor Total COP", hovermode="closest", margin=dict(t=50, b=30, l=40, r=40))
-                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+                st.plotly_chart(fig_glob, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True}, key="fig_glob_custom")
 
                 
             col_coctel = 'COCTEL' if 'COCTEL' in df_finca.columns else ('COCTEL_MAESTRO' if 'COCTEL_MAESTRO' in df_finca.columns else None)
