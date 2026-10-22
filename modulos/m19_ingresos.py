@@ -609,7 +609,13 @@ def ejecutar():
                     st.markdown("<hr style='margin: 10px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("#### 📦 Detalle de Lotes a Procesar")
                     st.caption("Añade tantas filas como líneas tenga el documento SAP de Ingreso o Anulación.")
-                    df_lotes_base = pd.DataFrame([{"CANTIDAD": "", "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
+                    # 🛡️ BLINDAJE TOTAL: Datos iniciales como texto ("0") para evitar el error
+                    df_lotes_base = pd.DataFrame([{
+                        "CANTIDAD": "0", 
+                        "LOTE": "", 
+                        "F_FABRICACION": hoy_colombia, 
+                        "F_VENCIMIENTO": hoy_colombia
+                    }])
                     
                     config_lotes = {
                         "CANTIDAD": st.column_config.TextColumn("⚖️ Cantidad", help="Escriba el número tal cual (ej: 1000)"),
@@ -618,7 +624,15 @@ def ejecutar():
                         "F_VENCIMIENTO": st.column_config.DateColumn("⏳ F. Vencimiento (F/V)", format="YYYY-MM-DD")
                     }
                     
-                    lotes_editados = st.data_editor(df_lotes_base, num_rows="dynamic", column_config=config_lotes, hide_index=True, use_container_width=True, key=f"multi_lote_{fk}")
+                    # 🛡️ CAMBIO DE LLAVE (v2): Obliga a Streamlit a olvidar la tabla dañada
+                    lotes_editados = st.data_editor(
+                        df_lotes_base, 
+                        num_rows="dynamic", 
+                        column_config=config_lotes, 
+                        hide_index=True, 
+                        use_container_width=True, 
+                        key=f"multi_lote_v2_{fk}" 
+                    )
                     
                     lotes_validos = [row for _, row in lotes_editados.iterrows() if a_numero(row["CANTIDAD"]) > 0 and str(row["LOTE"]).strip() != ""]
 
