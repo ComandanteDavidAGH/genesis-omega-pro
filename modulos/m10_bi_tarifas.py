@@ -1062,13 +1062,17 @@ def ejecutar(descargar_matriz_rapida, procesar_fecha_pesada, extraer_numero):
             vuelo_b = vuelo_tot_b / area_v_b if area_v_b > 0 else 0
             insumos_a = max(0, (costo_tot_a / area_v_a if area_v_a > 0 else 0) - vuelo_a)
             insumos_b = max(0, (costo_tot_b / area_v_b if area_v_b > 0 else 0) - vuelo_b)  
-            # NUEVOS CÁLCULOS: ST Y MATERIALES COMPARATIVO
-            st_unit_a = int_a * tarifa_st_base
-            mat_unit_a = max(0, insumos_a - st_unit_a)
-            st_tot_a = st_unit_a * area_v_a
-            mat_tot_a = mat_unit_a * area_v_a
+            # 🛡️ CIRUGÍA DE NORMALIZACIÓN DE TARIFA (RANGO)
+            tarifa_st_efectiva = tarifa_st_base
+            if tarifa_st_efectiva > 10000: 
+                tarifa_st_efectiva = tarifa_st_efectiva / 1000
 
-            st_unit_b = int_b * tarifa_st_base
+            # CALCULO DE ST Y MATERIALES (RANGO)
+            st_unit_b = min(insumos_b, int_b * tarifa_st_efectiva) if int_b > 0 else 0
+            mat_unit_b = max(0, insumos_b - st_unit_b)
+            st_tot_b = st_unit_b * area_v_b
+            mat_tot_b = mat_unit_b * area_v_b
+            st_unit_b = min(insumos_b, int_b * tarifa_st_efectiva) if int_b > 0 else 0
             mat_unit_b = max(0, insumos_b - st_unit_b)
             st_tot_b = st_unit_b * area_v_b
             mat_tot_b = mat_unit_b * area_v_b          
