@@ -318,8 +318,6 @@ def generar_analisis_interpretativo(ctx):
                     h.append(f"🎯 El principal impulsor del encarecimiento es el **Servicio Técnico** (≈ {p_st:.0f}% del aumento). Revisar días de ciclo o tarifas base.\n")
         else:
             h.append("✅ Los costos se mantuvieron estables o a la baja.\n")
-        else:
-            h.append("")
         h.append("🚨 4. ALERTAS Y RECOMENDACIONES:")
         al = []        
         if delta_pct > 10: al.append("- 🚨 CRÍTICO: Costo subió {:.1f}%, superando el umbral del 10%. Acción inmediata: auditar tarifas, revisar contratos y evaluar sustituciones.".format(delta_pct))
